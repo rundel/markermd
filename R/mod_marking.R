@@ -120,7 +120,7 @@ marking_server = function(id, ast, template) {
               onclick = paste0("Shiny.setInputValue('", session$ns("select_question"), "', ", i, ");"),
               shiny::h6(paste("Question", i)),
               shiny::p(q$name %||% paste("Question", i)),
-              shiny::tags$small(paste("Nodes:", if (length(q$selected_nodes) == 0) "None" else paste(q$selected_nodes, collapse = ", ")))
+              shiny::tags$small(paste("Nodes:", if (length(q$selected_nodes) == 0) "None" else paste(q$selected_nodes - 1, collapse = ", ")))
             )
           })
         )
@@ -161,7 +161,7 @@ marking_server = function(id, ast, template) {
       
       grades(current_grades)
       
-      shiny::showNotification("Grade saved successfully!", type = "message")
+      # Grade saved successfully
     })
     
     # Next question

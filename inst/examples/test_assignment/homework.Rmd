@@ -1,0 +1,39 @@
+---
+title: "Test Assignment"
+author: "Student"
+date: "2024-01-01"
+output: html_document
+---
+
+# Introduction
+
+This is a test assignment for the markermd package.
+
+## Question 1
+
+Explain what R is:
+
+R is a programming language for statistical computing.
+
+## Question 2
+
+Write code to calculate the mean of a vector:
+
+```{r}
+data = c(1, 2, 3, 4, 5)
+mean(data)
+```
+
+## Question 3
+
+Create a simple plot:
+
+```{r}
+x = 1:10
+y = x^2
+plot(x, y, type = "l")
+```
+
+# Conclusion
+
+This assignment demonstrates basic R concepts.

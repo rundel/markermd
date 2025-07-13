@@ -13,6 +13,10 @@ create_markermd_app = function() {
   ui = bslib::page_navbar(
     title = "markermd - Assignment Grading",
     theme = bslib::bs_theme(version = 5, bootswatch = "flatly"),
+    # Add FontAwesome dependency
+    shiny::tags$head(
+      shiny::tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css")
+    ),
     bslib::nav_spacer(),
     
     # Template tab (right aligned)
@@ -67,17 +71,10 @@ create_markermd_app = function() {
         ast = parse_assignment_document(file_path)
         document_ast(ast)
         
-        shiny::showNotification(
-          paste("Successfully loaded assignment:", config$filename),
-          type = "message"
-        )
+        # Assignment loaded successfully
         
       }, error = function(e) {
-        shiny::showNotification(
-          paste("Error loading assignment:", e$message),
-          type = "error",
-          duration = 10
-        )
+        # Error loading assignment
       })
     })
     
@@ -101,7 +98,8 @@ create_markermd_app = function() {
     
     # Update template data when questions change
     shiny::observe({
-      template_data(template_result$questions())
+      current_state = template_result$state()
+      template_data(current_state$questions)
     })
     
     # Marking module
@@ -110,10 +108,7 @@ create_markermd_app = function() {
     # Handle navbar tab switching
     shiny::observeEvent(input$navbar, {
       if (!is.null(input$navbar)) {
-        shiny::showNotification(
-          paste("Switched to", input$navbar, "mode"),
-          type = "message"
-        )
+        # Switched tabs
       }
     })
   }
