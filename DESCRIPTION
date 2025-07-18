@@ -16,4 +16,7 @@ Imports:
     parsermd,
     jsonlite,
     shiny,
-    bslib
+    bslib,
+    fs,
+    gt,
+    purrr

@@ -37,7 +37,7 @@ marking_ui = function(id) {
           "Grading",
           shiny::div(
             style = "padding: 10px;",
-            shiny::h4("Current Question: [No question selected]"),
+            shiny::h4("Assignment Grading"),
             shiny::br(),
             shiny::numericInput(
               ns("score"),
@@ -54,8 +54,7 @@ marking_ui = function(id) {
               placeholder = "Enter feedback for this question..."
             ),
             shiny::br(),
-            shiny::actionButton(ns("save_grade"), "Save Grade", class = "btn-success"),
-            shiny::actionButton(ns("next_question"), "Next Question", class = "btn-primary")
+            shiny::actionButton(ns("save_grade"), "Save Grade", class = "btn-success")
           )
         )
       )
@@ -68,8 +67,9 @@ marking_ui = function(id) {
 #' @param id Character. Module namespace ID
 #' @param ast Reactive. The parsed AST object
 #' @param template Reactive. The template object with questions
+#' @param raw_template_data Reactive. Raw template data with node selections for content extraction
 #'
-marking_server = function(id, ast, template) {
+marking_server = function(id, ast, template, raw_template_data = shiny::reactiveVal(NULL)) {
   shiny::moduleServer(id, function(input, output, session) {
     
     # Reactive values for managing grading
@@ -105,24 +105,56 @@ marking_server = function(id, ast, template) {
       if (is.null(template()) || length(template()) == 0) {
         content = shiny::p("No template loaded. Please create a template first.")
       } else {
-        questions_list = template()
-        content = shiny::tagList(
-          lapply(seq_along(questions_list), function(i) {
-            q = questions_list[[i]]
-            is_current = (i == current_question())
-            
-            shiny::div(
-              class = if (is_current) "question-item active" else "question-item",
-              style = paste(
-                "border: 1px solid #ccc; margin-bottom: 5px; padding: 10px; cursor: pointer;",
-                if (is_current) "background-color: #e3f2fd;" else "background-color: white;"
-              ),
-              onclick = paste0("Shiny.setInputValue('", session$ns("select_question"), "', ", i, ");"),
-              shiny::h6(paste("Question", i)),
-              shiny::p(q$name %||% paste("Question", i)),
-              shiny::tags$small(paste("Nodes:", if (length(q$selected_nodes) == 0) "None" else paste(q$selected_nodes - 1, collapse = ", ")))
-            )
-          })
+        templates_list = template()
+        current_ast = ast()
+        current_raw_template = raw_template_data()
+        
+        # Extract question content for tooltips
+        question_contents = if (!is.null(current_ast) && !is.null(current_raw_template)) {
+          extract_question_content(current_ast, current_raw_template)
+        } else {
+          list()
+        }
+        
+        content = shiny::div(
+          style = "padding: 10px;",
+          shiny::h5("Questions:", style = "margin-bottom: 10px;"),
+          
+          shiny::tags$ul(
+            style = "list-style-type: none; padding-left: 0; margin: 0;",
+            lapply(seq_along(names(templates_list)), function(i) {
+              question_name = names(templates_list)[i]
+              # Get tooltip content
+              tooltip_content = question_contents[[question_name]] %||% "No content available for this question."
+              
+              # Create a unique ID for this question item
+              item_id = session$ns(paste0("question_item_", i))
+              
+              # Escape content for JavaScript (simple approach)
+              escaped_content = gsub("'", "\\\\'", tooltip_content)
+              escaped_content = gsub("\"", "\\\\\"", escaped_content)
+              escaped_content = gsub("\n", "\\\\n", escaped_content)
+              escaped_content = substr(escaped_content, 1, 800)  # Limit length
+              
+              # Create question item with both hover tooltip and click modal
+              shiny::tags$li(
+                id = item_id,
+                style = "padding: 8px 0; border-bottom: 1px solid #eee; cursor: help;",
+                
+                # Hover tooltip (simple version)
+                title = paste(substr(tooltip_content, 1, 200), if(nchar(tooltip_content) > 200) "..." else ""),
+                
+                # Click handler for detailed modal
+                onclick = paste0("Shiny.setInputValue('", session$ns("show_question_content"), "', {question: '", question_name, "', content: ", jsonlite::toJSON(tooltip_content, auto_unbox = TRUE), "});"),
+                
+                # Also add hover effect with CSS
+                onmouseover = "this.style.backgroundColor = '#f0f0f0';",
+                onmouseout = "this.style.backgroundColor = 'transparent';",
+                
+                question_name
+              )
+            })
+          )
         )
       }
       
@@ -133,22 +165,33 @@ marking_server = function(id, ast, template) {
       )
     })
     
-    # Handle question selection
-    shiny::observeEvent(input$select_question, {
-      current_question(input$select_question)
-      
-      # Load existing grade if available
-      existing_grade = grades()[[as.character(input$select_question)]]
-      if (!is.null(existing_grade)) {
-        shiny::updateNumericInput(session, "score", value = existing_grade$score)
-        shiny::updateTextAreaInput(session, "feedback", value = existing_grade$feedback)
-      } else {
-        shiny::updateNumericInput(session, "score", value = 0)
-        shiny::updateTextAreaInput(session, "feedback", value = "")
+    # Handle question content modal display
+    shiny::observeEvent(input$show_question_content, {
+      if (!is.null(input$show_question_content)) {
+        question_name = input$show_question_content$question
+        content = input$show_question_content$content
+        
+        shiny::showModal(
+          shiny::modalDialog(
+            title = paste("Content for", question_name),
+            shiny::div(
+              style = "max-height: 500px; overflow-y: auto;",
+              shiny::pre(
+                content,
+                style = "font-family: 'Courier New', Courier, monospace; font-size: 12px; white-space: pre-wrap; margin: 0; background: #f8f9fa; padding: 15px; border: 1px solid #e9ecef; border-radius: 3px; line-height: 1.4;"
+              )
+            ),
+            footer = shiny::modalButton("Close"),
+            easyClose = TRUE,
+            size = "l"
+          )
+        )
       }
     })
     
-    # Save grade
+    # Question selection is no longer interactive - questions are just displayed as a list
+    
+    # Save grade (note: with non-interactive questions list, this may need to be reworked)
     shiny::observeEvent(input$save_grade, {
       current_grades = grades()
       question_id = as.character(current_question())
@@ -160,16 +203,9 @@ marking_server = function(id, ast, template) {
       )
       
       grades(current_grades)
-      
-      # Grade saved successfully
     })
     
-    # Next question
-    shiny::observeEvent(input$next_question, {
-      if (!is.null(template()) && current_question() < length(template())) {
-        current_question(current_question() + 1)
-      }
-    })
+    # Next question functionality removed since questions are no longer interactive
     
     # Return reactive values
     return(list(

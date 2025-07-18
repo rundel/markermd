@@ -28,19 +28,19 @@ build_ast_tree_structure = function(ast) {
   }
   
   tree_items = list()
-  heading_stack = list() # Stack to track heading hierarchy: list(level=1, index=2, depth=0)
+  heading_stack = list() # Stack to track heading hierarchy
   
-  # Add the root AST node as the first item (using 1-based indexing)
-  ast_root = list(
-    index = 1,  # Use index 1 for the root AST node
-    type = "rmd_ast",
+  # Add a visual root node for display purposes (not selectable)
+  document_root = list(
+    index = 0,  # Use index 0 to distinguish from actual nodes
+    type = "document_root",
     depth = 0,
     parent_index = NULL,
     description = "Document",
-    icon = "document",
+    icon = "file-text",
     prefix = ""
   )
-  tree_items[[1]] = ast_root
+  tree_items[[1]] = document_root
   
   for (i in seq_along(nodes)) {
     node = nodes[[i]]
@@ -77,7 +77,6 @@ build_ast_tree_structure = function(ast) {
     }
     
     # Determine hierarchy depth and parent relationships
-    # All original nodes are now at least depth 1 (children of the AST root)
     if (grepl("heading", node_type, ignore.case = TRUE)) {
       heading_level = if (!is.null(node@level)) node@level else 1
       
@@ -86,12 +85,12 @@ build_ast_tree_structure = function(ast) {
         heading_stack = heading_stack[-length(heading_stack)]
       }
       
-      # Current heading depth is based on remaining stack + 1 (for AST root)
+      # Current heading depth is based on remaining stack + 1 (for document root)
       depth = length(heading_stack) + 1
-      parent_index = if (length(heading_stack) > 0) heading_stack[[length(heading_stack)]]$index else 1  # AST root has index 1
+      parent_index = if (length(heading_stack) > 0) heading_stack[[length(heading_stack)]]$index else 0  # Document root has index 0
       
-      # Add current heading to stack (with adjusted index)
-      heading_stack[[length(heading_stack) + 1]] = list(level = heading_level, index = i + 1, depth = depth)
+      # Add current heading to stack
+      heading_stack[[length(heading_stack) + 1]] = list(level = heading_level, index = i, depth = depth)
       
     } else {
       # Non-heading nodes go under the most recent heading
@@ -99,14 +98,14 @@ build_ast_tree_structure = function(ast) {
         depth = heading_stack[[length(heading_stack)]]$depth + 1
         parent_index = heading_stack[[length(heading_stack)]]$index
       } else {
-        depth = 1  # Direct children of AST root
-        parent_index = 1  # AST root has index 1
+        depth = 1  # Direct children of document root
+        parent_index = 0  # Document root has index 0
       }
     }
     
-    # Create tree item (with adjusted index)
+    # Create tree item using direct node index
     item = list(
-      index = i + 1,  # Adjust index to account for AST root at index 1
+      index = i,  # Use direct node index
       type = node_type,
       depth = depth,
       parent_index = parent_index,
@@ -115,93 +114,16 @@ build_ast_tree_structure = function(ast) {
       prefix = "├── " # Will be updated later
     )
     
-    tree_items[[i + 1]] = item  # +1 because AST root is at index 1
+    tree_items[[i + 1]] = item  # Store at i+1 because document root is at index 1
   }
   
-  # Calculate proper prefixes based on tree structure
+  # Set appropriate prefixes for all items
   for (i in seq_along(tree_items)) {
-    item = tree_items[[i]]
-    depth = item$depth
-    
-    # Find if this is the last child at its depth under its parent
-    is_last_child = TRUE
-    
-    for (j in (i + 1):length(tree_items)) {
-      if (j > length(tree_items)) break
-      next_item = tree_items[[j]]
-      
-      # If we find another item at same depth with same parent, this is not the last
-      if (next_item$depth == depth) {
-        # Check if they have the same parent
-        if ((is.null(item$parent_index) && is.null(next_item$parent_index)) ||
-            (!is.null(item$parent_index) && !is.null(next_item$parent_index) && 
-             item$parent_index == next_item$parent_index)) {
-          is_last_child = FALSE
-          break
-        }
-      }
-      
-      # If we encounter an item at lower depth, we've moved to a different section
-      if (next_item$depth < depth) {
-        break
-      }
-    }
-    
-    # Build prefix based on depth and position
-    if (depth == 0) {
-      prefix = if (is_last_child) "└── " else "├── "
+    if (tree_items[[i]]$type == "document_root") {
+      tree_items[[i]]$prefix = "📄 "  # Document icon for root
     } else {
-      # Build the indentation string
-      indent_parts = character(depth)
-      
-      # Look back through the tree to determine which levels need vertical bars
-      current_parent = item$parent_index
-      current_depth = depth
-      
-      while (current_depth > 0 && !is.null(current_parent)) {
-        # Check if the parent at this level has more siblings after it
-        parent_has_more_siblings = FALSE
-        
-        if (current_parent < length(tree_items)) {
-          parent_item = tree_items[[current_parent]]
-          parent_depth = parent_item$depth
-          parent_parent = parent_item$parent_index
-          
-          for (k in (current_parent + 1):length(tree_items)) {
-            if (k > length(tree_items)) break
-            check_item = tree_items[[k]]
-            
-            if (check_item$depth == parent_depth) {
-              # Check if same parent
-              if ((is.null(parent_parent) && is.null(check_item$parent_index)) ||
-                  (!is.null(parent_parent) && !is.null(check_item$parent_index) && 
-                   parent_parent == check_item$parent_index)) {
-                parent_has_more_siblings = TRUE
-                break
-              }
-            } else if (check_item$depth < parent_depth) {
-              break
-            }
-          }
-        }
-        
-        indent_parts[current_depth] = if (parent_has_more_siblings) "│   " else "    "
-        
-        # Move up to parent's parent
-        if (current_parent <= length(tree_items)) {
-          parent_item = tree_items[[current_parent]]
-          current_parent = parent_item$parent_index
-          current_depth = current_depth - 1
-        } else {
-          break
-        }
-      }
-      
-      # Combine indentation with final branch
-      prefix = paste0(paste(indent_parts, collapse = ""), if (is_last_child) "└── " else "├── ")
+      tree_items[[i]]$prefix = "├── "
     }
-    
-    tree_items[[i]]$prefix = prefix
   }
   
   return(tree_items)
@@ -267,10 +189,8 @@ create_simple_tree = function(tree_items, selected_nodes, ns) {
       border-width: 0 0 2px 2px;
     }
     
-    /* Add simple dots for all nodes (no expand/collapse functionality) */
-    .ast-tree li::after {
-      content: '';
-      display: block;
+    /* Style for tree toggle buttons */
+    .ast-tree .tree-toggle-btn {
       position: absolute;
       top: calc(var(--spacing) / 2 - var(--radius));
       left: calc(var(--spacing) - var(--radius) - 1px);
@@ -278,6 +198,31 @@ create_simple_tree = function(tree_items, selected_nodes, ns) {
       height: calc(2 * var(--radius));
       border-radius: 50%;
       background: #ddd;
+      border: 1px solid #bbb;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 8px;
+      cursor: pointer;
+      z-index: 10;
+    }
+    
+    .ast-tree .tree-toggle-btn:hover {
+      background: #007bff;
+      color: white;
+      border-color: #0056b3;
+    }
+    
+    .ast-tree .tree-toggle-btn:focus {
+      outline: 2px solid #28a745;
+      outline-offset: 1px;
+    }
+    
+    .ast-tree .tree-toggle-btn.selected {
+      background: #28a745;
+      color: white;
+      border-color: #1e7e34;
     }
     
     .ast-tree .tree-node-content {
@@ -302,24 +247,39 @@ create_simple_tree = function(tree_items, selected_nodes, ns) {
     }
     
     .ast-tree .tree-node-description.selected {
-      background-color: #007bff;
+      background-color: #28a745;
       color: white;
       padding-left: 4px;
       padding-right: 4px;
       border-radius: 3px;
     }
     
-    .ast-tree .tree-node-actions {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      opacity: 0.7;
-      transition: opacity 0.2s ease;
+    .ast-tree .tree-node-description-btn {
+      margin-right: 12px;
+      line-height: 1.4;
+      text-decoration: none;
+      outline: none;
+      box-shadow: none;
     }
     
-    .ast-tree .tree-node-content:hover .tree-node-actions {
-      opacity: 1;
+    .ast-tree .tree-node-description-btn:hover {
+      background-color: #f8f9fa !important;
+      border-radius: 3px;
     }
+    
+    .ast-tree .tree-node-description-btn:focus {
+      outline: 2px solid #28a745;
+      outline-offset: 1px;
+    }
+    
+    .ast-tree .tree-node-description-btn.selected {
+      background-color: #28a745 !important;
+      color: white !important;
+      padding-left: 4px;
+      padding-right: 4px;
+      border-radius: 3px;
+    }
+    
   "))
   
   # Build nested tree structure (but without collapsible functionality)
@@ -367,32 +327,59 @@ build_simple_tree_level = function(tree_items, target_depth, parent_index, selec
     
     has_children = length(children) > 0
     
-    # Create node content - special handling for AST root
-    if (item$type == "rmd_ast") {
-      # AST root node - no action buttons, not selectable
+    # Create node content - special handling for document root
+    if (item$type == "document_root") {
+      # Document root node - no action buttons, not selectable
+      # Create a positioned icon similar to the tree-toggle-btn
+      document_icon = shiny::div(
+        class = "tree-toggle-btn",
+        style = "background: transparent; border: none; cursor: default; pointer-events: none; font-size: 16px;",
+        shiny::HTML("📄")
+      )
+      
       node_content = shiny::div(
         class = "tree-node-content",
+        document_icon,
         shiny::div(
           class = "tree-node-info",
           shiny::span(
             item$description, 
-            class = "tree-node-description"
+            class = "tree-node-description",
+            style = "font-weight: bold; color: #333;"
           )
         )
       )
     } else {
-      # Regular nodes with action buttons
-      action_buttons = create_tree_action_buttons(item, has_children, ns)
+      # Create toggle button for tree structure
+      toggle_button = shiny::actionButton(
+        ns(paste0("select_children_", item$index)),
+        if(is_selected) shiny::icon("check") else "",
+        class = paste("tree-toggle-btn", if(is_selected) "selected" else ""),
+        title = "Toggle this node and its children"
+      )
+      
+      # Create preview button
+      preview_btn = shiny::actionButton(
+        ns(paste0("preview_", item$index)),
+        shiny::icon("search"),
+        class = "btn-outline-info",
+        style = "font-size: 8px; padding: 1px 4px; min-width: 18px; height: 18px; border-width: 1px; margin-left: 8px;",
+        title = "Preview content"
+      )
+      
       node_content = shiny::div(
         class = "tree-node-content",
+        toggle_button,
         shiny::div(
           class = "tree-node-info",
-          shiny::span(
-            item$description, 
-            class = paste("tree-node-description", if(is_selected) "selected" else "")
-          )
-        ),
-        shiny::div(class = "tree-node-actions", action_buttons)
+          shiny::actionButton(
+            ns(paste0("select_", item$index)),
+            item$description,
+            class = paste("tree-node-description-btn", if(is_selected) "selected" else ""),
+            style = "background: none; border: none; padding: 0; margin: 0; font: inherit; cursor: pointer; text-align: left; color: inherit;"
+          ),
+          preview_btn
+        )
       )
     }
     
@@ -411,48 +398,6 @@ build_simple_tree_level = function(tree_items, target_depth, parent_index, selec
   })
 }
 
-#' Create Tree Action Buttons
-#'
-#' Create action buttons for tree nodes (select, select+children, preview)
-#'
-#' @param item Tree item
-#' @param has_children Whether the node has children
-#' @param ns Shiny namespace function
-#'
-#' @return List of action button elements
-#'
-create_tree_action_buttons = function(item, has_children, ns) {
-  
-  select_btn = shiny::actionButton(
-    ns(paste0("select_", item$index)),
-    shiny::icon("check"),
-    class = "btn-outline-primary",
-    style = "font-size: 8px; padding: 1px 4px; min-width: 18px; height: 18px; border-width: 1px;",
-    title = "Toggle selection"
-  )
-  
-  select_children_btn = if (has_children) {
-    shiny::actionButton(
-      ns(paste0("select_children_", item$index)),
-      shiny::icon("check-double"),
-      class = "btn-outline-success",
-      style = "font-size: 8px; padding: 1px 4px; min-width: 18px; height: 18px; border-width: 1px;",
-      title = "Toggle this node and its children"
-    )
-  } else {
-    NULL
-  }
-  
-  preview_btn = shiny::actionButton(
-    ns(paste0("preview_", item$index)),
-    shiny::icon("search"),
-    class = "btn-outline-info",
-    style = "font-size: 8px; padding: 1px 4px; min-width: 18px; height: 18px; border-width: 1px;",
-    title = "Preview content"
-  )
-  
-  list(select_btn, select_children_btn, preview_btn)
-}
 
 #' Create Tree Connector using CSS/SVG
 #'
@@ -586,30 +531,244 @@ create_tree_connector = function(item, tree_items, current_index) {
 #'
 #' @return Vector of child node indices
 #'
-find_node_children = function(tree_items, parent_index) {
+find_node_children = function(tree_items, parent_node_index) {
   
-  if (parent_index > length(tree_items)) {
-    return(integer(0))
-  }
-  
-  parent_item = tree_items[[parent_index]]
   children = integer(0)
   
-  # Look for nodes that come after the parent and have higher depth
-  for (i in (parent_index + 1):length(tree_items)) {
-    if (i > length(tree_items)) break
-    
+  # Handle NULL parent_node_index
+  if (is.null(parent_node_index)) {
+    return(children)
+  }
+  
+  # Find all tree items that have this node as their parent
+  for (i in seq_along(tree_items)) {
     item = tree_items[[i]]
     
-    # If we encounter a node at same or lower depth, we've moved past children
-    if (item$depth <= parent_item$depth) {
-      break
+    # Check if this item has the specified parent
+    if (!is.null(item$parent_index) && !is.na(item$parent_index) && 
+        item$parent_index == parent_node_index) {
+      children = c(children, item$index)
     }
-    
-    # This is a child node (directly or indirectly)
-    children = c(children, item$index)
   }
   
   return(children)
+}
+
+#' Create Simple Tree View for Read-Only Display
+#'
+#' Create a simple flat tree view for AST nodes without selection functionality
+#'
+#' @param tree_items List of tree items from build_ast_tree_structure
+#' @param ns Shiny namespace function
+#' @param repo_id Character. Unique identifier for the repository to avoid ID collisions
+#'
+#' @return Shiny UI element with simple tree (read-only)
+#'
+create_simple_tree_readonly = function(tree_items, ns, repo_id = NULL) {
+  
+  if (length(tree_items) == 0) {
+    return(shiny::p("No document structure available"))
+  }
+  
+  # Create tree CSS using iamkate.com styling (without interactive elements)
+  tree_css = shiny::tags$style(shiny::HTML("
+    .ast-tree-readonly {
+      --spacing: 1.5rem;
+      --radius: 10px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 13px;
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    
+    .ast-tree-readonly li {
+      display: block;
+      position: relative;
+      padding-left: calc(2 * var(--spacing) - var(--radius) - 2px);
+    }
+    
+    .ast-tree-readonly ul {
+      margin-left: calc(var(--radius) - var(--spacing));
+      padding-left: 0;
+      list-style: none;
+    }
+    
+    .ast-tree-readonly ul li {
+      border-left: 2px solid #ddd;
+    }
+    
+    .ast-tree-readonly ul li:last-child {
+      border-color: transparent;
+    }
+    
+    .ast-tree-readonly ul li::before {
+      content: '';
+      display: block;
+      position: absolute;
+      top: calc(var(--spacing) / -2);
+      left: -2px;
+      width: calc(var(--spacing) + 2px);
+      height: calc(var(--spacing) + 1px);
+      border: solid #ddd;
+      border-width: 0 0 2px 2px;
+    }
+    
+    /* Simple dots for all nodes (no interaction) */
+    .ast-tree-readonly li::after {
+      content: '';
+      display: block;
+      position: absolute;
+      top: calc(var(--spacing) / 2 - var(--radius));
+      left: calc(var(--spacing) - var(--radius) - 1px);
+      width: calc(2 * var(--radius));
+      height: calc(2 * var(--radius));
+      border-radius: 50%;
+      background: #007bff;
+    }
+    
+    /* Document icon for root node */
+    .ast-tree-readonly li.document-root::after {
+      content: '📄';
+      background: transparent;
+      border-radius: 0;
+      width: calc(2 * var(--radius));
+      height: calc(2 * var(--radius));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+    
+    .ast-tree-readonly .tree-node-content {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 4px 8px;
+      border-radius: 3px;
+      margin-bottom: 2px;
+      min-height: calc(2 * var(--radius));
+    }
+    
+    .ast-tree-readonly .tree-node-info {
+      display: flex;
+      align-items: center;
+      flex-grow: 1;
+    }
+    
+    .ast-tree-readonly .tree-node-description {
+      margin-right: 12px;
+      line-height: 1.4;
+      color: #333;
+    }
+  "))
+  
+  # Build nested tree structure (read-only)
+  tree_html = build_simple_tree_level_readonly(tree_items, 0, NULL, ns, repo_id)
+  
+  shiny::tagList(
+    tree_css,
+    shiny::tags$ul(class = "ast-tree-readonly", tree_html)
+  )
+}
+
+#' Build Simple Tree Level (Read-Only)
+#'
+#' Build a nested tree structure for display without any interactive elements
+#'
+#' @param tree_items All tree items
+#' @param target_depth Current depth level to build
+#' @param parent_index Parent node index (NULL for root)
+#' @param ns Shiny namespace function
+#' @param repo_id Character. Unique identifier for the repository to avoid ID collisions
+#'
+#' @return List of HTML elements for this level
+#'
+build_simple_tree_level_readonly = function(tree_items, target_depth, parent_index, ns, repo_id = NULL) {
+  
+  # Find items at this depth with the specified parent
+  level_items = tree_items[sapply(tree_items, function(x) {
+    x$depth == target_depth && 
+    ((is.null(parent_index) && is.null(x$parent_index)) || 
+     (!is.null(parent_index) && !is.null(x$parent_index) && x$parent_index == parent_index))
+  })]
+  
+  if (length(level_items) == 0) {
+    return(list())
+  }
+  
+  lapply(level_items, function(item) {
+    
+    # Find children for this item
+    children = tree_items[sapply(tree_items, function(x) {
+      !is.null(x$parent_index) && x$parent_index == item$index
+    })]
+    
+    has_children = length(children) > 0
+    
+    # Create node content (read-only with preview)
+    if (item$type == "document_root") {
+      # Document root node - no buttons, not selectable
+      # For read-only tree, we need to use the dot positioning from the CSS
+      node_content = shiny::div(
+        class = "tree-node-content",
+        shiny::div(
+          class = "tree-node-info",
+          shiny::span(
+            item$description, 
+            class = "tree-node-description",
+            style = "font-weight: bold; color: #333;"
+          )
+        )
+      )
+    } else {
+      # Regular nodes with preview button only
+      # Create unique button ID by including repo_id to avoid collisions
+      button_id = if (!is.null(repo_id)) {
+        paste0("preview_", repo_id, "_", item$index)
+      } else {
+        paste0("preview_", item$index)
+      }
+      
+      preview_btn = shiny::actionButton(
+        ns(button_id),
+        shiny::icon("search"),
+        class = "btn-outline-info",
+        style = "font-size: 8px; padding: 1px 4px; min-width: 18px; height: 18px; border-width: 1px; margin-left: 8px;",
+        title = "Preview content"
+      )
+      
+      node_content = shiny::div(
+        class = "tree-node-content",
+        shiny::div(
+          class = "tree-node-info",
+          shiny::span(
+            item$description, 
+            class = "tree-node-description"
+          ),
+          preview_btn
+        )
+      )
+    }
+    
+    if (has_children) {
+      # Create nested structure
+      child_elements = build_simple_tree_level_readonly(tree_items, target_depth + 1, item$index, ns, repo_id)
+      
+      li_class = if (item$type == "document_root") "document-root" else NULL
+      shiny::tags$li(
+        class = li_class,
+        node_content,
+        shiny::tags$ul(child_elements)
+      )
+    } else {
+      # Leaf node - just the content
+      li_class = if (item$type == "document_root") "document-root" else NULL
+      shiny::tags$li(
+        class = li_class,
+        node_content
+      )
+    }
+  })
 }
 

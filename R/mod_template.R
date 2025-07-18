@@ -22,7 +22,7 @@ template_ui = function(id) {
           style = "border: 1px solid #ddd; padding: 10px; background-color: #f9f9f9; flex: 1; overflow-y: auto; min-height: 400px;",
         shiny::div(
           style = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;",
-          shiny::helpText("Use ", shiny::icon("check"), " to toggle selection, ", shiny::icon("check-double"), " to toggle with children, ", shiny::icon("search"), " to preview content"),
+          shiny::helpText("Click node text to select, click circle to toggle with children, ", shiny::icon("search"), " to preview content"),
           shiny::actionButton(ns("clear_selections"), "Clear Selections", class = "btn-secondary btn-sm")
         ),
         shiny::uiOutput(ns("ast_tree_ui"))
@@ -40,16 +40,10 @@ template_ui = function(id) {
         shiny::div(
           style = "flex-shrink: 0; margin-top: 10px;",
           shiny::fluidRow(
-            shiny::column(4, shiny::actionButton(ns("save_template"), "Save Template", class = "btn-success btn-sm", style = "width: 100%;")),
-            shiny::column(4, shiny::actionButton(ns("load_template"), "Load Template", class = "btn-warning btn-sm", style = "width: 100%;")),
-            shiny::column(4, shiny::actionButton(ns("preview_template"), "Preview", class = "btn-info btn-sm", style = "width: 100%;"))
+            shiny::column(6, shiny::uiOutput(ns("save_button_ui"))),
+            shiny::column(6, shiny::actionButton(ns("load_template"), "Load Template", class = "btn-warning btn-sm", style = "width: 100%;"))
           )
         ),
-        shiny::div(
-          id = ns("validation_results"),
-          style = "flex-shrink: 0; margin-top: 10px;",
-          shiny::uiOutput(ns("validation_ui"))
-        )
       )
     )
   )
@@ -59,8 +53,9 @@ template_ui = function(id) {
 #'
 #' @param id Character. Module namespace ID
 #' @param ast Reactive. The parsed AST object
+#' @param template_path Character. Optional path to template RDS file to load on startup
 #'
-template_server = function(id, ast) {
+template_server = function(id, ast, template_path = NULL) {
   shiny::moduleServer(id, function(input, output, session) {
     
     # Centralized state management
@@ -69,6 +64,93 @@ template_server = function(id, ast) {
       current_question_id = 1,      # Currently active question ID
       last_question_id = 0          # Last created question ID (incremented for each new question)
     ))
+    
+    # Helper function to create delete observer for a question
+    create_delete_observer = function(question_id) {
+      shiny::observeEvent(input[[paste0("delete_question_", question_id)]], {
+        current_state = state()
+        current_questions = current_state$questions
+        
+        # Find and remove this question
+        question_to_remove_idx = which(sapply(current_questions, function(q) q$id == question_id))
+        if (length(question_to_remove_idx) > 0) {
+          # Destroy the observer before removing the question
+          if (!is.null(current_questions[[question_to_remove_idx]]$delete_observer)) {
+            current_questions[[question_to_remove_idx]]$delete_observer$destroy()
+          }
+          
+          # Remove the question
+          updated_questions = current_questions[-question_to_remove_idx]
+          
+          # Update current question if needed
+          if (current_state$current_question_id == question_id) {
+            if (length(updated_questions) > 0) {
+              current_state$current_question_id = updated_questions[[1]]$id
+            } else {
+              current_state$current_question_id = 1
+            }
+          }
+          
+          # Update state
+          current_state$questions = updated_questions
+          state(current_state)
+        }
+      })
+    }
+    
+    # Load template on startup if provided
+    shiny::observe({
+      if (!is.null(template_path)) {
+        # Load the template file automatically
+        template_data = tryCatch({
+          readRDS(template_path)
+        }, error = function(e) {
+          shiny::showNotification(paste("Error loading template:", e$message), type = "error")
+          return(NULL)
+        })
+        
+        if (!is.null(template_data) && is.list(template_data) && !is.null(template_data$questions)) {
+          current_state = state()
+          loaded_questions = template_data$questions
+          
+          # Convert loaded questions to state structure with delete observers
+          if (length(loaded_questions) > 0) {
+            for (i in seq_along(loaded_questions)) {
+              # Ensure selected_nodes exists and sort them
+              if (is.null(loaded_questions[[i]]$selected_nodes)) {
+                loaded_questions[[i]]$selected_nodes = integer(0)
+              } else {
+                # Use nodes directly without offset
+                loaded_questions[[i]]$selected_nodes = sort(loaded_questions[[i]]$selected_nodes)
+              }
+              
+              # Ensure strict field exists
+              if (is.null(loaded_questions[[i]]$strict)) {
+                loaded_questions[[i]]$strict = FALSE
+              }
+              
+              # Create delete observer for this loaded question
+              loaded_questions[[i]]$delete_observer = create_delete_observer(loaded_questions[[i]]$id)
+            }
+            
+            # Update state
+            current_state$questions = loaded_questions
+            current_state$current_question_id = loaded_questions[[1]]$id
+            
+            # Set last_question_id to the highest ID among loaded questions
+            max_id = max(sapply(loaded_questions, function(q) q$id))
+            current_state$last_question_id = max_id
+            
+            state(current_state)
+            
+            shiny::showNotification(
+              paste("Successfully loaded template with", length(loaded_questions), "questions"), 
+              type = "message"
+            )
+          }
+        }
+      }
+    })
     
     # Get AST nodes for easier handling
     ast_nodes = shiny::reactive({
@@ -133,6 +215,7 @@ template_server = function(id, ast) {
           id = next_id,
           name = paste("Question", next_id),
           selected_nodes = integer(0),
+          strict = FALSE,
           delete_observer = delete_observer
         )
         current_state$questions = list(new_question)
@@ -173,9 +256,10 @@ template_server = function(id, ast) {
       nodes = ast_nodes()
       tree_items = build_ast_tree_structure(ast())
       
+      # Iterate through nodes to match tree UI creation
       for (i in seq_along(nodes)) {
         local({
-          node_index = i + 1  # Adjust for AST root at index 1
+          node_index = i  # Use direct node index to match tree UI
           
           # Handle "Select" button
           shiny::observeEvent(input[[paste0("select_", node_index)]], {
@@ -203,49 +287,75 @@ template_server = function(id, ast) {
           
           # Handle "Select +" button (toggle node + children)
           shiny::observeEvent(input[[paste0("select_children_", node_index)]], {
-            # Ensure we have at least one question
-            update_node_selection(node_index, add = TRUE)  # This will create question if needed
+            # Find all children first to determine behavior
+            children = find_node_children(tree_items, node_index)
             
-            current_state = state()
-            current_q_id = current_state$current_question_id
-            
-            # Find current question
-            question_matches = sapply(current_state$questions, function(q) q$id == current_q_id)
-            question_idx = which(question_matches)
-            if (length(question_idx) > 0) {
-              current_question = current_state$questions[[question_idx]]
-              current_selections = current_question$selected_nodes %||% integer(0)
+            if (length(children) == 0) {
+              # Leaf node: behave exactly like clicking the node text (simple toggle)
+              current_state = state()
+              current_q_id = current_state$current_question_id
               
-              # Find all children
-              children = find_node_children(tree_items, node_index)
-              nodes_to_toggle = c(node_index, children)
-              
-              # Determine current state - check if any nodes in the group are unselected
-              currently_unselected = setdiff(nodes_to_toggle, current_selections)
-              
-              if (length(currently_unselected) > 0) {
-                # If any nodes are unselected, select ALL nodes in the group
-                new_selections = unique(c(current_selections, nodes_to_toggle))
-              } else {
-                # If all nodes are selected, unselect ALL nodes in the group
-                new_selections = setdiff(current_selections, nodes_to_toggle)
+              # Get current selections (update_node_selection will handle empty questions)
+              current_selections = integer(0)
+              if (length(current_state$questions) > 0) {
+                question_matches = sapply(current_state$questions, function(q) q$id == current_q_id)
+                question_idx = which(question_matches)
+                if (length(question_idx) > 0) {
+                  current_question = current_state$questions[[question_idx]]
+                  current_selections = current_question$selected_nodes %||% integer(0)
+                }
               }
               
-              # Sort the selected nodes vector
-              new_selections = sort(new_selections)
+              # Toggle selection - same logic as the select_ button
+              if (node_index %in% current_selections) {
+                update_node_selection(node_index, add = FALSE)
+              } else {
+                update_node_selection(node_index, add = TRUE)
+              }
+            } else {
+              # Non-leaf node: use the complex toggle logic for node + children
+              # Ensure we have at least one question
+              update_node_selection(node_index, add = TRUE)  # This will create question if needed
               
-              # Update the question in state
-              current_state$questions[[question_idx]]$selected_nodes = new_selections
-              state(current_state)
+              current_state = state()
+              current_q_id = current_state$current_question_id
+              
+              # Find current question
+              question_matches = sapply(current_state$questions, function(q) q$id == current_q_id)
+              question_idx = which(question_matches)
+              if (length(question_idx) > 0) {
+                current_question = current_state$questions[[question_idx]]
+                current_selections = current_question$selected_nodes %||% integer(0)
+                
+                # Find all children
+                nodes_to_toggle = c(node_index, children)
+                
+                # Determine current state - check if any nodes in the group are unselected
+                currently_unselected = setdiff(nodes_to_toggle, current_selections)
+                
+                if (length(currently_unselected) > 0) {
+                  # If any nodes are unselected, select ALL nodes in the group
+                  new_selections = unique(c(current_selections, nodes_to_toggle))
+                } else {
+                  # If all nodes are selected, unselect ALL nodes in the group
+                  new_selections = setdiff(current_selections, nodes_to_toggle)
+                }
+                
+                # Sort the selected nodes vector
+                new_selections = sort(new_selections)
+                
+                # Update the question in state
+                current_state$questions[[question_idx]]$selected_nodes = new_selections
+                state(current_state)
+              }
             }
           })
           
           # Handle "Preview" button
           shiny::observeEvent(input[[paste0("preview_", node_index)]], {
-            # node_index = i + 1, so original i = node_index - 1
-            original_i = node_index - 1
-            if (original_i >= 1 && original_i <= length(nodes)) {
-              node = nodes[[original_i]]  # Use calculated original_i for nodes access
+            # Use node_index directly
+            if (node_index >= 1 && node_index <= length(nodes)) {
+              node = nodes[[node_index]]
               
               # Use as_document() to get raw node content
               content = tryCatch({
@@ -344,15 +454,31 @@ template_server = function(id, ast) {
           ),
           
           shiny::div(
-            style = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;",
-            shiny::textInput(
-              session$ns(paste0("question_name_", q$id)),
-              NULL,
-              value = q$name,
-              placeholder = "Question name",
-              width = "100%"
+            style = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding-right: 30px;",
+            shiny::div(
+              style = "flex-grow: 1; margin-right: 10px;",
+              shiny::textInput(
+                session$ns(paste0("question_name_", q$id)),
+                NULL,
+                value = q$name,
+                placeholder = "Question name",
+                width = "100%"
+              )
             ),
-            if (is_current) shiny::span("← Current", class = "badge badge-primary", style = "margin-left: 10px;") else NULL
+            shiny::div(
+              style = "flex-shrink: 0; margin-right: 10px;",
+              onclick = "event.stopPropagation();",
+              shiny::checkboxInput(
+                session$ns(paste0("question_strict_", q$id)),
+                "Strict",
+                value = q$strict %||% FALSE,
+                width = "auto"
+              )
+            ),
+            shiny::div(
+              style = "flex-shrink: 0; width: 80px; text-align: right;",
+              if (is_current) shiny::span("← Current", class = "badge badge-primary") else shiny::span(style = "display: inline-block; width: 1px;")
+            )
           ),
           
           shiny::p(
@@ -360,9 +486,8 @@ template_server = function(id, ast) {
             if (length(selected_nodes) == 0) {
               shiny::span("None", style = "color: #6c757d;")
             } else {
-              # Subtract 1 from each index to account for AST root node not being selectable
-              display_nodes = selected_nodes - 1
-              shiny::span(paste(display_nodes, collapse = ", "), style = "color: #28a745;")
+              # Display nodes directly without offset
+              shiny::span(paste(selected_nodes, collapse = ", "), style = "color: #28a745;")
             }
           )
         )
@@ -373,39 +498,6 @@ template_server = function(id, ast) {
         add_button
       )
     })
-    
-    # Helper function to create delete observer for a question
-    create_delete_observer = function(question_id) {
-      shiny::observeEvent(input[[paste0("delete_question_", question_id)]], {
-        current_state = state()
-        current_questions = current_state$questions
-        
-        # Find and remove this question
-        question_to_remove_idx = which(sapply(current_questions, function(q) q$id == question_id))
-        if (length(question_to_remove_idx) > 0) {
-          # Destroy the observer before removing the question
-          if (!is.null(current_questions[[question_to_remove_idx]]$delete_observer)) {
-            current_questions[[question_to_remove_idx]]$delete_observer$destroy()
-          }
-          
-          # Remove the question
-          updated_questions = current_questions[-question_to_remove_idx]
-          
-          # Update current question if needed
-          if (current_state$current_question_id == question_id) {
-            if (length(updated_questions) > 0) {
-              current_state$current_question_id = updated_questions[[1]]$id
-            } else {
-              current_state$current_question_id = 1
-            }
-          }
-          
-          # Update state
-          current_state$questions = updated_questions
-          state(current_state)
-        }
-      })
-    }
     
     # Add new question
     shiny::observeEvent(input$add_question, {
@@ -423,6 +515,7 @@ template_server = function(id, ast) {
         id = next_id,
         name = paste("Question", next_id),
         selected_nodes = integer(0),
+        strict = FALSE,
         delete_observer = delete_observer
       )
       
@@ -452,206 +545,200 @@ template_server = function(id, ast) {
       state(current_state)
     })
     
+    # Reactive value for the current save filename
+    save_filename = shiny::reactiveVal("template")
     
-    # Validation display
-    output$validation_ui = shiny::renderUI({
-      current_state = state()
-      current_questions = current_state$questions
-      nodes = ast_nodes()
-      
-      if (length(current_questions) == 0 || is.null(nodes)) {
-        return(NULL)
-      }
-      
-      # Convert questions to old format for validation function
-      # TODO: Update validate_template to work directly with new state structure
-      selections = list()
-      for (q in current_questions) {
-        selections[[as.character(q$id)]] = q$selected_nodes %||% integer(0)
-      }
-      
-      validation = validate_template(current_questions, selections, length(nodes))
-      
-      if (validation$valid) {
-        status_class = "alert-success"
-        status_icon = "check-circle"
-        status_text = "Template is valid"
-      } else {
-        status_class = "alert-danger" 
-        status_icon = "exclamation-triangle"
-        status_text = "Template has issues"
-      }
-      
-      content = list(
-        shiny::div(
-          class = paste("alert", status_class),
-          style = "padding: 8px; margin-top: 10px;",
-          shiny::icon(status_icon), " ",
-          status_text, " (", validation$covered_nodes, "/", validation$total_nodes, " nodes, ",
-          validation$coverage_pct, "% coverage)"
-        )
-      )
-      
-      if (length(validation$issues) > 0) {
-        content = c(content, list(
-          shiny::div(
-            class = "alert alert-danger",
-            style = "padding: 8px; margin-top: 5px;",
-            shiny::strong("Issues:"),
-            shiny::tags$ul(lapply(validation$issues, shiny::tags$li))
-          )
-        ))
-      }
-      
-      if (length(validation$warnings) > 0) {
-        content = c(content, list(
-          shiny::div(
-            class = "alert alert-warning",
-            style = "padding: 8px; margin-top: 5px;",
-            shiny::strong("Warnings:"),
-            shiny::tags$ul(lapply(validation$warnings, shiny::tags$li))
-          )
-        ))
-      }
-      
-      shiny::tagList(content)
-    })
-    
-    # Save template functionality
-    shiny::observeEvent(input$save_template, {
+    # Dynamic save button UI
+    output$save_button_ui = shiny::renderUI({
       current_state = state()
       current_questions = current_state$questions
       
       if (length(current_questions) == 0) {
-        return()
-      }
-      
-      # Create a unique filename
-      timestamp = format(Sys.time(), "%Y%m%d_%H%M%S")
-      filename = paste0("template_", timestamp, ".json")
-      file_path = file.path(tempdir(), filename)
-      
-      # Prepare metadata
-      metadata = list(
-        document_path = "unknown", # Could be passed from parent
-        total_nodes = if (!is.null(ast_nodes())) length(ast_nodes()) else 0,
-        created_by = Sys.getenv("USER", "unknown")
-      )
-      
-      # Convert questions to old format for save function
-      # TODO: Update save_template to work directly with new state structure
-      selections = list()
-      clean_questions = list()
-      for (q in current_questions) {
-        selections[[as.character(q$id)]] = q$selected_nodes %||% integer(0)
-        # Remove delete_observer from question for saving
-        clean_q = list(
-          id = q$id,
-          name = q$name
+        # Show disabled button when no questions
+        shiny::actionButton(
+          session$ns("save_disabled"), 
+          "Save Template", 
+          class = "btn-secondary btn-sm", 
+          style = "width: 100%;",
+          disabled = TRUE
         )
-        clean_questions = c(clean_questions, list(clean_q))
+      } else {
+        # Show working download button
+        shiny::downloadButton(
+          session$ns("save_template"), 
+          "Save Template", 
+          class = "btn-success btn-sm", 
+          style = "width: 100%;"
+        )
       }
-      
-      # Save template
-      success = save_template(clean_questions, selections, file_path, metadata)
-      
-      # Template save completed
     })
+    
+    # Save template functionality using downloadHandler  
+    output$save_template = shiny::downloadHandler(
+      filename = function() {
+        # Always prompt for filename when download starts
+        timestamp = format(Sys.time(), "%Y%m%d_%H%M%S")
+        paste0("template_", timestamp, ".rds")
+      },
+      content = function(file) {
+        current_state = state()
+        current_questions = current_state$questions
+        
+        if (length(current_questions) == 0) {
+          # Create empty template if no questions
+          template_data = list(
+            original_ast = ast(),
+            questions = list(),
+            metadata = list(
+              created_at = Sys.time(),
+              created_by = Sys.getenv("USER", "unknown"),
+              total_nodes = if (!is.null(ast_nodes())) length(ast_nodes()) else 0
+            )
+          )
+        } else {
+          # Prepare questions data (remove delete_observer for saving)
+          clean_questions = list()
+          for (q in current_questions) {
+            # Get current values from inputs
+            name_value = input[[paste0("question_name_", q$id)]] %||% q$name
+            strict_value = input[[paste0("question_strict_", q$id)]] %||% q$strict %||% FALSE
+            
+            # Use nodes directly without offset
+            clean_q = list(
+              id = q$id,
+              name = name_value,
+              selected_nodes = q$selected_nodes %||% integer(0),
+              strict = strict_value
+            )
+            clean_questions = c(clean_questions, list(clean_q))
+          }
+          
+          # Create template data structure
+          template_data = list(
+            original_ast = ast(),
+            questions = clean_questions,
+            metadata = list(
+              created_at = Sys.time(),
+              created_by = Sys.getenv("USER", "unknown"),
+              total_nodes = if (!is.null(ast_nodes())) length(ast_nodes()) else 0
+            )
+          )
+        }
+        
+        # Save as RDS file
+        saveRDS(template_data, file)
+      },
+      contentType = "application/rds"
+    )
     
     # Load template functionality
     shiny::observeEvent(input$load_template, {
-      # For now, just show a file path input modal
+      # Show file upload modal
       shiny::showModal(
         shiny::modalDialog(
           title = "Load Template",
-          shiny::textInput(
-            session$ns("template_path"),
-            "Template file path:",
-            placeholder = "/path/to/template.json"
+          shiny::fileInput(
+            session$ns("template_file"),
+            "Select template file (.rds):",
+            accept = c(".rds"),
+            width = "100%"
           ),
+          shiny::uiOutput(session$ns("load_button_ui")),
           footer = shiny::tagList(
-            shiny::modalButton("Cancel"),
-            shiny::actionButton(session$ns("load_confirm"), "Load", class = "btn-primary")
+            shiny::modalButton("Cancel")
           )
         )
       )
     })
     
+    # Dynamic Load button that only appears when file is selected
+    output$load_button_ui = shiny::renderUI({
+      if (!is.null(input$template_file) && !is.null(input$template_file$datapath)) {
+        shiny::div(
+          style = "text-align: right; margin-top: 10px;",
+          shiny::actionButton(session$ns("load_confirm"), "Load", class = "btn-primary")
+        )
+      } else {
+        shiny::div(
+          style = "text-align: center; margin-top: 10px; color: #6c757d;",
+          "Please select a file to enable the Load button"
+        )
+      }
+    })
+    
     # Confirm template loading
     shiny::observeEvent(input$load_confirm, {
-      file_path = input$template_path
+      file_info = input$template_file
       
-      if (is.null(file_path) || trimws(file_path) == "") {
+      if (is.null(file_info) || is.null(file_info$datapath)) {
+        shiny::showNotification("Please select a template file", type = "warning")
         return()
       }
       
-      template_data = load_template(file_path)
+      # Load the RDS file
+      template_data = tryCatch({
+        readRDS(file_info$datapath)
+      }, error = function(e) {
+        shiny::showNotification(paste("Error loading template:", e$message), type = "error")
+        return(NULL)
+      })
       
       if (is.null(template_data)) {
         return()
       }
       
-      # Convert loaded data to new state structure
-      # TODO: Update load_template to work directly with new state structure
-      current_state = state()
-      loaded_questions = template_data$questions
-      
-      # Add selected_nodes and delete_observers to each question from node_selections
-      for (i in seq_along(loaded_questions)) {
-        q_id = as.character(loaded_questions[[i]]$id)
-        loaded_selections = template_data$node_selections[[q_id]] %||% integer(0)
-        # Sort the loaded selections in case they weren't sorted when saved
-        loaded_questions[[i]]$selected_nodes = sort(loaded_selections)
-        # Create delete observer for this loaded question
-        loaded_questions[[i]]$delete_observer = create_delete_observer(loaded_questions[[i]]$id)
-      }
-      
-      # Update state
-      current_state$questions = loaded_questions
-      if (length(loaded_questions) > 0) {
-        current_state$current_question_id = loaded_questions[[1]]$id
-        # Set last_question_id to the highest ID among loaded questions
-        max_id = max(sapply(loaded_questions, function(q) q$id))
-        current_state$last_question_id = max_id
-      }
-      state(current_state)
-      
-      shiny::removeModal()
-      # Template loaded successfully
-    })
-    
-    # Preview template functionality  
-    shiny::observeEvent(input$preview_template, {
-      current_state = state()
-      current_questions = current_state$questions
-      nodes = ast_nodes()
-      
-      if (length(current_questions) == 0) {
+      # Validate template structure
+      if (!is.list(template_data) || is.null(template_data$questions)) {
+        shiny::showNotification("Invalid template format", type = "error")
         return()
       }
       
-      # Convert questions to old format for preview function
-      # TODO: Update generate_template_summary to work directly with new state structure
-      selections = list()
-      for (q in current_questions) {
-        selections[[as.character(q$id)]] = q$selected_nodes %||% integer(0)
+      current_state = state()
+      loaded_questions = template_data$questions
+      
+      # Convert loaded questions to state structure with delete observers
+      if (length(loaded_questions) > 0) {
+        for (i in seq_along(loaded_questions)) {
+          # Ensure selected_nodes exists and sort them
+          if (is.null(loaded_questions[[i]]$selected_nodes)) {
+            loaded_questions[[i]]$selected_nodes = integer(0)
+          } else {
+            # Use nodes directly without offset
+            loaded_questions[[i]]$selected_nodes = sort(loaded_questions[[i]]$selected_nodes)
+          }
+          
+          # Ensure strict field exists
+          if (is.null(loaded_questions[[i]]$strict)) {
+            loaded_questions[[i]]$strict = FALSE
+          }
+          
+          # Create delete observer for this loaded question
+          loaded_questions[[i]]$delete_observer = create_delete_observer(loaded_questions[[i]]$id)
+        }
+        
+        # Update state
+        current_state$questions = loaded_questions
+        current_state$current_question_id = loaded_questions[[1]]$id
+        
+        # Set last_question_id to the highest ID among loaded questions
+        max_id = max(sapply(loaded_questions, function(q) q$id))
+        current_state$last_question_id = max_id
+        
+        shiny::showNotification(
+          paste("Successfully loaded", length(loaded_questions), "questions"), 
+          type = "message"
+        )
+      } else {
+        # Empty template
+        current_state$questions = list()
+        current_state$current_question_id = 1
+        current_state$last_question_id = 0
+        
+        shiny::showNotification("Loaded empty template", type = "message")
       }
       
-      # Generate template summary
-      summary_lines = generate_template_summary(current_questions, selections, nodes)
-      summary_text = paste(summary_lines, collapse = "\n")
-      
-      shiny::showModal(
-        shiny::modalDialog(
-          title = "Template Preview",
-          size = "l",
-          shiny::div(
-            style = "max-height: 400px; overflow-y: auto;",
-            shiny::pre(summary_text)
-          ),
-          footer = shiny::modalButton("Close")
-        )
-      )
+      state(current_state)
+      shiny::removeModal()
     })
     
     # Return reactive values for parent module

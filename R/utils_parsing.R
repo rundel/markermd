@@ -25,7 +25,13 @@ parse_assignment_document = function(file_path) {
   tryCatch({
     # Load parsermd to make internal functions available
     library(parsermd, quietly = TRUE)
-    ast = parsermd::parse_rmd(file_path)
+    
+    # Use appropriate parser based on file extension
+    if (grepl("\\.qmd$", file_path, ignore.case = TRUE)) {
+      ast = parsermd::parse_qmd(file_path)
+    } else {
+      ast = parsermd::parse_rmd(file_path)
+    }
     return(ast)
   }, error = function(e) {
     stop("Failed to parse assignment document: ", e$message)
