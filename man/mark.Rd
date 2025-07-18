@@ -4,14 +4,20 @@
 \alias{mark}
 \title{Launch the markermd Shiny Application}
 \usage{
-mark(assignment_path, local_dir = NULL, filename, ...)
+mark(collection_path, template = NULL, use_qmd = TRUE, ...)
 }
 \arguments{
-\item{assignment_path}{Character string. Path to local directory or GitHub repo in format "owner/repo"}
+\item{collection_path}{Character string. Path to directory containing subdirectories with assignment repositories}
 
-\item{local_dir}{Character string. Local directory for cloning (required for remote repos)}
+\item{template}{Optional template for validation. Can be:
+\itemize{
+\item Character path to .rds file containing template data
+\item List with raw template data (from readRDS)
+\item List with transformed templates (from create_question_templates)
+\item NULL (no template validation)
+}}
 
-\item{filename}{Character string. Name of the Rmd/qmd file to grade}
+\item{use_qmd}{Logical. Whether to parse .qmd files (TRUE) or .Rmd files (FALSE). Default is TRUE.}
 
 \item{...}{Additional arguments passed to shiny::runApp()}
 }
@@ -23,10 +29,13 @@ Launch the markermd Shiny Application
 }
 \examples{
 \dontrun{
-# Local assignment
-mark("/path/to/assignment", filename = "homework.Rmd")
+# Parse qmd files from collection of repositories
+mark("/path/to/assignments/")
 
-# Remote GitHub repo
-mark("username/repo-name", local_dir = "/tmp/grading", filename = "assignment.qmd")
+# Parse Rmd files from collection of repositories
+mark("/path/to/assignments/", use_qmd = FALSE)
+
+# Parse with template validation
+mark("/path/to/assignments/", template = "template.rds")
 }
 }

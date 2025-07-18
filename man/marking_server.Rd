@@ -4,7 +4,7 @@
 \alias{marking_server}
 \title{Marking Server}
 \usage{
-marking_server(id, ast, template)
+marking_server(id, ast, template, raw_template_data = shiny::reactiveVal(NULL))
 }
 \arguments{
 \item{id}{Character. Module namespace ID}
@@ -12,6 +12,8 @@ marking_server(id, ast, template)
 \item{ast}{Reactive. The parsed AST object}
 
 \item{template}{Reactive. The template object with questions}
+
+\item{raw_template_data}{Reactive. Raw template data with node selections for content extraction}
 }
 \description{
 Marking Server
