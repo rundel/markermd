@@ -9,9 +9,9 @@
 marking_ui = function(id) {
   ns = shiny::NS(id)
   
-  shiny::fluidRow(
-    shiny::column(
-      width = 4,
+  bslib::layout_columns(
+    col_widths = c(4, 8),
+    shiny::div(
       shiny::h3("Questions"),
       shiny::div(
         style = "border: 1px solid #ddd; padding: 10px; background-color: #f9f9f9; height: 500px; overflow-y: auto;",
@@ -21,8 +21,7 @@ marking_ui = function(id) {
         )
       )
     ),
-    shiny::column(
-      width = 8,
+    shiny::div(
       shiny::h3("Assignment Content"),
       shiny::tabsetPanel(
         id = ns("content_tabs"),

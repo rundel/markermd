@@ -12,9 +12,8 @@ explore_ui = function(id) {
   shiny::div(
     style = "height: calc(100vh - 150px); min-height: 600px; padding: 20px;",
     
-    shiny::fluidRow(
-      shiny::column(
-        width = 12,
+    bslib::layout_columns(
+      shiny::div(
         shiny::h3("Document Explorer"),
         shiny::p("This is a placeholder for the document exploration interface.", 
                style = "color: #6c757d; font-style: italic;")
@@ -23,21 +22,18 @@ explore_ui = function(id) {
     
     shiny::hr(),
     
-    shiny::fluidRow(
-      shiny::column(
-        width = 6,
+    bslib::layout_columns(
+      col_widths = c(6, 6),
+      shiny::div(
+        style = "border: 1px solid #ddd; padding: 10px; background-color: #f9f9f9; min-height: 400px;",
+        shiny::h4("Document Structure"),
         shiny::div(
-          style = "border: 1px solid #ddd; padding: 10px; background-color: #f9f9f9; min-height: 400px;",
-          shiny::h4("Document Structure"),
-          shiny::div(
-            id = ns("ast_tree_container"),
-            style = "flex: 1; overflow-y: auto; min-height: 350px;",
-            shiny::uiOutput(ns("ast_tree_ui"))
-          )
+          id = ns("ast_tree_container"),
+          style = "flex: 1; overflow-y: auto; min-height: 350px;",
+          shiny::uiOutput(ns("ast_tree_ui"))
         )
       ),
-      shiny::column(
-        width = 6,
+      shiny::div(
         shiny::div(
           style = "border: 1px solid #ddd; padding: 15px; background-color: #f9f9f9; min-height: 200px;",
           shiny::h4("Template Validation"),
@@ -57,19 +53,16 @@ explore_ui = function(id) {
     
     shiny::br(),
     
-    shiny::fluidRow(
-      shiny::column(
-        width = 12,
-        shiny::div(
-          style = "border: 1px solid #ddd; padding: 15px; background-color: #f8f9fa; min-height: 200px;",
-          shiny::h4("Analysis Tools"),
-          shiny::p("Document analysis and exploration tools will be added here in the future."),
-          shiny::tags$ul(
-            shiny::tags$li("Code chunk analysis"),
-            shiny::tags$li("Markdown section overview"),
-            shiny::tags$li("YAML metadata inspection"),
-            shiny::tags$li("Document statistics and insights")
-          )
+    bslib::layout_columns(
+      shiny::div(
+        style = "border: 1px solid #ddd; padding: 15px; background-color: #f8f9fa; min-height: 200px;",
+        shiny::h4("Analysis Tools"),
+        shiny::p("Document analysis and exploration tools will be added here in the future."),
+        shiny::tags$ul(
+          shiny::tags$li("Code chunk analysis"),
+          shiny::tags$li("Markdown section overview"),
+          shiny::tags$li("YAML metadata inspection"),
+          shiny::tags$li("Document statistics and insights")
         )
       )
     )

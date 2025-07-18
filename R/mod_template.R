@@ -11,10 +11,10 @@ template_ui = function(id) {
   
   shiny::div(
     style = "height: calc(100vh - 150px); min-height: 600px;",
-    shiny::fluidRow(
+    bslib::layout_columns(
+      col_widths = c(6, 6),
       style = "height: 100%;",
-      shiny::column(
-        width = 6,
+      shiny::div(
         style = "height: 100%; display: flex; flex-direction: column;",
         shiny::h3("Document Structure", style = "flex-shrink: 0;"),
         shiny::div(
@@ -28,8 +28,7 @@ template_ui = function(id) {
         shiny::uiOutput(ns("ast_tree_ui"))
       )
       ),
-      shiny::column(
-        width = 6,
+      shiny::div(
         style = "height: 100%; display: flex; flex-direction: column;",
         shiny::h3("Questions", style = "flex-shrink: 0;"),
         shiny::div(
@@ -39,9 +38,10 @@ template_ui = function(id) {
         ),
         shiny::div(
           style = "flex-shrink: 0; margin-top: 10px;",
-          shiny::fluidRow(
-            shiny::column(6, shiny::uiOutput(ns("save_button_ui"))),
-            shiny::column(6, shiny::actionButton(ns("load_template"), "Load Template", class = "btn-warning btn-sm", style = "width: 100%;"))
+          bslib::layout_columns(
+            col_widths = c(6, 6),
+            shiny::uiOutput(ns("save_button_ui")),
+            shiny::actionButton(ns("load_template"), "Load Template", class = "btn-warning btn-sm", style = "width: 100%;")
           )
         ),
       )
