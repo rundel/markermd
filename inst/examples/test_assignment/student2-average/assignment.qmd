@@ -1,0 +1,117 @@
+---
+title: "Data Analysis Assignment"
+author: "Jordan Smith"
+date: "2024-03-15"
+format: html
+---
+
+# Introduction
+
+This assignment covers basic R programming concepts. I will answer questions about R and show some code examples.
+
+## Question 1: Understanding R
+
+**Explain what R is and describe its main uses in data science:**
+
+R is a programming language used for statistics and data analysis. It was created for statistical computing and is popular among data scientists and researchers.
+
+Main uses of R:
+- Statistical analysis and calculations
+- Making graphs and charts
+- Data cleaning and manipulation
+- Creating reports with R Markdown
+
+R has many packages that add extra functionality. It's free and open source, which makes it accessible to students and researchers. The community is helpful and there are lots of tutorials online.
+
+## Question 2: Basic Programming
+
+**Write code to calculate descriptive statistics for a numeric vector:**
+
+```{r basic-stats}
+# Create a vector of numbers
+data_vector <- c(10, 15, 20, 25, 30, 35, 40)
+
+# Calculate basic statistics
+mean_value <- mean(data_vector)
+median_value <- median(data_vector)
+std_dev <- sd(data_vector)
+
+# Print results
+print(paste("Mean:", mean_value))
+print(paste("Median:", median_value))
+print(paste("Standard deviation:", round(std_dev, 2)))
+
+# Some additional statistics
+print(paste("Minimum:", min(data_vector)))
+print(paste("Maximum:", max(data_vector)))
+print(paste("Range:", max(data_vector) - min(data_vector)))
+```
+
+## Question 3: Data Visualization
+
+**Create an informative visualization demonstrating plotting techniques:**
+
+```{r simple-plot}
+# Create some data for plotting
+x_values <- 1:20
+y_values <- x_values * 2 + rnorm(20, 0, 2)
+
+# Make a basic scatter plot
+plot(x_values, y_values, 
+     main = "Scatter Plot Example",
+     xlab = "X Values", 
+     ylab = "Y Values",
+     col = "blue",
+     pch = 16)
+
+# Add a trend line
+abline(lm(y_values ~ x_values), col = "red", lwd = 2)
+
+# Create a second plot using ggplot2
+library(ggplot2)
+
+# Make a data frame
+plot_data <- data.frame(x = x_values, y = y_values)
+
+# Create ggplot
+ggplot(plot_data, aes(x = x, y = y)) +
+  geom_point(color = "blue", size = 2) +
+  geom_smooth(method = "lm", color = "red") +
+  labs(title = "Linear Relationship",
+       x = "X Variable",
+       y = "Y Variable") +
+  theme_minimal()
+```
+
+## Question 4: Additional Analysis
+
+**Perform some basic analysis:**
+
+```{r simple-analysis}
+# Calculate correlation
+correlation <- cor(x_values, y_values)
+print(paste("Correlation:", round(correlation, 3)))
+
+# Create a summary of the data
+summary(plot_data)
+
+# Make a histogram
+hist(y_values, 
+     main = "Distribution of Y Values",
+     xlab = "Y Values",
+     col = "lightblue",
+     breaks = 8)
+```
+
+# Conclusion
+
+This assignment showed basic R programming skills including:
+
+- Understanding what R is used for
+- Calculating descriptive statistics
+- Creating simple plots and visualizations
+- Performing basic correlation analysis
+
+R is a useful tool for data analysis and these examples demonstrate some of its capabilities. With more practice, I can learn more advanced techniques for data science projects.
+
+The code examples work correctly and show the main concepts, though there are more advanced ways to do these analyses that I could learn in the future.
