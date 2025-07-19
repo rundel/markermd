@@ -30,7 +30,7 @@ Key characteristics and uses of R include:
 
 ```{r descriptive-stats}
 # Create a sample dataset
-data_vector <- c(12, 15, 18, 22, 25, 28, 31, 35, 42, 48, 51, 55, 62, 68, 75)
+data_vector = c(12, 15, 18, 22, 25, 28, 31, 35, 42, 48, 51, 55, 62, 68, 75)
 
 # Calculate comprehensive descriptive statistics
 cat("Descriptive Statistics for the Dataset:\n")
@@ -44,7 +44,7 @@ cat("Range:", range(data_vector), "\n")
 cat("Interquartile range:", round(IQR(data_vector), 2), "\n")
 
 # Calculate quartiles
-quartiles <- quantile(data_vector, probs = c(0.25, 0.5, 0.75))
+quartiles = quantile(data_vector, probs = c(0.25, 0.5, 0.75))
 cat("First quartile (Q1):", quartiles[1], "\n")
 cat("Second quartile (Q2/Median):", quartiles[2], "\n")
 cat("Third quartile (Q3):", quartiles[3], "\n")
@@ -66,8 +66,8 @@ library(dplyr)
 
 # Create a more complex dataset for demonstration
 set.seed(42)  # For reproducibility
-n <- 100
-data_df <- data.frame(
+n = 100
+data_df = data.frame(
   x = seq(1, 10, length.out = n),
   group = rep(c("A", "B", "C"), length.out = n)
 ) %>%
@@ -81,7 +81,7 @@ data_df <- data.frame(
   )
 
 # Create a sophisticated multi-panel visualization
-p1 <- ggplot(data_df, aes(x = x, y = y, color = group)) +
+p1 = ggplot(data_df, aes(x = x, y = y, color = group)) +
   geom_point(alpha = 0.7, size = 2) +
   geom_smooth(method = "loess", se = TRUE, alpha = 0.3) +
   scale_color_brewer(type = "qual", palette = "Set1") +
@@ -102,7 +102,7 @@ p1 <- ggplot(data_df, aes(x = x, y = y, color = group)) +
 print(p1)
 
 # Additional summary statistics by group
-summary_stats <- data_df %>%
+summary_stats = data_df %>%
   group_by(group) %>%
   summarise(
     count = n(),
@@ -121,20 +121,20 @@ print(summary_stats)
 
 ```{r correlation-analysis}
 # Calculate correlation matrix for numeric variables
-correlation_matrix <- cor(data_df[c("x", "y")])
+correlation_matrix = cor(data_df[c("x", "y")])
 print("Overall Correlation Matrix:")
 print(round(correlation_matrix, 3))
 
 # Correlation by group
 cat("\nCorrelation coefficients by group:\n")
 for(grp in unique(data_df$group)) {
-  subset_data <- data_df[data_df$group == grp, ]
-  correlation <- cor(subset_data$x, subset_data$y)
+  subset_data = data_df[data_df$group == grp, ]
+  correlation = cor(subset_data$x, subset_data$y)
   cat("Group", grp, ":", round(correlation, 3), "\n")
 }
 
 # Statistical significance test
-cor_test <- cor.test(data_df$x, data_df$y)
+cor_test = cor.test(data_df$x, data_df$y)
 cat("\nCorrelation test results:\n")
 cat("Correlation coefficient:", round(cor_test$estimate, 3), "\n")
 cat("P-value:", format(cor_test$p.value, scientific = TRUE), "\n")

@@ -29,12 +29,12 @@ R has many packages that add extra functionality. It's free and open source, whi
 
 ```{r basic-stats}
 # Create a vector of numbers
-data_vector <- c(10, 15, 20, 25, 30, 35, 40)
+data_vector = c(10, 15, 20, 25, 30, 35, 40)
 
 # Calculate basic statistics
-mean_value <- mean(data_vector)
-median_value <- median(data_vector)
-std_dev <- sd(data_vector)
+mean_value = mean(data_vector)
+median_value = median(data_vector)
+std_dev = sd(data_vector)
 
 # Print results
 print(paste("Mean:", mean_value))
@@ -53,8 +53,8 @@ print(paste("Range:", max(data_vector) - min(data_vector)))
 
 ```{r simple-plot}
 # Create some data for plotting
-x_values <- 1:20
-y_values <- x_values * 2 + rnorm(20, 0, 2)
+x_values = 1:20
+y_values = x_values * 2 + rnorm(20, 0, 2)
 
 # Make a basic scatter plot
 plot(x_values, y_values, 
@@ -71,7 +71,7 @@ abline(lm(y_values ~ x_values), col = "red", lwd = 2)
 library(ggplot2)
 
 # Make a data frame
-plot_data <- data.frame(x = x_values, y = y_values)
+plot_data = data.frame(x = x_values, y = y_values)
 
 # Create ggplot
 ggplot(plot_data, aes(x = x, y = y)) +
@@ -89,7 +89,7 @@ ggplot(plot_data, aes(x = x, y = y)) +
 
 ```{r simple-analysis}
 # Calculate correlation
-correlation <- cor(x_values, y_values)
+correlation = cor(x_values, y_values)
 print(paste("Correlation:", round(correlation, 3)))
 
 # Create a summary of the data
