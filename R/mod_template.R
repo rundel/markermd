@@ -585,48 +585,42 @@ template_server = function(id, ast, template_path = NULL) {
         current_questions = current_state$questions
         
         if (length(current_questions) == 0) {
-          # Create empty template if no questions
-          template_data = list(
+          template_s7 = markermd_template(
             original_ast = ast(),
             questions = list(),
-            metadata = list(
+            metadata = markermd_metadata(
               created_at = Sys.time(),
               created_by = Sys.getenv("USER", "unknown"),
-              total_nodes = if (!is.null(ast_nodes())) length(ast_nodes()) else 0
+              total_nodes = if (!is.null(ast_nodes())) length(ast_nodes()) else 0L
             )
           )
         } else {
-          # Prepare questions data (remove delete_observer for saving)
-          clean_questions = list()
+          s7_questions = list()
           for (q in current_questions) {
-            # Get current values from inputs
             name_value = input[[paste0("question_name_", q$id)]] %||% q$name
             strict_value = input[[paste0("question_strict_", q$id)]] %||% q$strict %||% FALSE
             
-            # Use nodes directly without offset
-            clean_q = list(
-              id = q$id,
+            s7_q = markermd_question(
+              id = as.integer(q$id),
               name = name_value,
-              selected_nodes = q$selected_nodes %||% integer(0),
+              selected_nodes = markermd_node_selection(indices = as.integer(q$selected_nodes %||% integer(0))),
               strict = strict_value
             )
-            clean_questions = c(clean_questions, list(clean_q))
+            s7_questions = c(s7_questions, list(s7_q))
           }
           
-          # Create template data structure
-          template_data = list(
+          template_s7 = markermd_template(
             original_ast = ast(),
-            questions = clean_questions,
-            metadata = list(
+            questions = s7_questions,
+            metadata = markermd_metadata(
               created_at = Sys.time(),
               created_by = Sys.getenv("USER", "unknown"),
-              total_nodes = if (!is.null(ast_nodes())) length(ast_nodes()) else 0
+              total_nodes = if (!is.null(ast_nodes())) length(ast_nodes()) else 0L
             )
           )
         }
         
-        # Save as RDS file
-        saveRDS(template_data, file)
+        saveRDS(template_s7, file)
       },
       contentType = "application/rds"
     )
@@ -643,27 +637,25 @@ template_server = function(id, ast, template_path = NULL) {
             accept = c(".rds"),
             width = "100%"
           ),
-          shiny::uiOutput(session$ns("load_button_ui")),
-          footer = shiny::tagList(
-            shiny::modalButton("Cancel")
-          )
+          footer = shiny::uiOutput(session$ns("load_footer_ui"))
         )
       )
     })
     
-    # Dynamic Load button that only appears when file is selected
-    output$load_button_ui = shiny::renderUI({
-      if (!is.null(input$template_file) && !is.null(input$template_file$datapath)) {
-        shiny::div(
-          style = "text-align: right; margin-top: 10px;",
-          shiny::actionButton(session$ns("load_confirm"), "Load", class = "btn-primary")
+    # Dynamic footer with both Cancel and Load buttons
+    output$load_footer_ui = shiny::renderUI({
+      file_selected = !is.null(input$template_file) && !is.null(input$template_file$datapath)
+      
+      shiny::tagList(
+        shiny::modalButton("Cancel"),
+        shiny::tags$span(style = "margin-left: 10px;"),
+        shiny::actionButton(
+          session$ns("load_confirm"), 
+          "Load", 
+          class = if (file_selected) "btn-primary" else "btn-secondary",
+          disabled = !file_selected
         )
-      } else {
-        shiny::div(
-          style = "text-align: center; margin-top: 10px; color: #6c757d;",
-          "Please select a file to enable the Load button"
-        )
-      }
+      )
     })
     
     # Confirm template loading
@@ -687,35 +679,54 @@ template_server = function(id, ast, template_path = NULL) {
         return()
       }
       
-      # Validate template structure
-      if (!is.list(template_data) || is.null(template_data$questions)) {
-        shiny::showNotification("Invalid template format", type = "error")
-        return()
-      }
-      
       current_state = state()
-      loaded_questions = template_data$questions
+      loaded_questions = NULL
       
-      # Convert loaded questions to state structure with delete observers
-      if (length(loaded_questions) > 0) {
-        for (i in seq_along(loaded_questions)) {
-          # Ensure selected_nodes exists and sort them
-          if (is.null(loaded_questions[[i]]$selected_nodes)) {
-            loaded_questions[[i]]$selected_nodes = integer(0)
-          } else {
-            # Use nodes directly without offset
-            loaded_questions[[i]]$selected_nodes = sort(loaded_questions[[i]]$selected_nodes)
-          }
-          
-          # Ensure strict field exists
-          if (is.null(loaded_questions[[i]]$strict)) {
-            loaded_questions[[i]]$strict = FALSE
-          }
-          
-          # Create delete observer for this loaded question
-          loaded_questions[[i]]$delete_observer = create_delete_observer(loaded_questions[[i]]$id)
+      # Handle both S7 template objects and legacy list format
+      if (S7::S7_inherits(template_data, markermd_template)) {
+        # S7 template object
+        loaded_questions = lapply(template_data@questions, function(q) {
+          list(
+            id = q@id,
+            name = q@name,
+            selected_nodes = sort(q@selected_nodes@indices),
+            strict = q@strict,
+            delete_observer = create_delete_observer(q@id)
+          )
+        })
+      } else {
+        # Legacy list format - validate structure
+        if (!is.list(template_data) || is.null(template_data$questions)) {
+          shiny::showNotification("Invalid template format", type = "error")
+          return()
         }
         
+        loaded_questions = template_data$questions
+        
+        # Convert loaded questions to state structure with delete observers
+        if (length(loaded_questions) > 0) {
+          for (i in seq_along(loaded_questions)) {
+            # Ensure selected_nodes exists and sort them
+            if (is.null(loaded_questions[[i]]$selected_nodes)) {
+              loaded_questions[[i]]$selected_nodes = integer(0)
+            } else {
+              # Use nodes directly without offset
+              loaded_questions[[i]]$selected_nodes = sort(loaded_questions[[i]]$selected_nodes)
+            }
+            
+            # Ensure strict field exists
+            if (is.null(loaded_questions[[i]]$strict)) {
+              loaded_questions[[i]]$strict = FALSE
+            }
+            
+            # Create delete observer for this loaded question
+            loaded_questions[[i]]$delete_observer = create_delete_observer(loaded_questions[[i]]$id)
+          }
+        }
+      }
+      
+      # Proceed with state update if we have valid questions
+      if (!is.null(loaded_questions) && length(loaded_questions) > 0) {
         # Update state
         current_state$questions = loaded_questions
         current_state$current_question_id = loaded_questions[[1]]$id

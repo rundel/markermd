@@ -42,24 +42,80 @@ mark = function(collection_path, template = NULL, use_qmd = TRUE, ...) {
     stop("No subdirectories found in collection path: ", collection_path)
   }
   
-  # Process template if provided and store both raw and processed versions
-  raw_template_data = NULL
+  template_obj = NULL
   processed_template = NULL
   
   if (!is.null(template)) {
-    # Store raw template data for content extraction
     if (is.character(template) && length(template) == 1) {
-      raw_template_data = readRDS(template)
-    } else if (is.list(template) && all(c("original_ast", "questions") %in% names(template))) {
-      raw_template_data = template
+      template_obj = readRDS(template)
+      if (!S7::S7_inherits(template_obj, markermd_template)) {
+        stop("Template file must contain a markermd_template S7 object")
+      }
+    } else if (S7::S7_inherits(template, markermd_template)) {
+      template_obj = template
+    } else {
+      stop("Template must be a file path or markermd_template S7 object")
     }
     
-    # Process template for validation
-    processed_template = process_mark_templates(template)
+    processed_template = process_mark_templates(template_obj)
   }
   
-  # Create and launch the Shiny app
-  app = create_markermd_app(collection_path, processed_template, raw_template_data, use_qmd)
+  # Parse the collection using parsermd
+  if (use_qmd) {
+    collection = parsermd::parse_qmd_collection(collection_path)
+  } else {
+    collection = parsermd::parse_rmd_collection(collection_path)
+  }
+  
+  # Get repository names from collection tibble
+  repo_list = character(0)
+  validation_results = list()
+  initial_repo_ast = NULL
+  initial_repo_name = NULL
+  
+  if (is.null(collection) || nrow(collection) == 0) {
+    stop("No valid documents found in collection path: ", collection_path)
+  }
+  
+  # Extract repo names from path column
+  repo_list = collection$path |> dirname() |> basename() |> unique()
+  
+  if (length(repo_list) == 0) {
+    stop("No repositories found in collection")
+  }
+  
+  # Validate all repositories if template is available
+  if (!is.null(processed_template) && length(processed_template) > 0) {
+    for (repo in repo_list) {
+      repo_rows = collection$path |> dirname() |> basename() == repo
+      if (any(repo_rows)) {
+        repo_ast = collection$ast[repo_rows][[1]]
+        repo_validation = validate_repo_against_templates(repo_ast, processed_template)
+        validation_results[[repo]] = repo_validation
+      }
+    }
+  }
+  
+  # Set initial current repo AST (first repository)
+  first_repo_rows = collection$path |> dirname() |> basename() == repo_list[1]
+  if (any(first_repo_rows)) {
+    initial_repo_ast = collection$ast[first_repo_rows][[1]]
+    initial_repo_name = repo_list[1]
+  } else {
+    stop("Could not load initial repository data")
+  }
+  
+  app = create_markermd_app(
+    collection_path, 
+    processed_template, 
+    template_obj, 
+    use_qmd,
+    collection,
+    repo_list,
+    validation_results,
+    initial_repo_ast,
+    initial_repo_name
+  )
   shiny::runApp(app, ...)
 }
 
@@ -137,8 +193,17 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", te
     resolved_filename = fs::path_file(matched_files[1])
   }
   
+  # Setup repository and parse document before creating app
+  repo_path = setup_assignment_repo(assignment_path, local_dir, is_github_repo)
+  
+  # Validate and get assignment file path
+  file_path = validate_assignment_file(repo_path, resolved_filename)
+  
+  # Parse the document
+  ast = parse_assignment_document(file_path)
+  
   # Create and launch the template creation Shiny app
-  app = create_template_app(assignment_path, local_dir, resolved_filename, is_github_repo, template)
+  app = create_template_app(assignment_path, local_dir, resolved_filename, is_github_repo, template, file_path, ast)
   shiny::runApp(app, ...)
 }
 
@@ -148,12 +213,17 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", te
 #'
 #' @param collection_path Character string. Path to directory containing assignment repositories
 #' @param template Named list of parsermd templates for validation, or NULL
-#' @param raw_template_data Raw template data with node selections, or NULL
+#' @param template_obj markermd_template S7 object with node selections, or NULL
 #' @param use_qmd Logical. Whether to parse .qmd files (TRUE) or .Rmd files (FALSE)
+#' @param collection Parsed collection data from parsermd
+#' @param repo_list Character vector of repository names
+#' @param validation_results List of validation results for each repository
+#' @param initial_repo_ast Initial repository AST to display
+#' @param initial_repo_name Name of initial repository
 #'
 #' @return Shiny app object
 #'
-create_markermd_app = function(collection_path, template, raw_template_data, use_qmd) {
+create_markermd_app = function(collection_path, template, template_obj, use_qmd, collection, repo_list, validation_results, initial_repo_ast, initial_repo_name) {
   
   # Define UI
   ui = bslib::page_navbar(
@@ -188,7 +258,7 @@ create_markermd_app = function(collection_path, template, raw_template_data, use
       if (!is.null(template)) shiny::p(shiny::strong("Template:"), "Validation enabled"),
       shiny::hr(),
       
-      shiny::h4(if (!is.null(template)) "Repositories (Pass/Total)" else "Repositories"),
+      shiny::h4("Assignments"),
       gt::gt_output("repo_table")
     )
   )
@@ -196,84 +266,29 @@ create_markermd_app = function(collection_path, template, raw_template_data, use
   # Define server logic
   server = function(input, output, session) {
     
-    # Reactive values
-    collection_ast = shiny::reactiveVal(NULL)
-    repo_names = shiny::reactiveVal(NULL)
-    current_repo_ast = shiny::reactiveVal(NULL)
-    current_repo_name = shiny::reactiveVal(NULL)
-    all_repo_validation = shiny::reactiveVal(list())
-    
-    # Initialize the app
-    shiny::observe({
-      tryCatch({
-        # Parse the collection using parsermd
-        if (use_qmd) {
-          collection = parsermd::parse_qmd_collection(collection_path)
-        } else {
-          collection = parsermd::parse_rmd_collection(collection_path)
-        }
-        
-        collection_ast(collection)
-        
-        # Get repository names from collection tibble
-        if (!is.null(collection) && nrow(collection) > 0) {
-          # Extract repo names from path column
-          repo_list = collection$path |> dirname() |> basename() |> unique()
-          repo_names(repo_list)
-          
-          # Validate all repositories if template is available
-          if (!is.null(template) && length(template) > 0) {
-            validation_results = list()
-            for (repo in repo_list) {
-              repo_rows = collection$path |> dirname() |> basename() == repo
-              if (any(repo_rows)) {
-                repo_ast = collection$ast[repo_rows][[1]]
-                repo_validation = validate_repo_against_templates(repo_ast, template)
-                validation_results[[repo]] = repo_validation
-              }
-            }
-            all_repo_validation(validation_results)
-          }
-          
-          # Set initial current repo AST (first repository)
-          if (length(repo_list) > 0) {
-            first_repo_rows = collection$path |> dirname() |> basename() == repo_list[1]
-            if (any(first_repo_rows)) {
-              current_repo_ast(collection$ast[first_repo_rows][[1]])
-              current_repo_name(repo_list[1])
-            }
-          }
-        }
-        
-      }, error = function(e) {
-        # Error loading collection
-        message("Error loading collection: ", e$message)
-      })
-    })
+    # Reactive values for user selections
+    current_repo_ast = shiny::reactiveVal(initial_repo_ast)
+    current_repo_name = shiny::reactiveVal(initial_repo_name)
     
     # Track selected repository for highlighting
     selected_repo_index = shiny::reactiveVal(1)
     
     # Create repository table with gt
     output$repo_table = gt::render_gt({
-      if (is.null(repo_names()) || length(repo_names()) == 0) {
-        return(gt::gt(data.frame(Repository = character(0))))
-      }
       
       # Create table data with action buttons and validation summary
       repo_df = data.frame(
-        Repository = repo_names(),
+        Repository = repo_list,
         stringsAsFactors = FALSE
       )
       
       # Add validation summary column
-      validation_data = all_repo_validation()
-      repo_df$Validation = sapply(repo_names(), function(repo) {
+      repo_df$Validation = sapply(repo_list, function(repo) {
         if (is.null(template) || length(template) == 0) {
           return("")  # No validation without template
         }
         
-        repo_validation = validation_data[[repo]]
+        repo_validation = validation_results[[repo]]
         if (is.null(repo_validation) || length(repo_validation) == 0) {
           return("")  # No validation data
         }
@@ -365,42 +380,37 @@ create_markermd_app = function(collection_path, template, raw_template_data, use
     
     # Handle repository button clicks
     shiny::observe({
-      if (!is.null(repo_names())) {
-        for (i in seq_along(repo_names())) {
+      for (i in seq_along(repo_list)) {
           local({
             row_index = i
             button_id = paste0("repo_select_", row_index)
             
             shiny::observeEvent(input[[button_id]], {
-              if (!is.null(collection_ast()) && !is.null(repo_names())) {
-                selected_repo = repo_names()[row_index]
-                collection = collection_ast()
-                
-                # Update selected index for highlighting
-                selected_repo_index(row_index)
-                
-                # Find rows for the selected repository
-                repo_rows = collection$path |> dirname() |> basename() == selected_repo
-                if (any(repo_rows)) {
-                  # Get the first document's AST for this repository
-                  current_repo_ast(collection$ast[repo_rows][[1]])
-                  current_repo_name(selected_repo)
-                }
+              selected_repo = repo_list[row_index]
+              
+              # Update selected index for highlighting
+              selected_repo_index(row_index)
+              
+              # Find rows for the selected repository
+              repo_rows = collection$path |> dirname() |> basename() == selected_repo
+              if (any(repo_rows)) {
+                # Get the first document's AST for this repository
+                current_repo_ast(collection$ast[repo_rows][[1]])
+                current_repo_name(selected_repo)
               }
             })
           })
         }
-      }
     })
     
     # Explore module - pass current repository AST, name, and template
-    explore_result = explore_server("explore_module", current_repo_ast, current_repo_name, template_data)
+    explore_result = explore_server("explore_module", current_repo_ast, current_repo_name, shiny::reactiveVal(template))
     
     # Marking module with processed template and raw template data for content extraction
     template_data = shiny::reactiveVal(template)
-    raw_template_reactive = shiny::reactiveVal(raw_template_data)
+    template_reactive = shiny::reactiveVal(template_obj)
     
-    marking_result = marking_server("marking_module", current_repo_ast, template_data, raw_template_reactive)
+    marking_result = marking_server("marking_module", current_repo_ast, template_data, template_reactive)
     
     # Handle navbar tab switching
     shiny::observeEvent(input$navbar, {
@@ -423,10 +433,12 @@ create_markermd_app = function(collection_path, template, raw_template_data, use
 #' @param filename Character string. Name of the Rmd/qmd file to grade
 #' @param is_github_repo Logical. Whether assignment_path is a GitHub repo
 #' @param template_path Character string. Optional path to template RDS file to load
+#' @param file_path Character string. Path to the assignment file
+#' @param ast Parsed AST object from the assignment document
 #'
 #' @return Shiny app object
 #'
-create_template_app = function(assignment_path, local_dir, filename, is_github_repo, template_path = NULL) {
+create_template_app = function(assignment_path, local_dir, filename, is_github_repo, template_path = NULL, file_path, ast) {
   
   # Define UI
   ui = bslib::page_navbar(
@@ -462,46 +474,13 @@ create_template_app = function(assignment_path, local_dir, filename, is_github_r
   # Define server logic
   server = function(input, output, session) {
     
-    # Reactive values
-    document_ast = shiny::reactiveVal(NULL)
-    document_path = shiny::reactiveVal(NULL)
-    
-    # Initialize the app
-    shiny::observe({
-      tryCatch({
-        # Setup repository
-        repo_path = setup_assignment_repo(
-          assignment_path,
-          local_dir,
-          is_github_repo
-        )
-        
-        # Validate and get assignment file path
-        file_path = validate_assignment_file(repo_path, filename)
-        document_path(file_path)
-        
-        # Parse the document
-        ast = parse_assignment_document(file_path)
-        document_ast(ast)
-        
-      }, error = function(e) {
-        # Error loading assignment - log the error for debugging
-        message("Error loading assignment: ", e$message)
-        cat("Error loading assignment: ", e$message, "\n")
-        # In a test environment, it's helpful to see the error
-        if (interactive() || identical(Sys.getenv("TESTTHAT"), "true")) {
-          warning("Failed to load assignment: ", e$message)
-        }
-      })
-    })
-    
     # Document status display
     output$document_status = shiny::renderText({
-      if (is.null(document_ast())) {
+      if (is.null(ast)) {
         return("No document loaded")
       }
       
-      summary = get_document_summary(document_ast())
+      summary = get_document_summary(ast)
       paste(
         paste("Nodes:", summary$total_nodes),
         paste("Code chunks:", summary$code_chunks),
@@ -511,7 +490,7 @@ create_template_app = function(assignment_path, local_dir, filename, is_github_r
     })
     
     # Template module
-    template_result = template_server("template_module", document_ast, template_path)
+    template_result = template_server("template_module", shiny::reactiveVal(ast), template_path)
   }
   
   # Return the app

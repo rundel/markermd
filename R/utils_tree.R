@@ -37,7 +37,6 @@ build_ast_tree_structure = function(ast) {
     depth = 0,
     parent_index = NULL,
     description = "Document",
-    icon = "file-text",
     prefix = ""
   )
   tree_items[[1]] = document_root
@@ -46,35 +45,12 @@ build_ast_tree_structure = function(ast) {
     node = nodes[[i]]
     node_type = class(node)[1]
     
-    # Set description and icon based on node type
-    if (grepl("yaml", node_type, ignore.case = TRUE)) {
-      yaml_fields = if (!is.null(node@yaml)) length(node@yaml) else 0
-      description = paste0("YAML [", yaml_fields, " fields]")
-      icon = "file-code"
-      
-    } else if (grepl("heading", node_type, ignore.case = TRUE)) {
-      heading_level = if (!is.null(node@level)) node@level else 1
-      heading_name = if (!is.null(node@name)) node@name else "Heading"
-      description = paste0("Heading [h", heading_level, "] - ", heading_name)
-      icon = "header"
-      
-    } else if (grepl("chunk", node_type, ignore.case = TRUE)) {
-      engine = if (!is.null(node@engine)) node@engine else "r"
-      options_count = if (!is.null(node@options)) length(node@options) else 0
-      code_lines = if (!is.null(node@code)) length(node@code) else 0
-      chunk_name = if (!is.null(node@name)) node@name else "unnamed"
-      description = paste0("Chunk [", engine, ", ", options_count, " options, ", code_lines, " lines] - ", chunk_name)
-      icon = "code"
-      
-    } else if (grepl("markdown", node_type, ignore.case = TRUE)) {
-      line_count = if (!is.null(node@lines)) length(node@lines) else 0
-      description = paste0("Markdown [", line_count, " line", if(line_count != 1) "s" else "", "]")
-      icon = "file-text"
-      
-    } else {
-      description = node_type
-      icon = "file"
-    }
+    # Use parsermd's tree_node method to get proper description
+    node_info = parsermd:::tree_node(node)
+    # Remove ASCII/ANSI escape codes from the text components
+    clean_text = gsub("\033\\[[0-9;]*m", "", node_info$text)
+    clean_label = gsub("\033\\[[0-9;]*m", "", node_info$label)
+    description = paste(clean_text, clean_label)
     
     # Determine hierarchy depth and parent relationships
     if (grepl("heading", node_type, ignore.case = TRUE)) {
@@ -110,7 +86,6 @@ build_ast_tree_structure = function(ast) {
       depth = depth,
       parent_index = parent_index,
       description = description,
-      icon = icon,
       prefix = "├── " # Will be updated later
     )
     
@@ -624,7 +599,7 @@ create_simple_tree_readonly = function(tree_items, ns, repo_id = NULL) {
       width: calc(2 * var(--radius));
       height: calc(2 * var(--radius));
       border-radius: 50%;
-      background: #007bff;
+      background: #ddd;
     }
     
     /* Document icon for root node */

@@ -66,9 +66,9 @@ marking_ui = function(id) {
 #' @param id Character. Module namespace ID
 #' @param ast Reactive. The parsed AST object
 #' @param template Reactive. The template object with questions
-#' @param raw_template_data Reactive. Raw template data with node selections for content extraction
+#' @param template_obj Reactive. markermd_template S7 object with node selections for content extraction
 #'
-marking_server = function(id, ast, template, raw_template_data = shiny::reactiveVal(NULL)) {
+marking_server = function(id, ast, template, template_obj = shiny::reactiveVal(NULL)) {
   shiny::moduleServer(id, function(input, output, session) {
     
     # Reactive values for managing grading
@@ -106,11 +106,11 @@ marking_server = function(id, ast, template, raw_template_data = shiny::reactive
       } else {
         templates_list = template()
         current_ast = ast()
-        current_raw_template = raw_template_data()
+        current_template_obj = template_obj()
         
         # Extract question content for tooltips
-        question_contents = if (!is.null(current_ast) && !is.null(current_raw_template)) {
-          extract_question_content(current_ast, current_raw_template)
+        question_contents = if (!is.null(current_ast) && !is.null(current_template_obj)) {
+          extract_question_content(current_ast, current_template_obj)
         } else {
           list()
         }

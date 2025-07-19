@@ -88,17 +88,19 @@ explore_server = function(id, ast, current_repo_name = shiny::reactiveVal(NULL),
     # Function to destroy all existing preview observers
     destroy_preview_observers = function() {
       # Remove any existing modal dialogs
-      shiny::removeModal()
+      tryCatch(shiny::removeModal(), error = function(e) NULL)
       
-      current_observers = preview_observers()
+      # Safely get observers - handle case where reactive context is not available
+      current_observers = tryCatch(preview_observers(), error = function(e) list())
       if (length(current_observers) > 0) {
         for (observer in current_observers) {
           if (!is.null(observer)) {
-            observer$destroy()
+            tryCatch(observer$destroy(), error = function(e) NULL)
           }
         }
       }
-      preview_observers(list())
+      # Only update reactive value if reactive context is available
+      tryCatch(preview_observers(list()), error = function(e) NULL)
     }
     
     # Get AST nodes for easier handling

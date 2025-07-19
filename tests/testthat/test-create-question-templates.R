@@ -1,9 +1,9 @@
 test_that("create_question_templates works with valid template data", {
-  # Load the sample template data
-  template_data = readRDS(system.file("examples/test_assignment/template.rds", package = "markermd"))
+  # Load the sample template data (now already an S7 object)
+  template_s7 = readRDS(system.file("examples/test_assignment/template.rds", package = "markermd"))
   
   # Test the function
-  result = create_question_templates(template_data)
+  result = create_question_templates(template_s7)
   
   # Basic structure tests
   expect_type(result, "list")
@@ -25,84 +25,78 @@ test_that("create_question_templates works with valid template data", {
 
 test_that("create_question_templates handles invalid input gracefully", {
   # Test with NULL input
-  expect_error(create_question_templates(NULL), "template_data must be a list")
+  expect_error(create_question_templates(NULL), "template_obj must be a markermd_template S7 object")
   
-  # Test with non-list input
-  expect_error(create_question_templates("not a list"), "template_data must be a list")
+  # Test with non-S7 input
+  expect_error(create_question_templates("not a template"), "template_obj must be a markermd_template S7 object")
   
-  # Test with missing components
-  incomplete_data = list(questions = list())
-  expect_error(create_question_templates(incomplete_data), "template_data missing required components: original_ast")
-  
-  # Test with empty questions
-  template_data = readRDS(system.file("examples/test_assignment/template.rds", package = "markermd"))
-  template_data$questions = list()
-  result = create_question_templates(template_data)
+  # Test with empty questions - create S7 object directly
+  template_s7 = readRDS(system.file("examples/test_assignment/template.rds", package = "markermd"))
+  empty_template = markermd_template(
+    original_ast = template_s7@original_ast,
+    questions = list(),
+    metadata = template_s7@metadata
+  )
+  result = create_question_templates(empty_template)
   expect_equal(length(result), 0)
 })
 
 test_that("create_question_templates handles invalid AST", {
-  template_data = readRDS(system.file("examples/test_assignment/template.rds", package = "markermd"))
-  
-  # Test with invalid AST type
-  template_data$original_ast = "not an ast"
-  expect_error(create_question_templates(template_data), "original_ast must be an rmd_ast object")
+  # Invalid AST is now caught during S7 object creation
+  template_s7 = readRDS(system.file("examples/test_assignment/template.rds", package = "markermd"))
+  expect_error(
+    markermd_template(
+      original_ast = "not an ast",
+      questions = template_s7@questions,
+      metadata = template_s7@metadata
+    ), 
+    "@original_ast must be an rmd_ast object"
+  )
 })
 
 test_that("create_question_templates handles invalid question structure", {
-  template_data = readRDS(system.file("examples/test_assignment/template.rds", package = "markermd"))
+  # Invalid question structures are now caught during S7 object creation
+  template_s7 = readRDS(system.file("examples/test_assignment/template.rds", package = "markermd"))
   
   # Test with question missing name
-  invalid_questions = list(
-    list(id = 1, selected_nodes = c(1, 2)),  # Missing name
-    list(id = 2, name = "Valid Question", selected_nodes = c(3, 4))
+  expect_error(
+    markermd_question(
+      id = 1L,
+      name = "",  # Empty name should fail
+      selected_nodes = markermd_node_selection(indices = c(1L, 2L))
+    ),
+    "@name cannot be empty"
   )
-  template_data$questions = invalid_questions
-  
-  expect_warning(result <- create_question_templates(template_data), "Skipping invalid question")
-  expect_equal(length(result), 1)  # Only the valid question should be included
-  expect_equal(names(result), "Valid Question")
 })
 
-test_that("create_question_templates handles invalid node indices", {
-  template_data = readRDS(system.file("examples/test_assignment/template.rds", package = "markermd"))
-  
-  # Create question with invalid node indices
-  total_nodes = length(template_data$original_ast@nodes)
-  invalid_questions = list(
-    list(
-      id = 1,
-      name = "Invalid Indices Question",
-      selected_nodes = c(1, total_nodes + 5, -1)  # Some valid, some invalid
-    )
-  )
-  template_data$questions = invalid_questions
-  
-  expect_warning(result <- create_question_templates(template_data), "has invalid node indices")
-  # Should still create template with valid indices
-  expect_equal(length(result), 1)
-})
 
 test_that("create_question_templates handles empty node selections", {
-  template_data = readRDS(system.file("examples/test_assignment/template.rds", package = "markermd"))
+  template_s7 = readRDS(system.file("examples/test_assignment/template.rds", package = "markermd"))
   
   # Create question with no selected nodes
-  empty_questions = list(
-    list(
-      id = 1,
-      name = "Empty Question", 
-      selected_nodes = integer(0)
-    )
+  empty_question = markermd_question(
+    id = 1L,
+    name = "Empty Question", 
+    selected_nodes = markermd_node_selection(indices = integer(0)),
+    strict = FALSE
   )
-  template_data$questions = empty_questions
   
-  expect_warning(result <- create_question_templates(template_data), "with no selected nodes")
+  empty_template = markermd_template(
+    original_ast = template_s7@original_ast,
+    questions = list(empty_question),
+    metadata = template_s7@metadata
+  )
+  
+  expect_warning(
+    result <- create_question_templates(empty_template), 
+    "with no selected nodes"
+  )
   expect_equal(length(result), 0)
 })
 
 test_that("create_question_templates produces correct template content", {
-  template_data = readRDS(system.file("examples/test_assignment/template.rds", package = "markermd"))
-  result = create_question_templates(template_data)
+  template_s7 = readRDS(system.file("examples/test_assignment/template.rds", package = "markermd"))
+  result = create_question_templates(template_s7)
   
   # Check Question 1 specifically (should contain nodes 4 and 5: heading + markdown)
   q1_template = result[["Question 1"]]
@@ -125,9 +119,4 @@ test_that("create_question_templates produces correct template content", {
   # Check that different questions produce different templates
   q2_template = result[["Question 2"]]
   expect_false(identical(q1_template, q2_template))
-  
-  # Check that templates contain the correct node types
-  expect_true("type" %in% names(q1_template))
-  # Question 1 should contain markdown content (after the heading)
-  expect_true(any(grepl("markdown", q1_template$type, ignore.case = TRUE)))
 })

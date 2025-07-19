@@ -15,9 +15,9 @@ test_that("process_mark_templates handles file path input", {
 })
 
 test_that("process_mark_templates handles raw template data", {
-  template_data = readRDS(system.file("examples/test_assignment/template.rds", package = "markermd"))
+  template_s7 = readRDS(system.file("examples/test_assignment/template.rds", package = "markermd"))
   
-  result = process_mark_templates(template_data)
+  result = process_mark_templates(template_s7)
   
   expect_type(result, "list")
   expect_true(length(result) > 0)
@@ -26,13 +26,15 @@ test_that("process_mark_templates handles raw template data", {
 })
 
 test_that("process_mark_templates handles already transformed templates", {
-  template_data = readRDS(system.file("examples/test_assignment/template.rds", package = "markermd"))
-  transformed = create_question_templates(template_data)
+  template_s7 = readRDS(system.file("examples/test_assignment/template.rds", package = "markermd"))
+  transformed = process_mark_templates(template_s7)
   
-  result = process_mark_templates(transformed)
+  # Test that applying process_mark_templates to S7 object works
+  result = process_mark_templates(template_s7)
   
-  # Should return the same object (no transformation needed)
-  expect_identical(result, transformed)
+  # Should return templates
+  expect_type(result, "list")
+  expect_true(all(sapply(result, function(x) inherits(x, "rmd_template"))))
 })
 
 test_that("process_mark_templates handles invalid file path", {
@@ -47,27 +49,26 @@ test_that("process_mark_templates handles invalid file path", {
 })
 
 test_that("process_mark_templates handles invalid input types", {
-  expect_error(process_mark_templates(123), "Template must be a file path, list, or NULL")
-  expect_error(process_mark_templates(list(invalid = "data")), "Template format not recognized")
+  expect_error(process_mark_templates(123), "Template must be a file path or markermd_template S7 object")
 })
 
 test_that("validate_repo_against_templates handles NULL inputs", {
   result = validate_repo_against_templates(NULL, NULL)
   expect_equal(length(result), 0)
   
-  template_data = readRDS(system.file("examples/test_assignment/template.rds", package = "markermd"))
-  templates = create_question_templates(template_data)
+  template_s7 = readRDS(system.file("examples/test_assignment/template.rds", package = "markermd"))
+  templates = process_mark_templates(template_s7)
   
   result = validate_repo_against_templates(NULL, templates)
   expect_equal(length(result), 0)
 })
 
 test_that("validate_repo_against_templates performs validation", {
-  template_data = readRDS(system.file("examples/test_assignment/template.rds", package = "markermd"))
-  templates = create_question_templates(template_data)
+  template_s7 = readRDS(system.file("examples/test_assignment/template.rds", package = "markermd"))
+  templates = process_mark_templates(template_s7)
   
   # Use the original AST from the template data for testing
-  ast = template_data$original_ast
+  ast = template_s7@original_ast
   
   result = validate_repo_against_templates(ast, templates)
   
@@ -90,10 +91,10 @@ test_that("null-coalescing operator works correctly", {
 })
 
 test_that("extract_question_content works correctly", {
-  template_data = readRDS(system.file("examples/test_assignment/template.rds", package = "markermd"))
-  ast = template_data$original_ast
+  template_s7 = readRDS(system.file("examples/test_assignment/template.rds", package = "markermd"))
+  ast = template_s7@original_ast
   
-  result = extract_question_content(ast, template_data)
+  result = extract_question_content(ast, template_s7)
   
   expect_type(result, "list")
   expect_equal(length(result), 4)
@@ -112,21 +113,24 @@ test_that("extract_question_content handles edge cases", {
   # Test with NULL inputs
   expect_equal(extract_question_content(NULL, NULL), list())
   
-  template_data = readRDS(system.file("examples/test_assignment/template.rds", package = "markermd"))
-  expect_equal(extract_question_content(NULL, template_data), list())
-  expect_equal(extract_question_content(template_data$original_ast, NULL), list())
+  template_s7 = readRDS(system.file("examples/test_assignment/template.rds", package = "markermd"))
+  expect_equal(extract_question_content(NULL, template_s7), list())
+  expect_equal(extract_question_content(template_s7@original_ast, NULL), list())
   
   # Test with empty template
-  empty_template = list(questions = list())
-  expect_equal(extract_question_content(template_data$original_ast, empty_template), list())
+  empty_template = markermd_template(
+    original_ast = template_s7@original_ast,
+    questions = list()
+  )
+  expect_equal(extract_question_content(template_s7@original_ast, empty_template), list())
 })
 
 test_that("validation results have correct structure for different scenarios", {
-  template_data = readRDS(system.file("examples/test_assignment/template.rds", package = "markermd"))
-  templates = create_question_templates(template_data)
+  template_s7 = readRDS(system.file("examples/test_assignment/template.rds", package = "markermd"))
+  templates = process_mark_templates(template_s7)
   
   # Test with original AST (should mostly pass since it's the template source)
-  ast = template_data$original_ast
+  ast = template_s7@original_ast
   result = validate_repo_against_templates(ast, templates)
   
   for (question_name in names(result)) {
