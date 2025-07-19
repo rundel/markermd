@@ -22,7 +22,7 @@ template_ui = function(id) {
           style = "border: 1px solid #ddd; padding: 10px; background-color: #f9f9f9; flex: 1; overflow-y: auto; min-height: 400px;",
         shiny::div(
           style = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;",
-          shiny::helpText("Click node text to select, click circle to toggle with children, ", shiny::icon("search"), " to preview content"),
+          shiny::helpText("Only headings can be selected. Click heading text or circle to select it and all children. ", shiny::icon("search"), " to preview any content"),
           shiny::actionButton(ns("clear_selections"), "Clear Selections", class = "btn-secondary btn-sm")
         ),
         shiny::uiOutput(ns("ast_tree_ui"))
@@ -120,13 +120,7 @@ template_server = function(id, ast, template_path = NULL) {
               if (is.null(loaded_questions[[i]]$selected_nodes)) {
                 loaded_questions[[i]]$selected_nodes = integer(0)
               } else {
-                # Use nodes directly without offset
                 loaded_questions[[i]]$selected_nodes = sort(loaded_questions[[i]]$selected_nodes)
-              }
-              
-              # Ensure strict field exists
-              if (is.null(loaded_questions[[i]]$strict)) {
-                loaded_questions[[i]]$strict = FALSE
               }
               
               # Create delete observer for this loaded question
@@ -215,7 +209,6 @@ template_server = function(id, ast, template_path = NULL) {
           id = next_id,
           name = paste("Question", next_id),
           selected_nodes = integer(0),
-          strict = FALSE,
           delete_observer = delete_observer
         )
         current_state$questions = list(new_question)
@@ -260,98 +253,115 @@ template_server = function(id, ast, template_path = NULL) {
       for (i in seq_along(nodes)) {
         local({
           node_index = i  # Use direct node index to match tree UI
+          node = nodes[[node_index]]
+          node_type = class(node)[1]
           
-          # Handle "Select" button
-          shiny::observeEvent(input[[paste0("select_", node_index)]], {
-            current_state = state()
-            current_q_id = current_state$current_question_id
-            
-            # Get current selections (update_node_selection will handle empty questions)
-            current_selections = integer(0)
-            if (length(current_state$questions) > 0) {
+          # Only create selection observers for heading nodes that don't have selected ancestors
+          if (node_type == "rmd_heading") {
+            # Handle "Select" button - only toggle directly selected nodes
+            shiny::observeEvent(input[[paste0("select_", node_index)]], {
+              # Check if this node is selectable (no selected ancestors)
+              current_state = state()
+              current_q_id = current_state$current_question_id
+              
+              # Find current question or create one if needed
+              if (length(current_state$questions) == 0) {
+                next_id = current_state$last_question_id + 1
+                current_state$last_question_id = next_id
+                
+                delete_observer = create_delete_observer(next_id)
+                new_question = list(
+                  id = next_id,
+                  name = paste("Question", next_id),
+                  selected_nodes = integer(0),
+                  delete_observer = delete_observer
+                )
+                current_state$questions = list(new_question)
+                current_state$current_question_id = next_id
+              }
+              
               question_matches = sapply(current_state$questions, function(q) q$id == current_q_id)
               question_idx = which(question_matches)
               if (length(question_idx) > 0) {
                 current_question = current_state$questions[[question_idx]]
-                current_selections = current_question$selected_nodes %||% integer(0)
-              }
-            }
-            
-            # Toggle selection
-            if (node_index %in% current_selections) {
-              update_node_selection(node_index, add = FALSE)
-            } else {
-              update_node_selection(node_index, add = TRUE)
-            }
-          })
-          
-          # Handle "Select +" button (toggle node + children)
-          shiny::observeEvent(input[[paste0("select_children_", node_index)]], {
-            # Find all children first to determine behavior
-            children = find_node_children(tree_items, node_index)
-            
-            if (length(children) == 0) {
-              # Leaf node: behave exactly like clicking the node text (simple toggle)
-              current_state = state()
-              current_q_id = current_state$current_question_id
-              
-              # Get current selections (update_node_selection will handle empty questions)
-              current_selections = integer(0)
-              if (length(current_state$questions) > 0) {
-                question_matches = sapply(current_state$questions, function(q) q$id == current_q_id)
-                question_idx = which(question_matches)
-                if (length(question_idx) > 0) {
-                  current_question = current_state$questions[[question_idx]]
-                  current_selections = current_question$selected_nodes %||% integer(0)
+                current_selected = current_question$selected_nodes %||% integer(0)
+                
+                # Check if node has selected ancestors - if so, don't allow selection
+                if (has_selected_ancestor(tree_items, node_index, current_selected)) {
+                  return()  # Silently ignore click
                 }
-              }
-              
-              # Toggle selection - same logic as the select_ button
-              if (node_index %in% current_selections) {
-                update_node_selection(node_index, add = FALSE)
-              } else {
-                update_node_selection(node_index, add = TRUE)
-              }
-            } else {
-              # Non-leaf node: use the complex toggle logic for node + children
-              # Ensure we have at least one question
-              update_node_selection(node_index, add = TRUE)  # This will create question if needed
-              
-              current_state = state()
-              current_q_id = current_state$current_question_id
-              
-              # Find current question
-              question_matches = sapply(current_state$questions, function(q) q$id == current_q_id)
-              question_idx = which(question_matches)
-              if (length(question_idx) > 0) {
-                current_question = current_state$questions[[question_idx]]
-                current_selections = current_question$selected_nodes %||% integer(0)
                 
-                # Find all children
-                nodes_to_toggle = c(node_index, children)
-                
-                # Determine current state - check if any nodes in the group are unselected
-                currently_unselected = setdiff(nodes_to_toggle, current_selections)
-                
-                if (length(currently_unselected) > 0) {
-                  # If any nodes are unselected, select ALL nodes in the group
-                  new_selections = unique(c(current_selections, nodes_to_toggle))
+                # Toggle this node in selected list
+                if (node_index %in% current_selected) {
+                  # Remove from selected
+                  new_selected = setdiff(current_selected, node_index)
                 } else {
-                  # If all nodes are selected, unselect ALL nodes in the group
-                  new_selections = setdiff(current_selections, nodes_to_toggle)
+                  # Add to selected, but first remove any descendants that are currently selected
+                  descendants_to_remove = find_selected_descendants(tree_items, node_index, current_selected)
+                  new_selected = setdiff(current_selected, descendants_to_remove)
+                  new_selected = c(new_selected, node_index)
                 }
-                
-                # Sort the selected nodes vector
-                new_selections = sort(new_selections)
+                new_selected = sort(new_selected)
                 
                 # Update the question in state
-                current_state$questions[[question_idx]]$selected_nodes = new_selections
+                current_state$questions[[question_idx]]$selected_nodes = new_selected
                 state(current_state)
               }
-            }
-          })
+            })
+            
+            # Handle "Select +" button - same as text click
+            shiny::observeEvent(input[[paste0("select_children_", node_index)]], {
+              # Check if this node is selectable (no selected ancestors)
+              current_state = state()
+              current_q_id = current_state$current_question_id
+              
+              # Find current question or create one if needed
+              if (length(current_state$questions) == 0) {
+                next_id = current_state$last_question_id + 1
+                current_state$last_question_id = next_id
+                
+                delete_observer = create_delete_observer(next_id)
+                new_question = list(
+                  id = next_id,
+                  name = paste("Question", next_id),
+                  selected_nodes = integer(0),
+                  delete_observer = delete_observer
+                )
+                current_state$questions = list(new_question)
+                current_state$current_question_id = next_id
+              }
+              
+              question_matches = sapply(current_state$questions, function(q) q$id == current_q_id)
+              question_idx = which(question_matches)
+              if (length(question_idx) > 0) {
+                current_question = current_state$questions[[question_idx]]
+                current_selected = current_question$selected_nodes %||% integer(0)
+                
+                # Check if node has selected ancestors - if so, don't allow selection
+                if (has_selected_ancestor(tree_items, node_index, current_selected)) {
+                  return()  # Silently ignore click
+                }
+                
+                # Toggle this node in selected list
+                if (node_index %in% current_selected) {
+                  # Remove from selected
+                  new_selected = setdiff(current_selected, node_index)
+                } else {
+                  # Add to selected, but first remove any descendants that are currently selected
+                  descendants_to_remove = find_selected_descendants(tree_items, node_index, current_selected)
+                  new_selected = setdiff(current_selected, descendants_to_remove)
+                  new_selected = c(new_selected, node_index)
+                }
+                new_selected = sort(new_selected)
+                
+                # Update the question in state
+                current_state$questions[[question_idx]]$selected_nodes = new_selected
+                state(current_state)
+              }
+            })
+          }
           
-          # Handle "Preview" button
+          # Handle "Preview" button (available for all nodes)
           shiny::observeEvent(input[[paste0("preview_", node_index)]], {
             # Use node_index directly
             if (node_index >= 1 && node_index <= length(nodes)) {
@@ -466,16 +476,6 @@ template_server = function(id, ast, template_path = NULL) {
               )
             ),
             shiny::div(
-              style = "flex-shrink: 0; margin-right: 10px;",
-              onclick = "event.stopPropagation();",
-              shiny::checkboxInput(
-                session$ns(paste0("question_strict_", q$id)),
-                "Strict",
-                value = q$strict %||% FALSE,
-                width = "auto"
-              )
-            ),
-            shiny::div(
               style = "flex-shrink: 0; width: 80px; text-align: right;",
               if (is_current) shiny::span("← Current", class = "badge badge-primary") else shiny::span(style = "display: inline-block; width: 1px;")
             )
@@ -486,8 +486,20 @@ template_server = function(id, ast, template_path = NULL) {
             if (length(selected_nodes) == 0) {
               shiny::span("None", style = "color: #6c757d;")
             } else {
-              # Display nodes directly without offset
-              shiny::span(paste(selected_nodes, collapse = ", "), style = "color: #28a745;")
+              # Build tree structure to compute children
+              tree_items = build_ast_tree_structure(ast())
+              
+              # Create display format: parent [child1,child2,child3]
+              node_displays = sapply(selected_nodes, function(node_index) {
+                children = find_all_descendants(tree_items, node_index)
+                if (length(children) > 0) {
+                  paste0(node_index, " [", paste(children, collapse = ","), "]")
+                } else {
+                  as.character(node_index)
+                }
+              })
+              
+              shiny::span(paste(node_displays, collapse = ", "), style = "color: #28a745;")
             }
           )
         )
@@ -515,7 +527,6 @@ template_server = function(id, ast, template_path = NULL) {
         id = next_id,
         name = paste("Question", next_id),
         selected_nodes = integer(0),
-        strict = FALSE,
         delete_observer = delete_observer
       )
       
@@ -598,13 +609,12 @@ template_server = function(id, ast, template_path = NULL) {
           s7_questions = list()
           for (q in current_questions) {
             name_value = input[[paste0("question_name_", q$id)]] %||% q$name
-            strict_value = input[[paste0("question_strict_", q$id)]] %||% q$strict %||% FALSE
             
             s7_q = markermd_question(
               id = as.integer(q$id),
               name = name_value,
               selected_nodes = markermd_node_selection(indices = as.integer(q$selected_nodes %||% integer(0))),
-              strict = strict_value
+              strict = FALSE
             )
             s7_questions = c(s7_questions, list(s7_q))
           }
@@ -690,7 +700,6 @@ template_server = function(id, ast, template_path = NULL) {
             id = q@id,
             name = q@name,
             selected_nodes = sort(q@selected_nodes@indices),
-            strict = q@strict,
             delete_observer = create_delete_observer(q@id)
           )
         })
@@ -710,13 +719,7 @@ template_server = function(id, ast, template_path = NULL) {
             if (is.null(loaded_questions[[i]]$selected_nodes)) {
               loaded_questions[[i]]$selected_nodes = integer(0)
             } else {
-              # Use nodes directly without offset
               loaded_questions[[i]]$selected_nodes = sort(loaded_questions[[i]]$selected_nodes)
-            }
-            
-            # Ensure strict field exists
-            if (is.null(loaded_questions[[i]]$strict)) {
-              loaded_questions[[i]]$strict = FALSE
             }
             
             # Create delete observer for this loaded question

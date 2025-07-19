@@ -257,8 +257,11 @@ create_simple_tree = function(tree_items, selected_nodes, ns) {
     
   "))
   
+  # Compute all selected nodes from directly selected ones
+  all_selected_nodes = compute_all_selected_nodes(tree_items, selected_nodes)
+  
   # Build nested tree structure (but without collapsible functionality)
-  tree_html = build_simple_tree_level(tree_items, 0, NULL, selected_nodes, ns)
+  tree_html = build_simple_tree_level(tree_items, 0, NULL, all_selected_nodes, ns, selected_nodes)
   
   shiny::tagList(
     tree_css,
@@ -278,7 +281,7 @@ create_simple_tree = function(tree_items, selected_nodes, ns) {
 #'
 #' @return List of HTML elements for this level
 #'
-build_simple_tree_level = function(tree_items, target_depth, parent_index, selected_nodes, ns) {
+build_simple_tree_level = function(tree_items, target_depth, parent_index, all_selected_nodes, ns, directly_selected_nodes = integer(0)) {
   
   # Find items at this depth with the specified parent
   level_items = tree_items[sapply(tree_items, function(x) {
@@ -293,7 +296,9 @@ build_simple_tree_level = function(tree_items, target_depth, parent_index, selec
   
   lapply(level_items, function(item) {
     
-    is_selected = item$index %in% selected_nodes
+    is_selected = item$index %in% all_selected_nodes
+    is_directly_selected = item$index %in% directly_selected_nodes
+    is_indirectly_selected = is_selected && !is_directly_selected
     
     # Find children for this item
     children = tree_items[sapply(tree_items, function(x) {
@@ -325,15 +330,7 @@ build_simple_tree_level = function(tree_items, target_depth, parent_index, selec
         )
       )
     } else {
-      # Create toggle button for tree structure
-      toggle_button = shiny::actionButton(
-        ns(paste0("select_children_", item$index)),
-        if(is_selected) shiny::icon("check") else "",
-        class = paste("tree-toggle-btn", if(is_selected) "selected" else ""),
-        title = "Toggle this node and its children"
-      )
-      
-      # Create preview button
+      # Create preview button (always available)
       preview_btn = shiny::actionButton(
         ns(paste0("preview_", item$index)),
         shiny::icon("search"),
@@ -342,25 +339,81 @@ build_simple_tree_level = function(tree_items, target_depth, parent_index, selec
         title = "Preview content"
       )
       
-      node_content = shiny::div(
-        class = "tree-node-content",
-        toggle_button,
-        shiny::div(
-          class = "tree-node-info",
-          shiny::actionButton(
-            ns(paste0("select_", item$index)),
-            item$description,
-            class = paste("tree-node-description-btn", if(is_selected) "selected" else ""),
-            style = "background: none; border: none; padding: 0; margin: 0; font: inherit; cursor: pointer; text-align: left; color: inherit;"
-          ),
-          preview_btn
+      # Only show selection buttons for heading nodes that don't have selected ancestors
+      is_selectable_heading = item$type == "rmd_heading" && !has_selected_ancestor(tree_items, item$index, directly_selected_nodes)
+      
+      if (is_selectable_heading) {
+        # Create toggle button for tree structure  
+        button_icon = if(is_directly_selected) {
+          shiny::icon("check")
+        } else if(is_indirectly_selected) {
+          shiny::icon("ellipsis-v") 
+        } else {
+          ""
+        }
+        
+        toggle_button = shiny::actionButton(
+          ns(paste0("select_children_", item$index)),
+          button_icon,
+          class = paste("tree-toggle-btn", if(is_selected) "selected" else ""),
+          title = "Toggle this node and its children"
         )
-      )
+        
+        node_content = shiny::div(
+          class = "tree-node-content",
+          toggle_button,
+          shiny::div(
+            class = "tree-node-info",
+            shiny::actionButton(
+              ns(paste0("select_", item$index)),
+              item$description,
+              class = paste("tree-node-description-btn", if(is_selected) "selected" else ""),
+              style = "background: none; border: none; padding: 0; margin: 0; font: inherit; cursor: pointer; text-align: left; color: inherit;"
+            ),
+            preview_btn
+          )
+        )
+      } else {
+        # Non-selectable nodes (all should show selection state the same way)
+        # Show selection state visually but not clickable
+        indicator_icon = if(is_indirectly_selected) {
+          shiny::icon("ellipsis-v")
+        } else if(is_directly_selected) {
+          shiny::icon("check") 
+        } else {
+          ""
+        }
+        
+        selection_indicator = shiny::div(
+          class = paste("tree-toggle-btn", if(is_selected) "selected" else ""),
+          style = "cursor: default; pointer-events: none;",
+          indicator_icon,
+          title = if(is_selected) "Selected via parent heading" else "Non-selectable node"
+        )
+        
+        # All non-selectable nodes use the same styling
+        text_class = paste("tree-node-description", if(is_selected) "selected" else "")
+        text_style = "margin-right: 12px; line-height: 1.4;"
+        
+        node_content = shiny::div(
+          class = "tree-node-content",
+          selection_indicator,
+          shiny::div(
+            class = "tree-node-info",
+            shiny::span(
+              item$description,
+              class = text_class,
+              style = text_style
+            ),
+            preview_btn
+          )
+        )
+      }
     }
     
     if (has_children) {
       # Create nested structure (but not collapsible)
-      child_elements = build_simple_tree_level(tree_items, target_depth + 1, item$index, selected_nodes, ns)
+      child_elements = build_simple_tree_level(tree_items, target_depth + 1, item$index, all_selected_nodes, ns, directly_selected_nodes)
       
       shiny::tags$li(
         node_content,
@@ -527,6 +580,154 @@ find_node_children = function(tree_items, parent_node_index) {
   }
   
   return(children)
+}
+
+#' Find All Descendants of Node
+#'
+#' Find all descendant nodes (children, grandchildren, etc.) for a given parent node
+#'
+#' @param tree_items List of tree items
+#' @param parent_index Index of parent node
+#'
+#' @return Vector of all descendant node indices
+#'
+find_all_descendants = function(tree_items, parent_node_index) {
+  
+  all_descendants = integer(0)
+  
+  # Handle NULL parent_node_index
+  if (is.null(parent_node_index)) {
+    return(all_descendants)
+  }
+  
+  # Find direct children
+  direct_children = find_node_children(tree_items, parent_node_index)
+  
+  if (length(direct_children) > 0) {
+    # Add direct children to the result
+    all_descendants = c(all_descendants, direct_children)
+    
+    # Recursively find descendants of each child
+    for (child_index in direct_children) {
+      child_descendants = find_all_descendants(tree_items, child_index)
+      all_descendants = c(all_descendants, child_descendants)
+    }
+  }
+  
+  return(unique(all_descendants))
+}
+
+#' Check if Node Has Selected Ancestor
+#'
+#' Check if any ancestor node of the given node is in the directly selected list
+#'
+#' @param tree_items List of tree items
+#' @param node_index Index of the node to check
+#' @param directly_selected_nodes Vector of directly selected node indices
+#'
+#' @return Logical indicating if node has selected ancestors
+#'
+has_selected_ancestor = function(tree_items, node_index, directly_selected_nodes) {
+  
+  # Handle edge cases
+  if (is.null(node_index) || length(directly_selected_nodes) == 0) {
+    return(FALSE)
+  }
+  
+  # Find the tree item for this node
+  node_item = NULL
+  for (item in tree_items) {
+    if (item$index == node_index) {
+      node_item = item
+      break
+    }
+  }
+  
+  if (is.null(node_item)) {
+    return(FALSE)
+  }
+  
+  # Walk up the parent chain checking for selected ancestors
+  current_parent = node_item$parent_index
+  
+  while (!is.null(current_parent) && current_parent != 0) {  # 0 is document root
+    # Check if this parent is directly selected
+    if (current_parent %in% directly_selected_nodes) {
+      return(TRUE)
+    }
+    
+    # Find the parent item to continue walking up
+    parent_item = NULL
+    for (item in tree_items) {
+      if (item$index == current_parent) {
+        parent_item = item
+        break
+      }
+    }
+    
+    if (is.null(parent_item)) {
+      break
+    }
+    
+    current_parent = parent_item$parent_index
+  }
+  
+  return(FALSE)
+}
+
+#' Compute All Selected Nodes from Directly Selected
+#'
+#' Given a list of directly selected nodes, compute the full list including all descendants
+#'
+#' @param tree_items List of tree items
+#' @param directly_selected_nodes Vector of directly selected node indices
+#'
+#' @return Vector of all selected node indices (direct + descendants)
+#'
+compute_all_selected_nodes = function(tree_items, directly_selected_nodes) {
+  
+  if (length(directly_selected_nodes) == 0) {
+    return(integer(0))
+  }
+  
+  all_selected = integer(0)
+  
+  for (node_index in directly_selected_nodes) {
+    # Add the directly selected node
+    all_selected = c(all_selected, node_index)
+    
+    # Add all its descendants
+    descendants = find_all_descendants(tree_items, node_index)
+    all_selected = c(all_selected, descendants)
+  }
+  
+  return(unique(sort(all_selected)))
+}
+
+#' Find Which Selected Nodes Are Descendants of a Given Node
+#'
+#' Given a list of currently selected nodes and a new node, find which selected nodes
+#' are descendants of the new node (and should be removed)
+#'
+#' @param tree_items List of tree items
+#' @param new_node_index Index of the newly selected node
+#' @param current_selected Vector of currently selected node indices
+#'
+#' @return Vector of currently selected nodes that are descendants of the new node
+#'
+find_selected_descendants = function(tree_items, new_node_index, current_selected) {
+  
+  if (length(current_selected) == 0) {
+    return(integer(0))
+  }
+  
+  # Get all descendants of the new node
+  all_descendants = find_all_descendants(tree_items, new_node_index)
+  
+  # Find which currently selected nodes are in the descendants list
+  selected_descendants = intersect(current_selected, all_descendants)
+  
+  return(selected_descendants)
 }
 
 #' Create Simple Tree View for Read-Only Display
