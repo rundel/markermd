@@ -4,14 +4,13 @@
 \alias{process_mark_templates}
 \title{Process Templates for mark() Function}
 \usage{
-process_mark_templates(template)
+process_mark_templates(template_input)
 }
 \arguments{
-\item{template}{Can be:
+\item{template_input}{Can be:
 \itemize{
 \item Character path to .rds file containing template data
-\item List with raw template data (from readRDS)
-\item List with transformed templates (from create_question_templates)
+\item markermd_template S7 object
 \item NULL (no template)
 }}
 }
@@ -20,7 +19,7 @@ Named list of parsermd templates for each question, or NULL if no template
 }
 \description{
 Handles different template input types and converts them to a standardized format
-for use in the marking interface.
+for use in the marking interface using S7 template objects.
 }
 \examples{
 \dontrun{

@@ -4,16 +4,36 @@
 \alias{create_markermd_app}
 \title{Create Shiny App for markermd}
 \usage{
-create_markermd_app(collection_path, template, raw_template_data, use_qmd)
+create_markermd_app(
+  collection_path,
+  template,
+  template_obj,
+  use_qmd,
+  collection,
+  repo_list,
+  validation_results,
+  initial_repo_ast,
+  initial_repo_name
+)
 }
 \arguments{
 \item{collection_path}{Character string. Path to directory containing assignment repositories}
 
 \item{template}{Named list of parsermd templates for validation, or NULL}
 
-\item{raw_template_data}{Raw template data with node selections, or NULL}
+\item{template_obj}{markermd_template S7 object with node selections, or NULL}
 
 \item{use_qmd}{Logical. Whether to parse .qmd files (TRUE) or .Rmd files (FALSE)}
+
+\item{collection}{Parsed collection data from parsermd}
+
+\item{repo_list}{Character vector of repository names}
+
+\item{validation_results}{List of validation results for each repository}
+
+\item{initial_repo_ast}{Initial repository AST to display}
+
+\item{initial_repo_name}{Name of initial repository}
 }
 \value{
 Shiny app object

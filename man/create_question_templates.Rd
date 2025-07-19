@@ -2,26 +2,16 @@
 % Please edit documentation in R/utils_template.R
 \name{create_question_templates}
 \alias{create_question_templates}
-\title{Create parsermd Templates from Saved Template Data}
+\title{Create Question Templates}
 \usage{
-create_question_templates(template_data)
+create_question_templates(template_obj)
 }
 \arguments{
-\item{template_data}{List containing original_ast, questions, and metadata components
-as returned by readRDS() from a saved template file}
+\item{template_obj}{markermd_template S7 object}
 }
 \value{
-Named list of parsermd templates, where names are question names and values
-are rmd_template objects created via parsermd::rmd_template()
+Named list of parsermd templates
 }
 \description{
-Takes a saved template data structure and creates parsermd templates for each question
-using the selected node subsets.
-}
-\examples{
-\dontrun{
-template_data = readRDS("path/to/template.rds")
-templates = create_question_templates(template_data)
-}
-
+Creates parsermd templates from a template S7 object
 }

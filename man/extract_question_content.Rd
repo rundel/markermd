@@ -4,12 +4,12 @@
 \alias{extract_question_content}
 \title{Extract Question Content from AST}
 \usage{
-extract_question_content(ast, template_data)
+extract_question_content(ast, template_obj)
 }
 \arguments{
 \item{ast}{rmd_ast object from parsing a repository document}
 
-\item{template_data}{Raw template data containing original_ast and questions with node selections}
+\item{template_obj}{markermd_template S7 object containing questions with node selections}
 }
 \value{
 Named list where names are question names and values are the extracted content as text

@@ -9,7 +9,9 @@ create_template_app(
   local_dir,
   filename,
   is_github_repo,
-  template_path = NULL
+  template_path = NULL,
+  file_path,
+  ast
 )
 }
 \arguments{
@@ -22,6 +24,10 @@ create_template_app(
 \item{is_github_repo}{Logical. Whether assignment_path is a GitHub repo}
 
 \item{template_path}{Character string. Optional path to template RDS file to load}
+
+\item{file_path}{Character string. Path to the assignment file}
+
+\item{ast}{Parsed AST object from the assignment document}
 }
 \value{
 Shiny app object
