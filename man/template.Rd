@@ -4,22 +4,20 @@
 \alias{template}
 \title{Launch the markermd Template Creation Application}
 \usage{
-template(
-  assignment_path,
-  local_dir = NULL,
-  filename = "*.[Rq]md",
-  template = NULL,
-  ...
-)
+template(assignment_path, local_dir = NULL, filename = "*.[Rq]md", ...)
 }
 \arguments{
-\item{assignment_path}{Character string. Path to local directory or GitHub repo in format "owner/repo"}
+\item{assignment_path}{Assignment source or existing template. Can be:
+\itemize{
+\item Character path to local directory containing assignment
+\item Character GitHub repo in format "owner/repo"
+\item Character path to .rds file containing markermd_template
+\item markermd_template S7 object
+}}
 
-\item{local_dir}{Character string. Local directory for cloning (required for remote repos)}
+\item{local_dir}{Character string. Local directory for cloning (required for remote GitHub repos, ignored for templates)}
 
-\item{filename}{Character string. Glob pattern to match Rmd/qmd file to grade. Default glob matches any .Rmd or .qmd file.}
-
-\item{template}{Character string. Optional path to a template RDS file to load on startup. Default is NULL.}
+\item{filename}{Character string. Glob pattern to match Rmd/qmd file to grade (ignored for templates). Default glob matches any .Rmd or .qmd file.}
 
 \item{...}{Additional arguments passed to shiny::runApp()}
 }
@@ -40,7 +38,11 @@ template("/path/to/assignment", filename = "homework.Rmd")
 # Remote GitHub repo
 template("username/repo-name", local_dir = "/tmp/grading", filename = "assignment.qmd")
 
-# Load assignment with existing template
-template("/path/to/assignment", template = "/path/to/saved_template.rds")
+# Load existing template from file
+template("/path/to/saved_template.rds")
+
+# Load existing template from S7 object
+my_template = readRDS("/path/to/template.rds")
+template(my_template)
 }
 }

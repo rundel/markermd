@@ -8,8 +8,9 @@ build_simple_tree_level(
   tree_items,
   target_depth,
   parent_index,
-  selected_nodes,
-  ns
+  all_selected_nodes,
+  ns,
+  directly_selected_nodes = integer(0)
 )
 }
 \arguments{
@@ -19,9 +20,9 @@ build_simple_tree_level(
 
 \item{parent_index}{Parent node index (NULL for root)}
 
-\item{selected_nodes}{Vector of selected node indices}
-
 \item{ns}{Shiny namespace function}
+
+\item{selected_nodes}{Vector of selected node indices}
 }
 \value{
 List of HTML elements for this level

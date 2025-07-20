@@ -4,14 +4,14 @@
 \alias{template_server}
 \title{Template Server}
 \usage{
-template_server(id, ast, template_path = NULL)
+template_server(id, ast, template_obj = NULL)
 }
 \arguments{
 \item{id}{Character. Module namespace ID}
 
 \item{ast}{Reactive. The parsed AST object}
 
-\item{template_path}{Character. Optional path to template RDS file to load on startup}
+\item{template_obj}{markermd_template S7 object. Optional template to load on startup}
 }
 \description{
 Template Server

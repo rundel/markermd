@@ -8,7 +8,7 @@ markermd_question(
   id = integer(0),
   name = character(0),
   selected_nodes = markermd_node_selection(),
-  strict = FALSE
+  rules = list()
 )
 }
 \arguments{
@@ -18,8 +18,8 @@ markermd_question(
 
 \item{selected_nodes}{node_selection. Selected AST nodes for this question}
 
-\item{strict}{Logical. Whether to include all selected content (TRUE) or headers only (FALSE)}
+\item{rules}{List. Validation rules for this question as markermd_rule objects}
 }
 \description{
-S7 class representing a single template question with selected nodes
+S7 class representing a single template question with selected nodes and validation rules
 }

@@ -7,7 +7,7 @@
 as_markermd_question(x)
 }
 \arguments{
-\item{x}{List with id, name, selected_nodes, strict fields}
+\item{x}{List with id, name, selected_nodes fields}
 }
 \description{
 Convert List to question

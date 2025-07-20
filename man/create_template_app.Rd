@@ -9,7 +9,7 @@ create_template_app(
   local_dir,
   filename,
   is_github_repo,
-  template_path = NULL,
+  template_obj = NULL,
   file_path,
   ast
 )
@@ -23,7 +23,7 @@ create_template_app(
 
 \item{is_github_repo}{Logical. Whether assignment_path is a GitHub repo}
 
-\item{template_path}{Character string. Optional path to template RDS file to load}
+\item{template_obj}{markermd_template S7 object. Optional template to load on startup}
 
 \item{file_path}{Character string. Path to the assignment file}
 
