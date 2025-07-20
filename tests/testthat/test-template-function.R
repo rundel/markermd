@@ -41,7 +41,9 @@ test_that("template() function works with local assignment", {
         local_dir = NULL,
         filename = "assignment.qmd", 
         is_github_repo = FALSE,
-        template_path = NULL
+        template_obj = NULL,
+        file_path = test_qmd,
+        ast = parsermd::parse_qmd(test_qmd)
       )
     })
     
@@ -67,7 +69,9 @@ test_that("template() function works with existing assignment", {
       local_dir = NULL,
       filename = "assignment.qmd",
       is_github_repo = FALSE,
-      template_path = NULL
+      template_obj = NULL,
+      file_path = file.path(test_dir, "assignment.qmd"),
+      ast = parsermd::parse_qmd(file.path(test_dir, "assignment.qmd"))
     )
     
     # Verify it's a valid Shiny app
@@ -123,7 +127,9 @@ test_that("template() function handles template loading", {
       local_dir = NULL,
       filename = "assignment.qmd",
       is_github_repo = FALSE,
-      template_path = template_file
+      template_obj = readRDS(template_file),
+      file_path = test_qmd,
+      ast = parsermd::parse_qmd(test_qmd)
     )
     
     # Verify it's a valid Shiny app
@@ -167,7 +173,9 @@ test_that("template() function creates a valid shiny app", {
     local_dir = NULL,
     filename = "assignment.qmd",
     is_github_repo = FALSE,
-    template_path = NULL
+    template_obj = NULL,
+    file_path = test_qmd,
+    ast = parsermd::parse_qmd(test_qmd)
   )
   
   # Test with AppDriver using the app object directly
@@ -201,6 +209,7 @@ test_that("template() function node selection works correctly", {
   # Use the existing test assignment for more complex structure
   # Try different path strategies to find the test assignment
   test_assignment_dir = NULL
+  test_qmd = NULL
   possible_paths = c(
     file.path("..", "..", "inst", "examples", "test_assignment", "student1-excellent"),
     file.path("inst", "examples", "test_assignment", "student1-excellent"),
@@ -210,6 +219,7 @@ test_that("template() function node selection works correctly", {
   for (path in possible_paths) {
     if (dir.exists(path)) {
       test_assignment_dir = path
+      test_qmd = file.path(path, "assignment.qmd")
       break
     }
   }
@@ -259,7 +269,9 @@ test_that("template() function node selection works correctly", {
     local_dir = NULL,
     filename = "assignment.qmd",
     is_github_repo = FALSE,
-    template_path = NULL
+    template_obj = NULL,
+    file_path = test_qmd,
+    ast = parsermd::parse_qmd(test_qmd)
   )
   
   # Test with AppDriver using the app object directly
@@ -376,7 +388,9 @@ test_that("template() function question management works", {
     local_dir = NULL,
     filename = "assignment.qmd",
     is_github_repo = FALSE,
-    template_path = NULL
+    template_obj = NULL,
+    file_path = test_qmd,
+    ast = parsermd::parse_qmd(test_qmd)
   )
   
   # Test with AppDriver using the app object directly
@@ -442,7 +456,9 @@ test_that("template() function with invalid inputs handles errors gracefully", {
       local_dir = NULL,
       filename = "assignment.qmd",
       is_github_repo = FALSE,
-      template_path = NULL
+      template_obj = NULL,
+      file_path = "/nonexistent/path",
+      ast = NULL
     )
   }, silent = TRUE)
   
@@ -472,7 +488,9 @@ test_that("template() function with invalid inputs handles errors gracefully", {
       local_dir = NULL,
       filename = "assignment.qmd",
       is_github_repo = FALSE,
-      template_path = "/nonexistent/template.rds"
+      template_obj = NULL,
+      file_path = test_qmd,
+      ast = parsermd::parse_qmd(test_qmd)
     )
   })
   
@@ -519,7 +537,9 @@ test_that("template() function save functionality works correctly", {
     local_dir = NULL,
     filename = "assignment.qmd",
     is_github_repo = FALSE,
-    template_path = NULL
+    template_obj = NULL,
+    file_path = test_qmd,
+    ast = parsermd::parse_qmd(test_qmd)
   )
   
   # Test with AppDriver using the app object directly
@@ -630,7 +650,9 @@ test_that("template() function load functionality works correctly", {
       local_dir = NULL,
       filename = "assignment.qmd",
       is_github_repo = FALSE,
-      template_path = template_file
+      template_obj = readRDS(template_file),
+      file_path = test_qmd,
+      ast = parsermd::parse_qmd(test_qmd)
     )
     
     # Verify it's a valid Shiny app

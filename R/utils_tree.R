@@ -741,44 +741,62 @@ find_selected_descendants = function(tree_items, new_node_index, current_selecte
 #' @return Shiny UI element with simple tree (read-only)
 #'
 create_simple_tree_readonly = function(tree_items, ns, repo_id = NULL) {
+  create_simple_tree_readonly_at_depth(tree_items, ns, repo_id, start_depth = 0)
+}
+
+#' Create Simple Tree View for Read-Only Display at Specific Depth
+#'
+#' Create a simple flat tree view for AST nodes without selection functionality, starting at a specific depth
+#'
+#' @param tree_items List of tree items from build_ast_tree_structure
+#' @param ns Shiny namespace function
+#' @param repo_id Character. Unique identifier for the repository to avoid ID collisions
+#' @param start_depth Integer. The depth level to start rendering from
+#'
+#' @return Shiny UI element with simple tree (read-only)
+#'
+create_simple_tree_readonly_at_depth = function(tree_items, ns, repo_id = NULL, start_depth = 0) {
   
   if (length(tree_items) == 0) {
     return(shiny::p("No document structure available"))
   }
   
   # Create tree CSS using iamkate.com styling (without interactive elements)
-  tree_css = shiny::tags$style(shiny::HTML("
-    .ast-tree-readonly {
+  # Add special handling for trees starting at depth > 0
+  css_class = if (start_depth > 0) "ast-tree-readonly-nested" else "ast-tree-readonly"
+  
+  tree_css = shiny::tags$style(shiny::HTML(paste0("
+    .", css_class, " {
       --spacing: 1.5rem;
       --radius: 10px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      font-size: 13px;
+      font-size: 11px;
       list-style: none;
       padding: 0;
       margin: 0;
     }
     
-    .ast-tree-readonly li {
+    .", css_class, " li {
       display: block;
       position: relative;
       padding-left: calc(2 * var(--spacing) - var(--radius) - 2px);
     }
     
-    .ast-tree-readonly ul {
+    .", css_class, " ul {
       margin-left: calc(var(--radius) - var(--spacing));
       padding-left: 0;
       list-style: none;
     }
     
-    .ast-tree-readonly ul li {
+    .", css_class, " ul li {
       border-left: 2px solid #ddd;
     }
     
-    .ast-tree-readonly ul li:last-child {
+    .", css_class, " ul li:last-child {
       border-color: transparent;
     }
     
-    .ast-tree-readonly ul li::before {
+    .", css_class, " ul li::before {
       content: '';
       display: block;
       position: absolute;
@@ -790,8 +808,31 @@ create_simple_tree_readonly = function(tree_items, ns, repo_id = NULL) {
       border-width: 0 0 2px 2px;
     }
     
+    /* For nested trees (start_depth > 0), add branch lines to root level items */
+    ", if (start_depth > 0) paste0("
+    .", css_class, " > li {
+      border-left: 2px solid #ddd;
+    }
+    
+    .", css_class, " > li::before {
+      content: '';
+      display: block;
+      position: absolute;
+      top: calc(var(--spacing) / -2);
+      left: -2px;
+      width: calc(var(--spacing) + 2px);
+      height: calc(var(--spacing) + 1px);
+      border: solid #ddd;
+      border-width: 0 0 2px 2px;
+    }
+    
+    .", css_class, " > li:last-child {
+      border-color: transparent;
+    }
+    ") else "", "
+    
     /* Simple dots for all nodes (no interaction) */
-    .ast-tree-readonly li::after {
+    .", css_class, " li::after {
       content: '';
       display: block;
       position: absolute;
@@ -804,7 +845,7 @@ create_simple_tree_readonly = function(tree_items, ns, repo_id = NULL) {
     }
     
     /* Document icon for root node */
-    .ast-tree-readonly li.document-root::after {
+    .", css_class, " li.document-root::after {
       content: '📄';
       background: transparent;
       border-radius: 0;
@@ -816,7 +857,7 @@ create_simple_tree_readonly = function(tree_items, ns, repo_id = NULL) {
       font-size: 16px;
     }
     
-    .ast-tree-readonly .tree-node-content {
+    .", css_class, " .tree-node-content {
       display: flex;
       align-items: center;
       justify-content: flex-start;
@@ -826,25 +867,25 @@ create_simple_tree_readonly = function(tree_items, ns, repo_id = NULL) {
       min-height: calc(2 * var(--radius));
     }
     
-    .ast-tree-readonly .tree-node-info {
+    .", css_class, " .tree-node-info {
       display: flex;
       align-items: center;
       flex-grow: 1;
     }
     
-    .ast-tree-readonly .tree-node-description {
+    .", css_class, " .tree-node-description {
       margin-right: 12px;
       line-height: 1.4;
       color: #333;
     }
-  "))
+  ")))
   
-  # Build nested tree structure (read-only)
-  tree_html = build_simple_tree_level_readonly(tree_items, 0, NULL, ns, repo_id)
+  # Build nested tree structure (read-only) starting at the specified depth
+  tree_html = build_simple_tree_level_readonly(tree_items, start_depth, NULL, ns, repo_id)
   
   shiny::tagList(
     tree_css,
-    shiny::tags$ul(class = "ast-tree-readonly", tree_html)
+    shiny::tags$ul(class = css_class, tree_html)
   )
 }
 

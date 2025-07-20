@@ -65,10 +65,10 @@ marking_ui = function(id) {
 #'
 #' @param id Character. Module namespace ID
 #' @param ast Reactive. The parsed AST object
-#' @param template Reactive. The template object with questions
-#' @param template_obj Reactive. markermd_template S7 object with node selections for content extraction
+#' @param template_obj Reactive. markermd_template S7 object with questions and rules
+#' @param validation_results Reactive. Optional validation results for current repository
 #'
-marking_server = function(id, ast, template, template_obj = shiny::reactiveVal(NULL)) {
+marking_server = function(id, ast, template_obj, validation_results = shiny::reactiveVal(NULL)) {
   shiny::moduleServer(id, function(input, output, session) {
     
     # Reactive values for managing grading
@@ -101,15 +101,14 @@ marking_server = function(id, ast, template, template_obj = shiny::reactiveVal(N
     
     # Update questions list based on template
     shiny::observe({
-      if (is.null(template()) || length(template()) == 0) {
+      current_template_obj = template_obj()
+      if (is.null(current_template_obj) || length(current_template_obj@questions) == 0) {
         content = shiny::p("No template loaded. Please create a template first.")
       } else {
-        templates_list = template()
         current_ast = ast()
-        current_template_obj = template_obj()
         
         # Extract question content for tooltips
-        question_contents = if (!is.null(current_ast) && !is.null(current_template_obj)) {
+        question_contents = if (!is.null(current_ast)) {
           extract_question_content(current_ast, current_template_obj)
         } else {
           list()
@@ -121,10 +120,27 @@ marking_server = function(id, ast, template, template_obj = shiny::reactiveVal(N
           
           shiny::tags$ul(
             style = "list-style-type: none; padding-left: 0; margin: 0;",
-            lapply(seq_along(names(templates_list)), function(i) {
-              question_name = names(templates_list)[i]
+            lapply(seq_along(current_template_obj@questions), function(i) {
+              question_name = current_template_obj@questions[[i]]@name
               # Get tooltip content
               tooltip_content = question_contents[[question_name]] %||% "No content available for this question."
+              
+              # Get validation status if available
+              current_validation = validation_results()
+              validation_status = if (!is.null(current_validation) && !is.null(current_validation[[question_name]])) {
+                status = current_validation[[question_name]]$status
+                if (status == "pass") {
+                  '<span style="color: #28a745; margin-left: 10px;"><i class="fas fa-check-circle"></i></span>'
+                } else if (status == "fail") {
+                  '<span style="color: #dc3545; margin-left: 10px;"><i class="fas fa-times-circle"></i></span>'
+                } else if (status == "error") {
+                  '<span style="color: #ffc107; margin-left: 10px;"><i class="fas fa-exclamation-triangle"></i></span>'
+                } else {
+                  ""
+                }
+              } else {
+                ""
+              }
               
               # Create a unique ID for this question item
               item_id = session$ns(paste0("question_item_", i))
@@ -150,7 +166,7 @@ marking_server = function(id, ast, template, template_obj = shiny::reactiveVal(N
                 onmouseover = "this.style.backgroundColor = '#f0f0f0';",
                 onmouseout = "this.style.backgroundColor = 'transparent';",
                 
-                question_name
+                shiny::HTML(paste0(question_name, validation_status))
               )
             })
           )

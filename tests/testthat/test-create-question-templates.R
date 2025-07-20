@@ -77,8 +77,7 @@ test_that("create_question_templates handles empty node selections", {
   empty_question = markermd_question(
     id = 1L,
     name = "Empty Question", 
-    selected_nodes = markermd_node_selection(indices = integer(0)),
-    strict = FALSE
+    selected_nodes = markermd_node_selection(indices = integer(0))
   )
   
   empty_template = markermd_template(

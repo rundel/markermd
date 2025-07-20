@@ -12,58 +12,13 @@ explore_ui = function(id) {
   shiny::div(
     style = "height: calc(100vh - 150px); min-height: 600px; padding: 20px;",
     
-    bslib::layout_columns(
+    shiny::div(
+      style = "border: 1px solid #ddd; padding: 15px; background-color: #f9f9f9; min-height: 400px;",
+      shiny::h4("Validation Results"),
       shiny::div(
-        shiny::h3("Document Explorer"),
-        shiny::p("This is a placeholder for the document exploration interface.", 
-               style = "color: #6c757d; font-style: italic;")
-      )
-    ),
-    
-    shiny::hr(),
-    
-    bslib::layout_columns(
-      col_widths = c(6, 6),
-      shiny::div(
-        style = "border: 1px solid #ddd; padding: 10px; background-color: #f9f9f9; min-height: 400px;",
-        shiny::h4("Document Structure"),
-        shiny::div(
-          id = ns("ast_tree_container"),
-          style = "flex: 1; overflow-y: auto; min-height: 350px;",
-          shiny::uiOutput(ns("ast_tree_ui"))
-        )
-      ),
-      shiny::div(
-        shiny::div(
-          style = "border: 1px solid #ddd; padding: 15px; background-color: #f9f9f9; min-height: 200px;",
-          shiny::h4("Template Validation"),
-          shiny::div(
-            id = ns("template_validation"),
-            shiny::uiOutput(ns("template_validation_ui"))
-          )
-        ),
-        shiny::br(),
-        shiny::div(
-          style = "border: 1px solid #ddd; padding: 15px; background-color: #f9f9f9; min-height: 200px;",
-          shiny::h4("Repository Summary"),
-          shiny::verbatimTextOutput(ns("repo_summary"))
-        )
-      )
-    ),
-    
-    shiny::br(),
-    
-    bslib::layout_columns(
-      shiny::div(
-        style = "border: 1px solid #ddd; padding: 15px; background-color: #f8f9fa; min-height: 200px;",
-        shiny::h4("Analysis Tools"),
-        shiny::p("Document analysis and exploration tools will be added here in the future."),
-        shiny::tags$ul(
-          shiny::tags$li("Code chunk analysis"),
-          shiny::tags$li("Markdown section overview"),
-          shiny::tags$li("YAML metadata inspection"),
-          shiny::tags$li("Document statistics and insights")
-        )
+        id = ns("template_validation"),
+        style = "max-height: calc(100vh - 250px); overflow-y: auto;",
+        shiny::uiOutput(ns("template_validation_ui"))
       )
     )
   )
@@ -74,284 +29,201 @@ explore_ui = function(id) {
 #' @param id Character. Module namespace ID
 #' @param ast Reactive. The parsed AST object
 #' @param current_repo_name Reactive. Current repository name
-#' @param template Reactive. Template data for validation
+#' @param validation_results Reactive. Validation results for current repository
+#' @param selected_question_name Reactive. Currently selected question name
+#' @param template Reactive. Template object for reference
 #'
-explore_server = function(id, ast, current_repo_name = shiny::reactiveVal(NULL), template = shiny::reactiveVal(NULL)) {
+explore_server = function(id, ast, current_repo_name = shiny::reactiveVal(NULL), validation_results = shiny::reactiveVal(NULL), selected_question_name = shiny::reactiveVal(NULL), template = shiny::reactiveVal(NULL)) {
   shiny::moduleServer(id, function(input, output, session) {
     
-    # Track preview observers for cleanup
-    preview_observers = shiny::reactiveVal(list())
-    
-    # Reactive value for validation results
-    validation_data = shiny::reactiveVal(list())
-    
-    # Function to destroy all existing preview observers
-    destroy_preview_observers = function() {
-      # Remove any existing modal dialogs
-      tryCatch(shiny::removeModal(), error = function(e) NULL)
-      
-      # Safely get observers - handle case where reactive context is not available
-      current_observers = tryCatch(preview_observers(), error = function(e) list())
-      if (length(current_observers) > 0) {
-        for (observer in current_observers) {
-          if (!is.null(observer)) {
-            tryCatch(observer$destroy(), error = function(e) NULL)
-          }
-        }
-      }
-      # Only update reactive value if reactive context is available
-      tryCatch(preview_observers(list()), error = function(e) NULL)
-    }
-    
-    # Get AST nodes for easier handling
-    ast_nodes = shiny::reactive({
-      if (is.null(ast())) return(NULL)
-      
-      # Handle new parsermd structure with nodes slot
-      if (inherits(ast(), "rmd_ast") && !is.null(ast()@nodes)) {
-        ast()@nodes
-      } else {
-        ast()
-      }
-    })
-    
-    # Create interactive AST tree display (read-only version)
-    output$ast_tree_ui = shiny::renderUI({
-      if (is.null(ast()) || is.null(ast_nodes())) {
-        return(shiny::p("No document loaded", style = "color: #6c757d; font-style: italic;"))
-      }
-      
-      # Build tree structure
-      tree_items = build_ast_tree_structure(ast())
-      
-      if (length(tree_items) == 0) {
-        return(shiny::p("No document structure available", style = "color: #6c757d; font-style: italic;"))
-      }
-      
-      # Create the simple tree (read-only version with no selection)
-      # Use current repo name as ID to avoid button collisions
-      repo_id = if (!is.null(current_repo_name()) && current_repo_name() != "") {
-        # Clean repo name for use as ID (remove special characters)
-        gsub("[^A-Za-z0-9]", "", current_repo_name())
-      } else {
-        NULL
-      }
-      simple_tree = create_simple_tree_readonly(tree_items, session$ns, repo_id)
-      
-      shiny::div(
-        style = "background-color: #f8f9fa; padding: 15px; border-radius: 4px; border: 1px solid #dee2e6;",
-        simple_tree
-      )
-    })
-    
-    # Track the current repository to detect changes
-    last_repo_name = shiny::reactiveVal(NULL)
-    
-    # Handle node preview clicks with observer tracking
-    shiny::observe({
-      current_repo = current_repo_name()
-      
-      # Clean up observers when repo changes or becomes null
-      if (!identical(last_repo_name(), current_repo)) {
-        destroy_preview_observers()
-        last_repo_name(current_repo)
-      }
-      
-      if (is.null(ast_nodes()) || is.null(current_repo)) {
-        return()
-      }
-      
-      # Only create observers if we don't already have them for this repo
-      if (length(preview_observers()) == 0) {
-        nodes = ast_nodes()
-        tree_items = build_ast_tree_structure(ast())
-        
-        # Create repo_id for button identification
-        repo_id = if (!is.null(current_repo) && current_repo != "") {
-          gsub("[^A-Za-z0-9]", "", current_repo)
-        } else {
-          NULL
-        }
-        
-        # Track new observers
-        new_observers = list()
-        
-        for (i in seq_along(nodes)) {
-          local({
-            node_index = i  # Use direct node index
-            
-            # Create unique button ID matching the one created in the tree
-            button_id = if (!is.null(repo_id)) {
-              paste0("preview_", repo_id, "_", node_index)
-            } else {
-              paste0("preview_", node_index)
-            }
-            
-            # Handle "Preview" button and track the observer
-            observer = shiny::observeEvent(input[[button_id]], {
-              # Use node_index directly
-              if (node_index >= 1 && node_index <= length(nodes)) {
-                node = nodes[[node_index]]
-                
-                # Use as_document() to get raw node content
-                content = tryCatch({
-                  result = parsermd::as_document(node) |>
-                    as.character() |>
-                    paste(collapse="\n")
-                }, error = function(e) {
-                  paste("Error:", e$message)
-                })
-
-                # Get node type for title
-                node_type = class(node)[1]
-                
-                shiny::showModal(
-                  shiny::modalDialog(
-                    title = shiny::div(
-                      style = "display: flex; justify-content: space-between; align-items: center; margin: 0; padding: 0;",
-                      shiny::span(node_type, style = "font-weight: bold;"),
-                      shiny::tags$button(
-                        type = "button",
-                        class = "close",
-                        `data-dismiss` = "modal",
-                        `aria-label` = "Close",
-                        style = "background: none; border: none; font-size: 24px; font-weight: bold; color: #000; opacity: 0.5; cursor: pointer;",
-                        shiny::icon("times")
-                      )
-                    ),
-                    size = "l",
-                    shiny::div(
-                      style = "max-height: 500px; overflow-y: auto;",
-                      shiny::pre(
-                        content,
-                        style = "font-family: 'Courier New', Courier, monospace; font-size: 12px; white-space: pre-wrap; margin: 0; background: #f8f9fa; padding: 15px; border: 1px solid #e9ecef; border-radius: 3px; line-height: 1.4;"
-                      )
-                    ),
-                    footer = NULL,
-                    easyClose = TRUE
-                  )
-                )
-              }
-            }, ignoreInit = TRUE)
-            
-            # Store the observer in our tracking list
-            new_observers[[length(new_observers) + 1]] = observer
-          })
-        }
-        
-        # Update the tracked observers
-        preview_observers(new_observers)
-      }
-    })
-    
-    # Display repository summary
-    output$repo_summary = shiny::renderText({
-      if (is.null(ast())) {
-        return("No repository selected")
-      }
-      
-      summary = get_document_summary(ast())
-      paste(
-        paste("Total nodes:", summary$total_nodes),
-        paste("Code chunks:", summary$code_chunks),
-        paste("Markdown sections:", summary$markdown_sections),
-        paste("YAML headers:", if(summary$has_yaml) "Yes" else "No"),
-        "",
-        "This view shows the parsed AST structure",
-        "of the currently selected repository.",
-        sep = "\n"
-      )
-    })
-    
-    # Perform validation when AST or template changes
-    shiny::observe({
-      current_ast = ast()
-      current_template = template()
-      
-      if (!is.null(current_ast) && !is.null(current_template) && length(current_template) > 0) {
-        # Run validation
-        validation_results = validate_repo_against_templates(current_ast, current_template)
-        validation_data(validation_results)
-      } else {
-        validation_data(list())
-      }
-    })
-    
-    # Template validation UI
+    # All questions validation cards UI
     output$template_validation_ui = shiny::renderUI({
-      validation_results = validation_data()
+      current_validation = validation_results()
       current_template = template()
       
-      if (is.null(current_template) || length(current_template) == 0) {
+      if (is.null(current_template)) {
         return(shiny::p("No template loaded for validation.", 
                        style = "color: #6c757d; font-style: italic;"))
       }
       
-      if (length(validation_results) == 0) {
-        return(shiny::p("Validation not available.", 
+      if (is.null(current_validation) || length(current_validation) == 0) {
+        return(shiny::p("No validation data available for current repository.", 
                        style = "color: #6c757d; font-style: italic;"))
       }
       
-      # Create validation results display with icons and bslib tooltips
-      validation_items = lapply(names(validation_results), function(question_name) {
-        validation = validation_results[[question_name]]
+      # Create cards for all questions
+      question_cards = lapply(current_template@questions, function(template_question) {
+        question_name = template_question@name
         
-        # Determine status icon and create tooltip content for failures/errors only
-        if (validation$status == "pass") {
-          # No tooltip for passing validations
-          icon_element = shiny::div(
-            style = "font-size: 18px;",
-            shiny::icon("check-circle", class = "text-success")
-          )
+        # Get validation result for this question
+        question_result = if (!is.null(current_validation[[question_name]])) {
+          current_validation[[question_name]]
         } else {
-          # Create formatted tooltip content for failures and errors
-          if (validation$status == "fail") {
-            status_icon = shiny::icon("times-circle", class = "text-danger")
-          } else {
-            status_icon = shiny::icon("exclamation-circle", class = "text-warning")
-          }
-          
-          # Format tooltip content - messages already have prefix symbols (✗, *)
-          message_text = if (length(validation$messages) > 0) {
-            paste(validation$messages, collapse = "\n")
-          } else {
-            validation$details
-          }
-          
-          tooltip_content = shiny::div(
-            style = "text-align: left; white-space: pre-line;",
-            message_text
-          )
-          
-          icon_element = bslib::tooltip(
-            shiny::div(
-              style = "font-size: 18px; cursor: help;",
-              status_icon
-            ),
-            tooltip_content,
-            placement = "top"
-          )
+          list(status = "unknown", messages = character(0))
         }
         
-        shiny::div(
-          style = "display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid #eee;",
-          icon_element,
-          shiny::span(
-            question_name,
-            style = "font-weight: 500;"
+        # Overall status styling
+        status_color = switch(question_result$status,
+          "pass" = "#28a745",
+          "fail" = "#dc3545", 
+          "error" = "#ffc107",
+          "#6c757d"
+        )
+        
+        # Create HTML for solid circle icons with white symbols
+        status_icon_html = switch(question_result$status,
+          "pass" = '<i class="fas fa-circle" style="color: #28a745;"></i><i class="fas fa-check" style="color: white; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 10px;"></i>',
+          "fail" = '<i class="fas fa-circle" style="color: #dc3545;"></i><i class="fas fa-times" style="color: white; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 10px;"></i>',
+          "error" = '<i class="fas fa-circle" style="color: #ffc107;"></i><i class="fas fa-exclamation" style="color: white; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 10px;"></i>',
+          '<i class="fas fa-question-circle" style="color: #6c757d;"></i>'
+        )
+        
+        # Get the document nodes for this question using section selection
+        question_nodes_content = if (length(template_question@selected_nodes@indices) > 0) {
+          tryCatch({
+            # Resolve section names from the template's selected nodes
+            section_names = resolve_section_names(current_template@original_ast, template_question@selected_nodes@indices)
+            
+            if (length(section_names) > 0) {
+              # Get the question content from current AST using by_section
+              current_ast = ast()
+              if (!is.null(current_ast)) {
+                question_ast = parsermd::rmd_select(current_ast, parsermd::by_section(section_names), keep_yaml = FALSE)
+                
+                if (!is.null(question_ast) && length(question_ast@nodes) > 0) {
+                  # Build tree structure for the question AST
+                  tree_items = build_ast_tree_structure(question_ast)
+                  
+                  if (length(tree_items) > 1) {  # Must have more than just document root
+                    # Filter out document root (index 0) and adjust depths for question display
+                    content_items = tree_items[sapply(tree_items, function(x) x$index != 0)]
+                    
+                    # Adjust depths to start from 1 for content nodes (so they display at visual level 1)
+                    if (length(content_items) > 0) {
+                      min_depth = min(sapply(content_items, function(x) x$depth))
+                      content_items = lapply(content_items, function(x) {
+                        x$depth = x$depth - min_depth + 1
+                        # Update parent indices: if parent was document root (0), set to NULL
+                        if (!is.null(x$parent_index) && x$parent_index == 0) {
+                          x$parent_index = NULL
+                        }
+                        x
+                      })
+                      
+                      # Create non-interactive tree display for this question
+                      # Use unique ID prefix for each question to avoid conflicts
+                      question_id = paste0("q_", gsub("[^A-Za-z0-9]", "", question_name))
+                      # Start tree at depth 1 to match the adjusted node depths
+                      simple_tree = create_simple_tree_readonly_at_depth(content_items, function(x) paste0("question_", question_id, "_", x), question_id, start_depth = 1)
+                      
+                      shiny::div(
+                        style = "margin-bottom: 3px; padding: 8px; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; max-height: 120px; overflow-y: auto; font-size: 11px;",
+                        simple_tree
+                      )
+                    } else {
+                      shiny::p("No content found in selected sections.", style = "font-size: 11px; color: #6c757d; font-style: italic; margin: 8px 0;")
+                    }
+                  } else {
+                    shiny::p("No content found in selected sections.", style = "font-size: 11px; color: #6c757d; font-style: italic; margin: 8px 0;")
+                  }
+                } else {
+                  shiny::p("No matching sections found in current document.", style = "font-size: 11px; color: #6c757d; font-style: italic; margin: 8px 0;")
+                }
+              } else {
+                shiny::p("No document loaded.", style = "font-size: 11px; color: #6c757d; font-style: italic; margin: 8px 0;")
+              }
+            } else {
+              shiny::p("No sections resolved from template.", style = "font-size: 11px; color: #6c757d; font-style: italic; margin: 8px 0;")
+            }
+          }, error = function(e) {
+            shiny::p(paste("Error loading content:", e$message), style = "font-size: 11px; color: #dc3545; font-style: italic; margin: 8px 0;")
+          })
+        } else {
+          shiny::p("No nodes selected in template.", style = "font-size: 11px; color: #6c757d; font-style: italic; margin: 8px 0;")
+        }
+        
+        # Create rule details
+        rule_details = if (length(template_question@rules) > 0) {
+          # Parse rule messages to understand individual rule results
+          if (is.character(question_result$messages) && length(question_result$messages) > 0) {
+            rule_items = lapply(seq_along(question_result$messages), function(i) {
+              message = question_result$messages[i]
+              rule = if (i <= length(template_question@rules)) template_question@rules[[i]] else NULL
+              
+              # Determine if this rule passed based on message content
+              rule_passed = grepl("passed|check passed|always matches|never matches", message, ignore.case = TRUE)
+              rule_color = if (rule_passed) "#28a745" else "#dc3545"
+              rule_icon = if (rule_passed) "check" else "times"
+              
+              shiny::div(
+                style = paste0("margin: 6px 0; padding: 8px; border-left: 3px solid ", rule_color, "; background-color: #f8f9fa; border-radius: 3px;"),
+                shiny::div(
+                  style = "display: flex; align-items: center; margin-bottom: 4px;",
+                  shiny::icon(rule_icon, style = paste0("color: ", rule_color, "; margin-right: 6px; font-size: 14px;")),
+                  shiny::strong(
+                    if (!is.null(rule)) {
+                      paste0(rule@node_type, " ", rule@verb, " \"", paste(rule@values, collapse = ", "), "\"")
+                    } else {
+                      paste0("Rule ", i)
+                    },
+                    style = "font-size: 13px;"
+                  )
+                )
+              )
+            })
+            
+            shiny::div(rule_items)
+          } else {
+            shiny::p("No detailed rule information available.", style = "font-size: 12px; color: #6c757d; font-style: italic; margin: 10px 0;")
+          }
+        } else {
+          shiny::p("No rules defined for this question.", style = "font-size: 12px; color: #6c757d; font-style: italic; margin: 10px 0; text-align: center;")
+        }
+        
+        # Create question card
+        bslib::card(
+          bslib::card_header(
+            shiny::div(
+              style = "display: flex; justify-content: space-between; align-items: center;",
+              shiny::h6(question_name, style = "margin: 0; color: #333; font-weight: 600;"),
+              shiny::div(
+                style = "position: relative; font-size: 18px;",
+                shiny::HTML(status_icon_html)
+              )
+            )
+          ),
+          bslib::card_body(
+            style = "padding: 12px;",
+            question_nodes_content,
+            rule_details
           )
         )
       })
       
-      shiny::div(
-        style = "padding: 10px 0;",
-        validation_items
-      )
-    })
-    
-    # Clean up observers when module is destroyed
-    session$onSessionEnded(function() {
-      destroy_preview_observers()
+      # Arrange question cards in two columns with wrapping
+      if (length(question_cards) == 0) {
+        shiny::p("No questions available.", style = "color: #6c757d; font-style: italic;")
+      } else {
+        # Split cards into two columns for better distribution
+        left_column_cards = question_cards[seq(1, length(question_cards), 2)]
+        right_column_cards = if (length(question_cards) > 1) {
+          question_cards[seq(2, length(question_cards), 2)]
+        } else {
+          list()
+        }
+        
+        bslib::layout_columns(
+          col_widths = c(6, 6),
+          shiny::div(
+            style = "display: flex; flex-direction: column; gap: 12px;",
+            left_column_cards
+          ),
+          shiny::div(
+            style = "display: flex; flex-direction: column; gap: 12px;",
+            right_column_cards
+          )
+        )
+      }
     })
     
     # Return empty list for now

@@ -25,7 +25,7 @@ S7::method(print, markermd_node_selection) = function(x, ...) {
 S7::method(print, markermd_question) = function(x, ...) {
   cat("Question:", x@name, "(ID:", x@id, ")\n")
   cat("Selected nodes:", length(x@selected_nodes@indices), "\n")
-  cat("Strict mode:", x@strict, "\n")
+  cat("Rules:", length(x@rules), "\n")
   invisible(x)
 }
 
@@ -46,7 +46,7 @@ S7::method(print, markermd_template) = function(x, ...) {
     cat("Questions:\n")
     for (q in x@questions) {
       cat("  -", q@name, "(", length(q@selected_nodes@indices), "nodes,", 
-          if (q@strict) "strict" else "non-strict", ")\n")
+          length(q@rules), "rules)\n")
     }
   }
   cat("\nOriginal AST:", length(x@original_ast@nodes), "nodes\n")
@@ -84,7 +84,7 @@ as_markermd_node_selection = function(x) {
 }
 
 #' Convert List to question
-#' @param x List with id, name, selected_nodes, strict fields
+#' @param x List with id, name, selected_nodes fields
 #' @export
 as_markermd_question = function(x) {
   if (S7::S7_inherits(x, markermd_question)) {
@@ -113,14 +113,10 @@ as_markermd_question = function(x) {
     markermd_node_selection()
   }
   
-  # Handle strict flag
-  strict = x$strict %||% FALSE
-  
   markermd_question(
     id = as.integer(id),
     name = as.character(name),
-    selected_nodes = selected_nodes,
-    strict = as.logical(strict)
+    selected_nodes = selected_nodes
   )
 }
 
@@ -171,8 +167,7 @@ as.list.markermd_question = function(x, ...) {
   list(
     id = x@id,
     name = x@name,
-    selected_nodes = x@selected_nodes@indices,
-    strict = x@strict
+    selected_nodes = x@selected_nodes@indices
   )
 }
 

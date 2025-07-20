@@ -43,7 +43,9 @@ test_that("template app can be created without errors", {
         local_dir = NULL,
         filename = "assignment.qmd",
         is_github_repo = FALSE,
-        template_path = NULL
+        template_obj = NULL,
+        file_path = test_qmd,
+        ast = parsermd::parse_qmd(test_qmd)
       )
     })
   })
@@ -63,7 +65,9 @@ test_that("template app initializes without errors", {
       local_dir = NULL,
       filename = "assignment.qmd",
       is_github_repo = FALSE,
-      template_path = NULL
+      template_obj = NULL,
+      file_path = file.path(test_file, "assignment.qmd"),
+      ast = parsermd::parse_qmd(file.path(test_file, "assignment.qmd"))
     )
   })
   

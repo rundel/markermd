@@ -23,18 +23,17 @@ test_that("markermd_node_selection class works correctly", {
 test_that("markermd_question class works correctly", {
   # Test basic markermd_question creation
   ns = markermd_node_selection(indices = c(1L, 2L))
-  q1 = markermd_question(id = 1L, name = "Question 1", selected_nodes = ns, strict = TRUE)
+  q1 = markermd_question(id = 1L, name = "Question 1", selected_nodes = ns)
   
   expect_s7_class(q1, markermd_question)
   expect_equal(q1@id, 1L)
   expect_equal(q1@name, "Question 1")
   expect_equal(q1@selected_nodes@indices, c(1L, 2L))
-  expect_equal(q1@strict, TRUE)
   
   # Test default values
   q2 = markermd_question(id = 2L, name = "Question 2")
-  expect_equal(q2@strict, FALSE)
   expect_equal(length(q2@selected_nodes), 0)
+  expect_equal(length(q2@rules), 0)
   
   # Test validation - invalid ID
   expect_error(markermd_question(id = 0L, name = "Bad"), "@id must be positive")
@@ -43,9 +42,6 @@ test_that("markermd_question class works correctly", {
   # Test validation - invalid name
   expect_error(markermd_question(id = 1L, name = ""), "@name cannot be empty")
   expect_error(markermd_question(id = 1L, name = c("A", "B")), "@name must be a single character string")
-  
-  # Test validation - invalid strict
-  expect_error(markermd_question(id = 1L, name = "Test", strict = c(TRUE, FALSE)), "@strict must be a single logical value")
 })
 
 test_that("markermd_metadata class works correctly", {
@@ -122,13 +118,12 @@ test_that("conversion functions work correctly", {
   expect_equal(ns2@indices, c(2L, 4L))
   
   # Test as_markermd_question  
-  q_list = list(id = 1, name = "Test", selected_nodes = c(1, 2), strict = TRUE)
+  q_list = list(id = 1, name = "Test", selected_nodes = c(1, 2))
   q = as_markermd_question(q_list)
   expect_s7_class(q, markermd_question)
   expect_equal(q@id, 1L)
   expect_equal(q@name, "Test")
   expect_equal(q@selected_nodes@indices, c(1L, 2L))
-  expect_equal(q@strict, TRUE)
   
   # Test as_markermd_metadata
   md_list = list(
@@ -146,7 +141,7 @@ test_that("conversion functions work correctly", {
 test_that("list conversion functions work correctly", {
   # Create S7 objects
   ns = markermd_node_selection(indices = c(1L, 2L))
-  q = markermd_question(id = 1L, name = "Test", selected_nodes = ns, strict = TRUE)
+  q = markermd_question(id = 1L, name = "Test", selected_nodes = ns)
   md = markermd_metadata(created_by = "test", total_nodes = 5L)
   
   # Test conversions to list
@@ -157,7 +152,6 @@ test_that("list conversion functions work correctly", {
   expect_equal(q_list$id, 1L)
   expect_equal(q_list$name, "Test")
   expect_equal(q_list$selected_nodes, c(1L, 2L))
-  expect_equal(q_list$strict, TRUE)
   
   md_list = as.list.markermd_metadata(md)
   expect_equal(md_list$created_by, "test")
@@ -213,8 +207,8 @@ test_that("RDS serialization works correctly", {
   )
   ast = parsermd::rmd_ast(nodes = nodes)
   
-  q1 = markermd_question(id = 1L, name = "Header Question", selected_nodes = markermd_node_selection(indices = 1L), strict = FALSE)
-  q2 = markermd_question(id = 2L, name = "Code Question", selected_nodes = markermd_node_selection(indices = 2L), strict = TRUE)
+  q1 = markermd_question(id = 1L, name = "Header Question", selected_nodes = markermd_node_selection(indices = 1L))
+  q2 = markermd_question(id = 2L, name = "Code Question", selected_nodes = markermd_node_selection(indices = 2L))
   
   tmpl = markermd_template(
     original_ast = ast,
@@ -234,8 +228,6 @@ test_that("RDS serialization works correctly", {
   expect_equal(length(loaded_tmpl), 2)
   expect_equal(loaded_tmpl@questions[[1]]@name, "Header Question")
   expect_equal(loaded_tmpl@questions[[2]]@name, "Code Question")
-  expect_equal(loaded_tmpl@questions[[1]]@strict, FALSE)
-  expect_equal(loaded_tmpl@questions[[2]]@strict, TRUE)
   expect_equal(loaded_tmpl@metadata@created_by, "test_user")
   expect_equal(loaded_tmpl@metadata@total_nodes, 2L)
 })
@@ -247,10 +239,10 @@ test_that("print methods work correctly", {
   expect_output(print(ns), "Indices: 1, 2, 3")
   
   # Test markermd_question print
-  q = markermd_question(id = 1L, name = "Test Q", selected_nodes = ns, strict = TRUE)
+  q = markermd_question(id = 1L, name = "Test Q", selected_nodes = ns)
   expect_output(print(q), "Question: Test Q")
   expect_output(print(q), "Selected nodes: 3")
-  expect_output(print(q), "Strict mode: TRUE")
+  expect_output(print(q), "Rules: 0")
   
   # Test markermd_metadata print
   md = markermd_metadata(created_by = "test", total_nodes = 5L)

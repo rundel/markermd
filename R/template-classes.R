@@ -35,11 +35,11 @@ markermd_node_selection = S7::new_class(
 )
 
 #' @title Template Question
-#' @description S7 class representing a single template question with selected nodes
+#' @description S7 class representing a single template question with selected nodes and validation rules
 #' @param id Integer. Unique question identifier
 #' @param name Character. Question display name
 #' @param selected_nodes node_selection. Selected AST nodes for this question
-#' @param strict Logical. Whether to include all selected content (TRUE) or headers only (FALSE)
+#' @param rules List. Validation rules for this question as markermd_rule objects
 #' @export
 markermd_question = S7::new_class(
   "markermd_question",
@@ -68,13 +68,17 @@ markermd_question = S7::new_class(
       markermd_node_selection,
       default = quote(markermd_node_selection())
     ),
-    strict = S7::new_property(
-      S7::class_logical,
-      default = quote(FALSE),
+    rules = S7::new_property(
+      S7::class_list,
+      default = quote(list()),
       validator = function(value) {
-        if (length(value) != 1) {
-          "@strict must be a single logical value"
+        # Check all elements are markermd_rule objects
+        for (i in seq_along(value)) {
+          if (!S7::S7_inherits(value[[i]], markermd_rule)) {
+            return(paste0("rules[[", i, "]] must be a markermd_rule object"))
+          }
         }
+        NULL
       }
     )
   ),
