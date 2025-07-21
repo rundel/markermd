@@ -66,32 +66,30 @@ template_server = function(id, ast, template_obj = NULL) {
     # Helper function to create delete observer for a question
     create_delete_observer = function(question_id) {
       shiny::observeEvent(input[[paste0("delete_question_", question_id)]], {
-        current_state = state()
-        current_questions = current_state$questions
-        
         # Find and remove this question
-        question_to_remove_idx = which(sapply(current_questions, function(q) q$id == question_id))
+        question_to_remove_idx = which(sapply(state()$questions, function(q) q$id == question_id))
         if (length(question_to_remove_idx) > 0) {
           # Destroy the observer before removing the question
-          if (!is.null(current_questions[[question_to_remove_idx]]$delete_observer)) {
-            current_questions[[question_to_remove_idx]]$delete_observer$destroy()
+          if (!is.null(state()$questions[[question_to_remove_idx]]$delete_observer)) {
+            state()$questions[[question_to_remove_idx]]$delete_observer$destroy()
           }
           
           # Remove the question
-          updated_questions = current_questions[-question_to_remove_idx]
+          updated_questions = state()$questions[-question_to_remove_idx]
           
           # Update current question if needed
-          if (current_state$current_question_id == question_id) {
+          updated_state = state()
+          if (updated_state$current_question_id == question_id) {
             if (length(updated_questions) > 0) {
-              current_state$current_question_id = updated_questions[[1]]$id
+              updated_state$current_question_id = updated_questions[[1]]$id
             } else {
-              current_state$current_question_id = 1
+              updated_state$current_question_id = 1
             }
           }
           
           # Update state
-          current_state$questions = updated_questions
-          state(current_state)
+          updated_state$questions = updated_questions
+          state(updated_state)
         }
       })
     }
@@ -101,8 +99,6 @@ template_server = function(id, ast, template_obj = NULL) {
     
     shiny::observeEvent(template_obj, {
       if (!is.null(template_obj) && !template_loaded()) {
-        current_state = state()
-        
         # Convert S7 template to state structure (names handled separately)
         loaded_questions = lapply(template_obj@questions, function(q) {
           list(
@@ -115,14 +111,15 @@ template_server = function(id, ast, template_obj = NULL) {
         
         # Update state if we have questions
         if (length(loaded_questions) > 0) {
-          current_state$questions = loaded_questions
-          current_state$current_question_id = loaded_questions[[1]]$id
+          updated_state = state()
+          updated_state$questions = loaded_questions
+          updated_state$current_question_id = loaded_questions[[1]]$id
           
           # Set last_question_id to the highest ID among loaded questions
           max_id = max(sapply(loaded_questions, function(q) q$id))
-          current_state$last_question_id = max_id
+          updated_state$last_question_id = max_id
           
-          state(current_state)
+          state(updated_state)
           
           # Initialize text inputs with loaded question names
           for (i in seq_along(template_obj@questions)) {
@@ -166,16 +163,15 @@ template_server = function(id, ast, template_obj = NULL) {
         return(shiny::p("No document loaded"))
       }
       
-      current_state = state()
-      current_q_id = current_state$current_question_id
+      current_q_id = state()$current_question_id
       
       # Get selected nodes for current question
       selected_nodes = integer(0)
-      if (length(current_state$questions) > 0) {
-        question_matches = sapply(current_state$questions, function(q) q$id == current_q_id)
+      if (length(state()$questions) > 0) {
+        question_matches = sapply(state()$questions, function(q) q$id == current_q_id)
         question_idx = which(question_matches)
         if (length(question_idx) > 0) {
-          current_question = current_state$questions[[question_idx]]
+          current_question = state()$questions[[question_idx]]
           selected_nodes = current_question$selected_nodes %||% integer(0)
         }
       }
@@ -193,13 +189,13 @@ template_server = function(id, ast, template_obj = NULL) {
     
     # Helper function to update node selection in state
     update_node_selection = function(node_index, add = TRUE) {
-      current_state = state()
-      current_q_id = current_state$current_question_id
+      current_q_id = state()$current_question_id
       
       # If no questions exist, create a default one
-      if (length(current_state$questions) == 0) {
-        next_id = current_state$last_question_id + 1
-        current_state$last_question_id = next_id
+      if (length(state()$questions) == 0) {
+        updated_state = state()
+        next_id = updated_state$last_question_id + 1
+        updated_state$last_question_id = next_id
         
         delete_observer = create_delete_observer(next_id)
         new_question = list(
@@ -208,16 +204,16 @@ template_server = function(id, ast, template_obj = NULL) {
           selected_nodes = integer(0),
           delete_observer = delete_observer
         )
-        current_state$questions = list(new_question)
-        current_state$current_question_id = next_id
-        state(current_state)
+        updated_state$questions = list(new_question)
+        updated_state$current_question_id = next_id
+        state(updated_state)
       }
       
       # Find current question
-      question_matches = sapply(current_state$questions, function(q) q$id == current_q_id)
+      question_matches = sapply(state()$questions, function(q) q$id == current_q_id)
       question_idx = which(question_matches)
       if (length(question_idx) > 0) {
-        current_question = current_state$questions[[question_idx]]
+        current_question = state()$questions[[question_idx]]
         current_selections = current_question$selected_nodes %||% integer(0)
         
         if (add) {
@@ -234,8 +230,9 @@ template_server = function(id, ast, template_obj = NULL) {
         current_selections = sort(current_selections)
         
         # Update the question in state
-        current_state$questions[[question_idx]]$selected_nodes = current_selections
-        state(current_state)
+        updated_state = state()
+        updated_state$questions[[question_idx]]$selected_nodes = current_selections
+        state(updated_state)
       }
     }
     
@@ -250,7 +247,7 @@ template_server = function(id, ast, template_obj = NULL) {
       for (i in seq_along(nodes)) {
         local({
           node_index = i  # Use direct node index to match tree UI
-          node = nodes[[node_index]]
+          node = ast_nodes()[[node_index]]
           node_type = class(node)[1]
           
           # Only create selection observers for heading nodes that don't have selected ancestors
@@ -258,13 +255,13 @@ template_server = function(id, ast, template_obj = NULL) {
             # Handle "Select" button - only toggle directly selected nodes
             shiny::observeEvent(input[[paste0("select_", node_index)]], {
               # Check if this node is selectable (no selected ancestors)
-              current_state = state()
-              current_q_id = current_state$current_question_id
+              current_q_id = state()$current_question_id
               
               # Find current question or create one if needed
-              if (length(current_state$questions) == 0) {
-                next_id = current_state$last_question_id + 1
-                current_state$last_question_id = next_id
+              if (length(state()$questions) == 0) {
+                updated_state = state()
+                next_id = updated_state$last_question_id + 1
+                updated_state$last_question_id = next_id
                 
                 delete_observer = create_delete_observer(next_id)
                 new_question = list(
@@ -273,14 +270,15 @@ template_server = function(id, ast, template_obj = NULL) {
                   selected_nodes = integer(0),
                   delete_observer = delete_observer
                 )
-                current_state$questions = list(new_question)
-                current_state$current_question_id = next_id
+                updated_state$questions = list(new_question)
+                updated_state$current_question_id = next_id
+                state(updated_state)
               }
               
-              question_matches = sapply(current_state$questions, function(q) q$id == current_q_id)
+              question_matches = sapply(state()$questions, function(q) q$id == current_q_id)
               question_idx = which(question_matches)
               if (length(question_idx) > 0) {
-                current_question = current_state$questions[[question_idx]]
+                current_question = state()$questions[[question_idx]]
                 current_selected = current_question$selected_nodes %||% integer(0)
                 
                 # Check if node has selected ancestors - if so, don't allow selection
@@ -301,21 +299,22 @@ template_server = function(id, ast, template_obj = NULL) {
                 new_selected = sort(new_selected)
                 
                 # Update the question in state
-                current_state$questions[[question_idx]]$selected_nodes = new_selected
-                state(current_state)
+                updated_state = state()
+                updated_state$questions[[question_idx]]$selected_nodes = new_selected
+                state(updated_state)
               }
             })
             
             # Handle "Select +" button - same as text click
             shiny::observeEvent(input[[paste0("select_children_", node_index)]], {
               # Check if this node is selectable (no selected ancestors)
-              current_state = state()
-              current_q_id = current_state$current_question_id
+              current_q_id = state()$current_question_id
               
               # Find current question or create one if needed
-              if (length(current_state$questions) == 0) {
-                next_id = current_state$last_question_id + 1
-                current_state$last_question_id = next_id
+              if (length(state()$questions) == 0) {
+                updated_state = state()
+                next_id = updated_state$last_question_id + 1
+                updated_state$last_question_id = next_id
                 
                 delete_observer = create_delete_observer(next_id)
                 new_question = list(
@@ -324,14 +323,15 @@ template_server = function(id, ast, template_obj = NULL) {
                   selected_nodes = integer(0),
                   delete_observer = delete_observer
                 )
-                current_state$questions = list(new_question)
-                current_state$current_question_id = next_id
+                updated_state$questions = list(new_question)
+                updated_state$current_question_id = next_id
+                state(updated_state)
               }
               
-              question_matches = sapply(current_state$questions, function(q) q$id == current_q_id)
+              question_matches = sapply(state()$questions, function(q) q$id == current_q_id)
               question_idx = which(question_matches)
               if (length(question_idx) > 0) {
-                current_question = current_state$questions[[question_idx]]
+                current_question = state()$questions[[question_idx]]
                 current_selected = current_question$selected_nodes %||% integer(0)
                 
                 # Check if node has selected ancestors - if so, don't allow selection
@@ -352,8 +352,9 @@ template_server = function(id, ast, template_obj = NULL) {
                 new_selected = sort(new_selected)
                 
                 # Update the question in state
-                current_state$questions[[question_idx]]$selected_nodes = new_selected
-                state(current_state)
+                updated_state = state()
+                updated_state$questions[[question_idx]]$selected_nodes = new_selected
+                state(updated_state)
               }
             })
           }
@@ -361,8 +362,8 @@ template_server = function(id, ast, template_obj = NULL) {
           # Handle "Preview" button (available for all nodes)
           shiny::observeEvent(input[[paste0("preview_", node_index)]], {
             # Use node_index directly
-            if (node_index >= 1 && node_index <= length(nodes)) {
-              node = nodes[[node_index]]
+            if (node_index >= 1 && node_index <= length(ast_nodes())) {
+              node = ast_nodes()[[node_index]]
               
               # Use as_document() to get raw node content
               content = tryCatch({
@@ -410,9 +411,7 @@ template_server = function(id, ast, template_obj = NULL) {
     
     # Display questions
     output$questions_ui = shiny::renderUI({
-      current_state = state()
-      current_questions = current_state$questions
-      current_q_id = current_state$current_question_id
+      current_q_id = state()$current_question_id
 
       # Add question button - positioned in upper middle
       add_button = shiny::div(
@@ -426,7 +425,7 @@ template_server = function(id, ast, template_obj = NULL) {
         )
       )
       
-      if (length(current_questions) == 0) {
+      if (length(state()$questions) == 0) {
         return(shiny::div(
           add_button,
           shiny::p("No questions created yet.", style = "text-align: center; color: #6c757d; margin-top: 20px;")
@@ -435,12 +434,12 @@ template_server = function(id, ast, template_obj = NULL) {
       
       # Preserve existing input values before re-rendering
       existing_values = list()
-      for (q in current_questions) {
+      for (q in state()$questions) {
         input_id = paste0("question_name_", q$id)
         existing_values[[as.character(q$id)]] = input[[input_id]]
       }
       
-      question_items = lapply(current_questions, function(q) {
+      question_items = lapply(state()$questions, function(q) {
         selected_nodes = q$selected_nodes %||% integer(0)
         is_current = (q$id == current_q_id)
         
@@ -578,12 +577,11 @@ template_server = function(id, ast, template_obj = NULL) {
     
     # Add new question
     shiny::observeEvent(input$add_question, {
-      current_state = state()
-      current_questions = current_state$questions
+      updated_state = state()
       
       # Use and increment last_question_id from state
-      next_id = current_state$last_question_id + 1
-      current_state$last_question_id = next_id
+      next_id = updated_state$last_question_id + 1
+      updated_state$last_question_id = next_id
 
       # Create delete observer for this question
       delete_observer = create_delete_observer(next_id)
@@ -596,34 +594,33 @@ template_server = function(id, ast, template_obj = NULL) {
       )
       
       # Update state
-      current_state$questions = c(current_questions, list(new_question))
-      current_state$current_question_id = new_question$id
-      state(current_state)
+      updated_state$questions = c(updated_state$questions, list(new_question))
+      updated_state$current_question_id = new_question$id
+      state(updated_state)
     })
     
     
     # Clear selections for current question only
     shiny::observeEvent(input$clear_selections, {
-      current_state = state()
-      current_q_id = current_state$current_question_id
+      current_q_id = state()$current_question_id
       
       # Find and clear selected_nodes for current question only
-      if (length(current_state$questions) > 0) {
-        question_matches = sapply(current_state$questions, function(q) q$id == current_q_id)
+      if (length(state()$questions) > 0) {
+        question_matches = sapply(state()$questions, function(q) q$id == current_q_id)
         question_idx = which(question_matches)
         if (length(question_idx) > 0) {
-          current_state$questions[[question_idx]]$selected_nodes = integer(0)
+          updated_state = state()
+          updated_state$questions[[question_idx]]$selected_nodes = integer(0)
+          state(updated_state)
         }
       }
-      
-      state(current_state)
     })
     
     # Handle question selection
     shiny::observeEvent(input$select_question, {
-      current_state = state()
-      current_state$current_question_id = input$select_question
-      state(current_state)
+      updated_state = state()
+      updated_state$current_question_id = input$select_question
+      state(updated_state)
     })
     
     # Reactive value for the current save filename
@@ -631,10 +628,7 @@ template_server = function(id, ast, template_obj = NULL) {
     
     # Dynamic save button UI
     output$save_button_ui = shiny::renderUI({
-      current_state = state()
-      current_questions = current_state$questions
-      
-      if (length(current_questions) == 0) {
+      if (length(state()$questions) == 0) {
         # Show disabled button when no questions
         shiny::actionButton(
           session$ns("save_disabled"), 
@@ -662,10 +656,7 @@ template_server = function(id, ast, template_obj = NULL) {
         paste0("template_", timestamp, ".rds")
       },
       content = function(file) {
-        current_state = state()
-        current_questions = current_state$questions
-        
-        if (length(current_questions) == 0) {
+        if (length(state()$questions) == 0) {
           template_s7 = markermd_template(
             original_ast = ast(),
             questions = list(),
@@ -677,16 +668,15 @@ template_server = function(id, ast, template_obj = NULL) {
           )
         } else {
           s7_questions = list()
-          for (q in current_questions) {
+          for (q in state()$questions) {
             name_value = input[[paste0("question_name_", q$id)]] %||% paste("Question", q$id)
             
             # Get rules for this question from rules servers
-            question_rules_data = question_rules()
             q_rules_list = list()
             
             # Convert rules to S7 objects if they exist
-            if (!is.null(question_rules_data[[as.character(q$id)]])) {
-              current_q_rules = question_rules_data[[as.character(q$id)]]()
+            if (!is.null(question_rules()[[as.character(q$id)]])) {
+              current_q_rules = question_rules()[[as.character(q$id)]]
               if (length(current_q_rules) > 0) {
                 q_rules_list = tryCatch({
                   lapply(current_q_rules, function(rule) {
@@ -738,14 +728,14 @@ template_server = function(id, ast, template_obj = NULL) {
         add_rule_triggers[[q_id]]
       })
       
-      current_rules = question_rules()
-      current_rules[[q_id]] = rules_server(
+      updated_q_rules = question_rules()
+      updated_q_rules[[q_id]] = rules_server(
         paste0("rules_", q_id),
         shiny::reactive(as.numeric(q_id)),
         add_rule_trigger = local_trigger,
         initial_rules = initial_rules
       )
-      question_rules(current_rules)
+      question_rules(updated_q_rules)
       
       # Create observer for the add rule button
       shiny::observeEvent(input[[paste0("add_rule_", q_id)]], {
@@ -756,13 +746,11 @@ template_server = function(id, ast, template_obj = NULL) {
     # Create rules servers when questions are added (only for new questions)
     last_question_count = shiny::reactiveVal(0)
     shiny::observe({
-      current_questions = state()$questions
-      current_count = length(current_questions)
-      last_count = last_question_count()
+      current_count = length(state()$questions)
       
-      if (current_count > last_count) {
+      if (current_count > last_question_count()) {
         # New questions were added
-        new_questions = current_questions[(last_count + 1):current_count]
+        new_questions = state()$questions[(last_question_count() + 1):current_count]
         for (q in new_questions) {
           q_id = as.character(q$id)
           
