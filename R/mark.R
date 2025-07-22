@@ -546,7 +546,8 @@ create_template_app = function(assignment_path, local_dir, filename, is_github_r
       shiny::tags$head(
         shiny::tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css")
       ),
-      template_ui("template_module")
+      # Template app UI will be rendered here
+      shiny::uiOutput("template_app_content")
     ),
     
     # Footer with assignment info
@@ -561,8 +562,16 @@ create_template_app = function(assignment_path, local_dir, filename, is_github_r
   # Define server logic
   server = function(input, output, session) {
     
-    # Template module
-    template_result = template_server("template_module", shiny::reactiveVal(ast), template_obj)
+    # Template app - get the app components and render UI dynamically
+    template_app_components = template_app(shiny::reactiveVal(ast), template_obj)
+    
+    # Render template app UI into the placeholder div
+    output$template_app_content = shiny::renderUI({
+      template_app_components$ui
+    })
+    
+    # Run template app server
+    template_app_components$server(input, output, session)
   }
   
   # Return the app
