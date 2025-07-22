@@ -167,35 +167,30 @@ rules_server = function(id, question_id, add_rule_trigger = NULL, initial_rules 
     
     # Initialize with provided rules if any
     if (!is.null(initial_rules) && length(initial_rules) > 0) {
-      tryCatch({
-        # Set up initial rules with delete observers
-        initialized_rules = lapply(initial_rules, function(rule) {
-          # Validate rule structure
-          if (!is.list(rule) || is.null(rule$id)) {
-            warning("Invalid rule structure, skipping")
-            return(NULL)
-          }
-          
-          # Create delete observer for this rule
-          delete_observer = create_rule_delete_observer(rule$id)
-          rule$delete_observer = delete_observer
-          rule
-        })
-        
-        # Remove any NULL entries from failed rules
-        initialized_rules = initialized_rules[!sapply(initialized_rules, is.null)]
-        
-        if (length(initialized_rules) > 0) {
-          rules_state(initialized_rules)
-          
-          # Set rule counter to max ID from initial rules
-          max_id = max(sapply(initialized_rules, function(r) r$id))
-          rule_counter(max_id)
+      # Set up initial rules with delete observers
+      initialized_rules = lapply(initial_rules, function(rule) {
+        # Validate rule structure
+        if (!is.list(rule) || is.null(rule$id)) {
+          warning("Invalid rule structure, skipping")
+          return(NULL)
         }
-      }, error = function(e) {
-        warning("Failed to initialize rules: ", e$message)
-        # Continue with empty rules state
+        
+        # Create delete observer for this rule
+        delete_observer = create_rule_delete_observer(rule$id)
+        rule$delete_observer = delete_observer
+        rule
       })
+      
+      # Remove any NULL entries from failed rules
+      initialized_rules = initialized_rules[!sapply(initialized_rules, is.null)]
+      
+      if (length(initialized_rules) > 0) {
+        rules_state(initialized_rules)
+        
+        # Set rule counter to max ID from initial rules
+        max_id = max(sapply(initialized_rules, function(r) r$id))
+        rule_counter(max_id)
+      }
     }
     
     # Get allowed values from helper functions
@@ -219,6 +214,7 @@ rules_server = function(id, question_id, add_rule_trigger = NULL, initial_rules 
           node_types = available_node_types[1],  # First option is "Any node"
           verb = available_verbs[1],             # First option is "has count of"
           verb_inputs = list(),
+          values = get_default_rule_values(available_verbs[1]),
           delete_observer = delete_observer
         )
         
@@ -240,6 +236,7 @@ rules_server = function(id, question_id, add_rule_trigger = NULL, initial_rules 
           node_types = available_node_types[1],  # First option is "Any node"
           verb = available_verbs[1],             # First option is "has count of"
           verb_inputs = list(),
+          values = get_default_rule_values(available_verbs[1]),
           delete_observer = delete_observer
         )
         
@@ -270,11 +267,11 @@ rules_server = function(id, question_id, add_rule_trigger = NULL, initial_rules 
         local({
           rule_id = rule$id
           shiny::observeEvent(input[[paste0("rule_node_types_", rule_id)]], {
-            current_rules = rules_state()
+            current_rules = isolate(rules_state())
             rule_idx = which(sapply(current_rules, function(r) r$id == rule_id))
             if (length(rule_idx) > 0) {
               current_rules[[rule_idx]]$node_types = input[[paste0("rule_node_types_", rule_id)]] %||% character(0)
-              rules_state(current_rules)
+              isolate(rules_state(current_rules))
             }
           })
         })
@@ -288,30 +285,109 @@ rules_server = function(id, question_id, add_rule_trigger = NULL, initial_rules 
         local({
           rule_id = rule$id
           shiny::observeEvent(input[[paste0("rule_verb_", rule_id)]], {
-            current_rules = rules_state()
+            current_rules = isolate(rules_state())
             rule_idx = which(sapply(current_rules, function(r) r$id == rule_id))
             if (length(rule_idx) > 0) {
-              current_rules[[rule_idx]]$verb = input[[paste0("rule_verb_", rule_id)]]
-              # Reset verb inputs when verb changes
+              new_verb = input[[paste0("rule_verb_", rule_id)]]
+              current_rules[[rule_idx]]$verb = new_verb
+              # Reset verb inputs and values when verb changes
               current_rules[[rule_idx]]$verb_inputs = list()
-              rules_state(current_rules)
+              current_rules[[rule_idx]]$values = get_default_rule_values(new_verb)
+              isolate(rules_state(current_rules))
             }
           })
         })
       }
     })
     
-    # Render dynamic verb inputs for all rules
+    # Track created UI renderers to prevent re-creation on value changes  
+    created_ui_renderers = shiny::reactiveValues()
+    
+    # Render dynamic verb inputs for all rules (only create once per rule)
+    shiny::observe({
+      current_rules = rules_state()  # Keep reactive to see new rules
+      for (rule in current_rules) {
+        rule_id = rule$id
+        
+        # Only create UI renderer once per rule
+        if (is.null(created_ui_renderers[[paste0("ui_", rule_id)]])) {
+          local({
+            local_rule_id = rule_id
+            output[[paste0("rule_verb_inputs_", local_rule_id)]] = shiny::renderUI({
+              # Get current rule state for verb and values
+              current_rules = isolate(rules_state())
+              current_rule = NULL
+              for (r in current_rules) {
+                if (r$id == local_rule_id) {
+                  current_rule = r
+                  break
+                }
+              }
+              
+              if (!is.null(current_rule)) {
+                current_verb = input[[paste0("rule_verb_", local_rule_id)]] %||% current_rule$verb
+                create_verb_inputs_ui(current_verb, local_rule_id, session$ns, current_rule)
+              } else {
+                NULL
+              }
+            })
+            
+            # Mark UI renderer as created
+            created_ui_renderers[[paste0("ui_", local_rule_id)]] = TRUE
+          })
+        }
+      }
+    })
+    
+    # Track created value input observers to prevent infinite loops
+    created_value_observers = shiny::reactiveValues()
+    
+    # Create value input observers separately from structural changes
     shiny::observe({
       current_rules = rules_state()
       for (rule in current_rules) {
-        local({
-          rule_id = rule$id
-          output[[paste0("rule_verb_inputs_", rule_id)]] = shiny::renderUI({
-            current_verb = input[[paste0("rule_verb_", rule_id)]] %||% rule$verb
-            create_verb_inputs_ui(current_verb, rule_id, session$ns, rule)
+        rule_id = rule$id
+        
+        # Only create value observers once per rule
+        if (is.null(created_value_observers[[paste0("values_", rule_id)]])) {
+          local({
+            local_rule_id = rule_id
+            
+            # Create observers for all possible value input types
+            # Count range observer
+            shiny::observeEvent(input[[paste0("rule_count_range_", local_rule_id)]], {
+              current_rules = isolate(rules_state())
+              rule_idx = which(sapply(current_rules, function(r) r$id == local_rule_id))
+              if (length(rule_idx) > 0) {
+                current_rules[[rule_idx]]$values = input[[paste0("rule_count_range_", local_rule_id)]]
+                isolate(rules_state(current_rules))
+              }
+            })
+            
+            # Content pattern observer
+            shiny::observeEvent(input[[paste0("rule_content_pattern_", local_rule_id)]], {
+              current_rules = isolate(rules_state())
+              rule_idx = which(sapply(current_rules, function(r) r$id == local_rule_id))
+              if (length(rule_idx) > 0) {
+                current_rules[[rule_idx]]$values = input[[paste0("rule_content_pattern_", local_rule_id)]]
+                isolate(rules_state(current_rules))
+              }
+            })
+            
+            # Name pattern observer
+            shiny::observeEvent(input[[paste0("rule_name_pattern_", local_rule_id)]], {
+              current_rules = isolate(rules_state())
+              rule_idx = which(sapply(current_rules, function(r) r$id == local_rule_id))
+              if (length(rule_idx) > 0) {
+                current_rules[[rule_idx]]$values = input[[paste0("rule_name_pattern_", local_rule_id)]]
+                isolate(rules_state(current_rules))
+              }
+            })
           })
-        })
+          
+          # Mark value observers as created for this rule
+          created_value_observers[[paste0("values_", rule_id)]] = TRUE
+        }
       }
     })
     

@@ -197,12 +197,12 @@ template_server = function(id, ast, template_obj = NULL) {
         next_id = updated_state$last_question_id + 1
         updated_state$last_question_id = next_id
         
-        delete_observer = create_delete_observer(next_id)
         new_question = list(
           id = next_id,
           name = paste("Question", next_id),
           selected_nodes = integer(0),
-          delete_observer = delete_observer
+          delete_observer = create_delete_observer(next_id),
+          rules = list()
         )
         updated_state$questions = list(new_question)
         updated_state$current_question_id = next_id
@@ -263,12 +263,12 @@ template_server = function(id, ast, template_obj = NULL) {
                 next_id = updated_state$last_question_id + 1
                 updated_state$last_question_id = next_id
                 
-                delete_observer = create_delete_observer(next_id)
                 new_question = list(
                   id = next_id,
                   name = paste("Question", next_id),
                   selected_nodes = integer(0),
-                  delete_observer = delete_observer
+                  delete_observer = create_delete_observer(next_id),
+                  rules = list()
                 )
                 updated_state$questions = list(new_question)
                 updated_state$current_question_id = next_id
@@ -316,12 +316,12 @@ template_server = function(id, ast, template_obj = NULL) {
                 next_id = updated_state$last_question_id + 1
                 updated_state$last_question_id = next_id
                 
-                delete_observer = create_delete_observer(next_id)
                 new_question = list(
                   id = next_id,
                   name = paste("Question", next_id),
                   selected_nodes = integer(0),
-                  delete_observer = delete_observer
+                  delete_observer = create_delete_observer(next_id),
+                  rules = list()
                 )
                 updated_state$questions = list(new_question)
                 updated_state$current_question_id = next_id
@@ -366,13 +366,9 @@ template_server = function(id, ast, template_obj = NULL) {
               node = ast_nodes()[[node_index]]
               
               # Use as_document() to get raw node content
-              content = tryCatch({
-                result = parsermd::as_document(node) |>
-                  as.character() |>
-                  paste(collapse="\n")
-              }, error = function(e) {
-                paste("Error:", e$message)
-              })
+              content = parsermd::as_document(node) |>
+                as.character() |>
+                paste(collapse="\n")
 
               # Get node type for title
               node_type = class(node)[1]
@@ -409,9 +405,19 @@ template_server = function(id, ast, template_obj = NULL) {
       }
     })
     
+    # Reactive for tracking question structure changes (not content changes)
+    questions_structure = shiny::reactive({
+      list(
+        question_ids = sapply(state()$questions, function(q) q$id),
+        current_question_id = state()$current_question_id
+      )
+    })
+    
     # Display questions
     output$questions_ui = shiny::renderUI({
-      current_q_id = state()$current_question_id
+      # Only react to structural changes, not content changes
+      structure = questions_structure()
+      current_q_id = structure$current_question_id
 
       # Add question button - positioned in upper middle
       add_button = shiny::div(
@@ -420,26 +426,28 @@ template_server = function(id, ast, template_obj = NULL) {
           session$ns("add_question"), 
           shiny::icon("plus"),
           class = "btn-primary btn-sm",
-          style = "font-size: 12px; padding: 4px 8px; border-radius: 50%; width: 30px; height: 30px;",
+          style = "font-size: 12px; padding: 4px 8px; border-radius: 20%; width: 30px; height: 30px;",
           title = "Add Question"
-        )
+        ),
+        shiny::span("Add Question", style = "margin-left: 8px; font-size: 14px; color: #333;")
       )
       
-      if (length(state()$questions) == 0) {
+      # Get current questions snapshot (not reactive)
+      current_questions = isolate(state()$questions)
+      
+      if (length(current_questions) == 0) {
         return(shiny::div(
-          add_button,
-          shiny::p("No questions created yet.", style = "text-align: center; color: #6c757d; margin-top: 20px;")
+          add_button
         ))
       }
       
-      # Preserve existing input values before re-rendering
+      # Get existing input values using isolate to prevent reactive dependency
       existing_values = list()
-      for (q in state()$questions) {
-        input_id = paste0("question_name_", q$id)
-        existing_values[[as.character(q$id)]] = input[[input_id]]
+      for (q in current_questions) {
+        existing_values[[as.character(q$id)]] = isolate( input[[ paste0("question_name_", q$id) ]] )
       }
       
-      question_items = lapply(state()$questions, function(q) {
+      question_items = lapply(current_questions, function(q) {
         selected_nodes = q$selected_nodes %||% integer(0)
         is_current = (q$id == current_q_id)
         
@@ -479,7 +487,7 @@ template_server = function(id, ast, template_obj = NULL) {
                   session$ns(paste0("delete_question_", q$id)),
                   shiny::icon("times"),
                   class = "btn-danger btn-sm",
-                  style = "font-size: 12px; padding: 2px 6px; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; line-height: 1;",
+                  style = "font-size: 12px; padding: 2px 6px; border-radius: 20%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; line-height: 1;",
                   title = "Delete Question",
                   onclick = "event.stopPropagation();"
                 )
@@ -496,7 +504,7 @@ template_server = function(id, ast, template_obj = NULL) {
                 shiny::span("None", style = "color: #6c757d;")
               } else {
                 # Build tree structure to compute children
-                tree_items = build_ast_tree_structure(ast())
+                tree_items = build_ast_tree_structure(isolate(ast()))
                 
                 # Create display format: parent [child1,child2,child3]
                 node_displays = sapply(selected_nodes, function(node_index) {
@@ -513,61 +521,43 @@ template_server = function(id, ast, template_obj = NULL) {
             )
           ),
           
-          # Rules collapsible card body
+          # Rules card body
           bslib::card_body(
             style = "padding: 6px 12px;",
-            shiny::tagList(
-              # CSS for chevron rotation
-              shiny::tags$style(shiny::HTML(glue::glue("
-                #<<session$ns(paste0('rules_header_', q$id))>>.expanded .fa-chevron-down {
-                  transform: rotate(180deg);
-                }
-              ", .open = "<<", .close = ">>"))),
-              
+            shiny::div(
+              # Rules header with add button on same line
               shiny::div(
-                # Rules header with toggle
+                style = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;",
                 shiny::div(
-                  id = session$ns(paste0("rules_header_", q$id)),
-                  style = "cursor: pointer; display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;",
-                  onclick = glue::glue("
-                    var content = document.getElementById('<<session$ns(paste0('rules_content_', q$id))>>');
-                    var header = document.getElementById('<<session$ns(paste0('rules_header_', q$id))>>');
-                    if (content.style.display === 'none' || content.style.display === '') {
-                      content.style.display = 'block';
-                      header.classList.add('expanded');
-                    } else {
-                      content.style.display = 'none';
-                      header.classList.remove('expanded');
-                    }
-                  ", .open = "<<", .close = ">>"),
-                  shiny::strong("Validaton rules:"),
-                  shiny::icon("chevron-down", style = "transition: transform 0.3s;")
+                  shiny::strong("Validation rules: "),
+                  # Check if this question has rules
+                  if (is.null(question_rules()[[as.character(q$id)]]) || 
+                      length(question_rules()[[as.character(q$id)]]()) == 0) {
+                    shiny::span("None", style = "color: #6c757d;")
+                  }
                 ),
-                
-                # Rules content (initially hidden)
                 shiny::div(
-                  id = session$ns(paste0("rules_content_", q$id)),
-                  style = "display: block;",
-                  rules_ui(session$ns(paste0("rules_", q$id))),
-                  
-                  # Add rule button (inside collapsible content)
-                  shiny::div(
-                    style = "margin-top: 10px; text-align: center;",
-                    shiny::actionButton(
-                      session$ns(paste0("add_rule_", q$id)),
-                      shiny::icon("plus"),
-                      class = "btn-success btn-sm",
-                      style = "font-size: 10px; padding: 2px 6px;",
-                      title = "Add Rule"
-                    ),
-                    shiny::span("Add Rule", style = "margin-left: 6px; font-size: 12px;")
-                  )
+                  style = "display: flex; align-items: center;",
+                  shiny::actionButton(
+                    session$ns(paste0("add_rule_", q$id)),
+                    shiny::icon("plus"),
+                    class = "btn-outline-primary btn-sm",
+                    style = "font-size: 10px; padding: 2px 6px;",
+                    title = "Add Rule"
+                  ),
+                  shiny::span("Add Rule", style = "margin-left: 6px; font-size: 12px;")
                 )
+              ),
+              
+              # Rules content (always visible)
+              shiny::div(
+                rules_ui(session$ns(paste0("rules_", q$id)))
               )
             )
           )
         )
       })
+      
       
       shiny::tagList(
         question_items,
@@ -583,14 +573,12 @@ template_server = function(id, ast, template_obj = NULL) {
       next_id = updated_state$last_question_id + 1
       updated_state$last_question_id = next_id
 
-      # Create delete observer for this question
-      delete_observer = create_delete_observer(next_id)
-      
       new_question = list(
         id = next_id,
         name = paste("Question", next_id),
         selected_nodes = integer(0),
-        delete_observer = delete_observer
+        delete_observer = create_delete_observer(next_id),
+        rules = list()
       )
       
       # Update state
@@ -648,6 +636,49 @@ template_server = function(id, ast, template_obj = NULL) {
       }
     })
     
+    # Helper function to capture a single question and build S7 question from current state
+    capture_question = function(question_data) {
+      isolate({
+        # Get question name from input
+        question_name = input[[paste0("question_name_", question_data$id)]] %||% paste("Question", question_data$id)
+        
+        # Get current rules from the rules server for this question
+        q_rules_list = list()
+        if (!is.null(question_rules()[[as.character(question_data$id)]])) {
+          rules_server_fn = question_rules()[[as.character(question_data$id)]]
+          current_rules = rules_server_fn()
+          
+          # Convert each rule from list format to S7 format
+          for (rule in current_rules) {
+            if (!is.null(rule$node_types) && !is.null(rule$verb) && !is.null(rule$values)) {
+              # Create S7 rule from the rule's stored values
+              s7_rule = markermd_rule(
+                node_type = rule$node_types,
+                verb = rule$verb,
+                values = rule$values
+              )
+              q_rules_list = c(q_rules_list, list(s7_rule))
+            }
+          }
+        }
+        
+        # Create and return S7 question object
+        return(markermd_question(
+          id = as.integer(question_data$id),
+          name = question_name,
+          selected_nodes = markermd_node_selection(indices = as.integer(question_data$selected_nodes %||% integer(0))),
+          rules = q_rules_list
+        ))
+      })
+    }
+    
+    # Helper function to capture all questions and build list of S7 questions from input values
+    capture_questions = function() {
+        current_questions = isolate(state()$questions)
+      
+        return(lapply(current_questions, capture_question))
+    }
+    
     # Save template functionality using downloadHandler  
     output$save_template = shiny::downloadHandler(
       filename = function() {
@@ -656,61 +687,36 @@ template_server = function(id, ast, template_obj = NULL) {
         paste0("template_", timestamp, ".rds")
       },
       content = function(file) {
-        if (length(state()$questions) == 0) {
-          template_s7 = markermd_template(
-            original_ast = ast(),
-            questions = list(),
-            metadata = markermd_metadata(
-              created_at = Sys.time(),
-              created_by = Sys.getenv("USER", "unknown"),
-              total_nodes = if (!is.null(ast_nodes())) length(ast_nodes()) else 0L
+        isolate({
+          current_questions = state()$questions
+          
+          if (length(current_questions) == 0) {
+            template_s7 = markermd_template(
+              original_ast = ast(),
+              questions = list(),
+              metadata = markermd_metadata(
+                created_at = Sys.time(),
+                created_by = Sys.getenv("USER", "unknown"),
+                total_nodes = if (!is.null(ast_nodes())) length(ast_nodes()) else 0L
+              )
             )
-          )
-        } else {
-          s7_questions = list()
-          for (q in state()$questions) {
-            name_value = input[[paste0("question_name_", q$id)]] %||% paste("Question", q$id)
+          } else {
+            # Use capture_questions to get all questions
+            s7_questions = capture_questions()
             
-            # Get rules for this question from rules servers
-            q_rules_list = list()
-            
-            # Convert rules to S7 objects if they exist
-            if (!is.null(question_rules()[[as.character(q$id)]])) {
-              current_q_rules = question_rules()[[as.character(q$id)]]
-              if (length(current_q_rules) > 0) {
-                q_rules_list = tryCatch({
-                  lapply(current_q_rules, function(rule) {
-                    list_to_rule(rule)
-                  })
-                }, error = function(e) {
-                  # Log warning but continue - save template without problematic rules
-                  warning("Failed to convert rules for question ", q$id, ": ", e$message)
-                  list()
-                })
-              }
-            }
-            
-            s7_q = markermd_question(
-              id = as.integer(q$id),
-              name = name_value,
-              selected_nodes = markermd_node_selection(indices = as.integer(q$selected_nodes %||% integer(0))),
-              rules = q_rules_list
+            template_s7 = markermd_template(
+              original_ast = ast(),
+              questions = s7_questions,
+              metadata = markermd_metadata(
+                created_at = Sys.time(),
+                created_by = Sys.getenv("USER", "unknown"),
+                total_nodes = if (!is.null(ast_nodes())) length(ast_nodes()) else 0L
+              )
             )
-            s7_questions = c(s7_questions, list(s7_q))
           }
           
-          template_s7 = markermd_template(
-            original_ast = ast(),
-            questions = s7_questions,
-            metadata = markermd_metadata(
-              created_at = Sys.time(),
-              created_by = Sys.getenv("USER", "unknown"),
-              total_nodes = if (!is.null(ast_nodes())) length(ast_nodes()) else 0L
-            )
-          )
-        }
-        
-        saveRDS(template_s7, file)
+          saveRDS(template_s7, file)
+        })
       },
       contentType = "application/rds"
     )
@@ -754,18 +760,13 @@ template_server = function(id, ast, template_obj = NULL) {
         for (q in new_questions) {
           q_id = as.character(q$id)
           
-          # Convert S7 rules to list format if they exist
-          initial_rules_list = NULL
-          if (!is.null(q$rules) && length(q$rules) > 0) {
-            initial_rules_list = tryCatch({
-              lapply(seq_along(q$rules), function(i) {
-                rule_to_list(q$rules[[i]], rule_id = i)
-              })
-            }, error = function(e) {
-              # Log warning but continue - don't fail template loading due to rule issues
-              warning("Failed to convert rules for question ", q$id, ": ", e$message)
-              NULL
+          # Convert S7 rules to list format for the rules server (but keep S7 in state)
+          initial_rules_list = if (!is.null(q$rules) && length(q$rules) > 0) {
+            lapply(seq_along(q$rules), function(i) {
+              rule_to_list(q$rules[[i]], rule_id = i)
             })
+          } else {
+            NULL
           }
           
           create_rules_server_for_question(q_id, initial_rules = initial_rules_list)

@@ -184,27 +184,8 @@ test_that("validate_markermd_rule handles complex error combinations", {
   expect_type(values_error, "character")
 })
 
-test_that("conversion functions handle edge cases", {
-  # Test conversion with minimal list structure
-  minimal_list = list()
-  converted_rule = list_to_rule(minimal_list)
-  expect_equal(converted_rule@node_type, "Any node")
-  expect_equal(converted_rule@verb, "has count of")
-  
-  # Test conversion with extra fields in list
-  extra_list = list(
-    id = 1,
-    node_types = "rmd_heading",
-    verb = "has content",
-    verb_inputs = list(content_pattern = "test"),
-    extra_field = "ignored",
-    another_field = 123
-  )
-  
-  converted_rule = list_to_rule(extra_list)
-  expect_equal(converted_rule@node_type, "rmd_heading")
-  expect_equal(converted_rule@verb, "has content")
-  expect_equal(converted_rule@values, "test")
+test_that("rule_to_list conversion function handles edge cases", {
+  # Test that rule_to_list works with various rule configurations
   
   # Test conversion back to list maintains structure
   rule = markermd_rule(

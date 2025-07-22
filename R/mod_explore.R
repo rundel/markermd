@@ -81,14 +81,64 @@ explore_server = function(id, ast, current_repo_name = shiny::reactiveVal(NULL),
         # Get the document nodes for this question using section selection
         question_nodes_content = if (length(template_question@selected_nodes@indices) > 0) {
           tryCatch({
-            # Resolve section names from the template's selected nodes
-            section_names = resolve_section_names(current_template@original_ast, template_question@selected_nodes@indices)
+            # Resolve section hierarchies from the template's selected nodes
+            section_hierarchies = resolve_section_hierarchies(current_template@original_ast, template_question@selected_nodes@indices)
             
-            if (length(section_names) > 0) {
-              # Get the question content from current AST using by_section
+            if (length(section_hierarchies) > 0) {
+              # Get the question content from current AST using hierarchical matching
               current_ast = ast()
               if (!is.null(current_ast)) {
-                question_ast = parsermd::rmd_select(current_ast, parsermd::by_section(section_names), keep_yaml = FALSE)
+                question_ast = tryCatch({
+                  # Get all node section hierarchies for the current AST
+                  current_ast_sections = parsermd::rmd_node_sections(current_ast)
+                  
+                  # Find nodes that match our target hierarchies
+                  matching_indices = c()
+                  
+                  for (target_hierarchy in section_hierarchies) {
+                    # Split target hierarchy into parts
+                    target_parts = strsplit(target_hierarchy, " > ")[[1]]
+                    
+                    # Find nodes whose hierarchy matches or is contained within the target
+                    for (i in seq_along(current_ast_sections)) {
+                      node_hierarchy = current_ast_sections[[i]]
+                      if (is.character(node_hierarchy) && length(node_hierarchy) > 0) {
+                        # Remove NAs from node hierarchy
+                        clean_node_hierarchy = node_hierarchy[!is.na(node_hierarchy)]
+                        
+                        # Check if target hierarchy matches or is a prefix of node hierarchy
+                        if (length(clean_node_hierarchy) >= length(target_parts)) {
+                          # Check if the target parts match the beginning of the node hierarchy
+                          if (all(target_parts == clean_node_hierarchy[1:length(target_parts)])) {
+                            matching_indices = c(matching_indices, i)
+                          }
+                        }
+                      }
+                    }
+                  }
+                  
+                  # Remove duplicates and sort
+                  matching_indices = unique(sort(matching_indices))
+                  
+                  if (length(matching_indices) > 0) {
+                    # Subset the AST using the matching indices
+                    current_ast[matching_indices]
+                  } else {
+                    # No matches found, fallback to by_section
+                    section_names = sapply(section_hierarchies, function(hierarchy) {
+                      parts = strsplit(hierarchy, " > ")[[1]]
+                      parts[length(parts)]
+                    })
+                    parsermd::rmd_select(current_ast, parsermd::by_section(section_names), keep_yaml = FALSE)
+                  }
+                }, error = function(e) {
+                  # Fallback to by_section approach
+                  section_names = sapply(section_hierarchies, function(hierarchy) {
+                    parts = strsplit(hierarchy, " > ")[[1]]
+                    parts[length(parts)]
+                  })
+                  parsermd::rmd_select(current_ast, parsermd::by_section(section_names), keep_yaml = FALSE)
+                })
                 
                 if (!is.null(question_ast) && length(question_ast@nodes) > 0) {
                   # Build tree structure for the question AST
@@ -114,7 +164,7 @@ explore_server = function(id, ast, current_repo_name = shiny::reactiveVal(NULL),
                       # Use unique ID prefix for each question to avoid conflicts
                       question_id = paste0("q_", gsub("[^A-Za-z0-9]", "", question_name))
                       # Start tree at depth 1 to match the adjusted node depths
-                      simple_tree = create_simple_tree_readonly_at_depth(content_items, function(x) paste0("question_", question_id, "_", x), question_id, start_depth = 1)
+                      simple_tree = create_simple_tree_readonly_at_depth(content_items, session$ns, question_id, start_depth = 1)
                       
                       shiny::div(
                         style = "margin-bottom: 3px; padding: 8px; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; max-height: 120px; overflow-y: auto; font-size: 11px;",
@@ -223,6 +273,132 @@ explore_server = function(id, ast, current_repo_name = shiny::reactiveVal(NULL),
             right_column_cards
           )
         )
+      }
+    })
+    
+    # Store created observers to avoid duplicates
+    created_observers = shiny::reactiveValues()
+    
+    # Create preview button observers once when template and AST are available
+    shiny::observe({
+      current_template = template()
+      current_ast = ast()
+      
+      if (!is.null(current_template) && !is.null(current_ast)) {
+        # Create observers for all questions and their nodes
+        for (template_question in current_template@questions) {
+          question_id = paste0("q_", gsub("[^A-Za-z0-9]", "", template_question@name))
+          
+          # Skip if observers already created for this question
+          if (!is.null(created_observers[[question_id]])) {
+            next
+          }
+          
+          # Get the question AST using hierarchical matching (same logic as in renderUI)
+          question_ast = tryCatch({
+            # Resolve section hierarchies from the template's selected nodes
+            section_hierarchies = resolve_section_hierarchies(current_template@original_ast, template_question@selected_nodes@indices)
+            
+            if (length(section_hierarchies) > 0) {
+              # Get matching nodes using hierarchical matching
+              current_ast_sections = parsermd::rmd_node_sections(current_ast)
+              matching_indices = c()
+              
+              for (target_hierarchy in section_hierarchies) {
+                target_parts = strsplit(target_hierarchy, " > ")[[1]]
+                
+                for (i in seq_along(current_ast_sections)) {
+                  node_hierarchy = current_ast_sections[[i]]
+                  if (is.character(node_hierarchy) && length(node_hierarchy) > 0) {
+                    clean_node_hierarchy = node_hierarchy[!is.na(node_hierarchy)]
+                    
+                    if (length(clean_node_hierarchy) >= length(target_parts)) {
+                      if (all(target_parts == clean_node_hierarchy[1:length(target_parts)])) {
+                        matching_indices = c(matching_indices, i)
+                      }
+                    }
+                  }
+                }
+              }
+              
+              matching_indices = unique(sort(matching_indices))
+              if (length(matching_indices) > 0) {
+                current_ast[matching_indices]
+              } else {
+                NULL
+              }
+            } else {
+              NULL
+            }
+          }, error = function(e) {
+            NULL
+          })
+          
+          if (!is.null(question_ast) && length(question_ast@nodes) > 0) {
+            # Build tree structure and create observers for each node
+            tree_items = build_ast_tree_structure(question_ast)
+            
+            if (length(tree_items) > 1) {  # Has more than just document root
+              content_items = tree_items[sapply(tree_items, function(x) x$index != 0)]
+              
+              if (length(content_items) > 0) {
+                # Create preview observers for each content node
+                for (item in content_items) {
+                  local({
+                    local_node_index = item$index
+                    local_question_ast = question_ast
+                    button_id = paste0("preview_", question_id, "_", local_node_index)
+                    
+                    shiny::observeEvent(input[[button_id]], {
+                      # Get the actual node from the question AST
+                      if (local_node_index >= 1 && local_node_index <= length(local_question_ast@nodes)) {
+                        node = local_question_ast@nodes[[local_node_index]]
+                        
+                        # Get node content for preview
+                        content = parsermd::as_document(node) |>
+                          as.character() |>
+                          paste(collapse = "\n")
+                        
+                        # Get node type for title
+                        node_type = class(node)[1]
+                        
+                        shiny::showModal(
+                          shiny::modalDialog(
+                            title = shiny::div(
+                              style = "display: flex; justify-content: space-between; align-items: center; margin: 0; padding: 0;",
+                              shiny::span(node_type, style = "font-weight: bold;"),
+                              shiny::tags$button(
+                                type = "button",
+                                class = "close",
+                                `data-dismiss` = "modal",
+                                `aria-label` = "Close",
+                                style = "background: none; border: none; font-size: 24px; font-weight: bold; color: #000; opacity: 0.5; cursor: pointer;",
+                                shiny::icon("times")
+                              )
+                            ),
+                            size = "l",
+                            shiny::div(
+                              style = "max-height: 500px; overflow-y: auto;",
+                              shiny::pre(
+                                content,
+                                style = "font-family: 'Courier New', Courier, monospace; font-size: 12px; white-space: pre-wrap; margin: 0; background: #f8f9fa; padding: 15px; border: 1px solid #e9ecef; border-radius: 3px; line-height: 1.4;"
+                              )
+                            ),
+                            footer = NULL,
+                            easyClose = TRUE
+                          )
+                        )
+                      }
+                    }, ignoreInit = TRUE)
+                  })
+                }
+                
+                # Mark observers as created for this question
+                created_observers[[question_id]] = TRUE
+              }
+            }
+          }
+        }
       }
     })
     

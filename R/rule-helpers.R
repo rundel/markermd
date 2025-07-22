@@ -223,28 +223,3 @@ rule_to_list = function(rule, rule_id) {
   )
 }
 
-#' Convert List to S7 Rule Format
-#'
-#' @description Converts a list with rule data to an S7 markermd_rule object.
-#' This is used when saving templates from the template interface.
-#'
-#' @param rule_list List with rule data (id, node_type, verb, values)
-#' @return S7 markermd_rule object
-#' @export
-list_to_rule = function(rule_list) {
-  if (!is.list(rule_list)) {
-    stop("rule_list must be a list")
-  }
-  
-  required_fields = c("node_type", "verb", "values")
-  missing_fields = setdiff(required_fields, names(rule_list))
-  if (length(missing_fields) > 0) {
-    stop("Missing required fields: ", paste(missing_fields, collapse = ", "))
-  }
-  
-  markermd_rule(
-    node_type = rule_list$node_type,
-    verb = rule_list$verb,
-    values = rule_list$values
-  )
-}

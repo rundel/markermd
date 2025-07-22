@@ -175,70 +175,56 @@ validate_repo_against_templates = function(ast, templates) {
   return(results)
 }
 
-#' Resolve Section Names from Selected Nodes
+#' Resolve Section Hierarchies from Selected Nodes
 #'
-#' Extract heading names/titles from originally selected nodes in template creation.
-#' This is used to map template selections to sections in new documents.
+#' Extract detailed heading hierarchies from originally selected nodes in template creation.
+#' Uses parsermd::rmd_node_sections() to get complete heading paths for more precise subsetting.
 #'
 #' @param original_ast rmd_ast object from template creation
 #' @param selected_node_indices Integer vector of originally selected node indices
 #'
-#' @return Character vector of section names for use with by_section()
+#' @return Character vector of heading hierarchies (with NAs stripped) for more precise selection
 #'
-resolve_section_names = function(original_ast, selected_node_indices) {
+resolve_section_hierarchies = function(original_ast, selected_node_indices) {
   
   if (is.null(original_ast) || length(selected_node_indices) == 0) {
     return(character(0))
   }
   
-  # Get AST nodes
-  ast_nodes = if (inherits(original_ast, "rmd_ast") && !is.null(original_ast@nodes)) {
-    original_ast@nodes
-  } else {
-    original_ast
+  if (!requireNamespace("parsermd", quietly = TRUE)) {
+    stop("parsermd package is required for section hierarchy resolution")
   }
   
-  if (length(ast_nodes) == 0) {
+  # Get all node section hierarchies using parsermd::rmd_node_sections
+  all_sections = parsermd::rmd_node_sections(original_ast)
+  
+  # Validate selected node indices
+  valid_indices = selected_node_indices[selected_node_indices >= 1 & selected_node_indices <= length(all_sections)]
+  
+  if (length(valid_indices) == 0) {
+    warning("No valid node indices found")
     return(character(0))
   }
   
-  section_names = character(0)
+  # Extract section hierarchies for selected nodes
+  selected_hierarchies = all_sections[valid_indices]
   
-  for (node_idx in selected_node_indices) {
-    # Validate node index
-    if (node_idx < 1 || node_idx > length(ast_nodes)) {
-      warning("Node index ", node_idx, " is out of bounds")
-      next
-    }
-    
-    node = ast_nodes[[node_idx]]
-    
-    # If the selected node is a heading, use its name directly
-    if (inherits(node, "rmd_heading")) {
-      section_names = c(section_names, node@name)
-    } else {
-      # If not a heading, find the parent section heading
-      # Look backwards for the most recent heading
-      parent_heading = NULL
-      for (i in (node_idx - 1):1) {
-        if (i < 1) break
-        parent_node = ast_nodes[[i]]
-        if (inherits(parent_node, "rmd_heading")) {
-          parent_heading = parent_node@name
-          break
-        }
-      }
-      
-      if (!is.null(parent_heading)) {
-        section_names = c(section_names, parent_heading)
-      } else {
-        warning("No parent heading found for node ", node_idx)
+  # Strip NAs and create unique vector of heading paths
+  clean_hierarchies = character(0)
+  for (hierarchy in selected_hierarchies) {
+    if (is.character(hierarchy) && length(hierarchy) > 0) {
+      # Remove NA values from the hierarchy vector
+      clean_hierarchy = hierarchy[!is.na(hierarchy)]
+      if (length(clean_hierarchy) > 0) {
+        # Create a path-like string from the hierarchy
+        hierarchy_path = paste(clean_hierarchy, collapse = " > ")
+        clean_hierarchies = c(clean_hierarchies, hierarchy_path)
       }
     }
   }
   
   # Remove duplicates while preserving order
-  unique(section_names)
+  unique(clean_hierarchies)
 }
 
 #' Evaluate Rule Against AST Subset
@@ -428,28 +414,75 @@ validate_question_rules = function(new_ast, original_ast, question) {
   )
   
   tryCatch({
-    # Resolve section names from original selected nodes
-    section_names = resolve_section_names(original_ast, question@selected_nodes@indices)
+    # Resolve detailed section hierarchies from original selected nodes
+    section_hierarchies = resolve_section_hierarchies(original_ast, question@selected_nodes@indices)
     
-    if (length(section_names) == 0) {
+    if (length(section_hierarchies) == 0) {
       return(list(
         question_name = question@name,
         status = "error", 
-        messages = "No section names could be resolved",
-        details = "Could not determine sections from selected nodes"
+        messages = "No section hierarchies could be resolved",
+        details = "Could not determine section paths from selected nodes"
       ))
     }
     
-    # Get question content from new AST using by_section
+    # Get question content from new AST using the detailed hierarchies
     if (!requireNamespace("parsermd", quietly = TRUE)) {
       stop("parsermd package is required for section selection")
     }
     
+    # Use the full hierarchical paths for more precise selection
     question_ast = tryCatch({
-      parsermd::rmd_select(new_ast, parsermd::by_section(section_names), keep_yaml = FALSE)
+      # Get all node section hierarchies for the new AST
+      new_ast_sections = parsermd::rmd_node_sections(new_ast)
+      
+      # Find nodes that match our target hierarchies
+      matching_indices = c()
+      
+      for (target_hierarchy in section_hierarchies) {
+        # Split target hierarchy into parts
+        target_parts = strsplit(target_hierarchy, " > ")[[1]]
+        
+        # Find nodes whose hierarchy matches or is contained within the target
+        for (i in seq_along(new_ast_sections)) {
+          node_hierarchy = new_ast_sections[[i]]
+          if (is.character(node_hierarchy) && length(node_hierarchy) > 0) {
+            # Remove NAs from node hierarchy
+            clean_node_hierarchy = node_hierarchy[!is.na(node_hierarchy)]
+            
+            # Check if target hierarchy matches or is a prefix of node hierarchy
+            if (length(clean_node_hierarchy) >= length(target_parts)) {
+              # Check if the target parts match the beginning of the node hierarchy
+              if (all(target_parts == clean_node_hierarchy[1:length(target_parts)])) {
+                matching_indices = c(matching_indices, i)
+              }
+            }
+          }
+        }
+      }
+      
+      # Remove duplicates and sort
+      matching_indices = unique(sort(matching_indices))
+      
+      if (length(matching_indices) > 0) {
+        # Subset the AST using the matching indices
+        new_ast[matching_indices]
+      } else {
+        # No matches found, return empty AST
+        parsermd::rmd_ast(nodes = list())
+      }
     }, error = function(e) {
-      # If by_section fails, return empty AST
-      parsermd::rmd_ast(nodes = list())
+      # If hierarchical selection fails, fallback to by_section with final headings
+      final_headings = sapply(section_hierarchies, function(hierarchy) {
+        parts = strsplit(hierarchy, " > ")[[1]]
+        parts[length(parts)]
+      })
+      
+      tryCatch({
+        parsermd::rmd_select(new_ast, parsermd::by_section(final_headings), keep_yaml = FALSE)
+      }, error = function(e2) {
+        parsermd::rmd_ast(nodes = list())
+      })
     })
     
     # Count originally selected heading nodes for count adjustments
@@ -458,7 +491,7 @@ validate_question_rules = function(new_ast, original_ast, question) {
     # If no rules, consider it a pass
     if (length(question@rules) == 0) {
       result$messages = "No rules defined - validation passed"
-      result$details = paste0("Section(s) found: ", paste(section_names, collapse = ", "))
+      result$details = paste0("Section hierarchy(ies): ", paste(section_hierarchies, collapse = ", "))
       return(result)
     }
     
@@ -480,7 +513,7 @@ validate_question_rules = function(new_ast, original_ast, question) {
     result$status = if (all_passed) "pass" else "fail"
     result$messages = sapply(rule_results, function(r) r$message)
     result$details = paste(c(
-      paste0("Section(s): ", paste(section_names, collapse = ", ")),
+      paste0("Section hierarchy(ies): ", paste(section_hierarchies, collapse = ", ")),
       sapply(rule_results, function(r) r$message)
     ), collapse = "\n")
     
@@ -575,32 +608,70 @@ extract_question_content = function(ast, template_obj) {
       next
     }
     
-    # Extract content from selected nodes
+    # Extract content using hierarchical section matching
     question_content = tryCatch({
-      # Validate node indices
-      valid_indices = selected_nodes[selected_nodes >= 1 & selected_nodes <= length(ast_nodes)]
+      # Resolve section hierarchies from the original template
+      section_hierarchies = resolve_section_hierarchies(template_obj@original_ast, selected_nodes)
       
-      if (length(valid_indices) == 0) {
-        "Selected nodes are not available in this document."
+      if (length(section_hierarchies) == 0) {
+        "Could not resolve section hierarchies for this question."
       } else {
-        # Extract content from each selected node
-        node_contents = sapply(valid_indices, function(node_idx) {
-          node = ast_nodes[[node_idx]]
+        # Get matching nodes from the current AST using hierarchical matching
+        current_ast_sections = parsermd::rmd_node_sections(ast)
+        matching_indices = c()
+        
+        for (target_hierarchy in section_hierarchies) {
+          # Split target hierarchy into parts
+          target_parts = strsplit(target_hierarchy, " > ")[[1]]
           
-          # Use as_document() to get the node content as text
-          content = tryCatch({
-            parsermd::as_document(node) |>
-              as.character() |>
-              paste(collapse = "\n")
-          }, error = function(e) {
-            paste("Error extracting content:", e$message)
+          # Find nodes whose hierarchy matches or is contained within the target
+          for (i in seq_along(current_ast_sections)) {
+            node_hierarchy = current_ast_sections[[i]]
+            if (is.character(node_hierarchy) && length(node_hierarchy) > 0) {
+              # Remove NAs from node hierarchy
+              clean_node_hierarchy = node_hierarchy[!is.na(node_hierarchy)]
+              
+              # Check if target hierarchy matches or is a prefix of node hierarchy
+              if (length(clean_node_hierarchy) >= length(target_parts)) {
+                # Check if the target parts match the beginning of the node hierarchy
+                if (all(target_parts == clean_node_hierarchy[1:length(target_parts)])) {
+                  matching_indices = c(matching_indices, i)
+                }
+              }
+            }
+          }
+        }
+        
+        # Remove duplicates and sort
+        matching_indices = unique(sort(matching_indices))
+        
+        if (length(matching_indices) == 0) {
+          "No matching content found in this document for the selected hierarchies."
+        } else {
+          # Extract content from matching nodes
+          node_contents = sapply(matching_indices, function(node_idx) {
+            if (node_idx >= 1 && node_idx <= length(ast_nodes)) {
+              node = ast_nodes[[node_idx]]
+              
+              # Use as_document() to get the node content as text
+              content = parsermd::as_document(node) |>
+                as.character() |>
+                paste(collapse = "\n")
+              
+              return(content)
+            } else {
+              return("")
+            }
           })
           
-          return(content)
-        })
-        
-        # Combine all node contents for this question
-        paste(node_contents, collapse = "\n\n")
+          # Remove empty contents and combine
+          node_contents = node_contents[nchar(node_contents) > 0]
+          if (length(node_contents) > 0) {
+            paste(node_contents, collapse = "\n\n")
+          } else {
+            "No content available for the matched sections."
+          }
+        }
       }
     }, error = function(e) {
       paste("Error extracting question content:", e$message)

@@ -68,46 +68,35 @@ test_that("S7 rules can represent all module rule states", {
   expect_equal(not_content_list$verb_inputs$content_pattern, "TODO")
 })
 
-test_that("list format rules can be converted to valid S7 objects", {
-  # Test typical rule list structures from the module
+test_that("S7 rules can be created directly with valid inputs", {
+  # Test creating S7 rules directly (replacing list conversion)
   
-  # Count rule from module
-  count_rule_list = list(
-    id = 1,
-    node_types = "rmd_heading",
+  # Count rule
+  count_s7 = markermd_rule(
+    node_type = "rmd_heading",
     verb = "has count of",
-    verb_inputs = list(count_range = c(1, 3)),
-    delete_observer = NULL
+    values = c(1, 3)
   )
-  
-  count_s7 = list_to_rule(count_rule_list)
   expect_true(S7::S7_inherits(count_s7, markermd_rule))
   validation = validate_markermd_rule(count_s7)
   expect_true(validation$valid)
   
-  # Content rule from module  
-  content_rule_list = list(
-    id = 2,
-    node_types = "rmd_chunk",
+  # Content rule  
+  content_s7 = markermd_rule(
+    node_type = "rmd_chunk",
     verb = "has content",
-    verb_inputs = list(content_pattern = "ggplot"),
-    delete_observer = NULL
+    values = "ggplot"
   )
-  
-  content_s7 = list_to_rule(content_rule_list)
   expect_true(S7::S7_inherits(content_s7, markermd_rule))
   validation = validate_markermd_rule(content_s7)
   expect_true(validation$valid)
   
-  # Rule list with missing verb_inputs (edge case)
-  minimal_rule_list = list(
-    id = 3,
-    node_types = "Any node",
+  # Name rule with defaults
+  minimal_s7 = markermd_rule(
+    node_type = "Any node",
     verb = "has name",
-    delete_observer = NULL
+    values = ""
   )
-  
-  minimal_s7 = list_to_rule(minimal_rule_list)
   expect_equal(minimal_s7@values, "")  # Should use default
   validation = validate_markermd_rule(minimal_s7)
   expect_true(validation$valid)
@@ -139,8 +128,8 @@ test_that("S7 validation catches module rule inconsistencies", {
   }, "Count range values must be numeric")
 })
 
-test_that("round-trip conversion preserves module compatibility", {
-  # Test that rules can go S7 -> list -> S7 and maintain validity
+test_that("S7 rules can be converted to list format for module compatibility", {
+  # Test that rules can go S7 -> list and maintain expected structure
   
   test_rules = list(
     # Count rule
@@ -158,17 +147,11 @@ test_that("round-trip conversion preserves module compatibility", {
     # Convert to list (as module would store)
     as_list = rule_to_list(original, rule_id = i)
     
-    # Convert back to S7
-    back_to_s7 = list_to_rule(as_list)
-    
-    # Should be valid and identical
-    validation = validate_markermd_rule(back_to_s7)
-    expect_true(validation$valid, 
-               info = paste("Round-trip failed for rule", i))
-    
-    expect_equal(back_to_s7@node_type, original@node_type)
-    expect_equal(back_to_s7@verb, original@verb)
-    expect_equal(back_to_s7@values, original@values)
+    # Should have expected structure
+    expect_type(as_list, "list")
+    expect_equal(as_list$node_types, original@node_type)
+    expect_equal(as_list$verb, original@verb)
+    expect_equal(as_list$values, original@values)
   }
 })
 
@@ -220,10 +203,5 @@ test_that("integration with existing template structure", {
     expect_true("node_types" %in% names(rule_list))
     expect_true("verb" %in% names(rule_list))
     expect_true("verb_inputs" %in% names(rule_list))
-    
-    # Should be convertible back
-    rule_s7 = list_to_rule(rule_list)
-    validation = validate_markermd_rule(rule_s7)
-    expect_true(validation$valid)
   }
 })
