@@ -17,19 +17,7 @@ template_app = function(ast, template_obj = NULL) {
     bslib::layout_columns(
       col_widths = c(6, 6),
       style = "height: 100%;",
-      shiny::div(
-        style = "height: 100%; display: flex; flex-direction: column;",
-        shiny::h3("Document Structure", style = "flex-shrink: 0;"),
-        shiny::div(
-          id = "ast_tree_container",
-          style = "background-color: #f8f9fa; padding: 15px; border-radius: 4px; border: 1px solid #dee2e6; flex: 1; overflow-y: auto;",
-          shiny::uiOutput("ast_tree_ui")
-        ),
-        shiny::div(
-          style = "flex-shrink: 0; margin-top: 10px; margin-bottom: 10px; height: 50px; display: flex; align-items: center; justify-content: center;",
-          shiny::actionButton("clear_selections", "Clear Current Question", class = "btn-secondary btn-sm")
-        )
-      ),
+      ast_selectable_ui("ast_panel"),
       shiny::div(
         style = "height: 100%; display: flex; flex-direction: column;",
         shiny::h3("Questions", style = "flex-shrink: 0;"),
@@ -56,6 +44,12 @@ template_app = function(ast, template_obj = NULL) {
     # Question modules storage
     question_modules = shiny::reactiveVal(list())
     
+    # Reactive value for pending node clicks
+    pending_node_click = shiny::reactiveVal(NULL)
+    
+    # Trigger for forcing styling updates
+    styling_trigger = shiny::reactiveVal(0)
+    
     # Load template on startup if provided (disabled for now)
     # template_loaded = shiny::reactiveVal(FALSE)
     # 
@@ -75,164 +69,6 @@ template_app = function(ast, template_obj = NULL) {
         ast()@nodes
       } else {
         ast()
-      }
-    })
-    
-    # Create interactive AST tree display
-    output$ast_tree_ui = shiny::renderUI({
-      if (is.null(ast()) || is.null(ast_nodes())) {
-        return(shiny::p("No document loaded"))
-      }
-      
-      current_q_id = current_question_id()
-      
-      # Get selected nodes for current question
-      selected_nodes = integer(0)
-      modules_list = question_modules()
-      if (length(modules_list) > 0 && !is.null(modules_list[[as.character(current_q_id)]])) {
-        current_module = modules_list[[as.character(current_q_id)]]
-        if (!is.null(current_module$server)) {
-          nodes_result = current_module$server$get_selected_nodes()
-          if (!is.null(nodes_result)) {
-            selected_nodes = nodes_result
-          }
-        }
-      }
-      
-      # Build tree structure
-      tree_items = build_ast_tree_structure(ast())
-      
-      if (length(tree_items) == 0) {
-        return(shiny::p("No document structure available"))
-      }
-      
-      # Create the simple tree
-      create_simple_tree(tree_items, selected_nodes, identity)
-    })
-    
-    # Handle node action clicks
-    shiny::observe({
-      if (is.null(ast_nodes())) return()
-      
-      nodes = ast_nodes()
-      tree_items = build_ast_tree_structure(ast())
-      
-      # Iterate through nodes to match tree UI creation
-      for (i in seq_along(nodes)) {
-        local({
-          node_index = i
-          node = ast_nodes()[[node_index]]
-          node_type = class(node)[1]
-          
-          # Only create selection observers for heading nodes
-          if (node_type == "rmd_heading") {
-            # Handle "Select" button
-            shiny::observeEvent(input[[paste0("select_", node_index)]], {
-              current_q_id = current_question_id()
-              
-              # Ensure question exists
-              ensure_current_question_exists()
-              
-              modules_list = question_modules()
-              current_module = modules_list[[as.character(current_q_id)]]
-              
-              if (!is.null(current_module$server)) {
-                current_selected = current_module$server$get_selected_nodes()
-                
-                # Check if node has selected ancestors
-                if (has_selected_ancestor(tree_items, node_index, current_selected)) {
-                  return()
-                }
-                
-                # Toggle this node
-                if (node_index %in% current_selected) {
-                  current_module$server$remove_node(node_index)
-                } else {
-                  # Remove descendants first
-                  descendants_to_remove = find_selected_descendants(tree_items, node_index, current_selected)
-                  for (desc in descendants_to_remove) {
-                    current_module$server$remove_node(desc)
-                  }
-                  current_module$server$add_node(node_index)
-                }
-              }
-            })
-            
-            # Handle "Select +" button
-            shiny::observeEvent(input[[paste0("select_children_", node_index)]], {
-              current_q_id = current_question_id()
-              
-              # Ensure question exists
-              ensure_current_question_exists()
-              
-              modules_list = question_modules()
-              current_module = modules_list[[as.character(current_q_id)]]
-              
-              if (!is.null(current_module$server)) {
-                current_selected = current_module$server$get_selected_nodes()
-                
-                # Check if node has selected ancestors
-                if (has_selected_ancestor(tree_items, node_index, current_selected)) {
-                  return()
-                }
-                
-                # Toggle this node (same as select for now)
-                if (node_index %in% current_selected) {
-                  current_module$server$remove_node(node_index)
-                } else {
-                  # Remove descendants first
-                  descendants_to_remove = find_selected_descendants(tree_items, node_index, current_selected)
-                  for (desc in descendants_to_remove) {
-                    current_module$server$remove_node(desc)
-                  }
-                  current_module$server$add_node(node_index)
-                }
-              }
-            })
-          }
-          
-          # Handle "Preview" button (available for all nodes)
-          shiny::observeEvent(input[[paste0("preview_", node_index)]], {
-            if (node_index >= 1 && node_index <= length(ast_nodes())) {
-              node = ast_nodes()[[node_index]]
-              
-              # Use as_document() to get raw node content
-              content = parsermd::as_document(node) |>
-                as.character() |>
-                paste(collapse="\n")
-
-              # Get node type for title
-              node_type = class(node)[1]
-              
-              shiny::showModal(
-                shiny::modalDialog(
-                  title = shiny::div(
-                    style = "display: flex; justify-content: space-between; align-items: center; margin: 0; padding: 0;",
-                    shiny::span(node_type, style = "font-weight: bold;"),
-                    shiny::tags$button(
-                      type = "button",
-                      class = "close",
-                      `data-dismiss` = "modal",
-                      `aria-label` = "Close",
-                      style = "background: none; border: none; font-size: 24px; font-weight: bold; color: #000; opacity: 0.5; cursor: pointer;",
-                      shiny::icon("times")
-                    )
-                  ),
-                  size = "l",
-                  shiny::div(
-                    style = "max-height: 500px; overflow-y: auto;",
-                    shiny::pre(
-                      content,
-                      style = "font-family: 'Courier New', Courier, monospace; font-size: 12px; white-space: pre-wrap; margin: 0; background: #f8f9fa; padding: 15px; border: 1px solid #e9ecef; border-radius: 3px; line-height: 1.4;"
-                    )
-                  ),
-                  footer = NULL,
-                  easyClose = TRUE
-                )
-              )
-            }
-          })
-        })
       }
     })
     
@@ -278,6 +114,125 @@ template_app = function(ast, template_obj = NULL) {
       
       return(next_id)
     }
+    
+    # Get selected nodes for current question
+    selected_nodes = shiny::reactive({
+      current_q_id = current_question_id()
+      selected_nodes = integer(0)
+      modules_list = question_modules()
+      
+      if (length(modules_list) > 0 && !is.null(modules_list[[as.character(current_q_id)]])) {
+        current_module = modules_list[[as.character(current_q_id)]]
+        if (!is.null(current_module$server)) {
+          nodes_result = current_module$server$get_selected_nodes()
+          if (!is.null(nodes_result)) {
+            selected_nodes = nodes_result
+          }
+        }
+      }
+      
+      return(selected_nodes)
+    })
+    
+    # Initialize AST selectable module
+    ast_result = ast_selectable_server("ast_panel", ast, selected_nodes)
+    
+    # Handle pending node clicks when question modules change
+    shiny::observeEvent(list(question_modules(), pending_node_click()), {
+      click_data = pending_node_click()
+      if (is.null(click_data)) return()
+      
+      current_q_id = current_question_id()
+      modules_list = question_modules()
+      current_module = modules_list[[as.character(current_q_id)]]
+      
+      # Only process if we now have a server
+      if (!is.null(current_module) && !is.null(current_module$server)) {
+        # Clear the pending click
+        pending_node_click(NULL)
+        
+        # Apply the node selection
+        node_index = click_data$node_index
+        current_selected = current_module$server$get_selected_nodes()
+        tree_items = build_ast_tree_structure(ast())
+        
+        # Check if node has selected ancestors
+        if (has_selected_ancestor(tree_items, node_index, current_selected)) {
+          return()
+        }
+        
+        # Toggle this node
+        if (node_index %in% current_selected) {
+          current_module$server$remove_node(node_index)
+        } else {
+          # Remove descendants first
+          descendants_to_remove = find_selected_descendants(tree_items, node_index, current_selected)
+          for (desc in descendants_to_remove) {
+            current_module$server$remove_node(desc)
+          }
+          current_module$server$add_node(node_index)
+        }
+      }
+    })
+    
+    # Handle node selection events from AST module
+    shiny::observeEvent(ast_result$node_clicked(), {
+      click_data = ast_result$node_clicked()
+      if (is.null(click_data)) return()
+      
+      current_q_id = current_question_id()
+      
+      # Check if question exists
+      modules_list = question_modules()
+      current_module = modules_list[[as.character(current_q_id)]]
+      question_exists = !is.null(current_module)
+      
+      # If question doesn't exist, create it and store the pending click
+      if (!question_exists) {
+        ensure_current_question_exists()
+        pending_node_click(click_data)
+        return()
+      }
+      
+      # If question exists but server doesn't exist yet, store as pending
+      if (is.null(current_module$server)) {
+        pending_node_click(click_data)
+        return()
+      }
+      
+      # Process the click immediately
+      node_index = click_data$node_index
+      current_selected = current_module$server$get_selected_nodes()
+      tree_items = build_ast_tree_structure(ast())
+      
+      # Check if node has selected ancestors
+      if (has_selected_ancestor(tree_items, node_index, current_selected)) {
+        return()
+      }
+      
+      # Toggle this node
+      if (node_index %in% current_selected) {
+        current_module$server$remove_node(node_index)
+      } else {
+        # Remove descendants first
+        descendants_to_remove = find_selected_descendants(tree_items, node_index, current_selected)
+        for (desc in descendants_to_remove) {
+          current_module$server$remove_node(desc)
+        }
+        current_module$server$add_node(node_index)
+      }
+    }, ignoreNULL = TRUE, ignoreInit = TRUE)
+    
+    # Handle clear selections from AST module
+    shiny::observeEvent(ast_result$clear_clicked(), {
+      current_q_id = current_question_id()
+      modules_list = question_modules()
+      current_module = modules_list[[as.character(current_q_id)]]
+      
+      if (!is.null(current_module$server)) {
+        current_module$server$clear_nodes()
+      }
+    })
     
     # Create persistent question container
     output$questions_ui = shiny::renderUI({
@@ -361,6 +316,9 @@ template_app = function(ast, template_obj = NULL) {
             where = "beforeEnd",
             ui = question_wrapper
           )
+          
+          # Trigger styling update after UI insertion
+          styling_trigger(styling_trigger() + 1)
         }
       }
       
@@ -399,16 +357,17 @@ template_app = function(ast, template_obj = NULL) {
       }
     })
     
-    # Update question styling when current question changes (without recreating UI)
+    # Update question styling when current question changes or styling trigger fires
     shiny::observe({
       current_q_id = current_question_id()
       modules_list = question_modules()
+      styling_trigger()  # React to styling trigger
       
+      # Apply styling immediately without setTimeout first, then with delay as backup
       for (q_id_str in names(modules_list)) {
         q_id = as.numeric(q_id_str)
         is_current = (q_id == current_q_id)
         
-        # Update card styling via JavaScript
         if (is_current) {
           shinyjs::runjs(paste0("
             $('#question_card_", q_id, "').addClass('border-primary');
@@ -427,6 +386,17 @@ template_app = function(ast, template_obj = NULL) {
           "))
         }
       }
+      
+      # Backup with delay for newly inserted elements
+      shinyjs::runjs(paste0("
+        setTimeout(function() {
+          $('#question_card_", current_q_id, "').addClass('border-primary');
+          $('#question_card_", current_q_id, "').css({
+            'border-color': '#007bff !important',
+            'border-width': '2px !important'
+          });
+        }, 100);
+      "))
     })
     
     # Add new question handler
@@ -434,16 +404,6 @@ template_app = function(ast, template_obj = NULL) {
       add_new_question()
     })
     
-    # Clear selections for current question
-    shiny::observeEvent(input$clear_selections, {
-      current_q_id = current_question_id()
-      modules_list = question_modules()
-      current_module = modules_list[[as.character(current_q_id)]]
-      
-      if (!is.null(current_module$server)) {
-        current_module$server$clear_nodes()
-      }
-    })
     
     # Handle question selection
     shiny::observeEvent(input$select_question, {
