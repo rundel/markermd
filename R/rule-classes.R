@@ -83,11 +83,11 @@ markermd_rule = S7::new_class(
 #' based on the specified verb type.
 #'
 #' @param node_type Character. The node type (defaults to "Any node")
-#' @param verb Character. The validation verb (defaults to "has between")
+#' @param verb Character. The validation verb (defaults to "has at least")
 #' @param values Vector. Custom values (if NULL, uses defaults for the verb)
 #' @return markermd_rule object
 #' @export
-new_markermd_rule = function(node_type = "Any node", verb = "has between", values = NULL) {
+new_markermd_rule = function(node_type = "Any node", verb = "has at least", values = NULL) {
   # Use default values if none provided
   if (is.null(values)) {
     values = get_default_rule_values(verb)

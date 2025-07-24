@@ -36,9 +36,9 @@ get_allowed_node_types = function() {
 #' @export
 get_allowed_rule_verbs = function() {
   c(
-    "has between",
     "has at least",
     "has at most",
+    "has between",
     "has content", 
     "lacks content",
     "has name"
