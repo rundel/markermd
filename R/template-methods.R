@@ -45,11 +45,16 @@ S7::method(print, markermd_template) = function(x, ...) {
   if (length(x@questions) > 0) {
     cat("Questions:\n")
     for (q in x@questions) {
-      cat("  -", q@name, "(", length(q@selected_nodes@indices), "nodes,", 
-          length(q@rules), "rules)\n")
+      node_count = length(q@selected_nodes@indices)
+      rule_count = length(q@rules)
+      node_text = if (node_count == 1) "node" else "nodes"
+      rule_text = if (rule_count == 1) "rule" else "rules"
+      cat("  - ", q@name, " (", node_count, " ", node_text, ", ", rule_count, " ", rule_text, ")\n", sep = "")
     }
   }
-  cat("\nOriginal AST:", length(x@original_ast@nodes), "nodes\n")
+  ast_node_count = length(x@original_ast@nodes)
+  ast_node_text = if (ast_node_count == 1) "node" else "nodes"
+  cat("\nOriginal AST:", ast_node_count, ast_node_text, "\n")
   invisible(x)
 }
 

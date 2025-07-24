@@ -149,15 +149,42 @@ template_app = function(ast, template_obj = NULL) {
     # Trigger for forcing styling updates
     styling_trigger = shiny::reactiveVal(0)
     
-    # Load template on startup if provided (disabled for now)
-    # template_loaded = shiny::reactiveVal(FALSE)
-    # 
-    # shiny::observeEvent(template_obj, {
-    #   if (!is.null(template_obj) && !template_loaded()) {
-    #     # TODO: Implement template loading
-    #     template_loaded(TRUE)
-    #   }
-    # }, once = TRUE, ignoreNULL = TRUE)
+    # Load template on startup if provided
+    template_loaded = shiny::reactiveVal(FALSE)
+    
+    shiny::observeEvent(template_obj, {
+      if (!is.null(template_obj) && !template_loaded()) {
+        # Load questions from template
+        for (question in template_obj@questions) {
+          id = question@id
+          
+          # Create initial question object in the same format as add_new_question
+          module_id = paste0("question_", id)
+          
+          # Store the module data (server will be created when UI is inserted)
+          modules = question_modules()
+          modules[[as.character(id)]] = list(
+            id = id,
+            module_id = module_id,
+            initial_question = question,
+            server = NULL  # Will be created when UI is inserted
+          )
+          question_modules(modules)
+          
+          # Update last question ID if this is higher
+          if (id > last_question_id()) {
+            last_question_id(id)
+          }
+        }
+        
+        # Set current question to first question if any exist
+        if (length(template_obj@questions) > 0) {
+          current_question_id(template_obj@questions[[1]]@id)
+        }
+        
+        template_loaded(TRUE)
+      }
+    }, once = TRUE, ignoreNULL = TRUE)
     
     # Get AST nodes for easier handling
     ast_nodes = shiny::reactive({
@@ -359,79 +386,138 @@ template_app = function(ast, template_obj = NULL) {
     
     # Use insertUI/removeUI approach for stable question modules
     output$question_items = shiny::renderUI({
-      # Just render empty container - questions will be inserted dynamically
-      shiny::div(id = "dynamic_questions_container")
+      modules_list = question_modules()
+      
+      if (length(modules_list) == 0) {
+        shiny::div(id = "dynamic_questions_container")
+      } else {
+        shiny::div(
+          id = "dynamic_questions_container",
+          lapply(names(modules_list), function(q_id_str) {
+            q_id = as.numeric(q_id_str)
+            question_module = modules_list[[q_id_str]]
+            
+            # Create the server for this question if it doesn't exist
+            if (is.null(question_module$server)) {
+              question_server_fn = question_server(
+                question_module$module_id, 
+                ast_nodes,
+                initial_question = question_module$initial_question
+              )
+              
+              # Store the server in the modules list
+              modules_list[[q_id_str]]$server = question_server_fn
+              question_modules(modules_list)
+            }
+            
+            # Create question wrapper
+            shiny::div(
+              id = paste0("question_wrapper_", q_id),
+              style = "margin-bottom: 15px; width: 100%; max-width: 100%; box-sizing: border-box;",
+              onclick = paste0("Shiny.setInputValue('select_question', ", q_id, ");"),
+              
+              # Question module UI
+              shiny::div(
+                id = paste0("question_card_", q_id),
+                class = "border",
+                style = "border-radius: 0.375rem;",
+                question_ui(question_module$module_id, q_id)
+              )
+            )
+          })
+        )
+      }
     })
     
     # Track which questions have been inserted
     inserted_questions = shiny::reactiveVal(character(0))
     
     
-    # Insert new questions when they are added
-    shiny::observe({
-      modules_list = question_modules()
-      current_inserted = inserted_questions()
-      
-      # Find new questions that need to be inserted
-      new_questions = setdiff(names(modules_list), current_inserted)
-      
-      modules_updated = FALSE
-      
-      for (q_id_str in new_questions) {
-        q_id = as.numeric(q_id_str)
-        question_module = modules_list[[q_id_str]]
-        
-        if (!is.null(question_module)) {
-          # Create the server for this question if it doesn't exist
-          if (is.null(question_module$server)) {
-            question_server_fn = question_server(
-              question_module$module_id, 
-              ast
-            )
-            
-            # Store the server in the modules list
-            modules_list[[q_id_str]]$server = question_server_fn
-            modules_updated = TRUE
-          }
-          
-          # Create question wrapper
-          question_wrapper = shiny::div(
-            id = paste0("question_wrapper_", q_id),
-            style = "margin-bottom: 15px; width: 100%; max-width: 100%; box-sizing: border-box;",
-            onclick = paste0("Shiny.setInputValue('select_question', ", q_id, ");"),
-            
-            # Question module UI - styling will be updated by separate observer
-            shiny::div(
-              id = paste0("question_card_", q_id),
-              class = "border",
-              style = "border-radius: 0.375rem;",
-              question_ui(modules_list[[q_id_str]]$module_id, q_id)
-            )
-          )
-          
-          # Insert the question UI
-          shiny::insertUI(
-            selector = "#dynamic_questions_container",
-            where = "beforeEnd",
-            ui = question_wrapper
-          )
-          
-          # Trigger styling update after UI insertion
-          styling_trigger(styling_trigger() + 1)
-        }
-      }
-      
-      # Update question_modules reactive only once if we made changes
-      if (modules_updated) {
-        question_modules(modules_list)
-      }
-      
-      # Update inserted questions list only with successfully inserted questions
-      if (length(new_questions) > 0) {
-        successfully_inserted = c(current_inserted, new_questions)
-        inserted_questions(successfully_inserted)
-      }
-    })
+    # Insert new questions when they are added (DISABLED - using renderUI approach instead)
+    # shiny::observe({
+    #   modules_list = question_modules()
+    #   current_inserted = inserted_questions()
+    #   
+    #   cat("Debug UI: modules_list has", length(modules_list), "questions\n")
+    #   cat("Debug UI: current_inserted has", length(current_inserted), "questions\n")
+    #   cat("Debug UI: modules_list keys:", paste(names(modules_list), collapse = ", "), "\n")
+    #   cat("Debug UI: current_inserted keys:", paste(current_inserted, collapse = ", "), "\n")
+    #   
+    #   # Find new questions that need to be inserted
+    #   new_questions = setdiff(names(modules_list), current_inserted)
+    #   cat("Debug UI: new_questions to insert:", paste(new_questions, collapse = ", "), "\n")
+    #   
+    #   modules_updated = FALSE
+    #   
+    #   for (q_id_str in new_questions) {
+    #     q_id = as.numeric(q_id_str)
+    #     question_module = modules_list[[q_id_str]]
+    #     
+    #     cat("Debug UI: Processing question", q_id_str, "\n")
+    #     
+    #     if (!is.null(question_module)) {
+    #       cat("Debug UI: Question module exists\n")
+    #       # Create the server for this question if it doesn't exist
+    #       if (is.null(question_module$server)) {
+    #         question_server_fn = question_server(
+    #           question_module$module_id, 
+    #           ast,
+    #           initial_question = question_module$initial_question
+    #         )
+    #         
+    #         # Store the server in the modules list
+    #         modules_list[[q_id_str]]$server = question_server_fn
+    #         modules_updated = TRUE
+    #       }
+    #       
+    #       # Create question wrapper
+    #       question_wrapper = shiny::div(
+    #         id = paste0("question_wrapper_", q_id),
+    #         style = "margin-bottom: 15px; width: 100%; max-width: 100%; box-sizing: border-box;",
+    #         onclick = paste0("Shiny.setInputValue('select_question', ", q_id, ");"),
+    #         
+    #         # Question module UI - styling will be updated by separate observer
+    #         shiny::div(
+    #           id = paste0("question_card_", q_id),
+    #           class = "border",
+    #           style = "border-radius: 0.375rem;",
+    #           {
+    #             cat("Debug UI: Creating question_ui for module_id:", modules_list[[q_id_str]]$module_id, "q_id:", q_id, "\n")
+    #             question_ui(modules_list[[q_id_str]]$module_id, q_id)
+    #           }
+    #         )
+    #       )
+    #       
+    #       # Insert the question UI
+    #       cat("Debug UI: Inserting UI for question", q_id, "\n")
+    #       cat("Debug UI: question_wrapper created successfully\n")
+    #       
+    #       # Check if container exists
+    #       shiny::insertUI(
+    #         selector = "#dynamic_questions_container",
+    #         where = "beforeEnd",
+    #         ui = question_wrapper,
+    #         immediate = TRUE
+    #       )
+    #       
+    #       cat("Debug UI: UI inserted for question", q_id, "\n")
+    #       
+    #       # Trigger styling update after UI insertion
+    #       styling_trigger(styling_trigger() + 1)
+    #     }
+    #   }
+    #   
+    #   # Update question_modules reactive only once if we made changes
+    #   if (modules_updated) {
+    #     question_modules(modules_list)
+    #   }
+    #   
+    #   # Update inserted questions list only with successfully inserted questions
+    #   if (length(new_questions) > 0) {
+    #     successfully_inserted = c(current_inserted, new_questions)
+    #     inserted_questions(successfully_inserted)
+    #   }
+    # })
     
     # Remove questions when they are deleted
     shiny::observe({
@@ -568,17 +654,47 @@ template_app = function(ast, template_obj = NULL) {
       }
     })
     
-    # Save template functionality (disabled for now)
-    # output$save_template = shiny::downloadHandler(
-    #   filename = function() {
-    #     timestamp = format(Sys.time(), "%Y%m%d_%H%M%S")
-    #     paste0("template_", timestamp, ".rds")
-    #   },
-    #   content = function(file) {
-    #     # TODO: Implement save functionality
-    #   },
-    #   contentType = "application/rds"
-    # )
+    # Save template functionality
+    output$save_template = shiny::downloadHandler(
+      filename = function() {
+        timestamp = format(Sys.time(), "%Y%m%d_%H%M%S")
+        paste0("template_", timestamp, ".rds")
+      },
+      content = function(file) {
+        # Build template object from current questions
+        questions_list = list()
+        
+        modules = question_modules()
+        for (i in seq_along(modules)) {
+          module_data = modules[[i]]
+          
+          if (!is.null(module_data) && !is.null(module_data$server) && is.list(module_data$server)) {
+            if (!is.null(module_data$server$question) && is.function(module_data$server$question)) {
+              question_obj = module_data$server$question()
+              
+              if (!is.null(question_obj)) {
+                # Ensure question ID matches the module ID for uniqueness
+                if (question_obj@id != module_data$id) {
+                  question_obj@id = as.integer(module_data$id)
+                }
+                
+                questions_list[[length(questions_list) + 1]] = question_obj
+              }
+            }
+          }
+        }
+        
+        # Create template object
+        template_obj = markermd_template(
+          original_ast = ast(),
+          questions = questions_list
+        )
+        
+        # Save to file
+        saveRDS(template_obj, file)
+      },
+      contentType = "application/rds"
+    )
   }
   
   return(list(ui = ui, server = server))

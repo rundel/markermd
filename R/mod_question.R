@@ -91,7 +91,7 @@ question_ui = function(id, name_id) {
 #' @param question_id Integer. The question ID
 #' @param ast Reactive. The parsed AST object for building tree structure
 #'
-question_server = function(id, ast) {
+question_server = function(id, ast, initial_question = NULL) {
   shiny::moduleServer(id, function(input, output, session) {
     
     # Validate AST in a reactive context (disabled for testing)
@@ -101,9 +101,13 @@ question_server = function(id, ast) {
     #   }
     # })
 
-    # Question state
+    # Question state - use initial_question if provided, otherwise default
     state = shiny::reactiveVal({
-      markermd_question(1L, "default", markermd_node_selection(), list())
+      if (!is.null(initial_question)) {
+        initial_question
+      } else {
+        markermd_question(1L, "default", markermd_node_selection(), list())
+      }
     })
     
     # Render selected nodes display
@@ -141,6 +145,21 @@ question_server = function(id, ast) {
     # Rule management - simplified working approach
     rules_list = shiny::reactiveVal(list())
     next_rule_id = shiny::reactiveVal(1L)
+    
+    # Initialize rules_list from loaded question state
+    shiny::observe({
+      current_state = state()
+      if (length(current_state@rules) > 0 && length(rules_list()) == 0) {
+        # Convert S7 rules to the rules_list format
+        loaded_rules = list()
+        for (i in seq_along(current_state@rules)) {
+          rule = current_state@rules[[i]]
+          loaded_rules[[as.character(i)]] = rule
+        }
+        rules_list(loaded_rules)
+        next_rule_id(length(loaded_rules) + 1L)
+      }
+    }, priority = 1000)  # High priority to run before other observers
     
     # Add rule button observer
     shiny::observe({
