@@ -152,7 +152,7 @@ create_rule_verb_inputs = function(verb, value, ns) {
   }
   
   switch(verb,
-    "has count of" = {
+    "has between" = {
       input_wrapper(
         shinyWidgets::numericRangeInput(
           ns("values"),
@@ -160,6 +160,21 @@ create_rule_verb_inputs = function(verb, value, ns) {
           value = value,
           min = 0,
           max = 100,
+          step = 1,
+          width = "100%"
+        )
+      )
+    },
+    
+    "has at least" = ,
+    "has at most" = {
+      input_wrapper(
+        shiny::numericInput(
+          ns("values"),
+          NULL,
+          value = value,
+          min = 0,
+          max = 1000,
           step = 1,
           width = "100%"
         )
@@ -177,7 +192,7 @@ create_rule_verb_inputs = function(verb, value, ns) {
       )
     },
     
-    "does not have content" = {
+    "lacks content" = {
       input_wrapper(
         shiny::textInput(
           ns("values"),
@@ -290,7 +305,7 @@ create_rule_verb_inputs_direct = function(verb, value, id, ns_func = NULL) {
   }
   
   switch(verb,
-    "has count of" = {
+    "has between" = {
       input_wrapper(
         shinyWidgets::numericRangeInput(
           ns_func(paste0(id, "-values")),
@@ -298,6 +313,21 @@ create_rule_verb_inputs_direct = function(verb, value, id, ns_func = NULL) {
           value = value,
           min = 0,
           max = 100,
+          step = 1,
+          width = "100%"
+        )
+      )
+    },
+    
+    "has at least" = ,
+    "has at most" = {
+      input_wrapper(
+        shiny::numericInput(
+          ns_func(paste0(id, "-values")),
+          NULL,
+          value = value,
+          min = 0,
+          max = 1000,
           step = 1,
           width = "100%"
         )
@@ -315,7 +345,7 @@ create_rule_verb_inputs_direct = function(verb, value, id, ns_func = NULL) {
       )
     },
     
-    "does not have content" = {
+    "lacks content" = {
       input_wrapper(
         shiny::textInput(
           ns_func(paste0(id, "-values")),

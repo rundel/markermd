@@ -16,9 +16,11 @@ NULL
 #'   Must be one of the values returned by get_allowed_rule_verbs().
 #' @param values Vector. The values/parameters for the validation.
 #'   Type and format depend on the verb:
-#'   - "has count of": numeric vector of length 2 (min, max)
+#'   - "has between": numeric vector of length 2 (min, max)
+#'   - "has at least": integer (minimum count)
+#'   - "has at most": integer (maximum count)
 #'   - "has content": character string (pattern)
-#'   - "does not have content": character string (pattern)  
+#'   - "lacks content": character string (pattern)  
 #'   - "has name": character string (pattern)
 #' @export
 #' @examples
@@ -26,7 +28,7 @@ NULL
 #' # Create a count rule
 #' count_rule = markermd_rule(
 #'   node_type = "rmd_heading",
-#'   verb = "has count of", 
+#'   verb = "has between", 
 #'   values = c(1, 5)
 #' )
 #'
@@ -81,11 +83,11 @@ markermd_rule = S7::new_class(
 #' based on the specified verb type.
 #'
 #' @param node_type Character. The node type (defaults to "Any node")
-#' @param verb Character. The validation verb (defaults to "has count of")
+#' @param verb Character. The validation verb (defaults to "has between")
 #' @param values Vector. Custom values (if NULL, uses defaults for the verb)
 #' @return markermd_rule object
 #' @export
-new_markermd_rule = function(node_type = "Any node", verb = "has count of", values = NULL) {
+new_markermd_rule = function(node_type = "Any node", verb = "has between", values = NULL) {
   # Use default values if none provided
   if (is.null(values)) {
     values = get_default_rule_values(verb)
@@ -158,9 +160,11 @@ rule_to_list = function(rule, rule_id = 1) {
     node_types = rule@node_type,
     verb = rule@verb,
     verb_inputs = switch(rule@verb,
-      "has count of" = list(count_range = rule@values),
+      "has between" = list(count_range = rule@values),
+      "has at least" = list(min_count = rule@values),
+      "has at most" = list(max_count = rule@values),
       "has content" = list(content_pattern = rule@values),
-      "does not have content" = list(content_pattern = rule@values),
+      "lacks content" = list(content_pattern = rule@values),
       "has name" = list(name_pattern = rule@values),
       list()
     ),

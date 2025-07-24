@@ -36,9 +36,11 @@ get_allowed_node_types = function() {
 #' @export
 get_allowed_rule_verbs = function() {
   c(
-    "has count of",
+    "has between",
+    "has at least",
+    "has at most",
     "has content", 
-    "does not have content",
+    "lacks content",
     "has name"
   )
 }
@@ -116,7 +118,7 @@ validate_rule_values = function(verb, values) {
   }
   
   switch(verb,
-    "has count of" = {
+    "has between" = {
       # Should be a numeric vector of length 2 (min, max)
       if (!is.numeric(values) && !is.integer(values)) {
         return("Count range values must be numeric")
@@ -141,8 +143,34 @@ validate_rule_values = function(verb, values) {
       NULL
     },
     
+    "has at least" = ,
+    "has at most" = {
+      # Should be a single non-negative integer
+      if (length(values) != 1) {
+        return("Count value must be a single value")
+      }
+      
+      if (!is.numeric(values) && !is.integer(values)) {
+        return("Count value must be numeric")
+      }
+      
+      if (is.na(values) || !is.finite(values)) {
+        return("Count value must be a finite number")
+      }
+      
+      if (values < 0) {
+        return("Count value must be non-negative")
+      }
+      
+      if (values != floor(values)) {
+        return("Count value must be a whole number")
+      }
+      
+      NULL
+    },
+    
     "has content" = ,
-    "does not have content" = {
+    "lacks content" = {
       # Should be a character string (pattern)
       if (length(values) != 1) {
         return("Content pattern must be a single value")
@@ -193,9 +221,11 @@ validate_rule_values = function(verb, values) {
 #' @export
 get_default_rule_values = function(verb) {
   switch(verb,
-    "has count of" = c(0, 10),
+    "has between" = c(0, 10),
+    "has at least" = 1L,
+    "has at most" = 1L,
     "has content" = "",
-    "does not have content" = "",
+    "lacks content" = "",
     "has name" = "",
     NULL  # For unknown verbs
   )

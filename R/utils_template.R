@@ -259,7 +259,7 @@ evaluate_rule = function(ast_subset, rule, num_selected_nodes = 0) {
   
   # Evaluate based on verb
   switch(rule@verb,
-    "has count of" = {
+    "has between" = {
       # Count nodes - only subtract heading nodes if we're counting headings
       # For other node types, count them directly without subtracting
       actual_count = if (rule@node_type == "rmd_heading") {
@@ -275,6 +275,44 @@ evaluate_rule = function(ast_subset, rule, num_selected_nodes = 0) {
         paste0("Count check passed: ", actual_count, " nodes (range: ", min_count, "-", max_count, ")")
       } else {
         paste0("Count check failed: ", actual_count, " nodes (expected: ", min_count, "-", max_count, ")")
+      }
+      
+      list(passed = passed, message = message)
+    },
+    
+    "has at least" = {
+      # Count nodes - only subtract heading nodes if we're counting headings
+      actual_count = if (rule@node_type == "rmd_heading") {
+        length(nodes) - num_selected_nodes
+      } else {
+        length(nodes)
+      }
+      min_count = rule@values
+      
+      passed = actual_count >= min_count
+      message = if (passed) {
+        paste0("Minimum count check passed: ", actual_count, " nodes (minimum: ", min_count, ")")
+      } else {
+        paste0("Minimum count check failed: ", actual_count, " nodes (expected: at least ", min_count, ")")
+      }
+      
+      list(passed = passed, message = message)
+    },
+    
+    "has at most" = {
+      # Count nodes - only subtract heading nodes if we're counting headings
+      actual_count = if (rule@node_type == "rmd_heading") {
+        length(nodes) - num_selected_nodes
+      } else {
+        length(nodes)
+      }
+      max_count = rule@values
+      
+      passed = actual_count <= max_count
+      message = if (passed) {
+        paste0("Maximum count check passed: ", actual_count, " nodes (maximum: ", max_count, ")")
+      } else {
+        paste0("Maximum count check failed: ", actual_count, " nodes (expected: at most ", max_count, ")")
       }
       
       list(passed = passed, message = message)
@@ -311,7 +349,7 @@ evaluate_rule = function(ast_subset, rule, num_selected_nodes = 0) {
       list(passed = content_found, message = message)
     },
     
-    "does not have content" = {
+    "lacks content" = {
       pattern = rule@values[1]
       if (is.na(pattern) || nchar(pattern) == 0) {
         return(list(passed = TRUE, message = "Empty pattern never matches"))
