@@ -359,8 +359,58 @@ explore_server = function(id, ast, current_repo_name = shiny::reactiveVal(NULL),
                           as.character() |>
                           paste(collapse = "\n")
                         
+                        # Remove leading whitespace from all lines to prevent Prism indentation issues
+                        content_lines = strsplit(content, "\n")[[1]]
+                        # Find the minimum indentation (excluding empty lines)
+                        non_empty_lines = content_lines[nzchar(trimws(content_lines))]
+                        if (length(non_empty_lines) > 0) {
+                          min_indent = min(nchar(content_lines) - nchar(trimws(content_lines, which = "left")), na.rm = TRUE)
+                          # Remove the minimum indentation from all lines
+                          content_lines = sapply(content_lines, function(line) {
+                            if (nzchar(trimws(line))) {
+                              substr(line, min_indent + 1, nchar(line))
+                            } else {
+                              line  # Keep empty lines as-is
+                            }
+                          })
+                        }
+                        content = paste(content_lines, collapse = "\n")
+                        
                         # Get node type for title
                         node_type = class(node)[1]
+                        
+                        # Determine syntax highlighting language based on node type
+                        syntax_language = switch(node_type,
+                          "rmd_yaml" = "yaml",
+                          "rmd_markdown" = "markdown", 
+                          "rmd_chunk" = {
+                            # Extract engine from chunk
+                            if (inherits(node, "rmd_chunk") && !is.null(node@engine)) {
+                              # Map common R Markdown engines to Prism languages
+                              switch(node@engine,
+                                "r" = "r",
+                                "python" = "python",
+                                "sql" = "sql",
+                                "bash" = "bash",
+                                "sh" = "bash",
+                                "javascript" = "javascript",
+                                "js" = "javascript",
+                                "css" = "css",
+                                "html" = "html",
+                                "yaml" = "yaml",
+                                "json" = "json",
+                                # Default to R for unknown engines
+                                "r"
+                              )
+                            } else {
+                              "r"  # Default to R
+                            }
+                          },
+                          "rmd_raw_chunk" = "text",
+                          "rmd_code_block" = "text",
+                          # Default to text for other node types
+                          "text"
+                        )
                         
                         shiny::showModal(
                           shiny::modalDialog(
@@ -379,15 +429,49 @@ explore_server = function(id, ast, current_repo_name = shiny::reactiveVal(NULL),
                             size = "l",
                             shiny::div(
                               style = "max-height: 500px; overflow-y: auto;",
-                              shiny::pre(
-                                content,
-                                style = "font-family: 'Courier New', Courier, monospace; font-size: 12px; white-space: pre-wrap; margin: 0; background: #f8f9fa; padding: 15px; border: 1px solid #e9ecef; border-radius: 3px; line-height: 1.4;"
+                              shiny::tags$pre(
+                                style = "margin: 0; font-size: 12px; line-height: 1.4; background: #f5f2f0; padding: 15px; border-radius: 3px; white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word;",
+                                shiny::tags$code(
+                                  class = paste0("language-", syntax_language),
+                                  shiny::HTML(htmltools::htmlEscape(content))
+                                )
                               )
                             ),
                             footer = NULL,
                             easyClose = TRUE
                           )
                         )
+                        
+                        # Trigger syntax highlighting after modal is shown
+                        shinyjs::runjs("
+                          // Wait for modal to be fully rendered
+                          setTimeout(function() {
+                            console.log('Attempting to highlight syntax...');
+                            
+                            // Wait for Prism to be available and try multiple times
+                            var attempts = 0;
+                            var maxAttempts = 10;
+                            
+                            function tryHighlight() {
+                              attempts++;
+                              console.log('Attempt', attempts, '- Prism available:', typeof Prism !== 'undefined');
+                              
+                              if (typeof Prism !== 'undefined' && Prism.highlightAll) {
+                                console.log('Running Prism.highlightAll()');
+                                Prism.highlightAll();
+                                return;
+                              }
+                              
+                              if (attempts < maxAttempts) {
+                                setTimeout(tryHighlight, 200);
+                              } else {
+                                console.log('Failed to load Prism after', maxAttempts, 'attempts');
+                              }
+                            }
+                            
+                            tryHighlight();
+                          }, 100);
+                        ")
                       }
                     }, ignoreInit = TRUE)
                   })

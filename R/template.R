@@ -13,17 +13,116 @@ template_app = function(ast, template_obj = NULL) {
   ui = shiny::div(
     # Initialize shinyjs
     shinyjs::useShinyjs(),
-    style = "height: calc(100vh - 150px); min-height: 600px;",
+    
+    # Include Prism.js for syntax highlighting
+    shiny::tags$head(
+      shiny::tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css"),
+      shiny::tags$script(src = "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"),
+      shiny::tags$script(src = "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js")
+    ),
+    
+    shiny::tags$style(shiny::HTML("
+      /* Rule form controls */
+      .rule-item select,
+      .rule-item .form-control,
+      .rule-item input[type='number'],
+      .rule-item .input-group-addon {
+        font-size: 12px !important;
+        height: 32px !important;
+        padding: 4px 8px !important;
+      }
+      
+      .rule-item {
+        position: relative;
+        z-index: 100;
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow: visible !important;
+      }
+      
+      .rule-item .form-group { margin-bottom: 0 !important; }
+      .rule-item .input-group-addon { line-height: 1.2 !important; }
+      .rule-item select:focus { z-index: 1000; }
+      
+      /* Modal styling */
+      .modal-header { padding: 8px 15px !important; }
+      .modal-title { margin: 0 !important; padding: 0 !important; line-height: 1.2 !important; }
+      
+      /* Code syntax highlighting */
+      .modal-content pre[class*='language-'],
+      .modal-content pre#syntax-content {
+        margin: 0 !important;
+        padding: 15px !important;
+        text-indent: 0 !important;
+        background: #f5f2f0 !important;
+        white-space: pre-wrap !important;
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
+      }
+      
+      .modal-content code[class*='language-'],
+      .modal-content .token {
+        text-indent: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        white-space: pre-wrap !important;
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
+      }
+      
+      .modal-content code[class*='language-'] {
+        display: block !important;
+        padding-left: 0 !important;
+        margin-left: 0 !important;
+      }
+      
+      /* Questions container layout */
+      #questions_container {
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        max-height: calc(100vh - 300px) !important;
+      }
+      
+      #dynamic_questions_container,
+      #questions_container .card {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      
+      #questions_container .card {
+        margin-bottom: 10px !important;
+        overflow: visible !important;
+      }
+      
+      #questions_container .bslib-card {
+        margin-bottom: 0 !important;
+      }
+      
+      #questions_container .bslib-card .card-body {
+        padding-bottom: 8px !important;
+      }
+      
+      #questions_container .bslib-card .card-body > div:last-child {
+        margin-bottom: 0 !important;
+      }
+      
+      #questions_container .card * {
+        box-sizing: border-box !important;
+      }
+    ")),
+    
+    style = "height: calc(100vh - 150px); min-height: 600px; max-height: calc(100vh - 150px);",
     bslib::layout_columns(
       col_widths = c(6, 6),
-      style = "height: 100%;",
+      style = "height: 100%; max-height: 100%;",
       ast_selectable_ui("ast_panel"),
       shiny::div(
-        style = "height: 100%; display: flex; flex-direction: column;",
-        shiny::h3("Questions", style = "flex-shrink: 0;"),
+        style = "height: 100%; max-height: 100%; display: flex; flex-direction: column;",
+        shiny::h3("Questions", style = "flex-shrink: 0; margin-bottom: 10px;"),
         shiny::div(
           id = "questions_container",
-          style = "border: 1px solid #ddd; padding: 10px; background-color: #f9f9f9; flex: 1; overflow-y: auto;",
+          style = "border: 1px solid #ddd; padding: 10px; padding-bottom: 20px; background-color: #f9f9f9; flex: 1; overflow-y: auto; overflow-x: hidden; min-height: 0; width: 100%; box-sizing: border-box;",
           shiny::uiOutput("questions_ui")
         ),
         shiny::div(
@@ -298,7 +397,7 @@ template_app = function(ast, template_obj = NULL) {
           # Create question wrapper
           question_wrapper = shiny::div(
             id = paste0("question_wrapper_", q_id),
-            style = "margin-bottom: 15px;",
+            style = "margin-bottom: 15px; width: 100%; max-width: 100%; box-sizing: border-box;",
             onclick = paste0("Shiny.setInputValue('select_question', ", q_id, ");"),
             
             # Question module UI - styling will be updated by separate observer

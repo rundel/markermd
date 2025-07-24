@@ -308,9 +308,42 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
     bslib::nav_panel(
       title = "Validation",
       value = "validation",
-      # Add FontAwesome dependency
+      # Add FontAwesome dependency and Prism.js for syntax highlighting
       shiny::tags$head(
-        shiny::tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css")
+        shiny::tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"),
+        shiny::tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css"),
+        shiny::tags$script(src = "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"),
+        shiny::tags$script(src = "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"),
+        # CSS to fix Prism indentation issues and add soft wrapping
+        shiny::tags$style(shiny::HTML("
+          .modal-content pre[class*='language-'] {
+            margin: 0 !important;
+            padding: 15px !important;
+            text-indent: 0 !important;
+            background: #f5f2f0 !important;
+            white-space: pre-wrap !important;
+            word-wrap: break-word !important;
+            overflow-wrap: break-word !important;
+          }
+          
+          .modal-content code[class*='language-'] {
+            text-indent: 0 !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            white-space: pre-wrap !important;
+            word-wrap: break-word !important;
+            overflow-wrap: break-word !important;
+            display: block !important;
+            padding-left: 0 !important;
+            margin-left: 0 !important;
+          }
+          
+          .modal-content .token {
+            text-indent: 0 !important;
+            margin-left: 0 !important;
+            padding-left: 0 !important;
+          }
+        "))
       ),
       explore_ui("explore_module")
     ),

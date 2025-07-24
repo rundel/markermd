@@ -12,11 +12,11 @@ ast_base_ui = function(id, title = "Document Structure", show_clear_button = FAL
   ns = shiny::NS(id)
   
   shiny::div(
-    style = "height: 100%; display: flex; flex-direction: column;",
-    shiny::h3(title, style = "flex-shrink: 0;"),
+    style = "height: 100%; max-height: 100%; display: flex; flex-direction: column;",
+    shiny::h3(title, style = "flex-shrink: 0; margin-bottom: 10px;"),
     shiny::div(
       id = ns("ast_tree_container"),
-      style = "background-color: #f8f9fa; padding: 15px; border-radius: 4px; border: 1px solid #dee2e6; flex: 1; overflow-y: auto;",
+      style = "background-color: #f8f9fa; padding: 15px; border-radius: 4px; border: 1px solid #dee2e6; flex: 1; overflow-y: auto; min-height: 0;",
       shiny::uiOutput(ns("ast_tree_ui"))
     ),
     if (show_clear_button) {
