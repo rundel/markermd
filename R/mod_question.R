@@ -220,35 +220,17 @@ question_server = function(id, ast, initial_question = NULL) {
     }) |>
       bindEvent(input$add_rule)
     
-    # Handle rule deletion - use bindEvent to only trigger on actual clicks
-    shiny::observe({
-      current_rules = rules_list()
+    # Dynamic delete observer management
+    delete_observers = shiny::reactiveVal(list())
+    
+    # Function to create a delete observer for a specific rule
+    create_delete_observer = function(rule_id) {
+      delete_input_id = paste0("rule_", rule_id, "-delete")
       
-      # Only proceed if we have rules
-      if (length(current_rules) == 0) {
-        return()
-      }
-      
-      # Check which delete button was clicked by looking for the highest click count
-      delete_clicked = NULL
-      max_clicks = 0
-      
-      for (rule_id in names(current_rules)) {
-        delete_input_id = paste0("rule_", rule_id, "-delete")
-        delete_value = input[[delete_input_id]]
-        
-        if (!is.null(delete_value) && delete_value > max_clicks) {
-          max_clicks = delete_value
-          delete_clicked = rule_id
-        }
-      }
-      
-      # Only process if we found a clicked delete button
-      if (!is.null(delete_clicked) && max_clicks > 0) {
-        rule_id = delete_clicked
+      observer = shiny::observeEvent(input[[delete_input_id]], {
+        current_rules = rules_list()
         
         # Before deletion, capture current input values for all remaining rules
-        # This mirrors the question name handling approach
         preserved_rules = list()
         for (preserve_rule_id in names(current_rules)) {
           if (preserve_rule_id != rule_id) {  # Skip the rule being deleted
@@ -303,13 +285,38 @@ question_server = function(id, ast, initial_question = NULL) {
         
         # Reset next rule ID for sequential numbering
         next_rule_id(length(current_rules) + 1L)
+        
+        # The monitor observer will handle creating new observers for the updated rules_list
+        # No need for manual cleanup here since re-indexing changes rule IDs anyway
+        
+      }, ignoreInit = TRUE)
+      
+      return(observer)
+    }
+    
+    # Monitor rules_list changes to create/destroy delete observers
+    shiny::observe({
+      current_rules = rules_list()
+      current_observers = delete_observers()
+      
+      # Create observers for new rules
+      new_observers = current_observers
+      for (rule_id in names(current_rules)) {
+        if (!rule_id %in% names(current_observers)) {
+          new_observers[[rule_id]] = create_delete_observer(rule_id)
+        }
       }
-    }) |> bindEvent(
-      # Watch all possible delete buttons that could exist
-      input$`rule_1-delete`, input$`rule_2-delete`, input$`rule_3-delete`, 
-      input$`rule_4-delete`, input$`rule_5-delete`, input$`rule_6-delete`,
-      ignoreNULL = FALSE, ignoreInit = TRUE
-    )
+      
+      # Remove observers for deleted rules (though this is handled in deletion logic too)
+      for (obs_id in names(current_observers)) {
+        if (!obs_id %in% names(current_rules)) {
+          current_observers[[obs_id]]$destroy()
+          new_observers[[obs_id]] = NULL
+        }
+      }
+      
+      delete_observers(new_observers)
+    })
     
     # Handle rule input updates
     shiny::observe({
