@@ -11,17 +11,20 @@
 ast_base_ui = function(id, title = "Document Structure", show_clear_button = FALSE) {
   ns = shiny::NS(id)
   
-  shiny::div(
-    class = "h-100 d-flex flex-column",
-    shiny::h3(title, class = "flex-shrink-0 mb-2"),
-    shiny::div(
-      id = ns("ast_tree_container"),
-      class = "bg-light p-3 rounded border flex-fill overflow-auto",
-      shiny::uiOutput(ns("ast_tree_ui"))
+  bslib::card(
+    class = "h-100",
+    bslib::card_header(title),
+    bslib::card_body(
+      class = "flex-fill overflow-auto p-0",
+      shiny::div(
+        id = ns("ast_tree_container"),
+        class = "bg-light p-3 h-100 overflow-auto",
+        shiny::uiOutput(ns("ast_tree_ui"))
+      )
     ),
     if (show_clear_button) {
-      shiny::div(
-        class = "flex-shrink-0 mt-2 mb-2 d-flex align-items-center justify-content-center",
+      bslib::card_footer(
+        class = "text-center",
         shiny::actionButton(ns("clear_selections"), "Clear Current Question", class = "btn-secondary btn-sm")
       )
     }

@@ -388,23 +388,15 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", ..
     # Template mode: use AST from template, ignore filename/local_dir
     ast = template_obj@original_ast
     
-    # Create simplified app info for footer
-    assignment_path_display = if (S7::S7_inherits(assignment_path, markermd_template)) {
+    # Create footer path - show original input for template objects, full path for files
+    footer_path = if (S7::S7_inherits(assignment_path, markermd_template)) {
       "Template Object"
     } else {
-      basename(assignment_path)
+      as.character(assignment_path)  # Show full path for RDS files
     }
     
     # Create app with template data
-    app = create_template_app(
-      assignment_path = assignment_path_display,
-      local_dir = NULL,
-      filename = "N/A",
-      is_github_repo = FALSE,
-      template_obj = template_obj,
-      file_path = NULL,
-      ast = ast
-    )
+    app = template_app_standalone(shiny::reactiveVal(ast), template_obj, footer_path)
     
   } else {
     # Assignment mode: parse document and create template
@@ -451,15 +443,7 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", ..
     ast = parse_assignment_document(file_path)
     
     # Create app without template
-    app = create_template_app(
-      assignment_path = assignment_path,
-      local_dir = local_dir,
-      filename = resolved_filename,
-      is_github_repo = is_github_repo,
-      template_obj = NULL,
-      file_path = file_path,
-      ast = ast
-    )
+    app = template_app_standalone(shiny::reactiveVal(ast), NULL, assignment_path)
   }
   
   # Launch the app
@@ -643,7 +627,7 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
         } else if (artifact_status_val) {
           # Has artifacts - clickable archive icon
           button_id = paste0("artifact_", i)
-          return(paste0('<button onclick="Shiny.setInputValue(\'', button_id, '\', Math.random())" class="btn btn-link p-0 border-0" title="View artifact"><i class="fas fa-file-archive fs-6"></i></button>'))
+          return(paste0('<button onclick="Shiny.setInputValue(\'', button_id, '\', Math.random())" class="btn btn-link p-0 border-0 text-reset" title="View artifact"><i class="fas fa-file-archive fs-6"></i></button>'))
         } else {
           # GitHub repo but no artifacts - red archive icon (not clickable)
           return('<i class="fas fa-file-archive text-danger fs-6" title="No artifacts"></i>')
