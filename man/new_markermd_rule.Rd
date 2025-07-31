@@ -4,12 +4,12 @@
 \alias{new_markermd_rule}
 \title{Create a new markermd rule with default values}
 \usage{
-new_markermd_rule(node_type = "Any node", verb = "has count of", values = NULL)
+new_markermd_rule(node_type = "Any node", verb = "has at least", values = NULL)
 }
 \arguments{
 \item{node_type}{Character. The node type (defaults to "Any node")}
 
-\item{verb}{Character. The validation verb (defaults to "has count of")}
+\item{verb}{Character. The validation verb (defaults to "has at least")}
 
 \item{values}{Vector. Custom values (if NULL, uses defaults for the verb)}
 }

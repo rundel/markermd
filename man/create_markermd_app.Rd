@@ -6,20 +6,20 @@
 \usage{
 create_markermd_app(
   collection_path,
-  template,
   template_obj,
   use_qmd,
   collection,
   repo_list,
   validation_results,
   initial_repo_ast,
-  initial_repo_name
+  initial_repo_name,
+  artifact_status,
+  repo_to_github,
+  template_path = NULL
 )
 }
 \arguments{
 \item{collection_path}{Character string. Path to directory containing assignment repositories}
-
-\item{template}{Named list of parsermd templates for validation, or NULL}
 
 \item{template_obj}{markermd_template S7 object with node selections, or NULL}
 

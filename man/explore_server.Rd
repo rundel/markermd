@@ -8,6 +8,8 @@ explore_server(
   id,
   ast,
   current_repo_name = shiny::reactiveVal(NULL),
+  validation_results = shiny::reactiveVal(NULL),
+  selected_question_name = shiny::reactiveVal(NULL),
   template = shiny::reactiveVal(NULL)
 )
 }
@@ -18,7 +20,11 @@ explore_server(
 
 \item{current_repo_name}{Reactive. Current repository name}
 
-\item{template}{Reactive. Template data for validation}
+\item{validation_results}{Reactive. Validation results for current repository}
+
+\item{selected_question_name}{Reactive. Currently selected question name}
+
+\item{template}{Reactive. Template object for reference}
 }
 \description{
 Explore Server

@@ -16,9 +16,11 @@ Must be one of the values returned by get_allowed_rule_verbs().}
 \item{values}{Vector. The values/parameters for the validation.
 Type and format depend on the verb:
 \itemize{
-\item "has count of": numeric vector of length 2 (min, max)
+\item "has between": numeric vector of length 2 (min, max)
+\item "has at least": integer (minimum count)
+\item "has at most": integer (maximum count)
 \item "has content": character string (pattern)
-\item "does not have content": character string (pattern)
+\item "lacks content": character string (pattern)
 \item "has name": character string (pattern)
 }}
 }
@@ -32,7 +34,7 @@ consistency across the application.
 # Create a count rule
 count_rule = markermd_rule(
   node_type = "rmd_heading",
-  verb = "has count of", 
+  verb = "has between", 
   values = c(1, 5)
 )
 
