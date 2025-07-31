@@ -20,8 +20,8 @@ template_app = function(ast, template_obj = NULL) {
       shiny::tags$script(src = "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"),
       shiny::tags$script(src = "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js")
     ),
-    
-    shiny::tags$style(shiny::HTML("
+      
+      shiny::tags$style(shiny::HTML("
       /* Rule form controls */
       .rule-item select,
       .rule-item .form-control,
@@ -112,21 +112,24 @@ template_app = function(ast, template_obj = NULL) {
       }
     ")),
     
-    style = "height: calc(100vh - 150px); min-height: 600px; max-height: calc(100vh - 150px);",
+      style = "height: calc(100vh - 150px); min-height: 600px; max-height: calc(100vh - 150px);",
     bslib::layout_columns(
       col_widths = c(6, 6),
       class = "h-100",
       ast_selectable_ui("ast_panel"),
-      shiny::div(
-        class = "h-100 d-flex flex-column",
-        shiny::h3("Questions", class = "flex-shrink-0 mb-2"),
-        shiny::div(
-          id = "questions_container",
-          class = "border p-2 pb-4 bg-light flex-fill overflow-auto w-100",
-          shiny::uiOutput("questions_ui")
+      bslib::card(
+        class = "h-100",
+        bslib::card_header("Questions"),
+        bslib::card_body(
+          class = "flex-fill overflow-auto p-0",
+          shiny::div(
+            id = "questions_container",
+            class = "p-3 h-100 overflow-auto w-100",
+            shiny::uiOutput("questions_ui")
+          )
         ),
-        shiny::div(
-          class = "flex-shrink-0 mt-2 mb-2 d-flex align-items-center justify-content-center",
+        bslib::card_footer(
+          class = "text-center",
           shiny::uiOutput("save_button_ui")
         )
       )
@@ -640,14 +643,14 @@ template_app = function(ast, template_obj = NULL) {
         shiny::actionButton(
           "save_disabled", 
           "Save Template", 
-          class = "btn-secondary btn-sm w-100",
+          class = "btn-secondary btn-sm",
           disabled = TRUE
         )
       } else {
         shiny::downloadButton(
           "save_template", 
           "Save Template", 
-          class = "btn-success btn-sm w-100"
+          class = "btn-success btn-sm"
         )
       }
     })
@@ -696,4 +699,44 @@ template_app = function(ast, template_obj = NULL) {
   }
   
   return(list(ui = ui, server = server))
+}
+
+#' Standalone Template App with Navbar
+#'
+#' Template app wrapped in navbar for standalone use
+#'
+#' @param ast Reactive. The parsed AST object
+#' @param template_obj markermd_template S7 object. Optional template to load on startup
+#' @param assignment_path Character. Path to display in footer
+#'
+template_app_standalone = function(ast, template_obj = NULL, assignment_path = NULL) {
+  
+  # Get the base template app components
+  app_components = template_app(ast, template_obj)
+  
+  # Wrap in navbar
+  ui = bslib::page_navbar(
+    title = "markermd - Template Creation",
+    theme = bslib::bs_theme(version = 5),
+    
+    # Right-align the navigation tab
+    bslib::nav_spacer(),
+    
+    # Template tab (right aligned)
+    bslib::nav_panel(
+      title = "Template Creation",
+      value = "template",
+      app_components$ui
+    ),
+    
+    # Footer with assignment path
+    footer = if (!is.null(assignment_path)) {
+      shiny::div(
+        class = "bg-light border-top text-center text-muted p-2 mt-3 fs-6",
+        shiny::span(shiny::strong("Assignment path:"), " ", shiny::code(assignment_path, class = "bg-light px-1 rounded small"))
+      )
+    }
+  )
+  
+  return(list(ui = ui, server = app_components$server))
 }
