@@ -34,8 +34,10 @@ ast_base_ui = function(id, title = "Document Structure", show_clear_button = FAL
 #' @param ast Reactive. The parsed AST object
 #' @param selected_nodes Reactive. Currently selected node indices (optional)
 #' @param enable_preview Logical. Whether to enable preview functionality
+#' @param selection_mode Character. Selection mode ("interactive", "readonly", "highlight_only")
+#' @param id_prefix Character. Optional prefix for button IDs to avoid collisions
 #'
-ast_base_server = function(id, ast, selected_nodes = shiny::reactive(integer(0)), enable_preview = TRUE) {
+ast_base_server = function(id, ast, selected_nodes = shiny::reactive(integer(0)), enable_preview = TRUE, selection_mode = "readonly", id_prefix = NULL) {
   shiny::moduleServer(id, function(input, output, session) {
     
     # Get AST nodes for easier handling
@@ -66,34 +68,97 @@ ast_base_server = function(id, ast, selected_nodes = shiny::reactive(integer(0))
       # Get current selected nodes
       current_selected = selected_nodes()
       
-      # Create the tree
-      create_simple_tree(tree_items, current_selected, identity)
+      # Create the tree using unified function
+      create_unified_tree(tree_items, current_selected, session$ns, selection_mode, id_prefix)
     })
     
-    # Handle preview functionality if enabled
-    if (enable_preview) {
-      shiny::observe({
-        if (is.null(ast_nodes())) return()
-        
-        nodes = ast_nodes()
-        
-        # Create preview observers for all nodes
-        for (i in seq_along(nodes)) {
-          local({
-            node_index = i
-            
-            # Handle "Preview" button
-            shiny::observeEvent(input[[paste0("preview_", node_index)]], {
+    # Reactive value to store node click events (for interactive mode)
+    node_clicked = shiny::reactiveVal(NULL)
+    
+    # Handle preview functionality and node interactions
+    shiny::observe({
+      if (is.null(ast_nodes())) return()
+      
+      nodes = ast_nodes()
+      tree_items = build_ast_tree_structure(ast())
+      
+      # Create observers for all nodes
+      for (i in seq_along(nodes)) {
+        local({
+          node_index = i
+          node = ast_nodes()[[node_index]]
+          node_type = class(node)[1]
+          
+          # Create button IDs with optional prefix
+          preview_id = if (!is.null(id_prefix)) {
+            paste0("preview_", id_prefix, "_", node_index)
+          } else {
+            paste0("preview_", node_index)
+          }
+          
+          # Handle "Preview" button if enabled
+          if (enable_preview) {
+            shiny::observeEvent(input[[preview_id]], {
               if (node_index >= 1 && node_index <= length(ast_nodes())) {
                 node = ast_nodes()[[node_index]]
                 
-                # Use as_document() to get raw node content
-                content = parsermd::as_document(node) |>
+                # Use enhanced preview logic from selectable module
+                raw_content = parsermd::as_document(node) |>
                   as.character() |>
                   paste(collapse="\n")
+                
+                # Remove leading whitespace from all lines to prevent Prism indentation issues
+                content_lines = strsplit(raw_content, "\n")[[1]]
+                # Find the minimum indentation (excluding empty lines)
+                non_empty_lines = content_lines[nzchar(trimws(content_lines))]
+                if (length(non_empty_lines) > 0) {
+                  min_indent = min(nchar(content_lines) - nchar(trimws(content_lines, which = "left")), na.rm = TRUE)
+                  # Remove the minimum indentation from all lines
+                  content_lines = sapply(content_lines, function(line) {
+                    if (nzchar(trimws(line))) {
+                      substr(line, min_indent + 1, nchar(line))
+                    } else {
+                      line  # Keep empty lines as-is
+                    }
+                  })
+                }
+                content = paste(content_lines, collapse = "\n")
 
                 # Get node type for title
                 node_type = class(node)[1]
+                
+                # Determine syntax highlighting language based on node type
+                syntax_language = switch(node_type,
+                  "rmd_yaml" = "yaml",
+                  "rmd_markdown" = "markdown", 
+                  "rmd_chunk" = {
+                    # Extract engine from chunk
+                    if (inherits(node, "rmd_chunk") && !is.null(node@engine)) {
+                      # Map common R Markdown engines to Prism languages
+                      switch(node@engine,
+                        "r" = "r",
+                        "python" = "python",
+                        "sql" = "sql",
+                        "bash" = "bash",
+                        "sh" = "bash",
+                        "javascript" = "javascript",
+                        "js" = "javascript",
+                        "css" = "css",
+                        "html" = "html",
+                        "yaml" = "yaml",
+                        "json" = "json",
+                        # Default to R for unknown engines
+                        "r"
+                      )
+                    } else {
+                      "r"  # Default to R
+                    }
+                  },
+                  "rmd_raw_chunk" = "text",
+                  "rmd_code_block" = "text",
+                  # Default to text for other node types
+                  "text"
+                )
                 
                 shiny::showModal(
                   shiny::modalDialog(
@@ -101,28 +166,88 @@ ast_base_server = function(id, ast, selected_nodes = shiny::reactive(integer(0))
                     size = "l",
                     shiny::div(
                       style = "max-height: 500px; overflow-y: auto;",
-                      shiny::pre(
-                        content,
-                        style = "font-family: 'Courier New', Courier, monospace; font-size: 12px; white-space: pre-wrap; margin: 0; background: #f8f9fa; padding: 15px; border: 1px solid #e9ecef; border-radius: 3px; line-height: 1.4;"
+                      # Pre element with soft wrapping for long lines
+                      shiny::tags$pre(
+                        id = paste0("syntax-content-", node_index),
+                        style = "margin: 0; font-size: 12px; line-height: 1.4; background: #f5f2f0; padding: 15px; border-radius: 3px; white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word;",
+                        content  # Raw content without HTML escaping for now
                       )
                     ),
                     footer = NULL,
                     easyClose = TRUE
                   )
                 )
+                
+                # Apply syntax highlighting manually to avoid Prism's auto-formatting
+                shinyjs::runjs(paste0("
+                  setTimeout(function() {
+                    var preElement = document.getElementById('syntax-content-", node_index, "');
+                    if (preElement && typeof Prism !== 'undefined') {
+                      // Create a temporary code element with the language class
+                      var codeElement = document.createElement('code');
+                      codeElement.className = 'language-", syntax_language, "';
+                      codeElement.textContent = preElement.textContent;
+                      
+                      // Clear the pre element and append the code element
+                      preElement.innerHTML = '';
+                      preElement.appendChild(codeElement);
+                      
+                      // Highlight just this element
+                      Prism.highlightElement(codeElement);
+                      console.log('Manually highlighted element');
+                    } else {
+                      console.log('Element or Prism not found');
+                    }
+                  }, 200);
+                "))
               }
             })
-          })
-        }
-      })
-    }
+          }
+          
+          # Handle node selection functionality for interactive mode
+          if (selection_mode == "interactive" && node_type == "rmd_heading") {
+            # Handle node selection (both text and circle button)
+            select_id = paste0("select_", node_index)
+            select_children_id = paste0("select_children_", node_index)
+            
+            shiny::observeEvent(input[[select_id]], {
+              # Store the click event with timestamp to ensure uniqueness
+              node_clicked(list(
+                node_index = node_index,
+                action = "toggle",
+                timestamp = Sys.time()
+              ))
+            })
+            
+            # Handle circle button selection (same behavior as text)
+            shiny::observeEvent(input[[select_children_id]], {
+              # Store the click event with timestamp to ensure uniqueness
+              node_clicked(list(
+                node_index = node_index,
+                action = "toggle",
+                timestamp = Sys.time()
+              ))
+            })
+          }
+        })
+      }
+    })
     
     # Return reactive values and methods
-    return(list(
+    result = list(
       ast_nodes = ast_nodes,
       clear_clicked = shiny::reactive({
         input$clear_selections
       })
-    ))
+    )
+    
+    # Add node_clicked for interactive mode
+    if (selection_mode == "interactive") {
+      result$node_clicked = shiny::reactive({
+        node_clicked()
+      })
+    }
+    
+    return(result)
   })
 }

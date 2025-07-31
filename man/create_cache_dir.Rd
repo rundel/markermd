@@ -2,44 +2,16 @@
 % Please edit documentation in R/mark.R
 \name{create_cache_dir}
 \alias{create_cache_dir}
-\title{Launch the markermd Shiny Application}
+\title{Create cache directory for artifacts}
 \usage{
 create_cache_dir(collection_path)
 }
 \arguments{
 \item{collection_path}{Character string. Path to collection directory}
-
-\item{template}{Optional template for validation. Can be:
-\itemize{
-\item Character path to .rds file containing template data
-\item List with raw template data (from readRDS)
-\item List with transformed templates (from create_question_templates)
-\item NULL (no template validation)
-}}
-
-\item{use_qmd}{Logical. Whether to parse .qmd files (TRUE) or .Rmd files (FALSE). Default is TRUE.}
-
-\item{...}{Additional arguments passed to shiny::runApp()}
 }
 \value{
-Launches Shiny application
-
 Character string. Path to cache directory
 }
 \description{
-Launch the markermd Shiny Application
-}
-\examples{
-\dontrun{
-# Parse qmd files from collection of repositories
-mark("/path/to/assignments/")
-
-# Parse Rmd files from collection of repositories
-mark("/path/to/assignments/", use_qmd = FALSE)
-
-# Parse with template validation
-mark("/path/to/assignments/", template = "template.rds")
-}
 Create cache directory for artifacts
-
 }

@@ -1,28 +1,3 @@
-#' Launch the markermd Shiny Application
-#'
-#' @param collection_path Character string. Path to directory containing subdirectories with assignment repositories
-#' @param template Optional template for validation. Can be:
-#'   - Character path to .rds file containing template data
-#'   - List with raw template data (from readRDS)
-#'   - List with transformed templates (from create_question_templates)
-#'   - NULL (no template validation)
-#' @param use_qmd Logical. Whether to parse .qmd files (TRUE) or .Rmd files (FALSE). Default is TRUE.
-#' @param ... Additional arguments passed to shiny::runApp()
-#'
-#' @return Launches Shiny application
-#' @export
-#'
-#' @examples
-#' \dontrun{
-#' # Parse qmd files from collection of repositories
-#' mark("/path/to/assignments/")
-#' 
-#' # Parse Rmd files from collection of repositories
-#' mark("/path/to/assignments/", use_qmd = FALSE)
-#' 
-#' # Parse with template validation
-#' mark("/path/to/assignments/", template = "template.rds")
-#' }
 #' Create cache directory for artifacts
 #'
 #' @param collection_path Character string. Path to collection directory
@@ -148,6 +123,31 @@ download_artifact_if_needed = function(github_repo, repo_name, collection_path) 
   })
 }
 
+#' Launch the markermd Shiny Application
+#'
+#' @param collection_path Character string. Path to directory containing subdirectories with assignment repositories
+#' @param template Optional template for validation. Can be:
+#'   - Character path to .rds file containing template data
+#'   - List with raw template data (from readRDS)
+#'   - List with transformed templates (from create_question_templates)
+#'   - NULL (no template validation)
+#' @param use_qmd Logical. Whether to parse .qmd files (TRUE) or .Rmd files (FALSE). Default is TRUE.
+#' @param ... Additional arguments passed to shiny::runApp()
+#'
+#' @return Launches Shiny application
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Parse qmd files from collection of repositories
+#' mark("/path/to/assignments/")
+#' 
+#' # Parse Rmd files from collection of repositories
+#' mark("/path/to/assignments/", use_qmd = FALSE)
+#' 
+#' # Parse with template validation
+#' mark("/path/to/assignments/", template = "template.rds")
+#' }
 mark = function(collection_path, template = NULL, use_qmd = TRUE, ...) {
   
   # Validate inputs
@@ -486,7 +486,7 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
   # Define UI  
   ui = bslib::page_navbar(
     title = "markermd - Assignment Grading",
-    theme = bslib::bs_theme(version = 5, bootswatch = "flatly"),
+    theme = bslib::bs_theme(version = 5),
     
     # Right-align the navigation tabs
     bslib::nav_spacer(),
@@ -924,7 +924,7 @@ create_template_app = function(assignment_path, local_dir, filename, is_github_r
   # Define UI
   ui = bslib::page_navbar(
     title = "markermd - Template Creation",
-    theme = bslib::bs_theme(version = 5, bootswatch = "flatly"),
+    theme = bslib::bs_theme(version = 5),
     
     # Right-align the navigation tab
     bslib::nav_spacer(),
