@@ -114,7 +114,7 @@ question_server = function(id, ast, initial_question = NULL) {
     output$selected_nodes_display = shiny::renderUI({
       nodes = state()@selected_nodes@indices
       if (length(nodes) == 0) {
-        shiny::span("None", style = "color: #6c757d;")
+        shiny::span("None", class = "text-muted")
       } else {
         tree_items = build_ast_tree_structure(ast())
         
@@ -129,7 +129,7 @@ question_server = function(id, ast, initial_question = NULL) {
         
         shiny::span(
           paste(node_displays, collapse = ", "), 
-          style = "color: #28a745;"
+          class = "text-success"
         )
       }
     })
@@ -399,11 +399,11 @@ question_server = function(id, ast, initial_question = NULL) {
       rule_count = length(current_rules)
       
       if (rule_count == 0) {
-        shiny::span("None", style = "color: #6c757d;")
+        shiny::span("None", class = "text-muted")
       } else {
         shiny::span(
           paste0("(", rule_count, " rule", if (rule_count != 1) "s" else "", ")"),
-          style = "color: #28a745;"
+          class = "text-success"
         )
       }
     })

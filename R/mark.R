@@ -573,12 +573,12 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
     
     # Footer with collection and template info
     footer = shiny::div(
-      style = "background-color: #e9ecef; border-top: 1px solid #dee2e6; text-align: center; font-size: 12px; color: #495057; padding: 8px; margin-top: 20px;",
-      shiny::span(shiny::strong("Collection path:"), " ", shiny::code(collection_path, style = "background-color: #f8f9fa; padding: 2px 4px; border-radius: 4px; font-size: 11px;"), style = "margin-right: 15px;"),
+      class = "bg-light border-top text-center text-muted p-2 mt-3 fs-6",
+      shiny::span(shiny::strong("Collection path:"), " ", shiny::code(collection_path, class = "bg-light px-1 py-1 rounded small"), class = "me-3"),
       if (!is.null(template_path)) {
-        shiny::span(shiny::strong("Template:"), " ", shiny::code(template_path, style = "background-color: #f8f9fa; padding: 2px 4px; border-radius: 4px; font-size: 11px;"), style = "margin-right: 15px;")
+        shiny::span(shiny::strong("Template:"), " ", shiny::code(template_path, class = "bg-light px-1 py-1 rounded small"), class = "me-3")
       },
-      shiny::span(shiny::strong("File type:"), " ", shiny::code(if(use_qmd) ".qmd" else ".Rmd", style = "background-color: #f8f9fa; padding: 2px 4px; border-radius: 4px; font-size: 11px;"))
+      shiny::span(shiny::strong("File type:"), " ", shiny::code(if(use_qmd) ".qmd" else ".Rmd", class = "bg-light px-1 py-1 rounded small"))
     )
   )
   
@@ -626,7 +626,7 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
         if (repo %in% names(repo_to_github)) {
           github_repo = repo_to_github[[repo]]
           github_url = paste0("https://github.com/", github_repo)
-          return(paste0('<a href="', github_url, '" target="_blank" style="color: inherit; text-decoration: none;"><i class="fab fa-github" style="color: inherit; font-size: 16px;" title="Open on GitHub"></i></a>'))
+          return(paste0('<a href="', github_url, '" target="_blank" class="text-reset text-decoration-none"><i class="fab fa-github fs-5" title="Open on GitHub"></i></a>'))
         } else {
           return("")
         }
@@ -643,10 +643,10 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
         } else if (artifact_status_val) {
           # Has artifacts - clickable archive icon
           button_id = paste0("artifact_", i)
-          return(paste0('<button onclick="Shiny.setInputValue(\'', button_id, '\', Math.random())" style="background: none; border: none; cursor: pointer; padding: 0;" title="View artifact"><i class="fas fa-file-archive" style="color: inherit; font-size: 14px;"></i></button>'))
+          return(paste0('<button onclick="Shiny.setInputValue(\'', button_id, '\', Math.random())" class="btn btn-link p-0 border-0" title="View artifact"><i class="fas fa-file-archive fs-6"></i></button>'))
         } else {
           # GitHub repo but no artifacts - red archive icon (not clickable)
-          return('<i class="fas fa-file-archive" style="color: #dc3545; font-size: 14px;" title="No artifacts"></i>')
+          return('<i class="fas fa-file-archive text-danger fs-6" title="No artifacts"></i>')
         }
       })
       
@@ -677,13 +677,13 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
         
         if (fail_count == 0 && error_count == 0) {
           # All passed
-          paste0('<span style="color: #28a745;" title="', tooltip_text, '"><i class="fas fa-check-circle"></i> ', pass_count, '/', total_count, '</span>')
+          paste0('<span class="text-success" title="', tooltip_text, '"><i class="fas fa-check-circle"></i> ', pass_count, '/', total_count, '</span>')
         } else if (error_count > 0) {
           # Has errors
-          paste0('<span style="color: #ffc107;" title="', tooltip_text, '"><i class="fas fa-exclamation-circle"></i> ', pass_count, '/', total_count, '</span>')
+          paste0('<span class="text-warning" title="', tooltip_text, '"><i class="fas fa-exclamation-circle"></i> ', pass_count, '/', total_count, '</span>')
         } else {
           # Has failures
-          paste0('<span style="color: #dc3545;" title="', tooltip_text, '"><i class="fas fa-times-circle"></i> ', pass_count, '/', total_count, '</span>')
+          paste0('<span class="text-danger" title="', tooltip_text, '"><i class="fas fa-times-circle"></i> ', pass_count, '/', total_count, '</span>')
         }
       })
       
@@ -827,9 +827,9 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
                       easyClose = TRUE,
                       footer = shiny::div(
                         if (download_result$from_cache) {
-                          shiny::span("Loaded from cache", style = "color: #6c757d; font-size: 12px;")
+                          shiny::span("Loaded from cache", class = "text-muted fs-6")
                         } else {
-                          shiny::span("Downloaded and cached", style = "color: #28a745; font-size: 12px;")
+                          shiny::span("Downloaded and cached", class = "text-success fs-6")
                         }
                       ),
                       shiny::div(
@@ -846,8 +846,8 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
                       easyClose = TRUE,
                       footer = NULL,
                       shiny::div(
-                        style = "padding: 20px; text-align: center;",
-                        shiny::tags$i(class = "fas fa-exclamation-triangle", style = "font-size: 24px; color: #dc3545; margin-right: 10px;"),
+                        class = "p-4 text-center",
+                        shiny::tags$i(class = "fas fa-exclamation-triangle fs-3 text-danger me-2"),
                         paste("Failed to download artifact:", download_result$error)
                       )
                     )
@@ -861,7 +861,7 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
                     easyClose = TRUE,
                     footer = NULL,
                     shiny::div(
-                      style = "padding: 20px; text-align: center;",
+                      class = "p-4 text-center",
                       shiny::tags$i(class = "fas fa-exclamation-triangle", style = "font-size: 24px; color: #dc3545; margin-right: 10px;"),
                       paste("An unexpected error occurred:", e$message)
                     )
@@ -943,10 +943,10 @@ create_template_app = function(assignment_path, local_dir, filename, is_github_r
     
     # Footer with assignment info
     footer = shiny::div(
-      style = "background-color: #e9ecef; border-top: 1px solid #dee2e6; text-align: center; font-size: 14px; color: #495057; padding: 12px;",
-      shiny::span(shiny::strong("Path"), " ", shiny::code(assignment_path, style = "background-color: #f8f9fa; padding: 2px 4px; border-radius: 6px; font-size: 13px;"), style = "margin-right: 20px;"),
-      shiny::span(shiny::strong("File"), " ", shiny::code(filename, style = "background-color: #f8f9fa; padding: 2px 4px; border-radius: 6px; font-size: 13px;")),
-      if (is_github_repo) shiny::span(shiny::strong("Local dir"), " ", shiny::code(local_dir, style = "background-color: #f8f9fa; padding: 2px 4px; border-radius: 6px; font-size: 13px;"), style = "margin-left: 20px;")
+      class = "bg-light border-top text-center text-muted p-3",
+      shiny::span(shiny::strong("Path"), " ", shiny::code(assignment_path, class = "bg-light px-1 py-1 rounded"), class = "me-4"),
+      shiny::span(shiny::strong("File"), " ", shiny::code(filename, class = "bg-light px-1 py-1 rounded")),
+      if (is_github_repo) shiny::span(shiny::strong("Local dir"), " ", shiny::code(local_dir, class = "bg-light px-1 py-1 rounded"), class = "ms-4")
     )
   )
   

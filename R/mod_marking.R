@@ -14,7 +14,8 @@ marking_ui = function(id) {
     shiny::div(
       shiny::h3("Questions"),
       shiny::div(
-        style = "border: 1px solid #ddd; padding: 10px; background-color: #f9f9f9; height: 500px; overflow-y: auto;",
+        class = "border border-secondary p-2 bg-light overflow-auto",
+        style = "height: 500px;",
         shiny::div(
           id = ns("questions_list"),
           shiny::p("No template loaded. Please create a template first.")
@@ -28,14 +29,15 @@ marking_ui = function(id) {
         shiny::tabPanel(
           "Document View",
           shiny::div(
-            style = "border: 1px solid #ddd; padding: 10px; background-color: #f9f9f9; height: 450px; overflow-y: auto;",
+            class = "border border-secondary p-2 bg-light overflow-auto",
+            style = "height: 450px;",
             shiny::verbatimTextOutput(ns("document_content"))
           )
         ),
         shiny::tabPanel(
           "Grading",
           shiny::div(
-            style = "padding: 10px;",
+            class = "p-2",
             shiny::h4("Assignment Grading"),
             shiny::br(),
             shiny::numericInput(
@@ -130,11 +132,11 @@ marking_server = function(id, ast, template_obj, validation_results = shiny::rea
               validation_status = if (!is.null(current_validation) && !is.null(current_validation[[question_name]])) {
                 status = current_validation[[question_name]]$status
                 if (status == "pass") {
-                  '<span style="color: #28a745; margin-left: 10px;"><i class="fas fa-check-circle"></i></span>'
+                  '<span class="text-success ms-2"><i class="fas fa-check-circle"></i></span>'
                 } else if (status == "fail") {
-                  '<span style="color: #dc3545; margin-left: 10px;"><i class="fas fa-times-circle"></i></span>'
+                  '<span class="text-danger ms-2"><i class="fas fa-times-circle"></i></span>'
                 } else if (status == "error") {
-                  '<span style="color: #ffc107; margin-left: 10px;"><i class="fas fa-exclamation-triangle"></i></span>'
+                  '<span class="text-warning ms-2"><i class="fas fa-exclamation-triangle"></i></span>'
                 } else {
                   ""
                 }

@@ -12,16 +12,16 @@ ast_base_ui = function(id, title = "Document Structure", show_clear_button = FAL
   ns = shiny::NS(id)
   
   shiny::div(
-    style = "height: 100%; max-height: 100%; display: flex; flex-direction: column;",
-    shiny::h3(title, style = "flex-shrink: 0; margin-bottom: 10px;"),
+    class = "h-100 d-flex flex-column",
+    shiny::h3(title, class = "flex-shrink-0 mb-2"),
     shiny::div(
       id = ns("ast_tree_container"),
-      style = "background-color: #f8f9fa; padding: 15px; border-radius: 4px; border: 1px solid #dee2e6; flex: 1; overflow-y: auto; min-height: 0;",
+      class = "bg-light p-3 rounded border flex-fill overflow-auto",
       shiny::uiOutput(ns("ast_tree_ui"))
     ),
     if (show_clear_button) {
       shiny::div(
-        style = "flex-shrink: 0; margin-top: 10px; margin-bottom: 10px; height: 50px; display: flex; align-items: center; justify-content: center;",
+        class = "flex-shrink-0 mt-2 mb-2 d-flex align-items-center justify-content-center",
         shiny::actionButton(ns("clear_selections"), "Clear Current Question", class = "btn-secondary btn-sm")
       )
     }

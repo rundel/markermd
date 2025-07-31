@@ -115,18 +115,18 @@ template_app = function(ast, template_obj = NULL) {
     style = "height: calc(100vh - 150px); min-height: 600px; max-height: calc(100vh - 150px);",
     bslib::layout_columns(
       col_widths = c(6, 6),
-      style = "height: 100%; max-height: 100%;",
+      class = "h-100",
       ast_selectable_ui("ast_panel"),
       shiny::div(
-        style = "height: 100%; max-height: 100%; display: flex; flex-direction: column;",
-        shiny::h3("Questions", style = "flex-shrink: 0; margin-bottom: 10px;"),
+        class = "h-100 d-flex flex-column",
+        shiny::h3("Questions", class = "flex-shrink-0 mb-2"),
         shiny::div(
           id = "questions_container",
-          style = "border: 1px solid #ddd; padding: 10px; padding-bottom: 20px; background-color: #f9f9f9; flex: 1; overflow-y: auto; overflow-x: hidden; min-height: 0; width: 100%; box-sizing: border-box;",
+          class = "border p-2 pb-4 bg-light flex-fill overflow-auto w-100",
           shiny::uiOutput("questions_ui")
         ),
         shiny::div(
-          style = "flex-shrink: 0; margin-top: 10px; margin-bottom: 10px; height: 50px; display: flex; align-items: center; justify-content: center;",
+          class = "flex-shrink-0 mt-2 mb-2 d-flex align-items-center justify-content-center",
           shiny::uiOutput("save_button_ui")
         )
       )
@@ -372,15 +372,15 @@ template_app = function(ast, template_obj = NULL) {
     # Render add question button
     output$add_question_button = shiny::renderUI({
       shiny::div(
-        style = "text-align: center; margin-bottom: 15px;",
+        class = "text-center mb-3",
         shiny::actionButton(
           "add_question", 
           shiny::icon("plus"),
-          class = "btn-primary btn-sm",
-          style = "font-size: 12px; padding: 4px 8px; border-radius: 20%; width: 30px; height: 30px;",
+          class = "btn-primary btn-sm rounded-circle",
+          style = "width: 30px; height: 30px;",
           title = "Add Question"
         ),
-        shiny::span("Add Question", style = "margin-left: 8px; font-size: 14px; color: #333;")
+        shiny::span("Add Question", class = "ms-2 text-dark")
       )
     })
     
@@ -640,16 +640,14 @@ template_app = function(ast, template_obj = NULL) {
         shiny::actionButton(
           "save_disabled", 
           "Save Template", 
-          class = "btn-secondary btn-sm", 
-          style = "width: 100%;",
+          class = "btn-secondary btn-sm w-100",
           disabled = TRUE
         )
       } else {
         shiny::downloadButton(
           "save_template", 
           "Save Template", 
-          class = "btn-success btn-sm", 
-          style = "width: 100%;"
+          class = "btn-success btn-sm w-100"
         )
       }
     })

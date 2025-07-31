@@ -35,12 +35,12 @@ explore_server = function(id, ast, current_repo_name = shiny::reactiveVal(NULL),
       
       if (is.null(current_template)) {
         return(shiny::p("No template loaded for validation.", 
-                       style = "color: #6c757d; font-style: italic;"))
+                       class = "text-muted fst-italic"))
       }
       
       if (is.null(current_validation) || length(current_validation) == 0) {
         return(shiny::p("No validation data available for current repository.", 
-                       style = "color: #6c757d; font-style: italic;"))
+                       class = "text-muted fst-italic"))
       }
       
       # Create cards for all questions
@@ -64,10 +64,10 @@ explore_server = function(id, ast, current_repo_name = shiny::reactiveVal(NULL),
         
         # Create HTML for solid circle icons with white symbols
         status_icon_html = switch(question_result$status,
-          "pass" = '<i class="fas fa-circle" style="color: #28a745;"></i><i class="fas fa-check" style="color: white; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 10px;"></i>',
-          "fail" = '<i class="fas fa-circle" style="color: #dc3545;"></i><i class="fas fa-times" style="color: white; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 10px;"></i>',
-          "error" = '<i class="fas fa-circle" style="color: #ffc107;"></i><i class="fas fa-exclamation" style="color: white; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 10px;"></i>',
-          '<i class="fas fa-question-circle" style="color: #6c757d;"></i>'
+          "pass" = '<i class="fas fa-circle text-success"></i><i class="fas fa-check text-white position-absolute top-50 start-50 translate-middle" style="font-size: 10px;"></i>',
+          "fail" = '<i class="fas fa-circle text-danger"></i><i class="fas fa-times text-white position-absolute top-50 start-50 translate-middle" style="font-size: 10px;"></i>',
+          "error" = '<i class="fas fa-circle text-warning"></i><i class="fas fa-exclamation text-white position-absolute top-50 start-50 translate-middle" style="font-size: 10px;"></i>',
+          '<i class="fas fa-question-circle text-muted"></i>'
         )
         
         # Get the document nodes for this question using section selection
@@ -159,29 +159,30 @@ explore_server = function(id, ast, current_repo_name = shiny::reactiveVal(NULL),
                       simple_tree = create_simple_tree_readonly_at_depth(content_items, session$ns, question_id, start_depth = 1)
                       
                       shiny::div(
-                        style = "margin-bottom: 3px; padding: 8px; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; max-height: 120px; overflow-y: auto; font-size: 11px;",
+                        class = "mb-1 p-2 bg-light border rounded overflow-auto small",
+                        style = "max-height: 120px;",
                         simple_tree
                       )
                     } else {
-                      shiny::p("No content found in selected sections.", style = "font-size: 11px; color: #6c757d; font-style: italic; margin: 8px 0;")
+                      shiny::p("No content found in selected sections.", class = "small text-muted fst-italic my-2")
                     }
                   } else {
-                    shiny::p("No content found in selected sections.", style = "font-size: 11px; color: #6c757d; font-style: italic; margin: 8px 0;")
+                    shiny::p("No content found in selected sections.", class = "small text-muted fst-italic my-2")
                   }
                 } else {
-                  shiny::p("No matching sections found in current document.", style = "font-size: 11px; color: #6c757d; font-style: italic; margin: 8px 0;")
+                  shiny::p("No matching sections found in current document.", class = "small text-muted fst-italic my-2")
                 }
               } else {
-                shiny::p("No document loaded.", style = "font-size: 11px; color: #6c757d; font-style: italic; margin: 8px 0;")
+                shiny::p("No document loaded.", class = "small text-muted fst-italic my-2")
               }
             } else {
-              shiny::p("No sections resolved from template.", style = "font-size: 11px; color: #6c757d; font-style: italic; margin: 8px 0;")
+              shiny::p("No sections resolved from template.", class = "small text-muted fst-italic my-2")
             }
           }, error = function(e) {
-            shiny::p(paste("Error loading content:", e$message), style = "font-size: 11px; color: #dc3545; font-style: italic; margin: 8px 0;")
+            shiny::p(paste("Error loading content:", e$message), class = "small text-danger fst-italic my-2")
           })
         } else {
-          shiny::p("No nodes selected in template.", style = "font-size: 11px; color: #6c757d; font-style: italic; margin: 8px 0;")
+          shiny::p("No nodes selected in template.", class = "small text-muted fst-italic my-2")
         }
         
         # Create rule details
@@ -216,10 +217,10 @@ explore_server = function(id, ast, current_repo_name = shiny::reactiveVal(NULL),
             
             shiny::div(rule_items)
           } else {
-            shiny::p("No detailed rule information available.", style = "font-size: 12px; color: #6c757d; font-style: italic; margin: 10px 0;")
+            shiny::p("No detailed rule information available.", class = "fs-6 text-muted fst-italic my-2")
           }
         } else {
-          shiny::p("No rules defined for this question.", style = "font-size: 12px; color: #6c757d; font-style: italic; margin: 10px 0; text-align: center;")
+          shiny::p("No rules defined for this question.", class = "fs-6 text-muted fst-italic my-2 text-center")
         }
         
         # Create question card
@@ -227,7 +228,7 @@ explore_server = function(id, ast, current_repo_name = shiny::reactiveVal(NULL),
           bslib::card_header(
             shiny::div(
               style = "display: flex; justify-content: space-between; align-items: center;",
-              shiny::h6(question_name, style = "margin: 0; color: #333; font-weight: 600;"),
+              shiny::h6(question_name, class = "my-0 text-dark fw-semibold"),
               shiny::div(
                 style = "position: relative; font-size: 18px;",
                 shiny::HTML(status_icon_html)
@@ -244,7 +245,7 @@ explore_server = function(id, ast, current_repo_name = shiny::reactiveVal(NULL),
       
       # Arrange question cards in two columns with wrapping
       if (length(question_cards) == 0) {
-        shiny::p("No questions available.", style = "color: #6c757d; font-style: italic;")
+        shiny::p("No questions available.", class = "text-muted fst-italic")
       } else {
         # Split cards into two columns for better distribution
         left_column_cards = question_cards[seq(1, length(question_cards), 2)]
