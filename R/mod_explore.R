@@ -10,17 +10,9 @@ explore_ui = function(id) {
   ns = shiny::NS(id)
   
   shiny::div(
-    style = "height: calc(100vh - 150px); min-height: 600px; padding: 20px;",
-    
-    shiny::div(
-      style = "border: 1px solid #ddd; padding: 15px; background-color: #f9f9f9; min-height: 400px;",
-      shiny::h4("Validation Results"),
-      shiny::div(
-        id = ns("template_validation"),
-        style = "max-height: calc(100vh - 250px); overflow-y: auto;",
-        shiny::uiOutput(ns("template_validation_ui"))
-      )
-    )
+    id = ns("template_validation"),
+    style = "max-height: calc(100vh - 200px); overflow-y: auto;",
+    shiny::uiOutput(ns("template_validation_ui"))
   )
 }
 
@@ -376,6 +368,7 @@ explore_server = function(id, ast, current_repo_name = shiny::reactiveVal(NULL),
                         }
                         content = paste(content_lines, collapse = "\n")
                         
+                        
                         # Get node type for title
                         node_type = class(node)[1]
                         
@@ -414,27 +407,15 @@ explore_server = function(id, ast, current_repo_name = shiny::reactiveVal(NULL),
                         
                         shiny::showModal(
                           shiny::modalDialog(
-                            title = shiny::div(
-                              style = "display: flex; justify-content: space-between; align-items: center; margin: 0; padding: 0;",
-                              shiny::span(node_type, style = "font-weight: bold;"),
-                              shiny::tags$button(
-                                type = "button",
-                                class = "close",
-                                `data-dismiss` = "modal",
-                                `aria-label` = "Close",
-                                style = "background: none; border: none; font-size: 24px; font-weight: bold; color: #000; opacity: 0.5; cursor: pointer;",
-                                shiny::icon("times")
-                              )
-                            ),
+                            title = shiny::span(node_type, style = "font-size: 16px; font-weight: bold;"),
                             size = "l",
                             shiny::div(
                               style = "max-height: 500px; overflow-y: auto;",
+                              # Pre element with soft wrapping for long lines
                               shiny::tags$pre(
+                                id = paste0("syntax-content-", local_node_index),
                                 style = "margin: 0; font-size: 12px; line-height: 1.4; background: #f5f2f0; padding: 15px; border-radius: 3px; white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word;",
-                                shiny::tags$code(
-                                  class = paste0("language-", syntax_language),
-                                  shiny::HTML(htmltools::htmlEscape(content))
-                                )
+                                content  # Raw content without HTML escaping for now
                               )
                             ),
                             footer = NULL,
@@ -442,36 +423,28 @@ explore_server = function(id, ast, current_repo_name = shiny::reactiveVal(NULL),
                           )
                         )
                         
-                        # Trigger syntax highlighting after modal is shown
-                        shinyjs::runjs("
-                          // Wait for modal to be fully rendered
+                        # Apply syntax highlighting manually to avoid Prism's auto-formatting
+                        shinyjs::runjs(paste0("
                           setTimeout(function() {
-                            console.log('Attempting to highlight syntax...');
-                            
-                            // Wait for Prism to be available and try multiple times
-                            var attempts = 0;
-                            var maxAttempts = 10;
-                            
-                            function tryHighlight() {
-                              attempts++;
-                              console.log('Attempt', attempts, '- Prism available:', typeof Prism !== 'undefined');
+                            var preElement = document.getElementById('syntax-content-", local_node_index, "');
+                            if (preElement && typeof Prism !== 'undefined') {
+                              // Create a temporary code element with the language class
+                              var codeElement = document.createElement('code');
+                              codeElement.className = 'language-", syntax_language, "';
+                              codeElement.textContent = preElement.textContent;
                               
-                              if (typeof Prism !== 'undefined' && Prism.highlightAll) {
-                                console.log('Running Prism.highlightAll()');
-                                Prism.highlightAll();
-                                return;
-                              }
+                              // Clear the pre element and append the code element
+                              preElement.innerHTML = '';
+                              preElement.appendChild(codeElement);
                               
-                              if (attempts < maxAttempts) {
-                                setTimeout(tryHighlight, 200);
-                              } else {
-                                console.log('Failed to load Prism after', maxAttempts, 'attempts');
-                              }
+                              // Highlight just this element
+                              Prism.highlightElement(codeElement);
+                              console.log('Manually highlighted element');
+                            } else {
+                              console.log('Element or Prism not found');
                             }
-                            
-                            tryHighlight();
-                          }, 100);
-                        ")
+                          }, 200);
+                        "))
                       }
                     }, ignoreInit = TRUE)
                   })

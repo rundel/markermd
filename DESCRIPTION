@@ -20,4 +20,8 @@ Imports:
     fs,
     gt,
     purrr,
-    glue
+    glue,
+    ghclass,
+    gert,
+    shinyjs,
+    htmltools
