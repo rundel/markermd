@@ -119,7 +119,7 @@ template_app = function(ast, template_obj = NULL) {
       ast_selectable_ui("ast_panel"),
       bslib::card(
         class = "h-100",
-        bslib::card_header("Questions"),
+        bslib::card_header("Questions", class = "bg-light"),
         bslib::card_body(
           class = "flex-fill overflow-auto p-0",
           shiny::div(
