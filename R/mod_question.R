@@ -13,6 +13,7 @@ question_ui = function(id, name_id) {
   bslib::card(
     style = "margin: 0; width: 100%; max-width: 100%; box-sizing: border-box;",
     bslib::card_header(
+      class = "bg-light",
       shiny::div(
         style = "display: flex; justify-content: space-between; align-items: center;",
         

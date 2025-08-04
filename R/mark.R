@@ -36,15 +36,12 @@ download_artifact_if_needed = function(github_repo, repo_name, collection_path) 
   
   # Return cached version if it exists
   if (file.exists(cached_path)) {
-    cat("DEBUG: Using cached artifact at", cached_path, "\n")
     return(list(success = TRUE, path = cached_path, from_cache = TRUE))
   }
   
   # Download artifact
   tryCatch({
     cache_dir = create_cache_dir(collection_path)
-    cat("DEBUG: Created cache dir:", cache_dir, "\n")
-    cat("DEBUG: Downloading artifact for repo:", github_repo, "\n")
     
     # Save current working directory and change to cache directory
     old_wd = getwd()
@@ -53,7 +50,6 @@ download_artifact_if_needed = function(github_repo, repo_name, collection_path) 
     tryCatch({
       # Use ghclass to download the artifact - specify the cache directory
       ghclass::action_artifact_download(github_repo, dir = cache_dir)
-      cat("DEBUG: Download command completed\n")
     }, finally = {
       # Always restore working directory
       setwd(old_wd)
@@ -61,7 +57,6 @@ download_artifact_if_needed = function(github_repo, repo_name, collection_path) 
     
     # List all files in cache dir to see what was downloaded
     all_files = list.files(cache_dir, full.names = TRUE)
-    cat("DEBUG: All files in cache dir:", paste(all_files, collapse = ", "), "\n")
     
     # Also check for files that might have been downloaded with tilde paths
     if (length(all_files) == 0) {
@@ -69,7 +64,6 @@ download_artifact_if_needed = function(github_repo, repo_name, collection_path) 
       unexpanded_cache = file.path(collection_path, ".markermd") 
       if (dir.exists(unexpanded_cache)) {
         all_files = list.files(unexpanded_cache, full.names = TRUE)
-        cat("DEBUG: Files in unexpanded cache dir:", paste(all_files, collapse = ", "), "\n")
         if (length(all_files) > 0) {
           # Move files from unexpanded to expanded location
           for (f in all_files) {
@@ -94,15 +88,12 @@ download_artifact_if_needed = function(github_repo, repo_name, collection_path) 
         source_file = all_files[1]
       }
       
-      cat("DEBUG: Using source file:", source_file, "\n")
-      cat("DEBUG: Target path:", cached_path, "\n")
       
       # Copy/move the file to our standard location if it's not already there
       if (normalizePath(source_file, mustWork = FALSE) != normalizePath(cached_path, mustWork = FALSE)) {
         file.copy(source_file, cached_path, overwrite = TRUE)
         if (file.exists(cached_path)) {
           file.remove(source_file)
-          cat("DEBUG: Successfully moved file to:", cached_path, "\n")
         }
       }
       
@@ -113,13 +104,37 @@ download_artifact_if_needed = function(github_repo, repo_name, collection_path) 
         return(list(success = FALSE, error = "File was not saved to expected location"))
       }
     } else {
-      cat("DEBUG: No files downloaded\n")
       return(list(success = FALSE, error = "No artifacts downloaded"))
     }
     
   }, error = function(e) {
-    cat("DEBUG: Error during download:", e$message, "\n")
     return(list(success = FALSE, error = paste("Download failed:", e$message)))
+  })
+}
+
+#' Open folder in system file manager (cross-platform)
+#'
+#' @param folder_path Character string. Path to folder to open
+#'
+open_folder = function(folder_path) {
+  if (!dir.exists(folder_path)) {
+    return(FALSE)
+  }
+  
+  tryCatch({
+    if (Sys.info()[["sysname"]] == "Darwin") {
+      # macOS
+      system(paste("open", shQuote(folder_path)))
+    } else if (Sys.info()[["sysname"]] == "Windows") {
+      # Windows
+      system(paste("explorer", shQuote(folder_path)))
+    } else {
+      # Linux and other Unix-like systems
+      system(paste("xdg-open", shQuote(folder_path)))
+    }
+    return(TRUE)
+  }, error = function(e) {
+    return(FALSE)
   })
 }
 
@@ -528,19 +543,19 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
           }
         "))
       ),
-      # Layout with repository table (1/3) and validation results (2/3)
+      # Layout with repository table and validation results
       bslib::layout_columns(
-        col_widths = c(4, 8),
+        col_widths = c(5, 7),
         # Repository table card (1/3)
         bslib::card(
-          bslib::card_header("Assignments"),
+          bslib::card_header("Assignments", class = "bg-light"),
           bslib::card_body(
             gt::gt_output("repo_table")
           )
         ),
         # Validation results card (2/3)  
         bslib::card(
-          bslib::card_header("Validation"),
+          bslib::card_header("Validation", class = "bg-light"),
           bslib::card_body(
             explore_ui("explore_module")
           )
@@ -605,12 +620,18 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
         })
       })
       
+      # Add Folder column
+      repo_df$Folder = sapply(seq_along(repo_list), function(i) {
+        folder_button_id = paste0("folder_", i)
+        return(paste0('<button onclick="Shiny.setInputValue(\'', folder_button_id, '\', Math.random())" class="btn btn-link p-0 border-0 text-reset" title="Open folder"><i class="far fa-folder-open fs-6"></i></button>'))
+      })
+      
       # Add GitHub column
       repo_df$GitHub = sapply(repo_list, function(repo) {
         if (repo %in% names(repo_to_github)) {
           github_repo = repo_to_github[[repo]]
           github_url = paste0("https://github.com/", github_repo)
-          return(paste0('<a href="', github_url, '" target="_blank" class="text-reset text-decoration-none"><i class="fab fa-github fs-5" title="Open on GitHub"></i></a>'))
+          return(paste0('<a href="', github_url, '" target="_blank" class="text-reset text-decoration-none"><i class="fab fa-github fs-6" title="Open on GitHub"></i></a>'))
         } else {
           return("")
         }
@@ -627,10 +648,10 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
         } else if (artifact_status_val) {
           # Has artifacts - clickable archive icon
           button_id = paste0("artifact_", i)
-          return(paste0('<button onclick="Shiny.setInputValue(\'', button_id, '\', Math.random())" class="btn btn-link p-0 border-0 text-reset" title="View artifact"><i class="fas fa-file-archive fs-6"></i></button>'))
+          return(paste0('<button onclick="Shiny.setInputValue(\'', button_id, '\', Math.random())" class="btn btn-link p-0 border-0 text-reset" title="View artifact"><i class="far fa-file fs-6"></i></button>'))
         } else {
-          # GitHub repo but no artifacts - red archive icon (not clickable)
-          return('<i class="fas fa-file-archive text-danger fs-6" title="No artifacts"></i>')
+          # GitHub repo but no artifacts - show blank space
+          return("")
         }
       })
       
@@ -645,30 +666,110 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
           return("")  # No validation data
         }
         
-        # Count validation results
+        # Count validation results (treat errors as failures)
         pass_count = sum(sapply(repo_validation, function(v) v$status == "pass"))
-        fail_count = sum(sapply(repo_validation, function(v) v$status == "fail"))
-        error_count = sum(sapply(repo_validation, function(v) v$status == "error"))
+        fail_count = sum(sapply(repo_validation, function(v) v$status %in% c("fail", "error")))
         total_count = length(repo_validation)
         
-        # Create detailed summary with tooltips
-        tooltip_text = paste(
-          "Validation rules:", total_count,
-          "| Passed:", pass_count,
-          "| Failed:", fail_count,
-          if (error_count > 0) paste("| Errors:", error_count) else ""
-        )
+        # Create detailed tooltip with failing questions in template order
+        validation_names = names(repo_validation)
+        failed_questions = character(0)
         
-        if (fail_count == 0 && error_count == 0) {
+        # Get question names from template in order
+        template_question_names = sapply(template_obj@questions, function(q) q@name)
+        
+        # Collect failed questions (including errors) in template order
+        for (question_name in template_question_names) {
+          if (question_name %in% validation_names) {
+            validation = repo_validation[[question_name]]
+            if (validation$status %in% c("fail", "error")) {
+              failed_questions = c(failed_questions, question_name)
+            }
+          }
+        }
+        
+        # Build tooltip text
+        tooltip_parts = c()
+        if (fail_count > 0) {
+          if (length(failed_questions) > 0) {
+            tooltip_parts = c(tooltip_parts, "Failed validation:")
+            tooltip_parts = c(tooltip_parts, paste("•", failed_questions))
+          }
+        } else {
+          tooltip_parts = paste("All", total_count, "validation rules passed")
+        }
+        
+        tooltip_text = paste(tooltip_parts, collapse = "&#10;")
+        
+        if (fail_count == 0) {
           # All passed
           paste0('<span class="text-success" title="', tooltip_text, '"><i class="fas fa-check-circle"></i> ', pass_count, '/', total_count, '</span>')
-        } else if (error_count > 0) {
-          # Has errors
-          paste0('<span class="text-warning" title="', tooltip_text, '"><i class="fas fa-exclamation-circle"></i> ', pass_count, '/', total_count, '</span>')
         } else {
-          # Has failures
+          # Has failures (including errors)
           paste0('<span class="text-danger" title="', tooltip_text, '"><i class="fas fa-times-circle"></i> ', pass_count, '/', total_count, '</span>')
         }
+      })
+      
+      # Add grading progress column with sparkline bars
+      repo_df$Grading = sapply(repo_list, function(repo) {
+        if (is.null(template_obj)) {
+          # No template - show empty or placeholder
+          return("")
+        }
+        
+        # Get number of questions from template
+        total_questions = length(template_obj@questions)
+        if (total_questions == 0) {
+          return("")
+        }
+        
+        # Get question names from template
+        question_names = sapply(template_obj@questions, function(q) q@name)
+        
+        # Generate random graded questions for testing (in real implementation, this would come from actual grading data)
+        graded_questions = sample(0:total_questions, 1)
+        percentage = round((graded_questions / total_questions) * 100)
+        
+        # Determine ungraded questions for tooltip in template order
+        if (graded_questions < total_questions) {
+          # Randomly select which questions are ungraded for testing
+          ungraded_indices = sample(seq_len(total_questions), total_questions - graded_questions)
+          # Keep the ungraded questions in template order (not random order)
+          ungraded_questions = question_names[sort(ungraded_indices)]
+        } else {
+          ungraded_questions = character(0)
+        }
+        
+        # Create tooltip text
+        tooltip_parts = c()
+        if (graded_questions == total_questions) {
+          tooltip_parts = paste("All", total_questions, "questions graded")
+        } else {
+          if (length(ungraded_questions) > 0) {
+            tooltip_parts = c(tooltip_parts, "Ungraded questions:")
+            tooltip_parts = c(tooltip_parts, paste("•", ungraded_questions))
+          }
+        }
+        
+        tooltip_text = paste(tooltip_parts, collapse = "&#10;")
+        
+        # Create sparkline bar with percentage
+        bar_width = percentage  # Width as percentage
+        bar_color = if (percentage == 100) {
+          "#28a745"  # Green for complete
+        } else if (percentage >= 50) {
+          "#ffc107"  # Yellow for partial
+        } else {
+          "#dc3545"  # Red for minimal progress
+        }
+        
+        # HTML for sparkline bar with text inside and tooltip
+        paste0(
+          '<div title="', tooltip_text, '" style="width: 100%; height: 16px; background-color: #e9ecef; border-radius: 8px; position: relative; overflow: hidden;">',
+          '<div style="height: 100%; background-color: ', bar_color, '; width: ', bar_width, '%; border-radius: 8px; transition: width 0.3s ease;"></div>',
+          '<span style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 10px; font-weight: 600; color: #333; white-space: nowrap; pointer-events: none;">', graded_questions, '/', total_questions, '</span>',
+          '</div>'
+        )
       })
       
       # Add row numbers for button IDs
@@ -694,39 +795,30 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
         )
       })
       
-      # Create gt table with validation column if template is available
-      table_data = if (is.null(template_obj)) {
-        repo_df[, c("Repository", "GitHub", "Artifacts"), drop = FALSE]
-      } else {
-        repo_df[, c("Repository", "GitHub", "Artifacts", "Validation"), drop = FALSE]
-      }
+      # Create gt table with all columns
+      table_data = repo_df[, c("Repository", "Folder", "GitHub", "Artifacts", "Validation", "Grading"), drop = FALSE]
       
       gt_table = gt::gt(table_data) |>
         gt::fmt_markdown(columns = Repository) |>
+        gt::fmt_markdown(columns = Folder) |>
         gt::fmt_markdown(columns = GitHub) |>
         gt::fmt_markdown(columns = Artifacts) |>
-        gt::cols_label(GitHub = "", Artifacts = "")
-      
-      # Add validation column formatting if it exists
-      if ("Validation" %in% names(table_data)) {
-        gt_table = gt_table |>
-          gt::fmt_markdown(columns = Validation) |>
-          gt::cols_label(Repository = "Repo", Validation = "Rules") |>
-          gt::cols_width(
-            Repository ~ pct(50),
-            GitHub ~ pct(10),
-            Artifacts ~ pct(10),
-            Validation ~ pct(30)
-          )
-      } else {
-        gt_table = gt_table |>
-          gt::cols_label(Repository = "Repo") |>
-          gt::cols_width(
-            Repository ~ pct(70),
-            GitHub ~ pct(15),
-            Artifacts ~ pct(15)
-          )
-      }
+        gt::fmt_markdown(columns = Grading) |>
+        gt::fmt_markdown(columns = Validation) |>
+        gt::cols_label(
+          Repository = "Repository", 
+          Folder = "", GitHub = "", Artifacts = "",
+          Validation = "Validation", Grading = "Progress"
+        ) |>
+        gt::cols_width(
+          Repository ~ pct(39),
+          Folder ~ pct(6),
+          GitHub ~ pct(6),
+          Artifacts ~ pct(6),
+          Validation ~ pct(17),
+          Grading ~ pct(26)
+        ) |>
+        gt::cols_align(align = "center", columns = Validation)
       
       gt_table |>
         gt::tab_options(
@@ -852,6 +944,43 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
                   )
                 )
               })
+            }
+          })
+        })
+      }
+    })
+    
+    # Handle folder button clicks
+    shiny::observe({
+      for (i in seq_along(repo_list)) {
+        local({
+          row_index = i
+          folder_button_id = paste0("folder_", row_index)
+          
+          shiny::observeEvent(input[[folder_button_id]], {
+            repo = repo_list[row_index]
+            # Expand tilde in collection path and normalize the full path
+            expanded_collection_path = path.expand(collection_path)
+            repo_path = file.path(expanded_collection_path, repo)
+            repo_path = normalizePath(repo_path, mustWork = FALSE)
+            
+            # Attempt to open the folder
+            success = open_folder(repo_path)
+            
+            if (!success) {
+              # Show error modal if folder couldn't be opened
+              shiny::showModal(
+                customModalDialog(
+                  title = "Error Opening Folder",
+                  easyClose = TRUE,
+                  footer = NULL,
+                  shiny::div(
+                    class = "p-4 text-center",
+                    shiny::tags$i(class = "fas fa-exclamation-triangle fs-3 text-danger me-2"),
+                    paste("Could not open folder:", repo_path)
+                  )
+                )
+              )
             }
           })
         })

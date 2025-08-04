@@ -226,9 +226,10 @@ explore_server = function(id, ast, current_repo_name = shiny::reactiveVal(NULL),
         # Create question card
         bslib::card(
           bslib::card_header(
+            class = "bg-light",
             shiny::div(
               style = "display: flex; justify-content: space-between; align-items: center;",
-              shiny::h6(question_name, class = "my-0 text-dark fw-semibold"),
+              shiny::span(question_name, class = "my-0 text-dark fw-semibold"),
               shiny::div(
                 style = "position: relative; font-size: 18px;",
                 shiny::HTML(status_icon_html)
@@ -247,24 +248,10 @@ explore_server = function(id, ast, current_repo_name = shiny::reactiveVal(NULL),
       if (length(question_cards) == 0) {
         shiny::p("No questions available.", class = "text-muted fst-italic")
       } else {
-        # Split cards into two columns for better distribution
-        left_column_cards = question_cards[seq(1, length(question_cards), 2)]
-        right_column_cards = if (length(question_cards) > 1) {
-          question_cards[seq(2, length(question_cards), 2)]
-        } else {
-          list()
-        }
-        
-        bslib::layout_columns(
-          col_widths = c(6, 6),
-          shiny::div(
-            style = "display: flex; flex-direction: column; gap: 12px;",
-            left_column_cards
-          ),
-          shiny::div(
-            style = "display: flex; flex-direction: column; gap: 12px;",
-            right_column_cards
-          )
+        # Single column layout for validation cards
+        shiny::div(
+          style = "display: flex; flex-direction: column; gap: 12px;",
+          question_cards
         )
       }
     })

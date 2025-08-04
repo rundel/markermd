@@ -13,7 +13,7 @@ ast_base_ui = function(id, title = "Document Structure", show_clear_button = FAL
   
   bslib::card(
     class = "h-100",
-    bslib::card_header(title),
+    bslib::card_header(title, class = "bg-light"),
     bslib::card_body(
       class = "flex-fill overflow-auto p-0",
       shiny::div(
