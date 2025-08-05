@@ -166,7 +166,7 @@ ast_base_server = function(id, ast, selected_nodes = shiny::reactive(integer(0))
                 )
                 
                 shiny::showModal(
-                  shiny::modalDialog(
+                  markermd_modal(
                     title = shiny::span(node_type, style = "font-size: 16px; font-weight: bold;"),
                     size = "l",
                     shiny::div(
@@ -178,8 +178,7 @@ ast_base_server = function(id, ast, selected_nodes = shiny::reactive(integer(0))
                         content  # Raw content without HTML escaping for now
                       )
                     ),
-                    footer = NULL,
-                    easyClose = TRUE
+                    footer = NULL
                   )
                 )
                 
