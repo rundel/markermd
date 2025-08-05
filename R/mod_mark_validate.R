@@ -2,55 +2,25 @@
 #'
 #' Shiny module for displaying validation results during marking
 
-#' Get Question AST from Current Document
-#'
-#' Wrapper around get_question_ast_subset from utils_template.R for Shiny req() validation
-#'
-#' @param current_ast The current document AST
-#' @param original_ast The original template AST  
-#' @param template_question The question object with selected nodes
-#'
-#' @return rmd_ast object or NULL if no content found
-#'
-get_question_ast = function(current_ast, original_ast, template_question) {
-  req(current_ast, original_ast, template_question)
-  
-  # Use the shared function from utils_template.R
-  return(get_question_ast_subset(current_ast, original_ast, template_question))
-}
-
 #' Get Question Content Display
 #'
 #' Creates the content display for a question including tree structure
 #'
-#' @param current_ast The current document AST
-#' @param original_ast The original template AST
-#' @param template_question The question object with selected nodes
+#' @param repo_ast The current document AST
+#' @param template_ast The original template AST
+#' @param question The question object with selected nodes
 #' @param session Shiny session object
-#' @param question_name The question name for unique IDs
 #'
 #' @return Shiny UI element or paragraph with message
 #'
-get_question_content = function(current_ast, original_ast, template_question, session, question_name) {
-  question_ast = get_question_ast(current_ast, original_ast, template_question)
+get_question_content = function(repo_ast, template_ast, question, session) {
   
-  if (is.null(question_ast) || length(question_ast@nodes) == 0) {
-    return(shiny::p("No matching sections found in current document.", class = "small text-muted fst-italic my-1"))
-  }
-  
-  # Build tree structure for the question AST
+  question_ast = get_question_ast(repo_ast, template_ast, question)
   tree_items = build_ast_tree_structure(question_ast)
-  
-  if (length(tree_items) <= 1) {  # Only document root or empty
-    return(shiny::p("No content found in selected sections.", class = "small text-muted fst-italic my-1"))
-  }
   
   # Filter out document root (index 0) and adjust depths for question display
   content_items = tree_items[sapply(tree_items, function(x) x$index != 0)]
   
-  if (length(content_items) == 0) {
-    return(shiny::p("No content found in selected sections.", class = "small text-muted fst-italic my-1"))
-  }
   
   # Adjust depths to start from 1 for content nodes
   min_depth = min(sapply(content_items, function(x) x$depth))
@@ -64,7 +34,7 @@ get_question_content = function(current_ast, original_ast, template_question, se
   })
   
   # Create non-interactive tree display for this question
-  question_id = paste0("q_", gsub("[^A-Za-z0-9]", "", question_name))
+  question_id = paste0("q_", gsub("[^A-Za-z0-9]", "", question@name))
   simple_tree = create_simple_tree_readonly_at_depth(content_items, session$ns, question_id, start_depth = 1)
   
   shiny::div(
@@ -78,58 +48,51 @@ get_question_content = function(current_ast, original_ast, template_question, se
 #'
 #' Creates the rule details section for a question card
 #'
-#' @param template_question The question object with rules
+#' @param question The question object with rules
 #' @param question_result The validation result for this question
 #'
 #' @return Shiny UI element with rule details
 #'
-create_rule_details = function(template_question, question_result) {
-  if (length(template_question@rules) == 0) {
-    return(shiny::p("No rules defined for this question.", class = "fs-6 text-muted fst-italic my-1 text-center"))
-  }
-  
+create_rule_details = function(question, question_result) {
+
   # Parse rule messages to understand individual rule results
-  if (is.character(question_result$messages) && length(question_result$messages) > 0) {
-    rule_items = lapply(seq_along(question_result$messages), function(i) {
-      message = question_result$messages[i]
-      rule = if (i <= length(template_question@rules)) template_question@rules[[i]] else NULL
-      
-      # Determine if this rule passed based on message content
-      rule_passed = grepl("passed|check passed|always matches|never matches", message, ignore.case = TRUE)
-      rule_color = if (rule_passed) "#28a745" else "#dc3545"
-      rule_icon = if (rule_passed) "check" else "times"
-      
+  rule_items = lapply(seq_along(question_result$messages), function(i) {
+    message = question_result$messages[i]
+    rule = question@rules[[i]]
+    
+    # Determine if this rule passed based on message content
+    rule_passed = question_result$passed[i]
+    rule_color = if (rule_passed) "#28a745" else "#dc3545"
+    rule_icon = if (rule_passed) "check" else "times"
+    
+    shiny::div(
+      style = paste0("margin: 6px 0; padding: 8px; border-left: 3px solid ", rule_color, "; background-color: #f8f9fa; border-radius: 3px;"),
       shiny::div(
-        style = paste0("margin: 6px 0; padding: 8px; border-left: 3px solid ", rule_color, "; background-color: #f8f9fa; border-radius: 3px;"),
-        shiny::div(
-          style = "display: flex; align-items: center;",
-          shiny::icon(rule_icon, style = paste0("color: ", rule_color, "; margin-right: 6px; font-size: 14px;")),
-          if (!is.null(rule)) {
-            shiny::span(
-              rule@node_type,
-              class = "text-muted fw-medium me-2",
-              style = "font-size: 11px; padding: 2px 6px; border: 1px solid #dee2e6; border-radius: 6px;"
-            )
-          },
+        style = "display: flex; align-items: center;",
+        shiny::icon(rule_icon, style = paste0("color: ", rule_color, "; margin-right: 6px; font-size: 14px;")),
+        if (!is.null(rule)) {
           shiny::span(
-            message,
-            style = "font-size: 13px;"
+            rule@node_type,
+            class = "text-muted fw-medium me-2",
+            style = "font-size: 11px; padding: 2px 6px; border: 1px solid #dee2e6; border-radius: 6px;"
           )
+        },
+        shiny::span(
+          message,
+          style = "font-size: 13px;"
         )
       )
-    })
-    
-    return(shiny::div(rule_items))
-  } else {
-    return(shiny::p("No detailed rule information available.", class = "fs-6 text-muted fst-italic my-1"))
-  }
+    )
+  })
+  
+  shiny::div(rule_items)
 }
 
 #' Create Question Card
 #'
 #' Creates a single question validation card
 #'
-#' @param template_question The question object
+#' @param question The question object
 #' @param question_result The validation result for this question
 #' @param current_ast The current document AST
 #' @param original_ast The original template AST
@@ -137,8 +100,8 @@ create_rule_details = function(template_question, question_result) {
 #'
 #' @return bslib card element
 #'
-create_question_card = function(template_question, question_result, current_ast, original_ast, session) {
-  question_name = template_question@name
+create_question_card = function(question, question_result, current_ast, original_ast, session) {
+  question_name = question@name
   
   # Overall status styling - only pass/fail states
   status_color = switch(question_result$status,
@@ -155,10 +118,10 @@ create_question_card = function(template_question, question_result, current_ast,
   )
   
   # Get the document nodes for this question using section selection
-  question_nodes_content = get_question_content(current_ast, original_ast, template_question, session, question_name)
+  question_nodes_content = get_question_content(current_ast, original_ast, question, session)
   
   # Create rule details
-  rule_details = create_rule_details(template_question, question_result)
+  rule_details = create_rule_details(question, question_result)
   
   # Create question card
   bslib::card(
@@ -210,33 +173,21 @@ mark_validate_ui = function(id) {
 mark_validate_server = function(id, ast, current_repo_name = shiny::reactiveVal(NULL), validation_results = shiny::reactiveVal(NULL), selected_question_name = shiny::reactiveVal(NULL), template = shiny::reactiveVal(NULL)) {
   shiny::moduleServer(id, function(input, output, session) {
     
-    # All questions validation cards UI
+    
     output$template_validation_ui = shiny::renderUI({
-      # Use req() to validate required reactive inputs
-      req(template())
-      req(validation_results())
-      req(ast())
+      req(template(), validation_results(), ast())
       
       current_validation = validation_results()
       current_template = template()
       current_ast = ast()
       
-      # Create cards for all questions
-      question_cards = lapply(current_template@questions, function(template_question) {
-        question_name = template_question@name
-        
-        # Get validation result for this question
-        question_result = if (!is.null(current_validation[[question_name]])) {
-          current_validation[[question_name]]
-        } else {
-          list(status = "unknown", messages = character(0))
-        }
-        
-        # Create question card using extracted helper function
-        create_question_card(template_question, question_result, current_ast, current_template@original_ast, session)
+      question_cards = lapply(current_template@questions, function(question) {
+        create_question_card(
+          question, current_validation[[question@name]], 
+          current_ast, current_template@original_ast, session
+        )
       })
       
-      # Arrange question cards in single column layout
       if (length(question_cards) == 0) {
         shiny::p("No questions available.", class = "text-muted fst-italic")
       } else {
@@ -253,23 +204,22 @@ mark_validate_server = function(id, ast, current_repo_name = shiny::reactiveVal(
     # Create preview button observers once when template and AST are available
     shiny::observe({
       # Use req() for cleaner validation 
-      req(template())
-      req(ast())
+      req(template(), ast())
       
       current_template = template()
       current_ast = ast()
       
       # Create observers for all questions and their nodes
-      for (template_question in current_template@questions) {
-        question_id = paste0("q_", gsub("[^A-Za-z0-9]", "", template_question@name))
+      for (question in current_template@questions) {
+        question_id = paste0("q_", gsub("[^A-Za-z0-9]", "", question@name))
         
         # Skip if observers already created for this question
         if (!is.null(created_observers[[question_id]])) {
           next
         }
         
-        # Get the question AST using the extracted helper function
-        question_ast = get_question_ast(current_ast, current_template@original_ast, template_question)
+        # Get the question AST using the shared function from utils_template.R
+        question_ast = get_question_ast(current_ast, current_template@original_ast, question)
         
         if (!is.null(question_ast) && length(question_ast@nodes) > 0) {
           # Build tree structure and create observers for each node
