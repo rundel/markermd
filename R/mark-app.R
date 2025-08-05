@@ -268,9 +268,18 @@ download_all_archives = function(github_repos, repo_to_github, collection_path, 
       next
     }
     
+    # Check if archive exists in metadata (if we have metadata)
+    if (use_metadata) {
+      repo_metadata = metadata[metadata$repo == github_repo, ]
+      if (nrow(repo_metadata) == 0) {
+        # No archive available for this repo - skip it entirely
+        next
+      }
+    }
+    
     cached_path = get_cached_artifact_path(collection_path, local_repo)
     
-    # Check if download is needed (only if we have metadata)
+    # Check if download is needed
     needs_download = if (use_metadata) {
       !check_archive_freshness(cached_path, github_repo, metadata)
     } else {
@@ -284,7 +293,8 @@ download_all_archives = function(github_repos, repo_to_github, collection_path, 
   }
   
   results = list()
-  downloaded_count = 0
+  downloaded_count = 0  # Count of successful downloads
+  processed_count = 0   # Count of archives processed (for progress tracking)
   total_count = length(repos_needing_download)  # Only count repos that need downloading
   
   # If no archives need downloading, return immediately
@@ -301,48 +311,47 @@ download_all_archives = function(github_repos, repo_to_github, collection_path, 
     progress_callback(paste("Found", total_count, "archives to download..."), 0, total_count)
   }
   
-  for (github_repo in github_repos) {
+  for (github_repo in repos_needing_download) {
     # Find local repo name
     local_repo = names(repo_to_github)[repo_to_github == github_repo][1]
     if (is.na(local_repo)) {
       next
     }
     
-    cached_path = get_cached_artifact_path(collection_path, local_repo)
-    
-    # Check if download is needed (only if we have metadata)
-    needs_download = if (use_metadata) {
-      !check_archive_freshness(cached_path, github_repo, metadata)
-    } else {
-      # Without metadata, only download if file doesn't exist
-      !file.exists(cached_path)
+    if (!is.null(progress_callback)) {
+      progress_callback(paste("Downloading", local_repo, "..."), processed_count)
     }
     
-    if (needs_download) {
+    # Force download since this repo is in the needs_download list
+    cached_path = get_cached_artifact_path(collection_path, local_repo)
+    force_download = !file.exists(cached_path) || TRUE  # Always force since it's in the needs_download list
+    result = download_artifact_if_needed(github_repo, local_repo, collection_path, force = force_download)
+    results[[local_repo]] = result
+    
+    # Always increment processed count
+    processed_count = processed_count + 1
+    
+    if (result$success) {
+      downloaded_count = downloaded_count + 1
+      # Update progress after successful download
       if (!is.null(progress_callback)) {
-        progress_callback(paste("Downloading", local_repo, "..."), downloaded_count)
-      }
-      
-      # Force download if file is outdated or missing
-      force_download = !file.exists(cached_path) || needs_download
-      result = download_artifact_if_needed(github_repo, local_repo, collection_path, force = force_download)
-      results[[local_repo]] = result
-      
-      if (result$success) {
-        downloaded_count = downloaded_count + 1
-        # Update progress after successful download
-        if (!is.null(progress_callback)) {
-          progress_callback(paste("Downloaded", local_repo), downloaded_count)
-        }
-      } else {
-        # Still increment downloaded_count for progress tracking even if download failed
-        downloaded_count = downloaded_count + 1
-        if (!is.null(progress_callback)) {
-          progress_callback(paste("Failed to download", local_repo), downloaded_count)
-        }
+        progress_callback(paste("Downloaded", local_repo), processed_count)
       }
     } else {
-      results[[local_repo]] = list(success = TRUE, from_cache = TRUE, message = "Up to date")
+      # Don't increment downloaded_count for failed downloads
+      if (!is.null(progress_callback)) {
+        progress_callback(paste("Failed to download", local_repo), processed_count)
+      }
+    }
+  }
+  
+  # Add results for repositories that are up to date (not in repos_needing_download)
+  for (github_repo in github_repos) {
+    if (!github_repo %in% repos_needing_download) {
+      local_repo = names(repo_to_github)[repo_to_github == github_repo][1]
+      if (!is.na(local_repo)) {
+        results[[local_repo]] = list(success = TRUE, from_cache = TRUE, message = "Up to date")
+      }
     }
   }
   
@@ -396,165 +405,6 @@ open_folder = function(folder_path) {
   })
 }
 
-#' Show loading screen with throbber
-#'
-#' @param title Character string. Title for the loading screen
-#' @param message Character string. Message to display
-#'
-show_loading_screen = function(title = "Loading", message = "Please wait...") {
-  # Create a temporary Shiny app for the loading screen
-  ui = bslib::page_fillable(
-    theme = bslib::bs_theme(version = 5),
-    shiny::div(
-      class = "d-flex justify-content-center align-items-center h-100",
-      shiny::div(
-        class = "text-center",
-        shiny::h3(title, class = "mb-4"),
-        shiny::div(
-          class = "spinner-border text-primary mb-3",
-          style = "width: 3rem; height: 3rem;",
-          role = "status",
-          shiny::span("Loading...", class = "visually-hidden")
-        ),
-        shiny::p(message, class = "text-muted", id = "loading-message")
-      )
-    )
-  )
-  
-  # Return the UI for embedding in other contexts
-  ui
-}
-
-#' Update loading screen message
-#'
-#' @param session Shiny session object
-#' @param message Character string. New message to display
-#'
-update_loading_message = function(session, message) {
-  shiny::updateTextOutput(session, "loading-message", message)
-}
-
-#' Create temporary loading app
-#'
-#' @param title Character string. Title for loading screen
-#' @param message Character string. Initial message
-#'
-create_loading_app = function(title = "markermd", message = "Initializing...") {
-  ui = show_loading_screen(title, message)
-  
-  server = function(input, output, session) {
-    # Server logic can be added here if needed for progress updates
-  }
-  
-  shiny::shinyApp(ui = ui, server = server)
-}
-
-#' Create loading overlay HTML structure
-#'
-#' @param title Character string. Title for the loading screen
-#' @param initial_message Character string. Initial message to display
-#'
-create_loading_overlay = function(title = "Processing", initial_message = "Initializing...") {
-  shiny::div(
-    id = "loading-overlay",
-    class = "position-fixed top-0 start-0 w-100 h-100 d-flex justify-content-center align-items-center",
-    style = "background-color: rgba(255,255,255,0.95); z-index: 9999;",
-    shiny::div(
-      class = "text-center p-5 border border-3 border-secondary rounded-3 bg-white shadow-lg",
-      style = "min-width: 400px;",
-      shiny::h2(title, class = "text-dark mb-4"),
-      shiny::div(
-        class = "spinner-border text-primary mb-3",
-        style = "width: 4rem; height: 4rem;",
-        role = "status"
-      ),
-      shiny::h4(id = "loading-message", initial_message, class = "text-muted fw-normal mb-4"),
-      # Progress bar container
-      shiny::div(
-        id = "progress-container",
-        class = "w-100 mb-3",
-        shiny::div(
-          class = "progress",
-          style = "height: 25px;",
-          shiny::div(
-            id = "progress-bar",
-            class = "progress-bar progress-bar-striped progress-bar-animated bg-primary",
-            role = "progressbar",
-            style = "width: 0%; transition: width 0.3s ease;",
-            shiny::span(id = "progress-text", "0%", class = "fw-bold", style = "line-height: 25px;")
-          )
-        )
-      ),
-      # Progress counter
-      shiny::p(id = "progress-counter", "", class = "text-muted mt-2 fs-6")
-    )
-  )
-}
-
-#' Show loading screen overlay
-#'
-show_loading_screen = function() {
-  shinyjs::show("loading-overlay")
-  shinyjs::hide("main-app-content")
-}
-
-#' Hide loading screen overlay with reliable DOM cleanup
-#'
-hide_loading_screen = function() {
-  shinyjs::runjs("
-    // Hide loading overlay and show main content
-    document.getElementById('loading-overlay').style.display = 'none';
-    document.getElementById('main-app-content').style.display = 'block';
-    
-    // Remove loading overlay entirely to prevent conflicts
-    var loadingEl = document.getElementById('loading-overlay');
-    if (loadingEl) {
-      loadingEl.remove();
-    }
-  ")
-}
-
-#' Create shared progress callback function
-#'
-#' @param loading_message Reactive value for loading message
-#' @param total_archives Reactive value for total archives
-#' @param completed_archives Reactive value for completed archives  
-#' @param progress_percentage Reactive value for progress percentage
-#' @param action_label Character string for action being performed (e.g., "Downloaded", "Synced")
-#'
-create_progress_callback = function(loading_message, total_archives, completed_archives, progress_percentage, action_label = "Downloaded") {
-  actual_total_needed = 0
-  
-  function(message, completed = NULL, total = NULL) {
-    loading_message(message)
-    
-    # Set the actual total if provided
-    if (!is.null(total)) {
-      actual_total_needed <<- total
-      total_archives(total)
-    }
-    
-    # Update progress if completed count provided
-    if (!is.null(completed) && actual_total_needed > 0) {
-      completed_archives(completed)
-      percentage = round((completed / actual_total_needed) * 100)
-      progress_percentage(percentage)
-      
-      # Update progress bar directly with JavaScript
-      shinyjs::runjs(paste0("
-        $('#progress-bar').css('width', '", percentage, "%');
-        $('#progress-text').text('", percentage, "%');
-      "))
-      
-      # Update counter text directly
-      counter_text = paste0(action_label, " ", completed, " of ", actual_total_needed, " archives")
-      shinyjs::html("progress-counter", counter_text)
-    }
-    
-    # Add delay to make progress visible
-    Sys.sleep(0.3)
-  }
-}
 
 #' Launch the markermd Shiny Application
 #'
@@ -730,147 +580,6 @@ mark = function(collection_path, template = NULL, use_qmd = TRUE, download_archi
   shiny::runApp(app, ...)
 }
 
-#' Launch the markermd Template Creation Application
-#'
-#' @param assignment_path Assignment source or existing template. Can be:
-#'   - Character path to local directory containing assignment
-#'   - Character GitHub repo in format "owner/repo"  
-#'   - Character path to .rds file containing markermd_template
-#'   - markermd_template S7 object
-#' @param local_dir Character string. Local directory for cloning (required for remote GitHub repos, ignored for templates)
-#' @param filename Character string. Glob pattern to match Rmd/qmd file to grade (ignored for templates). Default glob matches any .Rmd or .qmd file.
-#' @param ... Additional arguments passed to shiny::runApp()
-#'
-#' @return Launches Shiny application for template creation
-#' @export
-#'
-#' @examples
-#' \dontrun{
-#' # Local assignment with default pattern
-#' template("/path/to/assignment")
-#' 
-#' # Local assignment with specific filename
-#' template("/path/to/assignment", filename = "homework.Rmd")
-#' 
-#' # Remote GitHub repo
-#' template("username/repo-name", local_dir = "/tmp/grading", filename = "assignment.qmd")
-#' 
-#' # Load existing template from file
-#' template("/path/to/saved_template.rds")
-#' 
-#' # Load existing template from S7 object
-#' my_template = readRDS("/path/to/template.rds")
-#' template(my_template)
-#' }
-template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", ...) {
-  
-  # Validate inputs
-  if (missing(assignment_path)) {
-    stop("assignment_path is required")
-  }
-  
-  # Determine what type of input we have
-  template_obj = NULL
-  is_template_mode = FALSE
-  
-  if (S7::S7_inherits(assignment_path, markermd_template)) {
-    # Input is an S7 template object
-    template_obj = assignment_path
-    is_template_mode = TRUE
-    
-  } else if (is.character(assignment_path) && length(assignment_path) == 1) {
-    # Input is a character string - could be assignment path or template file
-    
-    if (grepl("\\.rds$", assignment_path, ignore.case = TRUE) && file.exists(assignment_path)) {
-      # Input appears to be a template RDS file
-      template_obj = tryCatch({
-        readRDS(assignment_path)
-      }, error = function(e) {
-        stop("Failed to load template file: ", e$message)
-      })
-      
-      # Validate it's a template object
-      if (!S7::S7_inherits(template_obj, markermd_template)) {
-        stop("RDS file must contain a markermd_template S7 object")
-      }
-      
-      is_template_mode = TRUE
-      
-    } else {
-      # Input is an assignment path (local directory or GitHub repo)
-      is_template_mode = FALSE
-    }
-    
-  } else {
-    stop("assignment_path must be a character string (assignment path or template file) or markermd_template S7 object")
-  }
-  
-  # Handle template mode vs assignment mode
-  if (is_template_mode) {
-    # Template mode: use AST from template, ignore filename/local_dir
-    ast = template_obj@original_ast
-    
-    # Create footer path - show original input for template objects, full path for files
-    footer_path = if (S7::S7_inherits(assignment_path, markermd_template)) {
-      "Template Object"
-    } else {
-      as.character(assignment_path)  # Show full path for RDS files
-    }
-    
-    # Create app with template data
-    app = template_app_standalone(shiny::reactiveVal(ast), template_obj, footer_path)
-    
-  } else {
-    # Assignment mode: parse document and create template
-    
-    # Check if assignment_path is a GitHub repo (contains "/")
-    is_github_repo = grepl("/", assignment_path) && !file.exists(assignment_path)
-  
-    if (is_github_repo && is.null(local_dir)) {
-      stop("local_dir is required for GitHub repositories")
-    }
-    
-    # Validate local directory exists for local assignments
-    if (!is_github_repo && !dir.exists(assignment_path)) {
-      stop("Local assignment directory does not exist: ", assignment_path)
-    }
-    
-    # For local assignments, resolve the filename pattern immediately
-    resolved_filename = filename
-    if (!is_github_repo) {
-      
-      matched_files = Sys.glob(file.path(assignment_path, filename) )
-      
-      if (length(matched_files) == 0) {
-        stop("No files found matching pattern '", filename, "' in directory: ", assignment_path)
-      }
-      
-      if (length(matched_files) > 1) {
-        stop("Multiple files found matching pattern '", filename, "':\n  ", 
-             paste(fs::path_file(matched_files), collapse = "\n  "), 
-             "\nPlease specify a more specific pattern that matches exactly one file.")
-      }
-      
-      # Use just the filename, not the full path
-      resolved_filename = fs::path_file(matched_files[1])
-    }
-    
-    # Setup repository and parse document before creating app
-    repo_path = setup_assignment_repo(assignment_path, local_dir, is_github_repo)
-    
-    # Validate and get assignment file path
-    file_path = validate_assignment_file(repo_path, resolved_filename)
-    
-    # Parse the document
-    ast = parse_assignment_document(file_path)
-    
-    # Create app without template
-    app = template_app_standalone(shiny::reactiveVal(ast), NULL, assignment_path)
-  }
-  
-  # Launch the app
-  shiny::runApp(app, ...)
-}
 
 #' Create Shiny App for markermd
 #'
@@ -955,8 +664,6 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
           }
         "))
       ),
-      # Loading screen overlay (always present, shown/hidden with JS)
-      create_loading_overlay("Downloading Archives", "Initializing..."),
       # Main content area 
       shiny::div(
         id = "main-app-content",
@@ -1015,104 +722,16 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
     # Make artifact status reactive so table updates when it changes
     artifact_status_reactive = shiny::reactiveVal(artifact_status)
     
-    # Loading state and archive download management
-    loading_complete = shiny::reactiveVal(FALSE)
+    # Reactive trigger for auto-sync on app launch
+    auto_sync_trigger = shiny::reactiveVal(0)
     
-    # Progress message for loading screen (must be defined before use)
-    loading_message = shiny::reactiveVal("Initializing...")
-    
-    # Progress tracking
-    total_archives = shiny::reactiveVal(0)
-    completed_archives = shiny::reactiveVal(0)
-    progress_percentage = shiny::reactiveVal(0)
-    
-    # Control loading screen visibility based on download needs
+    # Automatically trigger sync archives once on app launch if downloads are enabled and repos exist
     if (download_archives && length(repo_to_github) > 0) {
-      # Show loading screen initially for downloads
-      show_loading_screen()
-    } else {
-      # No downloads needed, show main content immediately
-      shinyjs::hide("loading-overlay")
-      shinyjs::show("main-app-content")
-    }
-    
-    # Update loading message
-    shiny::observe({
-      current_message = loading_message()
-      shinyjs::html("loading-message", current_message)
-    })
-    
-    # Update progress bar
-    shiny::observe({
-      total = total_archives()
-      completed = completed_archives()
-      percentage = progress_percentage()
-      
-      if (total > 0) {
-        # Update progress bar
-        shinyjs::runjs(paste0("
-          $('#progress-bar').css('width', '", percentage, "%');
-          $('#progress-text').text('", percentage, "%');
-        "))
-        
-        # Update counter text
-        counter_text = paste0("Downloaded ", completed, " of ", total, " archives")
-        shinyjs::html("progress-counter", counter_text)
-      }
-    })
-    
-    # Download archives asynchronously if needed
-    if (download_archives && length(repo_to_github) > 0) {
-      # Use a simple counter-based delay approach
-      download_counter = shiny::reactiveVal(0)
-      
-      shiny::observe({
-        current_count = download_counter()
-        
-        if (current_count == 0) {
-          # First run - schedule next run after delay
-          shiny::invalidateLater(1000)  # Increased delay to see loading screen
-          download_counter(1)
-        } else if (current_count == 1) {
-          # Second run - do the download
-          download_counter(2)  # Prevent further runs
-          
-          # Initialize progress tracking
-          completed_archives(0)
-          progress_percentage(0)
-          
-          # Create shared progress callback for loading screen updates
-          progress_callback = create_progress_callback(loading_message, total_archives, completed_archives, progress_percentage, "Downloaded")
-          
-          # Download archives with progress updates
-          github_repos_vec = unlist(repo_to_github)
-          download_result = download_all_archives(github_repos_vec, repo_to_github, collection_path, progress_callback)
-          
-          # Show completion message for a moment
-          loading_message("Download complete! Loading interface...")
-          Sys.sleep(0.5)  # Brief pause to show completion
-          
-          # Update artifact status after download
-          updated_status = artifact_status_reactive()
-          for (repo in repo_list) {
-            if (repo %in% names(repo_to_github)) {
-              cached_path = get_cached_artifact_path(collection_path, repo)
-              updated_status[[repo]] = file.exists(cached_path)
-            }
-          }
-          artifact_status_reactive(updated_status)
-          
-          # Hide loading screen and show main content
-          hide_loading_screen()
-          loading_complete(TRUE)
-        }
-        # If current_count >= 2, do nothing (download already completed)
-      })
-    } else {
-      # No archives to download, hide loading screen immediately
-      shinyjs::hide("loading-overlay")
-      shinyjs::show("main-app-content")
-      loading_complete(TRUE)
+      # Use session$onFlushed to ensure app is fully loaded, then trigger sync
+      session$onFlushed(function() {
+        # Simple trigger without invalidateLater
+        auto_sync_trigger(1)
+      }, once = TRUE)
     }
     
     # Create repository table with gt
@@ -1422,9 +1041,7 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
                     title = repo,
                     size = "xl",
                     easyClose = TRUE,
-                    footer = shiny::div(
-                      shiny::span("Viewing cached archive", class = "text-muted fs-6")
-                    ),
+                    footer = NULL,
                     shiny::div(
                       style = "height: 70vh; width: 100%; overflow: auto; border: 1px solid #dee2e6; background: white; font-size: 12px; padding: 8px;",
                       shiny::HTML(html_content)
@@ -1520,94 +1137,93 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
       }
     })
     
-    # Handle sync archives button click 
-    shiny::observeEvent(input$sync_archives, {
-      # Show single dynamic modal for sync
-      shiny::showModal(
-        customModalDialog(
-          title = "Syncing Archives",
-          shiny::div(
-            id = "sync-modal-content",
-            class = "text-center p-4",
-            # Initial progress state
-            shiny::div(
-              id = "sync-progress-state",
-              shiny::div(
-                class = "spinner-border text-primary mb-3",
-                style = "width: 3rem; height: 3rem;",
-                role = "status"
-              ),
-              shiny::h5(id = "sync-message", "Checking for archive updates...", class = "text-muted mb-4"),
-              # Progress bar for sync
-              shiny::div(
-                id = "sync-progress-container",
-                class = "w-100 mb-3",
-                shiny::div(
-                  class = "progress",
-                  style = "height: 20px;",
-                  shiny::div(
-                    id = "sync-progress-bar",
-                    class = "progress-bar progress-bar-striped progress-bar-animated bg-primary",
-                    role = "progressbar",
-                    style = "width: 0%; transition: width 0.3s ease;",
-                    shiny::span(id = "sync-progress-text", "0%", class = "fw-bold", style = "line-height: 20px;")
-                  )
-                )
-              ),
-              # Progress counter for sync
-              shiny::p(id = "sync-progress-counter", "", class = "text-muted fs-6")
-            ),
-            # Completion state (initially hidden)
-            shiny::div(
-              id = "sync-completion-state",
-              style = "display: none;",
-              shiny::tags$i(id = "sync-completion-icon", class = "fas fa-check-circle text-success", style = "font-size: 3rem;"),
-              shiny::h5(id = "sync-completion-message", "Sync complete!", class = "mt-3")
-            )
-          ),
-          footer = shiny::div(
-            id = "sync-modal-footer",
-            style = "display: none;",
-            shiny::modalButton("Close")
-          ),
-          easyClose = FALSE,
-          fade = TRUE
-        )
-      )
+    # Shared sync logic function
+    perform_sync = function() {
+      # First check if any archives need downloading
+      github_repos_vec = unique(unlist(repo_to_github))
       
-      # Reset progress tracking for sync (but don't use the main progress bar)
+      # If no GitHub repos are configured, don't show any modal
+      if (length(github_repos_vec) == 0) {
+        return()
+      }
+      
+      # Quick check to see if any downloads are needed
+      archives_to_download = 0
+      archives_available = 0  # Track how many repos have archives available
+      
+      # Get metadata to determine what's available
+      metadata = get_archive_metadata(github_repos_vec)
+      use_metadata = is.data.frame(metadata) && nrow(metadata) > 0
+      
+      for (github_repo in github_repos_vec) {
+        local_repo = names(repo_to_github)[repo_to_github == github_repo][1]
+        if (is.na(local_repo)) next
+        
+        # Check if archive exists in metadata
+        if (use_metadata) {
+          repo_metadata = metadata[metadata$repo == github_repo, ]
+          if (nrow(repo_metadata) == 0) next  # No archive available
+        }
+        
+        archives_available = archives_available + 1
+        cached_path = get_cached_artifact_path(collection_path, local_repo)
+        
+        # Check if download is needed
+        needs_download = if (use_metadata) {
+          !check_archive_freshness(cached_path, github_repo, metadata)
+        } else {
+          !file.exists(cached_path)
+        }
+        
+        if (needs_download) {
+          archives_to_download = archives_to_download + 1
+        }
+      }
+      
+      # Only proceed with progress if there are archives to download
+      if (archives_to_download == 0) {
+        # Show notification that everything is up to date
+        shiny::showNotification(
+          "Sync complete! 0 archives updated",
+          type = "default",
+          duration = 5
+        )
+        return()
+      }
+      
+      # Use Shiny's built-in Progress class for actual downloads
+      progress = shiny::Progress$new()
+      progress$set(message = "Syncing archives", value = 0)
+      
+      # Ensure progress is closed when done
+      on.exit(progress$close())
       
       # Perform sync
       github_repos_vec = unique(unlist(repo_to_github))
       
-      # Create progress callback for sync modal
-      sync_total_needed = 0
+      # Track total across callback calls
+      total_archives = NULL
+      
+      # Create progress callback using Shiny's Progress  
       progress_callback = function(message, completed = NULL, total = NULL) {
-        # Update sync modal message
-        shinyjs::html("sync-message", message)
-        
-        # Set the total if provided
-        if (!is.null(total)) {
-          sync_total_needed <<- total
+        # Store total when provided
+        if (!is.null(total) && total > 0) {
+          total_archives <<- total
         }
         
-        # Update progress if completed count provided
-        if (!is.null(completed) && sync_total_needed > 0) {
-          percentage = round((completed / sync_total_needed) * 100)
-          
-          # Update sync modal progress bar
-          shinyjs::runjs(paste0("
-            $('#sync-progress-bar').css('width', '", percentage, "%');
-            $('#sync-progress-text').text('", percentage, "%');
-          "))
-          
-          # Update sync modal counter text
-          counter_text = paste0("Synced ", completed, " of ", sync_total_needed, " archives")
-          shinyjs::html("sync-progress-counter", counter_text)
+        # Use stored total for progress calculations
+        if (!is.null(total_archives) && total_archives > 0 && !is.null(completed)) {
+          progress$set(
+            #message = "Downloading archives\n",
+            value = completed / total_archives,
+            message = paste("Downloaded", completed, "of", total_archives, "archives")
+          )
+        } else {
+          progress$set(message = message)
         }
         
-        # Add delay to make progress visible
-        Sys.sleep(0.3)
+        # Add small delay to make progress visible
+        Sys.sleep(0.1)
       }
       
       sync_result = sync_archives(github_repos_vec, repo_to_github, collection_path, progress_callback)
@@ -1623,20 +1239,24 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
       }
       artifact_status_reactive(updated_status)
       
-      # Transform modal to completion state
-      completion_message = paste("Sync complete!", downloaded_count, "archives updated")
-      shinyjs::runjs(paste0("
-        // Hide progress state
-        $('#sync-progress-state').hide();
-        
-        // Update and show completion state
-        $('#sync-completion-message').text('", completion_message, "');
-        $('#sync-completion-state').show();
-        
-        // Show footer with close button and enable easy close
-        $('#sync-modal-footer').show();
-        $('.modal').attr('data-bs-backdrop', 'true').attr('data-bs-keyboard', 'true');
-      "))
+      # Show completion notification regardless of download count
+      shiny::showNotification(
+        paste("Sync complete!", downloaded_count, "archives updated"),
+        type = "default",
+        duration = 5
+      )
+    }
+    
+    # Handle sync archives button click
+    shiny::observeEvent(input$sync_archives, {
+      perform_sync()
+    })
+    
+    # Handle auto-sync trigger
+    shiny::observeEvent(auto_sync_trigger(), {
+      if (auto_sync_trigger() > 0) {
+        perform_sync()
+      }
     })
     
     # Handle navbar tab switching
@@ -1651,66 +1271,3 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
   shiny::shinyApp(ui = ui, server = server)
 }
 
-#' Create Template Creation Shiny App
-#'
-#' Internal function to create the template creation Shiny application
-#'
-#' @param assignment_path Character string. Path to local directory or GitHub repo
-#' @param local_dir Character string. Local directory for cloning (for remote repos)
-#' @param filename Character string. Name of the Rmd/qmd file to grade
-#' @param is_github_repo Logical. Whether assignment_path is a GitHub repo
-#' @param template_obj markermd_template S7 object. Optional template to load on startup
-#' @param file_path Character string. Path to the assignment file
-#' @param ast Parsed AST object from the assignment document
-#'
-#' @return Shiny app object
-#'
-create_template_app = function(assignment_path, local_dir, filename, is_github_repo, template_obj = NULL, file_path, ast) {
-  
-  # Define UI
-  ui = bslib::page_navbar(
-    title = "markermd - Template Creation",
-    theme = bslib::bs_theme(version = 5),
-    
-    # Right-align the navigation tab
-    bslib::nav_spacer(),
-    
-    # Template tab (right aligned)
-    bslib::nav_panel(
-      title = "Template Creation",
-      value = "template",
-      # Add FontAwesome dependency
-      shiny::tags$head(
-        shiny::tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css")
-      ),
-      # Template app UI will be rendered here
-      shiny::uiOutput("template_app_content")
-    ),
-    
-    # Footer with assignment info
-    footer = shiny::div(
-      class = "bg-light border-top text-center text-muted p-3",
-      shiny::span(shiny::strong("Path"), " ", shiny::code(assignment_path, class = "bg-light px-1 py-1 rounded"), class = "me-4"),
-      shiny::span(shiny::strong("File"), " ", shiny::code(filename, class = "bg-light px-1 py-1 rounded")),
-      if (is_github_repo) shiny::span(shiny::strong("Local dir"), " ", shiny::code(local_dir, class = "bg-light px-1 py-1 rounded"), class = "ms-4")
-    )
-  )
-  
-  # Define server logic
-  server = function(input, output, session) {
-    
-    # Template app - get the app components and render UI dynamically
-    template_app_components = template_app(shiny::reactiveVal(ast), template_obj)
-    
-    # Render template app UI into the placeholder div
-    output$template_app_content = shiny::renderUI({
-      template_app_components$ui
-    })
-    
-    # Run template app server
-    template_app_components$server(input, output, session)
-  }
-  
-  # Return the app
-  shiny::shinyApp(ui = ui, server = server)
-}

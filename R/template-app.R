@@ -740,3 +740,145 @@ template_app_standalone = function(ast, template_obj = NULL, assignment_path = N
   
   return(list(ui = ui, server = app_components$server))
 }
+
+#' Launch the markermd Template Creation Application
+#'
+#' @param assignment_path Assignment source or existing template. Can be:
+#'   - Character path to local directory containing assignment
+#'   - Character GitHub repo in format "owner/repo"  
+#'   - Character path to .rds file containing markermd_template
+#'   - markermd_template S7 object
+#' @param local_dir Character string. Local directory for cloning (required for remote GitHub repos, ignored for templates)
+#' @param filename Character string. Glob pattern to match Rmd/qmd file to grade (ignored for templates). Default glob matches any .Rmd or .qmd file.
+#' @param ... Additional arguments passed to shiny::runApp()
+#'
+#' @return Launches Shiny application for template creation
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Local assignment with default pattern
+#' template("/path/to/assignment")
+#' 
+#' # Local assignment with specific filename
+#' template("/path/to/assignment", filename = "homework.Rmd")
+#' 
+#' # Remote GitHub repo
+#' template("username/repo-name", local_dir = "/tmp/grading", filename = "assignment.qmd")
+#' 
+#' # Load existing template from file
+#' template("/path/to/saved_template.rds")
+#' 
+#' # Load existing template from S7 object
+#' my_template = readRDS("/path/to/template.rds")
+#' template(my_template)
+#' }
+template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", ...) {
+  
+  # Validate inputs
+  if (missing(assignment_path)) {
+    stop("assignment_path is required")
+  }
+  
+  # Determine what type of input we have
+  template_obj = NULL
+  is_template_mode = FALSE
+  
+  if (S7::S7_inherits(assignment_path, markermd_template)) {
+    # Input is an S7 template object
+    template_obj = assignment_path
+    is_template_mode = TRUE
+    
+  } else if (is.character(assignment_path) && length(assignment_path) == 1) {
+    # Input is a character string - could be assignment path or template file
+    
+    if (grepl("\\.rds$", assignment_path, ignore.case = TRUE) && file.exists(assignment_path)) {
+      # Input appears to be a template RDS file
+      template_obj = tryCatch({
+        readRDS(assignment_path)
+      }, error = function(e) {
+        stop("Failed to load template file: ", e$message)
+      })
+      
+      # Validate it's a template object
+      if (!S7::S7_inherits(template_obj, markermd_template)) {
+        stop("RDS file must contain a markermd_template S7 object")
+      }
+      
+      is_template_mode = TRUE
+      
+    } else {
+      # Input is an assignment path (local directory or GitHub repo)
+      is_template_mode = FALSE
+    }
+    
+  } else {
+    stop("assignment_path must be a character string (assignment path or template file) or markermd_template S7 object")
+  }
+  
+  # Handle template mode vs assignment mode
+  if (is_template_mode) {
+    # Template mode: use AST from template, ignore filename/local_dir
+    ast = template_obj@original_ast
+    
+    # Create footer path - show original input for template objects, full path for files
+    footer_path = if (S7::S7_inherits(assignment_path, markermd_template)) {
+      "Template Object"
+    } else {
+      as.character(assignment_path)  # Show full path for RDS files
+    }
+    
+    # Create app with template data
+    app = template_app_standalone(shiny::reactiveVal(ast), template_obj, footer_path)
+    
+  } else {
+    # Assignment mode: parse document and create template
+    
+    # Check if assignment_path is a GitHub repo (contains "/")
+    is_github_repo = grepl("/", assignment_path) && !file.exists(assignment_path)
+  
+    if (is_github_repo && is.null(local_dir)) {
+      stop("local_dir is required for GitHub repositories")
+    }
+    
+    # Validate local directory exists for local assignments
+    if (!is_github_repo && !dir.exists(assignment_path)) {
+      stop("Local assignment directory does not exist: ", assignment_path)
+    }
+    
+    # For local assignments, resolve the filename pattern immediately
+    resolved_filename = filename
+    if (!is_github_repo) {
+      
+      matched_files = Sys.glob(file.path(assignment_path, filename) )
+      
+      if (length(matched_files) == 0) {
+        stop("No files found matching pattern '", filename, "' in directory: ", assignment_path)
+      }
+      
+      if (length(matched_files) > 1) {
+        stop("Multiple files found matching pattern '", filename, "':\n  ", 
+             paste(fs::path_file(matched_files), collapse = "\n  "), 
+             "\nPlease specify a more specific pattern that matches exactly one file.")
+      }
+      
+      # Use just the filename, not the full path
+      resolved_filename = fs::path_file(matched_files[1])
+    }
+    
+    # Setup repository and parse document before creating app
+    repo_path = setup_assignment_repo(assignment_path, local_dir, is_github_repo)
+    
+    # Validate and get assignment file path
+    file_path = validate_assignment_file(repo_path, resolved_filename)
+    
+    # Parse the document
+    ast = parse_assignment_document(file_path)
+    
+    # Create app without template
+    app = template_app_standalone(shiny::reactiveVal(ast), NULL, assignment_path)
+  }
+  
+  # Launch the app
+  shiny::runApp(app, ...)
+}
