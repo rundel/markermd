@@ -201,7 +201,8 @@ template_app = function(ast, template_obj = NULL) {
       }
     })
     
-    # Helper function to ensure current question exists
+    # Ensure current question exists in the modules list
+    #
     ensure_current_question_exists = function() {
       current_q_id = current_question_id()
       modules_list = question_modules()
@@ -212,7 +213,8 @@ template_app = function(ast, template_obj = NULL) {
       }
     }
     
-    # Helper function to add new question
+    # Add a new question to the modules list
+    #
     add_new_question = function() {
       next_id = last_question_id() + 1
       last_question_id(next_id)

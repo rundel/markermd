@@ -141,6 +141,12 @@ rule_server = function(id, initial_rule = NULL) {
   })
 }
 
+# Create dynamic verb input UI based on rule verb type
+#
+# @param verb Character. The rule verb type
+# @param value Current value(s) for the rule
+# @param ns Shiny namespace function
+
 create_rule_verb_inputs = function(verb, value, ns) {
   
   # Wrap all inputs in a div with smaller text styling

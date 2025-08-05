@@ -4,7 +4,7 @@
 
 # Parse an Rmd or qmd document into an AST using parsermd
 #
-# file_path: Character. Path to the assignment file
+# @param file_path Character. Path to the assignment file
 
 parse_assignment_document = function(file_path) {
   
@@ -29,7 +29,7 @@ parse_assignment_document = function(file_path) {
 
 # Extract basic information about the parsed document
 #
-# ast: parsermd AST object
+# @param ast parsermd AST object
 
 get_document_summary = function(ast) {
   
@@ -66,7 +66,7 @@ get_document_summary = function(ast) {
 
 # Create a text representation of the AST similar to parsermd::print_tree()
 #
-# ast: parsermd AST object
+# @param ast parsermd AST object
 
 create_ast_tree_display = function(ast) {
   

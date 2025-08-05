@@ -224,7 +224,10 @@ question_server = function(id, ast, initial_question = NULL) {
     # Dynamic delete observer management
     delete_observers = shiny::reactiveVal(list())
     
-    # Function to create a delete observer for a specific rule
+    # Create a delete observer for a specific rule
+    #
+    # @param rule_id Character. The rule ID to create observer for
+    
     create_delete_observer = function(rule_id) {
       delete_input_id = paste0("rule_", rule_id, "-delete")
       

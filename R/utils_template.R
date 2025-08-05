@@ -1,7 +1,7 @@
 # Extract detailed heading hierarchies from selected nodes
 #
-# ast: rmd_ast object from template creation
-# i: Integer vector of originally selected node indices
+# @param ast rmd_ast object from template creation
+# @param i Integer vector of originally selected node indices
 
 get_heading_selector = function(ast, i) {
   
@@ -17,9 +17,9 @@ get_heading_selector = function(ast, i) {
 
 # Evaluate "has between" rule
 #
-# nodes: List of AST nodes
-# rule: markermd_rule S7 object
-# num_selected_nodes: Number of originally selected heading nodes
+# @param nodes List of AST nodes
+# @param rule markermd_rule S7 object
+# @param num_selected_nodes Number of originally selected heading nodes
 
 evaluate_rule_has_between = function(nodes, rule, num_selected_nodes) {
   actual_count = length(nodes)
@@ -38,9 +38,9 @@ evaluate_rule_has_between = function(nodes, rule, num_selected_nodes) {
 
 # Evaluate "has at least" rule
 #
-# nodes: List of AST nodes
-# rule: markermd_rule S7 object
-# num_selected_nodes: Number of originally selected heading nodes
+# @param nodes List of AST nodes
+# @param rule markermd_rule S7 object
+# @param num_selected_nodes Number of originally selected heading nodes
 
 evaluate_rule_has_at_least = function(nodes, rule, num_selected_nodes) {
   actual_count = length(nodes)
@@ -58,9 +58,9 @@ evaluate_rule_has_at_least = function(nodes, rule, num_selected_nodes) {
 
 # Evaluate "has at most" rule
 #
-# nodes: List of AST nodes
-# rule: markermd_rule S7 object
-# num_selected_nodes: Number of originally selected heading nodes
+# @param nodes List of AST nodes
+# @param rule markermd_rule S7 object
+# @param num_selected_nodes Number of originally selected heading nodes
 
 evaluate_rule_has_at_most = function(nodes, rule, num_selected_nodes) {
   actual_count = length(nodes)
@@ -78,8 +78,8 @@ evaluate_rule_has_at_most = function(nodes, rule, num_selected_nodes) {
 
 # Evaluate "has content" rule
 #
-# nodes: List of AST nodes
-# rule: markermd_rule S7 object
+# @param nodes List of AST nodes
+# @param rule markermd_rule S7 object
 
 evaluate_rule_has_content = function(nodes, rule) {
   pattern = rule@values[1]
@@ -110,8 +110,8 @@ evaluate_rule_has_content = function(nodes, rule) {
 
 # Evaluate "lacks content" rule
 #
-# nodes: List of AST nodes
-# rule: markermd_rule S7 object
+# @param nodes List of AST nodes
+# @param rule markermd_rule S7 object
 
 evaluate_rule_lacks_content = function(nodes, rule) {
   pattern = rule@values[1]
@@ -143,8 +143,8 @@ evaluate_rule_lacks_content = function(nodes, rule) {
 
 # Evaluate "has name" rule
 #
-# nodes: List of AST nodes
-# rule: markermd_rule S7 object
+# @param nodes List of AST nodes
+# @param rule markermd_rule S7 object
 
 evaluate_rule_has_name = function(nodes, rule) {
   pattern = rule@values[1]
@@ -177,11 +177,11 @@ evaluate_rule_has_name = function(nodes, rule) {
   list(passed = name_found, message = message)
 }
 
-# Apply individual rule to an AST subset and determine if the rule condition is met.
+# Apply individual rule to an AST subset and determine if the rule condition is met
 #
-# ast: rmd_ast or list of nodes to evaluate
-# rule: markermd_rule S7 object containing the rule definition
-# num_selected_nodes: Integer number of originally selected heading nodes
+# @param ast rmd_ast or list of nodes to evaluate
+# @param rule markermd_rule S7 object containing the rule definition
+# @param num_selected_nodes Integer number of originally selected heading nodes
 
 evaluate_rule = function(ast, rule, num_selected_nodes = 0) {
   
@@ -214,11 +214,11 @@ evaluate_rule = function(ast, rule, num_selected_nodes = 0) {
   )
 }
 
-# Validate all rules for a single question against a new AST using section-based matching.
+# Validate all rules for a single question against a new AST using section-based matching
 #
-# repo_ast: rmd_ast object from the document to validate
-# template_ast: rmd_ast object from template creation  
-# question: markermd_question S7 object containing rules and node selections
+# @param repo_ast rmd_ast object from the document to validate
+# @param template_ast rmd_ast object from template creation  
+# @param question markermd_question S7 object containing rules and node selections
 
 validate_question_rules = function(repo_ast, template_ast, question) {
   
@@ -284,11 +284,11 @@ validate_question_rules = function(repo_ast, template_ast, question) {
   )
 }
 
-# Validates a parsed repository AST against template rules using section-based matching.
-# This replaces the parsermd template-based validation system.
+# Validates a parsed repository AST against template rules using section-based matching
+# This replaces the parsermd template-based validation system
 #
-# ast: rmd_ast object from parsing a repository document
-# template: markermd_template S7 object with questions and rules
+# @param ast rmd_ast object from parsing a repository document
+# @param template markermd_template S7 object with questions and rules
 
 validate_repo_against_rules = function(ast, template) {
 
@@ -306,9 +306,9 @@ validate_repo_against_rules = function(ast, template) {
 
 # Extracts the AST subset for a specific question using hierarchical section matching
 #
-# current_ast: rmd_ast object from the document to analyze
-# template_ast: rmd_ast object from template creation  
-# question: markermd_question S7 object containing selected nodes
+# @param current_ast rmd_ast object from the document to analyze
+# @param template_ast rmd_ast object from template creation  
+# @param question markermd_question S7 object containing selected nodes
 
 get_question_ast_subset = function(current_ast, template_ast, question) {
   
@@ -331,8 +331,8 @@ get_question_ast_subset = function(current_ast, template_ast, question) {
 
 # Extracts the content for specific questions from a parsed AST based on template node selections
 #
-# repo_ast: rmd_ast object from parsing a repository document
-# template: markermd_template S7 object containing questions with node selections
+# @param repo_ast rmd_ast object from parsing a repository document
+# @param template markermd_template S7 object containing questions with node selections
 
 extract_question_content = function(repo_ast, template) {
   
