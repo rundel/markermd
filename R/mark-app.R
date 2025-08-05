@@ -684,7 +684,7 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
           bslib::card(
             bslib::card_header("Validation", class = "bg-light"),
             bslib::card_body(
-              explore_ui("explore_module")
+              mark_validate_ui("explore_module")
             )
           )
         )
@@ -1106,8 +1106,8 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
       }
     })
     
-    # Explore module - pass validation data
-    explore_result = explore_server("explore_module", current_repo_ast, current_repo_name, current_repo_validation, shiny::reactiveVal(NULL), shiny::reactiveVal(template_obj))
+    # Mark validation module - pass validation data
+    explore_result = mark_validate_server("explore_module", current_repo_ast, current_repo_name, current_repo_validation, shiny::reactiveVal(NULL), shiny::reactiveVal(template_obj))
     
     
     # Marking module with template object for content extraction

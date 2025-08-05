@@ -1,12 +1,12 @@
-#' Explore Interface Module
+#' Mark Validation Interface Module
 #'
-#' Shiny module for exploring assignment documents
+#' Shiny module for displaying validation results during marking
 
-#' Explore UI
+#' Mark Validation UI
 #'
 #' @param id Character. Module namespace ID
 #'
-explore_ui = function(id) {
+mark_validate_ui = function(id) {
   ns = shiny::NS(id)
   
   shiny::div(
@@ -16,7 +16,7 @@ explore_ui = function(id) {
   )
 }
 
-#' Explore Server
+#' Mark Validation Server
 #'
 #' @param id Character. Module namespace ID
 #' @param ast Reactive. The parsed AST object
@@ -25,7 +25,7 @@ explore_ui = function(id) {
 #' @param selected_question_name Reactive. Currently selected question name
 #' @param template Reactive. Template object for reference
 #'
-explore_server = function(id, ast, current_repo_name = shiny::reactiveVal(NULL), validation_results = shiny::reactiveVal(NULL), selected_question_name = shiny::reactiveVal(NULL), template = shiny::reactiveVal(NULL)) {
+mark_validate_server = function(id, ast, current_repo_name = shiny::reactiveVal(NULL), validation_results = shiny::reactiveVal(NULL), selected_question_name = shiny::reactiveVal(NULL), template = shiny::reactiveVal(NULL)) {
   shiny::moduleServer(id, function(input, output, session) {
     
     # All questions validation cards UI
