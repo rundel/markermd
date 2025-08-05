@@ -1037,7 +1037,7 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
                 
                 # Show artifact in modal with HTML content
                 shiny::showModal(
-                  customModalDialog(
+                  markermd_modal(
                     title = repo,
                     size = "xl",
                     easyClose = TRUE,
@@ -1051,7 +1051,7 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
               } else {
                 # Show error modal - file should exist if download_archives was TRUE
                 shiny::showModal(
-                  customModalDialog(
+                  markermd_modal(
                     title = "Archive Not Available",
                     easyClose = TRUE,
                     footer = NULL,
@@ -1089,7 +1089,7 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
             if (!success) {
               # Show error modal if folder couldn't be opened
               shiny::showModal(
-                customModalDialog(
+                markermd_modal(
                   title = "Error Opening Folder",
                   easyClose = TRUE,
                   footer = NULL,
