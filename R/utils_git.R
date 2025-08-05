@@ -2,16 +2,12 @@
 #'
 #' Functions for handling git repositories in markermd
 
-#' Setup Assignment Repository
-#'
-#' Handles both local directories and remote GitHub repositories
-#'
-#' @param assignment_path Character. Local path or "owner/repo" format
-#' @param local_dir Character. Local directory for cloning (required for remote)
-#' @param is_github_repo Logical. Whether this is a GitHub repo
-#'
-#' @return Character path to the local assignment directory
-#'
+# Handles both local directories and remote GitHub repositories
+#
+# assignment_path: Character. Local path or "owner/repo" format
+# local_dir: Character. Local directory for cloning (required for remote)
+# is_github_repo: Logical. Whether this is a GitHub repo
+
 setup_assignment_repo = function(assignment_path, local_dir = NULL, is_github_repo = FALSE) {
   
   if (!is_github_repo) {
@@ -65,15 +61,11 @@ setup_assignment_repo = function(assignment_path, local_dir = NULL, is_github_re
   return(normalizePath(repo_local_path))
 }
 
-#' Validate Assignment File
-#'
-#' Check if the specified assignment file exists and is valid
-#'
-#' @param repo_path Character. Path to the assignment repository
-#' @param filename Character. Name of the assignment file
-#'
-#' @return Character path to the assignment file
-#'
+# Check if the specified assignment file exists and is valid
+#
+# repo_path: Character. Path to the assignment repository
+# filename: Character. Name of the assignment file
+
 validate_assignment_file = function(repo_path, filename) {
   
   assignment_file = file.path(repo_path, filename)

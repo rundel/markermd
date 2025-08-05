@@ -2,7 +2,7 @@
 % Please edit documentation in R/mod_mark_validate.R
 \name{mark_validate_ui}
 \alias{mark_validate_ui}
-\title{Mark Validation Interface Module}
+\title{Mark Validation UI}
 \usage{
 mark_validate_ui(id)
 }
@@ -10,6 +10,5 @@ mark_validate_ui(id)
 \item{id}{Character. Module namespace ID}
 }
 \description{
-Shiny module for displaying validation results during marking
 Mark Validation UI
 }

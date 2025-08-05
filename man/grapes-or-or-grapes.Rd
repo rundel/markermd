@@ -6,18 +6,6 @@
 \usage{
 x \%||\% y
 }
-\arguments{
-\item{x}{Left-hand side value}
-
-\item{y}{Right-hand side value (returned if x is NULL)}
-}
-\value{
-x if not NULL, otherwise y
-}
 \description{
 Functions for saving, loading and managing assignment templates
-Null-coalescing operator
-}
-\details{
-Returns the right-hand side if the left-hand side is NULL
 }

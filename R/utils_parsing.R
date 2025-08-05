@@ -2,14 +2,10 @@
 #'
 #' Functions for parsing Rmd/qmd documents using parsermd
 
-#' Parse Assignment Document
-#'
-#' Parse an Rmd or qmd document into an AST using parsermd
-#'
-#' @param file_path Character. Path to the assignment file
-#'
-#' @return parsermd AST object
-#'
+# Parse an Rmd or qmd document into an AST using parsermd
+#
+# file_path: Character. Path to the assignment file
+
 parse_assignment_document = function(file_path) {
   
   if (!file.exists(file_path)) {
@@ -31,14 +27,10 @@ parse_assignment_document = function(file_path) {
   })
 }
 
-#' Get Document Summary
-#'
-#' Extract basic information about the parsed document
-#'
-#' @param ast parsermd AST object
-#'
-#' @return List with document summary information
-#'
+# Extract basic information about the parsed document
+#
+# ast: parsermd AST object
+
 get_document_summary = function(ast) {
   
   if (is.null(ast)) {
@@ -72,14 +64,10 @@ get_document_summary = function(ast) {
   return(summary_info)
 }
 
-#' Create AST Tree Display
-#'
-#' Create a text representation of the AST similar to parsermd::print_tree()
-#'
-#' @param ast parsermd AST object
-#'
-#' @return Character vector with tree representation
-#'
+# Create a text representation of the AST similar to parsermd::print_tree()
+#
+# ast: parsermd AST object
+
 create_ast_tree_display = function(ast) {
   
   if (is.null(ast)) {

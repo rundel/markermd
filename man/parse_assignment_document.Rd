@@ -6,16 +6,6 @@
 \usage{
 parse_assignment_document(file_path)
 }
-\arguments{
-\item{file_path}{Character. Path to the assignment file}
-}
-\value{
-parsermd AST object
-}
 \description{
 Functions for parsing Rmd/qmd documents using parsermd
-Parse Assignment Document
-}
-\details{
-Parse an Rmd or qmd document into an AST using parsermd
 }

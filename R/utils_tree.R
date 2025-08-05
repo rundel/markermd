@@ -1,15 +1,10 @@
-#' Tree Display Utilities
-#'
-#' Functions for creating hierarchical tree displays of AST structures
+# Tree Display Utilities
+# Functions for creating hierarchical tree displays of AST structures
 
-#' Build Tree Structure from AST
-#'
-#' Create a hierarchical tree structure similar to parsermd's print output
-#'
-#' @param ast parsermd AST object
-#'
-#' @return List with tree structure information
-#'
+# Create a hierarchical tree structure similar to parsermd's print output
+#
+# ast: parkermd AST object
+
 build_ast_tree_structure = function(ast) {
   
   if (is.null(ast)) {
@@ -104,18 +99,13 @@ build_ast_tree_structure = function(ast) {
   return(tree_items)
 }
 
-#' Create Unified Tree View
-#'
-#' Create a tree view for AST nodes supporting different selection modes
-#'
-#' @param tree_items List of tree items from build_ast_tree_structure
-#' @param selected_nodes Vector of selected node indices
-#' @param ns Shiny namespace function
-#' @param selection_mode Character. Selection mode ("interactive", "readonly", "highlight_only")
-#' @param id_prefix Character. Optional prefix for button IDs to avoid collisions
-#'
-#' @return Shiny UI element with tree
-#'
+#
+# Create a tree view for AST nodes supporting different selection modes
+# tree_items: List of tree items from build_ast_tree_structure
+# selected_nodes: Vector of selected node indices
+# ns: Shiny namespace function
+# selection_mode: Character. Selection mode ("interactive", "readonly", "highlight_only")
+# id_prefix: Character. Optional prefix for button IDs to avoid collisions
 create_unified_tree = function(tree_items, selected_nodes, ns, selection_mode = "readonly", id_prefix = NULL) {
   
   if (length(tree_items) == 0) {
@@ -144,16 +134,11 @@ create_unified_tree = function(tree_items, selected_nodes, ns, selection_mode = 
   )
 }
 
-#' Create Simple Tree View using ul/li elements
-#'
-#' Create a simple flat tree view for AST nodes
-#'
-#' @param tree_items List of tree items from build_ast_tree_structure
-#' @param selected_nodes Vector of selected node indices
-#' @param ns Shiny namespace function
-#'
-#' @return Shiny UI element with simple tree
-#'
+# Create Simple Tree View using ul/li elements
+# Create a simple flat tree view for AST nodes
+# tree_items: List of tree items from build_ast_tree_structure
+# selected_nodes: Vector of selected node indices
+# ns: Shiny namespace function
 create_simple_tree = function(tree_items, selected_nodes, ns) {
   
   if (length(tree_items) == 0) {
@@ -309,18 +294,13 @@ create_simple_tree = function(tree_items, selected_nodes, ns) {
   )
 }
 
-#' Build Simple Tree Level (Nested but not collapsible)
-#'
-#' Build a nested tree structure for proper CSS styling without collapsible functionality
-#'
-#' @param tree_items All tree items
-#' @param target_depth Current depth level to build
-#' @param parent_index Parent node index (NULL for root)
-#' @param selected_nodes Vector of selected node indices
-#' @param ns Shiny namespace function
-#'
-#' @return List of HTML elements for this level
-#'
+# Build Simple Tree Level (Nested but not collapsible)
+# Build a nested tree structure for proper CSS styling without collapsible functionality
+# tree_items: All tree items
+# target_depth: Current depth level to build
+# parent_index: Parent node index (NULL for root)
+# selected_nodes: Vector of selected node indices
+# ns: Shiny namespace function
 build_simple_tree_level = function(tree_items, target_depth, parent_index, all_selected_nodes, ns, directly_selected_nodes = integer(0)) {
   
   # Find items at this depth with the specified parent
@@ -467,25 +447,15 @@ build_simple_tree_level = function(tree_items, target_depth, parent_index, all_s
 }
 
 
-#' Create Tree Connector using CSS/SVG
-#'
-#' Create visual tree connectors using CSS borders and positioning
-#'
-#' @param depth Integer depth of the node
-#' @param is_last_child Logical indicating if this is the last child
-#'
-#' @return Shiny UI element with tree connectors
-#'
-#' Create Tree Connector with Proper Vertical Connectivity
-#'
-#' Create visual tree connectors with proper vertical line management
-#'
-#' @param item Tree item with depth and parent info
-#' @param tree_items Full list of tree items for context
-#' @param current_index Current item's position in the list
-#'
-#' @return Shiny UI element with tree connectors
-#'
+# Create Tree Connector using CSS/SVG
+# Create visual tree connectors using CSS borders and positioning
+# depth: Integer depth of the node
+# is_last_child: Logical indicating if this is the last child
+# Create Tree Connector with Proper Vertical Connectivity
+# Create visual tree connectors with proper vertical line management
+# item: Tree item with depth and parent info
+# tree_items: Full list of tree items for context
+# current_index: Current item's position in the list
 create_tree_connector = function(item, tree_items, current_index) {
   
   depth = item$depth
@@ -590,15 +560,10 @@ create_tree_connector = function(item, tree_items, current_index) {
   )
 }
 
-#' Find Children of Node
-#'
-#' Find all child nodes for a given parent node
-#'
-#' @param tree_items List of tree items
-#' @param parent_index Index of parent node
-#'
-#' @return Vector of child node indices
-#'
+#
+# Find all child nodes for a given parent node
+# tree_items: List of tree items
+# parent_index: Index of parent node
 find_node_children = function(tree_items, parent_node_index) {
   
   children = integer(0)
@@ -622,15 +587,10 @@ find_node_children = function(tree_items, parent_node_index) {
   return(children)
 }
 
-#' Find All Descendants of Node
-#'
-#' Find all descendant nodes (children, grandchildren, etc.) for a given parent node
-#'
-#' @param tree_items List of tree items
-#' @param parent_index Index of parent node
-#'
-#' @return Vector of all descendant node indices
-#'
+#
+# Find all descendant nodes (children, grandchildren, etc.) for a given parent node
+# tree_items: List of tree items
+# parent_index: Index of parent node
 find_all_descendants = function(tree_items, parent_node_index) {
   
   all_descendants = integer(0)
@@ -657,16 +617,11 @@ find_all_descendants = function(tree_items, parent_node_index) {
   return(unique(all_descendants))
 }
 
-#' Check if Node Has Selected Ancestor
-#'
-#' Check if any ancestor node of the given node is in the directly selected list
-#'
-#' @param tree_items List of tree items
-#' @param node_index Index of the node to check
-#' @param directly_selected_nodes Vector of directly selected node indices
-#'
-#' @return Logical indicating if node has selected ancestors
-#'
+#
+# Check if any ancestor node of the given node is in the directly selected list
+# tree_items: List of tree items
+# node_index: Index of the node to check
+# directly_selected_nodes: Vector of directly selected node indices
 has_selected_ancestor = function(tree_items, node_index, directly_selected_nodes) {
   
   # Handle edge cases
@@ -715,15 +670,10 @@ has_selected_ancestor = function(tree_items, node_index, directly_selected_nodes
   return(FALSE)
 }
 
-#' Compute All Selected Nodes from Directly Selected
-#'
-#' Given a list of directly selected nodes, compute the full list including all descendants
-#'
-#' @param tree_items List of tree items
-#' @param directly_selected_nodes Vector of directly selected node indices
-#'
-#' @return Vector of all selected node indices (direct + descendants)
-#'
+# Compute All Selected Nodes from Directly Selected
+# Given a list of directly selected nodes, compute the full list including all descendants
+# tree_items: List of tree items
+# directly_selected_nodes: Vector of directly selected node indices
 compute_all_selected_nodes = function(tree_items, directly_selected_nodes) {
   
   if (length(directly_selected_nodes) == 0) {
@@ -744,17 +694,12 @@ compute_all_selected_nodes = function(tree_items, directly_selected_nodes) {
   return(unique(sort(all_selected)))
 }
 
-#' Find Which Selected Nodes Are Descendants of a Given Node
-#'
-#' Given a list of currently selected nodes and a new node, find which selected nodes
-#' are descendants of the new node (and should be removed)
-#'
-#' @param tree_items List of tree items
-#' @param new_node_index Index of the newly selected node
-#' @param current_selected Vector of currently selected node indices
-#'
-#' @return Vector of currently selected nodes that are descendants of the new node
-#'
+#
+# Given a list of currently selected nodes and a new node, find which selected nodes
+# are descendants of the new node (and should be removed)
+# tree_items: List of tree items
+# new_node_index: Index of the newly selected node
+# current_selected: Vector of currently selected node indices
 find_selected_descendants = function(tree_items, new_node_index, current_selected) {
   
   if (length(current_selected) == 0) {
@@ -770,31 +715,21 @@ find_selected_descendants = function(tree_items, new_node_index, current_selecte
   return(selected_descendants)
 }
 
-#' Create Simple Tree View for Read-Only Display
-#'
-#' Create a simple flat tree view for AST nodes without selection functionality
-#'
-#' @param tree_items List of tree items from build_ast_tree_structure
-#' @param ns Shiny namespace function
-#' @param repo_id Character. Unique identifier for the repository to avoid ID collisions
-#'
-#' @return Shiny UI element with simple tree (read-only)
-#'
+#
+# Create a simple flat tree view for AST nodes without selection functionality
+# tree_items: List of tree items from build_ast_tree_structure
+# ns: Shiny namespace function
+# repo_id: Character. Unique identifier for the repository to avoid ID collisions
 create_simple_tree_readonly = function(tree_items, ns, repo_id = NULL) {
   create_simple_tree_readonly_at_depth(tree_items, ns, repo_id, start_depth = 0)
 }
 
-#' Create Simple Tree View for Read-Only Display at Specific Depth
-#'
-#' Create a simple flat tree view for AST nodes without selection functionality, starting at a specific depth
-#'
-#' @param tree_items List of tree items from build_ast_tree_structure
-#' @param ns Shiny namespace function
-#' @param repo_id Character. Unique identifier for the repository to avoid ID collisions
-#' @param start_depth Integer. The depth level to start rendering from
-#'
-#' @return Shiny UI element with simple tree (read-only)
-#'
+# Create Simple Tree View for Read-Only Display at Specific Depth
+# Create a simple flat tree view for AST nodes without selection functionality, starting at a specific depth
+# tree_items: List of tree items from build_ast_tree_structure
+# ns: Shiny namespace function
+# repo_id: Character. Unique identifier for the repository to avoid ID collisions
+# start_depth: Integer. The depth level to start rendering from
 create_simple_tree_readonly_at_depth = function(tree_items, ns, repo_id = NULL, start_depth = 0) {
   
   if (length(tree_items) == 0) {
@@ -929,18 +864,13 @@ create_simple_tree_readonly_at_depth = function(tree_items, ns, repo_id = NULL, 
   )
 }
 
-#' Build Simple Tree Level (Read-Only)
-#'
-#' Build a nested tree structure for display without any interactive elements
-#'
-#' @param tree_items All tree items
-#' @param target_depth Current depth level to build
-#' @param parent_index Parent node index (NULL for root)
-#' @param ns Shiny namespace function
-#' @param repo_id Character. Unique identifier for the repository to avoid ID collisions
-#'
-#' @return List of HTML elements for this level
-#'
+# Build Simple Tree Level (Read-Only)
+# Build a nested tree structure for display without any interactive elements
+# tree_items: All tree items
+# target_depth: Current depth level to build
+# parent_index: Parent node index (NULL for root)
+# ns: Shiny namespace function
+# repo_id: Character. Unique identifier for the repository to avoid ID collisions
 build_simple_tree_level_readonly = function(tree_items, target_depth, parent_index, ns, repo_id = NULL) {
   
   # Find items at this depth with the specified parent
@@ -1029,15 +959,10 @@ build_simple_tree_level_readonly = function(tree_items, target_depth, parent_ind
   })
 }
 
-#' Create Unified Tree CSS
-#'
-#' Create CSS styling for unified tree display
-#'
-#' @param css_class Character. CSS class name to use
-#' @param selection_mode Character. Selection mode for mode-specific styling
-#'
-#' @return Shiny tags$style element with CSS
-#'
+#
+# Create CSS styling for unified tree display
+# css_class: Character. CSS class name to use
+# selection_mode: Character. Selection mode for mode-specific styling
 create_unified_tree_css = function(css_class, selection_mode) {
   
   # Base CSS common to all modes
@@ -1247,21 +1172,16 @@ create_unified_tree_css = function(css_class, selection_mode) {
   shiny::tags$style(shiny::HTML(paste0(base_css, mode_css)))
 }
 
-#' Build Unified Tree Level
-#'
-#' Build a nested tree structure supporting different selection modes
-#'
-#' @param tree_items All tree items
-#' @param target_depth Current depth level to build
-#' @param parent_index Parent node index (NULL for root)
-#' @param all_selected_nodes Vector of all selected node indices
-#' @param ns Shiny namespace function
-#' @param directly_selected_nodes Vector of directly selected node indices
-#' @param selection_mode Character. Selection mode
-#' @param id_prefix Character. Optional prefix for button IDs
-#'
-#' @return List of HTML elements for this level
-#'
+#
+# Build a nested tree structure supporting different selection modes
+# tree_items: All tree items
+# target_depth: Current depth level to build
+# parent_index: Parent node index (NULL for root)
+# all_selected_nodes: Vector of all selected node indices
+# ns: Shiny namespace function
+# directly_selected_nodes: Vector of directly selected node indices
+# selection_mode: Character. Selection mode
+# id_prefix: Character. Optional prefix for button IDs
 build_unified_tree_level = function(tree_items, target_depth, parent_index, all_selected_nodes, ns, directly_selected_nodes = integer(0), selection_mode = "readonly", id_prefix = NULL) {
   
   # Find items at this depth with the specified parent

@@ -2,27 +2,22 @@
 #'
 #' Functions for saving, loading and managing assignment templates
 
-#' Null-coalescing operator
-#'
-#' Returns the right-hand side if the left-hand side is NULL
-#'
-#' @param x Left-hand side value
-#' @param y Right-hand side value (returned if x is NULL)
-#' @return x if not NULL, otherwise y
-#'
+# Null-coalescing operator
+# Returns the right-hand side if the left-hand side is NULL
+#
+# x: Left-hand side value
+# y: Right-hand side value (returned if x is NULL)
+
 '%||%' = function(x, y) if (is.null(x)) y else x
 
 # Legacy save_template() function removed - templates now use RDS format exclusively
 
 # Legacy load_template() and generate_template_summary() functions removed - templates now use RDS format exclusively
 
-#' Create Question Templates
-#'
-#' Creates parsermd templates from a template S7 object
-#'
-#' @param template_obj markermd_template S7 object
-#' @return Named list of parsermd templates
-#'
+# Creates parsermd templates from a template S7 object
+#
+# template_obj: markermd_template S7 object
+
 create_question_templates = function(template_obj) {
   stopifnot(S7::S7_inherits(template_obj, markermd_template))
   
@@ -50,28 +45,11 @@ create_question_templates = function(template_obj) {
   return(result_templates)
 }
 
-#' Process Templates for mark() Function
-#'
-#' Handles different template input types and converts them to a standardized format
-#' for use in the marking interface using S7 template objects.
-#'
-#' @param template_input Can be:
-#'   - Character path to .rds file containing template data
-#'   - markermd_template S7 object
-#'   - NULL (no template)
-#'
-#' @return Named list of parsermd templates for each question, or NULL if no template
-#'
-#' @examples
-#' \dontrun{
-#' # From file path
-#' templates = process_mark_templates("path/to/template.rds")
-#' 
-#' # From raw template data
-#' raw_data = readRDS("template.rds")
-#' templates = process_mark_templates(raw_data)
-#' }
-#'
+# Handles different template input types and converts them to a standardized format
+# for use in the marking interface using S7 template objects.
+#
+# template_input: Can be character path to .rds file, markermd_template S7 object, or NULL
+
 process_mark_templates = function(template_input) {
 
   if (S7::S7_inherits(template_input, markermd_template)) {
@@ -97,19 +75,11 @@ process_mark_templates = function(template_input) {
   stop("Template must be a file path or markermd_template S7 object")
 }
 
-#' Validate Repository Against Templates
-#'
-#' Validates a parsed repository AST against question templates using parsermd::rmd_check_template
-#'
-#' @param ast rmd_ast object from parsing a repository document
-#' @param templates Named list of rmd_template objects (from process_mark_templates)
-#'
-#' @return List with validation results for each question:
-#'   - question_name: Question name
-#'   - status: "pass" or "fail"
-#'   - messages: Character vector of validation messages
-#'   - details: Full captured output for tooltip display
-#'
+# Validates a parsed repository AST against question templates using parsermd::rmd_check_template
+#
+# ast: rmd_ast object from parsing a repository document
+# templates: Named list of rmd_template objects (from process_mark_templates)
+
 validate_repo_against_templates = function(ast, templates) {
   
   results = list()
@@ -145,16 +115,12 @@ validate_repo_against_templates = function(ast, templates) {
   return(results)
 }
 
-#' Resolve Section Hierarchies from Selected Nodes
-#'
-#' Extract detailed heading hierarchies from originally selected nodes in template creation.
-#' Uses parsermd::rmd_node_sections() to get complete heading paths for more precise subsetting.
-#'
-#' @param original_ast rmd_ast object from template creation
-#' @param selected_node_indices Integer vector of originally selected node indices
-#'
-#' @return List of character vectors representing section hierarchies (with NAs stripped)
-#'
+# Extract detailed heading hierarchies from originally selected nodes in template creation.
+# Uses parsermd::rmd_node_sections() to get complete heading paths for more precise subsetting.
+#
+# original_ast: rmd_ast object from template creation
+# selected_node_indices: Integer vector of originally selected node indices
+
 resolve_section_hierarchies = function(original_ast, selected_node_indices) {
   
   all_sections = parsermd::rmd_node_sections(original_ast)
@@ -168,16 +134,12 @@ resolve_section_hierarchies = function(original_ast, selected_node_indices) {
   unique(selected_headings)
 }
 
-#' Evaluate Rule Against AST Subset
-#'
-#' Apply individual rule to an AST subset and determine if the rule condition is met.
-#'
-#' @param ast_subset rmd_ast or list of nodes to evaluate
-#' @param rule markermd_rule S7 object containing the rule definition
-#' @param num_selected_nodes Integer number of originally selected heading nodes
-#'
-#' @return List with passed (logical) and message (character) components
-#'
+# Apply individual rule to an AST subset and determine if the rule condition is met.
+#
+# ast_subset: rmd_ast or list of nodes to evaluate
+# rule: markermd_rule S7 object containing the rule definition
+# num_selected_nodes: Integer number of originally selected heading nodes
+
 evaluate_rule = function(ast_subset, rule, num_selected_nodes = 0) {
   
   stopifnot(S7::S7_inherits(rule, markermd_rule))
@@ -358,16 +320,12 @@ evaluate_rule = function(ast_subset, rule, num_selected_nodes = 0) {
   )
 }
 
-#' Validate Question Rules Against New AST
-#'
-#' Validate all rules for a single question against a new AST using section-based matching.
-#'
-#' @param new_ast rmd_ast object from the document to validate
-#' @param original_ast rmd_ast object from template creation  
-#' @param question markermd_question S7 object containing rules and node selections
-#'
-#' @return List with question_name, status, messages, and details components
-#'
+# Validate all rules for a single question against a new AST using section-based matching.
+#
+# new_ast: rmd_ast object from the document to validate
+# original_ast: rmd_ast object from template creation  
+# question: markermd_question S7 object containing rules and node selections
+
 validate_question_rules = function(new_ast, original_ast, question) {
   
   stopifnot(S7::S7_inherits(question, markermd_question))
@@ -435,20 +393,12 @@ validate_question_rules = function(new_ast, original_ast, question) {
   )
 }
 
-#' Validate Repository Against Rules
-#'
-#' Validates a parsed repository AST against template rules using section-based matching.
-#' This replaces the parsermd template-based validation system.
-#'
-#' @param ast rmd_ast object from parsing a repository document
-#' @param template_obj markermd_template S7 object with questions and rules
-#'
-#' @return List with validation results for each question:
-#'   - question_name: Question name
-#'   - status: "pass" or "fail"
-#'   - messages: Character vector of validation messages
-#'   - details: Full captured output for tooltip display
-#'
+# Validates a parsed repository AST against template rules using section-based matching.
+# This replaces the parsermd template-based validation system.
+#
+# ast: rmd_ast object from parsing a repository document
+# template_obj: markermd_template S7 object with questions and rules
+
 validate_repo_against_rules = function(ast, template_obj) {
 
   stopifnot(S7::S7_inherits(template_obj, markermd_template))
@@ -463,16 +413,12 @@ validate_repo_against_rules = function(ast, template_obj) {
   return(results)
 }
 
-#' Get Question AST Subset
-#'
-#' Extracts the AST subset for a specific question using hierarchical section matching
-#'
-#' @param current_ast rmd_ast object from the document to analyze
-#' @param original_ast rmd_ast object from template creation  
-#' @param question markermd_question S7 object containing selected nodes
-#'
-#' @return rmd_ast object or NULL if no content found
-#'
+# Extracts the AST subset for a specific question using hierarchical section matching
+#
+# current_ast: rmd_ast object from the document to analyze
+# original_ast: rmd_ast object from template creation  
+# question: markermd_question S7 object containing selected nodes
+
 get_question_ast_subset = function(current_ast, original_ast, question) {
   
   stopifnot(S7::S7_inherits(question, markermd_question))
@@ -492,15 +438,11 @@ get_question_ast_subset = function(current_ast, original_ast, question) {
   parsermd::rmd_select(current_ast, !!!args, keep_yaml = FALSE)
 }
 
-#' Extract Question Content from AST
-#'
-#' Extracts the content for specific questions from a parsed AST based on template node selections
-#'
-#' @param ast rmd_ast object from parsing a repository document
-#' @param template_obj markermd_template S7 object containing questions with node selections
-#'
-#' @return Named list where names are question names and values are the extracted content as text
-#'
+# Extracts the content for specific questions from a parsed AST based on template node selections
+#
+# ast: rmd_ast object from parsing a repository document
+# template_obj: markermd_template S7 object containing questions with node selections
+
 extract_question_content = function(ast, template_obj) {
   
   stopifnot(S7::S7_inherits(template_obj, markermd_template))

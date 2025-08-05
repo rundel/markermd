@@ -10,20 +10,6 @@ setup_assignment_repo(
   is_github_repo = FALSE
 )
 }
-\arguments{
-\item{assignment_path}{Character. Local path or "owner/repo" format}
-
-\item{local_dir}{Character. Local directory for cloning (required for remote)}
-
-\item{is_github_repo}{Logical. Whether this is a GitHub repo}
-}
-\value{
-Character path to the local assignment directory
-}
 \description{
 Functions for handling git repositories in markermd
-Setup Assignment Repository
-}
-\details{
-Handles both local directories and remote GitHub repositories
 }
