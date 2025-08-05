@@ -15,20 +15,6 @@ get_heading_selector = function(ast, i) {
   unique(headings) # Remove duplicates
 }
 
-# Calculate node count for rule evaluation
-#
-# nodes: List of AST nodes
-# node_type: Rule node type
-# num_selected_nodes: Number of originally selected heading nodes
-
-calculate_node_count = function(nodes, node_type, num_selected_nodes) {
-  if (node_type == "rmd_heading") {
-    length(nodes) - num_selected_nodes
-  } else {
-    length(nodes)
-  }
-}
-
 # Evaluate "has between" rule
 #
 # nodes: List of AST nodes
@@ -36,15 +22,15 @@ calculate_node_count = function(nodes, node_type, num_selected_nodes) {
 # num_selected_nodes: Number of originally selected heading nodes
 
 evaluate_rule_has_between = function(nodes, rule, num_selected_nodes) {
-  actual_count = calculate_node_count(nodes, rule@node_type, num_selected_nodes)
+  actual_count = length(nodes)
   min_count = rule@values[1]
   max_count = rule@values[2]
   
   passed = actual_count >= min_count && actual_count <= max_count
   message = if (passed) {
-    paste0("Count check passed: ", actual_count, " nodes (range: ", min_count, "-", max_count, ")")
+    cli::pluralize("count check passed: {actual_count} node{?s} ({min_count}-{max_count})")
   } else {
-    paste0("Count check failed: ", actual_count, " nodes (expected: ", min_count, "-", max_count, ")")
+    cli::pluralize("count check failed: {actual_count} node{?s} (expected {min_count}-{max_count})")
   }
   
   list(passed = passed, message = message)
@@ -57,14 +43,14 @@ evaluate_rule_has_between = function(nodes, rule, num_selected_nodes) {
 # num_selected_nodes: Number of originally selected heading nodes
 
 evaluate_rule_has_at_least = function(nodes, rule, num_selected_nodes) {
-  actual_count = calculate_node_count(nodes, rule@node_type, num_selected_nodes)
+  actual_count = length(nodes)
   min_count = rule@values
   
   passed = actual_count >= min_count
   message = if (passed) {
-    paste0("Minimum count check passed: ", actual_count, " nodes (minimum: ", min_count, ")")
+    cli::pluralize("count check passed: {actual_count} node{?s} (≥ {min_count})")
   } else {
-    paste0("Minimum count check failed: ", actual_count, " nodes (expected: at least ", min_count, ")")
+    cli::pluralize("count check failed: {actual_count} node{?s} (expected ≥ {min_count})")
   }
   
   list(passed = passed, message = message)
@@ -77,14 +63,14 @@ evaluate_rule_has_at_least = function(nodes, rule, num_selected_nodes) {
 # num_selected_nodes: Number of originally selected heading nodes
 
 evaluate_rule_has_at_most = function(nodes, rule, num_selected_nodes) {
-  actual_count = calculate_node_count(nodes, rule@node_type, num_selected_nodes)
+  actual_count = length(nodes)
   max_count = rule@values
   
   passed = actual_count <= max_count
   message = if (passed) {
-    paste0("Maximum count check passed: ", actual_count, " nodes (maximum: ", max_count, ")")
+    cli::pluralize("count check passed: {actual_count} node{?s} (≤ {max_count})")
   } else {
-    paste0("Maximum count check failed: ", actual_count, " nodes (expected: at most ", max_count, ")")
+    cli::pluralize("count check failed: {actual_count} node{?s} (expected ≤ {max_count})")
   }
   
   list(passed = passed, message = message)
@@ -98,7 +84,7 @@ evaluate_rule_has_at_most = function(nodes, rule, num_selected_nodes) {
 evaluate_rule_has_content = function(nodes, rule) {
   pattern = rule@values[1]
   if (is.na(pattern) || nchar(pattern) == 0) {
-    return(list(passed = TRUE, message = "Empty pattern always matches"))
+    return(list(passed = TRUE, message = "empty pattern always matches"))
   }
   
   content_found = FALSE
@@ -114,9 +100,9 @@ evaluate_rule_has_content = function(nodes, rule) {
   }
   
   message = if (content_found) {
-    paste0("Content check passed: pattern '", pattern, "' found")
+    paste0("content check passed: '", pattern, "' found")
   } else {
-    paste0("Content check failed: pattern '", pattern, "' not found")
+    paste0("content check failed: '", pattern, "' not found")
   }
   
   list(passed = content_found, message = message)
@@ -130,7 +116,7 @@ evaluate_rule_has_content = function(nodes, rule) {
 evaluate_rule_lacks_content = function(nodes, rule) {
   pattern = rule@values[1]
   if (is.na(pattern) || nchar(pattern) == 0) {
-    return(list(passed = TRUE, message = "Empty pattern never matches"))
+    return(list(passed = TRUE, message = "empty pattern never matches"))
   }
   
   content_found = FALSE
@@ -147,9 +133,9 @@ evaluate_rule_lacks_content = function(nodes, rule) {
   
   passed = !content_found
   message = if (passed) {
-    paste0("Negative content check passed: pattern '", pattern, "' not found")
+    paste0("negative content check passed: '", pattern, "' not found")
   } else {
-    paste0("Negative content check failed: pattern '", pattern, "' found")
+    paste0("negative content check failed: '", pattern, "' found")
   }
   
   list(passed = passed, message = message)
@@ -163,7 +149,7 @@ evaluate_rule_lacks_content = function(nodes, rule) {
 evaluate_rule_has_name = function(nodes, rule) {
   pattern = rule@values[1]
   if (is.na(pattern) || nchar(pattern) == 0) {
-    return(list(passed = TRUE, message = "Empty pattern always matches"))
+    return(list(passed = TRUE, message = "empty pattern always matches"))
   }
   
   name_found = FALSE
@@ -183,9 +169,9 @@ evaluate_rule_has_name = function(nodes, rule) {
   }
   
   message = if (name_found) {
-    paste0("Name check passed: pattern '", pattern, "' found")
+    paste0("name check passed: '", pattern, "' found")
   } else {
-    paste0("Name check failed: pattern '", pattern, "' not found")
+    paste0("name check failed: '", pattern, "' not found")
   }
   
   list(passed = name_found, message = message)

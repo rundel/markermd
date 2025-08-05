@@ -35,21 +35,21 @@ get_question_content = function(current_ast, original_ast, template_question, se
   question_ast = get_question_ast(current_ast, original_ast, template_question)
   
   if (is.null(question_ast) || length(question_ast@nodes) == 0) {
-    return(shiny::p("No matching sections found in current document.", class = "small text-muted fst-italic my-2"))
+    return(shiny::p("No matching sections found in current document.", class = "small text-muted fst-italic my-1"))
   }
   
   # Build tree structure for the question AST
   tree_items = build_ast_tree_structure(question_ast)
   
   if (length(tree_items) <= 1) {  # Only document root or empty
-    return(shiny::p("No content found in selected sections.", class = "small text-muted fst-italic my-2"))
+    return(shiny::p("No content found in selected sections.", class = "small text-muted fst-italic my-1"))
   }
   
   # Filter out document root (index 0) and adjust depths for question display
   content_items = tree_items[sapply(tree_items, function(x) x$index != 0)]
   
   if (length(content_items) == 0) {
-    return(shiny::p("No content found in selected sections.", class = "small text-muted fst-italic my-2"))
+    return(shiny::p("No content found in selected sections.", class = "small text-muted fst-italic my-1"))
   }
   
   # Adjust depths to start from 1 for content nodes
@@ -85,7 +85,7 @@ get_question_content = function(current_ast, original_ast, template_question, se
 #'
 create_rule_details = function(template_question, question_result) {
   if (length(template_question@rules) == 0) {
-    return(shiny::p("No rules defined for this question.", class = "fs-6 text-muted fst-italic my-2 text-center"))
+    return(shiny::p("No rules defined for this question.", class = "fs-6 text-muted fst-italic my-1 text-center"))
   }
   
   # Parse rule messages to understand individual rule results
@@ -102,14 +102,17 @@ create_rule_details = function(template_question, question_result) {
       shiny::div(
         style = paste0("margin: 6px 0; padding: 8px; border-left: 3px solid ", rule_color, "; background-color: #f8f9fa; border-radius: 3px;"),
         shiny::div(
-          style = "display: flex; align-items: center; margin-bottom: 4px;",
+          style = "display: flex; align-items: center;",
           shiny::icon(rule_icon, style = paste0("color: ", rule_color, "; margin-right: 6px; font-size: 14px;")),
-          shiny::strong(
-            if (!is.null(rule)) {
-              paste0(rule@node_type, " ", rule@verb, " \"", paste(rule@values, collapse = ", "), "\"")
-            } else {
-              paste0("Rule ", i)
-            },
+          if (!is.null(rule)) {
+            shiny::span(
+              rule@node_type,
+              class = "text-muted fw-medium me-2",
+              style = "font-size: 11px; padding: 2px 6px; border: 1px solid #dee2e6; border-radius: 6px;"
+            )
+          },
+          shiny::span(
+            message,
             style = "font-size: 13px;"
           )
         )
@@ -118,7 +121,7 @@ create_rule_details = function(template_question, question_result) {
     
     return(shiny::div(rule_items))
   } else {
-    return(shiny::p("No detailed rule information available.", class = "fs-6 text-muted fst-italic my-2"))
+    return(shiny::p("No detailed rule information available.", class = "fs-6 text-muted fst-italic my-1"))
   }
 }
 
@@ -171,8 +174,11 @@ create_question_card = function(template_question, question_result, current_ast,
       )
     ),
     bslib::card_body(
-      style = "padding: 12px;",
-      question_nodes_content,
+      class = "pt-2 pb-1",
+      question_nodes_content
+    ),
+    bslib::card_body(
+      class = "pt-0 pb-1",
       rule_details
     )
   )
@@ -235,7 +241,7 @@ mark_validate_server = function(id, ast, current_repo_name = shiny::reactiveVal(
         shiny::p("No questions available.", class = "text-muted fst-italic")
       } else {
         shiny::div(
-          style = "display: flex; flex-direction: column; gap: 12px;",
+          style = "display: flex; flex-direction: column; gap: 3px;",
           question_cards
         )
       }
