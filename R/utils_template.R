@@ -28,7 +28,7 @@ evaluate_rule_has_between = function(nodes, rule, num_selected_nodes) {
   
   passed = actual_count >= min_count && actual_count <= max_count
   message = if (passed) {
-    cli::pluralize("count check passed: {actual_count} node{?s} ({min_count}-{max_count})")
+    cli::pluralize("count check passed: {actual_count} node{?s} (expected {min_count}-{max_count})")
   } else {
     cli::pluralize("count check failed: {actual_count} node{?s} (expected {min_count}-{max_count})")
   }
@@ -48,7 +48,7 @@ evaluate_rule_has_at_least = function(nodes, rule, num_selected_nodes) {
   
   passed = actual_count >= min_count
   message = if (passed) {
-    cli::pluralize("count check passed: {actual_count} node{?s} (≥ {min_count})")
+    cli::pluralize("count check passed: {actual_count} node{?s} (expected ≥ {min_count})")
   } else {
     cli::pluralize("count check failed: {actual_count} node{?s} (expected ≥ {min_count})")
   }
@@ -68,7 +68,7 @@ evaluate_rule_has_at_most = function(nodes, rule, num_selected_nodes) {
   
   passed = actual_count <= max_count
   message = if (passed) {
-    cli::pluralize("count check passed: {actual_count} node{?s} (≤ {max_count})")
+    cli::pluralize("count check passed: {actual_count} node{?s} (expected ≤ {max_count})")
   } else {
     cli::pluralize("count check failed: {actual_count} node{?s} (expected ≤ {max_count})")
   }
@@ -223,7 +223,7 @@ evaluate_rule = function(ast, rule, num_selected_nodes = 0) {
 validate_question_rules = function(repo_ast, template_ast, question) {
   
   # Get question AST subset using the shared helper function
-  question_ast = get_question_ast_subset(repo_ast, template_ast, question)
+  question_ast = get_question_ast(repo_ast, template_ast, question)
   
   if (is.null(question_ast)) {
     stop("No section hierarchies could be resolved from selected nodes")
@@ -277,6 +277,7 @@ validate_question_rules = function(repo_ast, template_ast, question) {
     question_name = question@name,
     status = if (all_passed) "pass" else "fail",
     messages = sapply(rule_results, function(r) r$message),
+    passed = sapply(rule_results, function(r) r$passed),
     details = paste(c(
       paste0("Section hierarchy(ies): ", paste(formatted_hierarchies, collapse = ", ")),
       sapply(rule_results, function(r) r$message)
@@ -310,7 +311,7 @@ validate_repo_against_rules = function(ast, template) {
 # @param template_ast rmd_ast object from template creation  
 # @param question markermd_question S7 object containing selected nodes
 
-get_question_ast_subset = function(current_ast, template_ast, question) {
+get_question_ast = function(current_ast, template_ast, question) {
   
   stopifnot(S7::S7_inherits(question, markermd_question))
   
@@ -348,7 +349,7 @@ extract_question_content = function(repo_ast, template) {
     
     # Extract content using the shared AST subset helper
     # Get the AST subset for this question
-    question_ast = get_question_ast_subset(repo_ast, template@original_ast, q)
+    question_ast = get_question_ast(repo_ast, template@original_ast, q)
     
     if (is.null(question_ast) || length(question_ast@nodes) == 0) {
       results[[q@name]] = "No matching content found in this document for the selected sections."
