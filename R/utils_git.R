@@ -19,10 +19,6 @@ setup_assignment_repo = function(assignment_path, local_dir = NULL, is_github_re
     return(normalizePath(assignment_path))
   }
   
-  # Ensure gert is available for git operations
-  if (!requireNamespace("gert", quietly = TRUE)) {
-    stop("gert package is required for git operations but not available")
-  }
   
   # GitHub repository handling
   if (is.null(local_dir)) {

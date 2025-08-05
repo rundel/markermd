@@ -469,11 +469,6 @@ mark = function(collection_path, template = NULL, use_qmd = TRUE, download_archi
     }
   }
   
-  # Load parsermd package explicitly for internal functions
-  if (!requireNamespace("parsermd", quietly = TRUE)) {
-    stop("parsermd package is required but not available")
-  }
-  library(parsermd, quietly = TRUE)
   
   # Parse the collection using parsermd
   if (use_qmd) {

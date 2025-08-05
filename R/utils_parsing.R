@@ -16,15 +16,8 @@ parse_assignment_document = function(file_path) {
     stop("Assignment file does not exist: ", file_path)
   }
   
-  # Load parsermd package (required for internal functions)
-  if (!requireNamespace("parsermd", quietly = TRUE)) {
-    stop("parsermd package is required but not available")
-  }
-  
   # Parse the document
   tryCatch({
-    # Load parsermd to make internal functions available
-    library(parsermd, quietly = TRUE)
     
     # Use appropriate parser based on file extension
     if (grepl("\\.qmd$", file_path, ignore.case = TRUE)) {

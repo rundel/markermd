@@ -144,9 +144,6 @@ markermd_template = S7::new_class(
     original_ast = S7::new_property(
       S7::class_any,  # Will validate manually since we need parsermd classes
       validator = function(value) {
-        if (!requireNamespace("parsermd", quietly = TRUE)) {
-          return("parsermd package is required")
-        }
         if (!inherits(value, "rmd_ast")) {
           return("@original_ast must be an rmd_ast object from parsermd")
         }
