@@ -108,6 +108,7 @@ mark_rubric_server = function(id, template, on_question_change = NULL) {
 
       shiny::observe({
         question_item_servers[[input$question_select]][[server$id]] = NULL
+        redraw_ui(redraw_ui()+1)
       }) |>
         bindEvent(server$delete_signal(), ignoreInit = TRUE)
 
