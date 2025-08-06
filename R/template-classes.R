@@ -209,7 +209,7 @@ markermd_template = S7::new_class(
 
 #' @title Rubric Item
 #' @description S7 class representing a single rubric item with hotkey, points, description and selection state
-#' @param hotkey Integer. Hotkey number (0-9) for keyboard selection
+#' @param hotkey Integer. Hotkey number (1-10) for keyboard selection
 #' @param points Numeric. Point value for this rubric item
 #' @param description Character. Description text for the rubric item
 #' @param selected Logical. Whether this item is currently selected
@@ -222,7 +222,7 @@ markermd_rubric_item = S7::new_class(
       validator = function(value) {
         if (length(value) != 1) {
           "hotkey must be a single integer"
-        } else if (!is.na(value) && (value < 0 || value > 9)) {
+        } else if (!is.na(value) && (value < 1 || value > 10)) {
           "hotkey must be between 0 and 9, or NA"
         }
       }

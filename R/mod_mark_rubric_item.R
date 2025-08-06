@@ -38,7 +38,7 @@ mark_rubric_item_ui = function(id, rubric_item) {
       # Hotkey button
       shiny::actionButton(
         ns("hotkey_btn"),
-        label = if (is.na(rubric_item@hotkey)) "" else as.character(rubric_item@hotkey),
+        label = if (is.na(rubric_item@hotkey)) "" else as.character(rubric_item@hotkey %% 10),
         class = "btn-outline-secondary btn-sm w-100 d-flex align-items-center justify-content-center", # Default class, will be updated by server
         style = "font-size: 11px; padding: 4px;"
       ),
@@ -213,14 +213,7 @@ mark_rubric_item_server = function(id, initial_item) {
     # Internal state using S7 class
     rubric_item_state = shiny::reactiveVal(initial_item)
     
-    # Update text input when state changes
-    shiny::observe({
-      current_item = rubric_item_state()
-      shiny::updateTextInput(
-        session, "description_text",
-        value = current_item@description
-      )
-    })
+
     
     # Handle description text changes
     shiny::observeEvent(input$description_text, {
@@ -311,6 +304,7 @@ mark_rubric_item_server = function(id, initial_item) {
     
     # Return reactive rubric item and delete signal for external use
     return(list(
+      id = id,
       item = shiny::reactive(rubric_item_state()),
       delete_signal = delete_signal
     ))

@@ -30,7 +30,22 @@ mark_rubric_ui = function(id) {
     ),
     bslib::card_body(
       class = "overflow-auto small",
-      shiny::uiOutput(ns("rubric_display"))
+      shiny::div(
+        id = ns("rubric_items_container"),
+        # Dynamic container for items
+        shiny::uiOutput(ns("rubric_items_ui"))
+      ),
+      shiny::div(
+        class = "text-center mb-3",
+        shiny::actionButton(
+          ns("add_item"), 
+          shiny::icon("plus"),
+          class = "btn-primary btn-sm rounded-circle",
+          style = "width: 30px; height: 30px;",
+          title = "Add Question"
+        ),
+        shiny::span("Add Item", class = "ms-2 text-dark")
+      )
     )
   )
 }
@@ -38,111 +53,72 @@ mark_rubric_ui = function(id) {
 #' Mark Rubric Server
 #'
 #' @param id Character. Module namespace ID
-#' @param template Reactive. Template object containing questions
+#' @param template markermd_template. Static template object containing questions
 #' @param on_question_change Reactive function. Callback when question selection changes
 #'
 mark_rubric_server = function(id, template, on_question_change = NULL) {
   shiny::moduleServer(id, function(input, output, session) {
     
-    # Populate select input with template questions
+    # Global id index
+    id_idx = 0
+
+    question_names = purrr::map_chr(template@questions, "name")
+
+    question_item_servers = shiny::reactiveValues()
+    for(name in question_names) {
+      question_item_servers[[name]] = list()
+    }
+
+    redraw_ui = shiny::reactiveVal(0)
+
     shiny::observe({
-      req(template())
-      
-      question_names = sapply(template()@questions, function(q) q@name)
-      choices = setNames(question_names, question_names)
-      shiny::updateSelectInput(session, "question_select", choices = choices)
-    })
-    
-    # Rubric items display
-    output$rubric_display = shiny::renderUI({
-      req(template())
-      ns = session$ns
-      
-      shiny::div(
-        mark_rubric_item_ui(
-          ns("item1"), 
-          markermd_rubric_item(
-            hotkey = 1L,
-            points = 5.0,
-            description = "Correctly implements the main logic with proper variable naming",
-            selected = FALSE
-          )
-        ),
-        mark_rubric_item_ui(
-          ns("item2"), 
-          markermd_rubric_item(
-            hotkey = 2L,
-            points = 3.0,
-            description = "Includes appropriate comments explaining the solution",
-            selected = FALSE
-          )
-        ),
-        mark_rubric_item_ui(
-          ns("item3"), 
-          markermd_rubric_item(
-            hotkey = 3L,
-            points = -2.0,
-            description = "Code contains syntax errors or runtime issues",
-            selected = FALSE
-          )
-        )
+      shiny::updateSelectInput(
+        session, "question_select", 
+        choices = question_names, selected = question_names[1]
       )
     })
     
-    # Initialize server components for the hardcoded rubric items
-    item1_reactive = mark_rubric_item_server(
-      "item1", 
-      markermd_rubric_item(
-        hotkey = 1L,
-        points = 5.0,
-        description = "Correctly implements the main logic with proper variable naming",
-        selected = FALSE
-      ),
-      function(updated_item) {
-        cat("Item 1 selection changed:", updated_item@selected, "\n")
-      }
-    )
-    
-    item2_reactive = mark_rubric_item_server(
-      "item2", 
-      markermd_rubric_item(
-        hotkey = 2L,
-        points = 3.0,
-        description = "Includes appropriate comments explaining the solution",
-        selected = FALSE
-      ),
-      function(updated_item) {
-        cat("Item 2 selection changed:", updated_item@selected, "\n")
-      }
-    )
-    
-    item3_reactive = mark_rubric_item_server(
-      "item3", 
-      markermd_rubric_item(
-        hotkey = 3L,
-        points = -2.0,
-        description = "Code contains syntax errors or runtime issues",
-        selected = FALSE
-      ),
-      function(updated_item) {
-        cat("Item 3 selection changed:", updated_item@selected, "\n")
-      }
-    )
-    
-    # Notify when question selection changes
-    shiny::observe({
+    output$rubric_items_ui = shiny::renderUI({
       req(input$question_select)
-      if (!is.null(on_question_change)) {
-        on_question_change(input$question_select)
-      }
-    })
+
+      uis = lapply(question_item_servers[[input$question_select]], function(server) {
+        mark_rubric_item_ui(session$ns(server$id), server$item())
+      })
+      
+      return(shiny::tagList(uis))
+    }) |>
+      bindEvent(redraw_ui(), input$question_select)
+    
+    shiny::observe({
+      on_question_change(input$question_select)
+    }) |> bindEvent(input$question_select)
+
+    # Handle add item button
+    shiny::observe({
+      server_id = paste0("item_", id_idx)
+
+      hotkey = max( 0L, purrr::map_int(question_item_servers[[input$question_select]], ~ .x$item()@hotkey) )+1L
+      hotkey = if (hotkey > 10) NA_integer_ else hotkey
+
+      server = mark_rubric_item_server(
+          server_id,
+          markermd_rubric_item(hotkey, 0, "")
+      )
+      question_item_servers[[input$question_select]][[server_id]] = server
+
+      shiny::observe({
+        question_item_servers[[input$question_select]][[server$id]] = NULL
+      }) |>
+        bindEvent(server$delete_signal(), ignoreInit = TRUE)
+
+      id_idx <<- id_idx + 1
+      redraw_ui(redraw_ui()+1)
+    }) |>
+      bindEvent(input$add_item, ignoreInit = TRUE)
     
     # Return reactive values for external use
     return(list(
-      selected_question = shiny::reactive(input$question_select),
-      item1 = item1_reactive,
-      item2 = item2_reactive,
-      item3 = item3_reactive
+      selected_question = shiny::reactive(input$question_select)
     ))
   })
 }
