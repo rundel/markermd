@@ -206,3 +206,52 @@ markermd_template = S7::new_class(
   },
   package = "markermd"
 )
+
+#' @title Rubric Item
+#' @description S7 class representing a single rubric item with hotkey, points, description and selection state
+#' @param hotkey Integer. Hotkey number (0-9) for keyboard selection
+#' @param points Numeric. Point value for this rubric item
+#' @param description Character. Description text for the rubric item
+#' @param selected Logical. Whether this item is currently selected
+#' @export
+markermd_rubric_item = S7::new_class(
+  "markermd_rubric_item",
+  properties = list(
+    hotkey = S7::new_property(
+      S7::class_integer,
+      validator = function(value) {
+        if (length(value) != 1) {
+          "hotkey must be a single integer"
+        } else if (value < 0 || value > 9) {
+          "hotkey must be between 0 and 9"
+        }
+      }
+    ),
+    points = S7::new_property(
+      S7::class_numeric,
+      validator = function(value) {
+        if (length(value) != 1) {
+          "points must be a single numeric value"
+        }
+      }
+    ),
+    description = S7::new_property(
+      S7::class_character,
+      validator = function(value) {
+        if (length(value) != 1) {
+          "description must be a single character string"
+        }
+      }
+    ),
+    selected = S7::new_property(
+      S7::class_logical,
+      default = quote(FALSE),
+      validator = function(value) {
+        if (length(value) != 1) {
+          "selected must be a single logical value"
+        }
+      }
+    )
+  ),
+  package = "markermd"
+)

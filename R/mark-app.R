@@ -599,7 +599,7 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
   
   # Define UI  
   ui = bslib::page_navbar(
-    title = "markermd - Assignment Grading",
+    title = "markermd - Marking",
     theme = bslib::bs_theme(version = 5),
     selected = "validation",  # Set validation tab as default
     
@@ -657,6 +657,34 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
           .modal-content code[class*='language-']:after {
             content: none !important;
           }
+          
+          /* Content repo select styling - selectize */
+          .selectize-control.single .selectize-input {
+            font-size: 12px !important;
+            font-weight: normal !important;
+            height: 32px !important;
+            padding: 6px 8px !important;
+            line-height: 20px !important;
+          }
+          
+          .selectize-dropdown .selectize-dropdown-content .option {
+            font-size: 12px !important;
+            font-weight: normal !important;
+            padding: 4px 8px !important;
+          }
+          
+          #content_repo_select + .selectize-control .selectize-input {
+            font-size: 12px !important;
+            font-weight: normal !important;
+          }
+          
+          /* Section highlighting for scrolling */
+          .section-highlight {
+            background-color: rgba(255, 235, 59, 0.15) !important;
+            border-left: 3px solid rgba(255, 193, 7, 0.8) !important;
+            padding-left: 8px !important;
+            transition: background-color 0.3s ease, border-left 0.3s ease !important;
+          }
         "))
       ),
       # Main content area 
@@ -686,9 +714,44 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
       )
     ),
     
+    # Rubric tab (right aligned)
+    bslib::nav_panel(
+      title = "Rubric", 
+      value = "rubric",
+      bslib::layout_columns(
+        col_widths = c(7, 5),
+        class = "h-100",
+        bslib::card(
+          class = "h-100",
+          bslib::card_header(
+            class = "bg-light",
+            shiny::div(
+              style = "display: flex; justify-content: space-between; align-items: center;",
+              shiny::span("Content"),
+              shiny::div(
+                style = "min-width: 200px;",
+                shiny::selectInput(
+                  "content_repo_select",
+                  NULL,
+                  choices = NULL,
+                  width = "100%",
+                  selectize = TRUE
+                )
+              )
+            )
+          ),
+          bslib::card_body(
+            class = "overflow-auto small",
+            shiny::uiOutput("content_display")
+          )
+        ),
+        mark_rubric_ui("rubric_module")
+      )
+    ),
+    
     # Marking tab (right aligned)
     bslib::nav_panel(
-      title = "Assignment Grading", 
+      title = "Marking", 
       value = "marking",
       marking_ui("marking_module")
     ),
@@ -1119,6 +1182,263 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
     })
     
     marking_result = marking_server("marking_module", current_repo_ast, template_reactive, current_repo_validation)
+    
+    # Content tab functionality - populate select input with repos that have artifacts
+    shiny::observe({
+      artifact_status_data = artifact_status_reactive()
+      
+      # Filter repos based on artifact status structure
+      repos_with_artifacts = character(0)
+      for (repo in names(artifact_status_data)) {
+        status_val = artifact_status_data[[repo]]
+        # Handle both boolean (TRUE/FALSE) and list structures
+        if (is.logical(status_val) && !is.na(status_val) && status_val) {
+          repos_with_artifacts = c(repos_with_artifacts, repo)
+        } else if (is.list(status_val) && !is.null(status_val$status) && status_val$status == "available") {
+          repos_with_artifacts = c(repos_with_artifacts, repo)
+        }
+      }
+      
+      choices = setNames(repos_with_artifacts, repos_with_artifacts)
+      shiny::updateSelectInput(session, "content_repo_select", choices = choices)
+    })
+    
+    # Helper function to add IDs to headings in HTML content
+    add_heading_ids = function(html_content) {
+      # Find all headings and add IDs
+      # Use a more robust approach without nested gsub functions
+      
+      # Pattern to match headings
+      heading_pattern = "<h([1-6])([^>]*)>([^<]+)</h[1-6]>"
+      
+      # Find all matches
+      matches = gregexpr(heading_pattern, html_content, ignore.case = TRUE)
+      match_data = regmatches(html_content, matches)[[1]]
+      
+      if (length(match_data) > 0) {
+        for (i in seq_along(match_data)) {
+          original_heading = match_data[i]
+          
+          # Extract the heading text
+          heading_text = gsub("<h[1-6][^>]*>([^<]+)</h[1-6]>", "\\1", original_heading, ignore.case = TRUE)
+          
+          # Create clean ID
+          clean_id = gsub("[^a-zA-Z0-9\\s-]", "", heading_text)
+          clean_id = gsub("\\s+", "-", trimws(clean_id))
+          clean_id = tolower(clean_id)
+          
+          # Create new heading with ID
+          new_heading = gsub(
+            "<h([1-6])([^>]*)>([^<]+)</h([1-6])>",
+            paste0("<h\\1\\2 id='heading-", clean_id, "'>\\3</h\\4>"),
+            original_heading,
+            ignore.case = TRUE
+          )
+          
+          # Replace in content
+          html_content = gsub(original_heading, new_heading, html_content, fixed = TRUE)
+        }
+      }
+      
+      return(html_content)
+    }
+    
+    # Display HTML content when repo is selected
+    output$content_display = shiny::renderUI({
+      req(input$content_repo_select)
+      
+      selected_repo = input$content_repo_select
+      artifact_status_data = artifact_status_reactive()
+      status_val = artifact_status_data[[selected_repo]]
+      
+      # Determine HTML path based on status structure
+      html_path = NULL
+      if (is.logical(status_val) && !is.na(status_val) && status_val) {
+        # Boolean structure - get path using the helper function
+        html_path = get_cached_artifact_path(collection_path, selected_repo)
+      } else if (is.list(status_val) && !is.null(status_val$path)) {
+        # List structure with path
+        html_path = status_val$path
+      }
+      
+      if (!is.null(html_path) && file.exists(html_path)) {
+        html_content = readLines(html_path, warn = FALSE)
+        html_content = paste(html_content, collapse = "\n")
+        
+        # Add IDs to headings for scrolling functionality
+        html_content = add_heading_ids(html_content)
+        
+        # Wrap in a div with a specific ID for scrolling context
+        html_content = paste0('<div id="html-content-container">', html_content, '</div>')
+        
+        shiny::HTML(html_content)
+      } else {
+        shiny::p("No HTML content available for selected repository.", class = "text-muted") 
+      }
+    })
+    
+    # Initialize rubric module
+    template_reactive = shiny::reactive(template_obj)
+    
+    # Create scrolling callback function
+    scroll_to_question = function(selected_question) {
+      req(input$content_repo_select)
+      
+      # Find the selected question from template
+      question_obj = NULL
+      for (q in template_obj@questions) {
+        if (q@name == selected_question) {
+          question_obj = q
+          break
+        }
+      }
+      
+      if (!is.null(question_obj)) {
+        # Get all hierarchies for highlighting
+        all_hierarchies = get_heading_selector(template_obj@original_ast, question_obj@selected_nodes@indices)
+        
+        if (length(all_hierarchies) > 0) {
+          # Use first hierarchy for scrolling
+          first_hierarchy = all_hierarchies[[1]]
+          if (length(first_hierarchy) > 0) {
+            # Get the deepest heading from first hierarchy for scrolling
+            target_heading = first_hierarchy[length(first_hierarchy)]
+            
+            # Clean heading text to match our ID generation
+            clean_heading = gsub("[^a-zA-Z0-9\\s-]", "", target_heading)
+            clean_heading = gsub("\\s+", "-", trimws(clean_heading))
+            clean_heading = tolower(clean_heading)
+            target_id = paste0("heading-", clean_heading)
+            
+            # Create JavaScript array of all target IDs for highlighting
+            all_target_ids = sapply(all_hierarchies, function(hierarchy) {
+              if (length(hierarchy) > 0) {
+                deepest_heading = hierarchy[length(hierarchy)]
+                clean_id = gsub("[^a-zA-Z0-9\\s-]", "", deepest_heading)
+                clean_id = gsub("\\s+", "-", trimws(clean_id))
+                clean_id = tolower(clean_id)
+                paste0("heading-", clean_id)
+              } else {
+                NULL
+              }
+            })
+            all_target_ids = all_target_ids[!is.null(all_target_ids)]
+            js_target_ids = paste0("['", paste(all_target_ids, collapse = "', '"), "']")
+            
+            # JavaScript with scrolling to first and highlighting all
+            scroll_js = paste0("
+              setTimeout(function() {
+                // Check if HTML content container exists (ensures content is loaded)
+                var contentContainer = document.getElementById('html-content-container');
+                if (!contentContainer) {
+                  // Retry after a longer delay if content not loaded
+                  setTimeout(arguments.callee, 1000);
+                  return;
+                }
+                
+                // Clear any existing highlights
+                var previousHighlights = document.querySelectorAll('.section-highlight');
+                previousHighlights.forEach(function(el) {
+                  el.classList.remove('section-highlight');
+                });
+                
+                // Scroll to first target with headroom
+                var firstTarget = document.getElementById('", target_id, "');
+                if (firstTarget) {
+                  var targetRect = firstTarget.getBoundingClientRect();
+                  var scrollContainer = firstTarget.closest('.overflow-auto') || window;
+                  var headroom = 20; // pixels of space above the target
+                  
+                  if (scrollContainer === window) {
+                    window.scrollTo({
+                      top: window.scrollY + targetRect.top - headroom,
+                      behavior: 'smooth'
+                    });
+                  } else {
+                    var containerRect = scrollContainer.getBoundingClientRect();
+                    scrollContainer.scrollTo({
+                      top: scrollContainer.scrollTop + (targetRect.top - containerRect.top) - headroom,
+                      behavior: 'smooth'
+                    });
+                  }
+                }
+                
+                // Highlight all target sections
+                var targetIds = ", js_target_ids, ";
+                targetIds.forEach(function(targetId) {
+                  var targetElement = document.getElementById(targetId);
+                  if (targetElement) {
+                    // Add highlighting to the heading
+                    targetElement.classList.add('section-highlight');
+                    
+                    // Find and highlight all content until the next heading of same or higher level
+                    var currentElement = targetElement.nextElementSibling;
+                    var targetLevel = parseInt(targetElement.tagName.charAt(1));
+                    
+                    while (currentElement) {
+                      // If we hit another heading, check its level
+                      if (currentElement.tagName && currentElement.tagName.match(/^H[1-6]$/)) {
+                        var currentLevel = parseInt(currentElement.tagName.charAt(1));
+                        if (currentLevel <= targetLevel) {
+                          break;
+                        }
+                      }
+                      
+                      // Add highlight to this element
+                      currentElement.classList.add('section-highlight');
+                      currentElement = currentElement.nextElementSibling;
+                    }
+                  }
+                });
+              }, 800);
+            ")
+            
+            shinyjs::runjs(scroll_js)
+          }
+        }
+      }
+    }
+    
+    # Initialize rubric module with callback
+    rubric_result = mark_rubric_server("rubric_module", template_reactive, scroll_to_question)
+    
+    # Observer to trigger highlighting when content is loaded and question is selected
+    shiny::observe({
+      req(input$content_repo_select, rubric_result$selected_question())
+      
+      # Small delay to ensure HTML content has rendered
+      shiny::invalidateLater(1000, session)
+      shiny::isolate({
+        selected_question = rubric_result$selected_question()
+        if (!is.null(selected_question) && nchar(selected_question) > 0) {
+          scroll_to_question(selected_question)
+        }
+      })
+    }) |> shiny::bindEvent(input$content_repo_select, ignoreInit = FALSE)
+    
+    # Helper function to get target heading from question
+    get_question_target_heading = function(question_obj, template_ast) {
+      if (is.null(question_obj) || length(question_obj@selected_nodes@indices) == 0) {
+        return(NULL)
+      }
+      
+      # Use first selected node index
+      first_index = question_obj@selected_nodes@indices[1]
+      
+      # Get heading hierarchy
+      hierarchies = get_heading_selector(template_ast, first_index)
+      
+      if (length(hierarchies) > 0 && !is.null(hierarchies[[1]])) {
+        # Return the deepest (last) heading in the hierarchy
+        hierarchy = hierarchies[[1]]
+        if (length(hierarchy) > 0) {
+          return(hierarchy[length(hierarchy)])
+        }
+      }
+      
+      return(NULL)
+    }
+    
     
     # Render sync button (only show if there are GitHub repos)
     output$sync_button_ui = shiny::renderUI({

@@ -198,9 +198,6 @@ ast_base_server = function(id, ast, selected_nodes = shiny::reactive(integer(0))
                       
                       // Highlight just this element
                       Prism.highlightElement(codeElement);
-                      console.log('Manually highlighted element');
-                    } else {
-                      console.log('Element or Prism not found');
                     }
                   }, 200);
                 "))

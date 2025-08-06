@@ -333,9 +333,6 @@ mark_validate_server = function(id, ast, current_repo_name = shiny::reactiveVal(
                             
                             // Highlight just this element
                             Prism.highlightElement(codeElement);
-                            console.log('Manually highlighted element');
-                          } else {
-                            console.log('Element or Prism not found');
                           }
                         }, 200);
                       "))

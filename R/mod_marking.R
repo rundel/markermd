@@ -261,9 +261,6 @@ marking_server = function(id, ast, template_obj, validation_results = shiny::rea
               
               // Highlight just this element
               Prism.highlightElement(codeElement);
-              console.log('Manually highlighted element');
-            } else {
-              console.log('Element or Prism not found');
             }
           }, 200);
         "))
