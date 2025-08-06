@@ -38,7 +38,7 @@ mark_rubric_item_ui = function(id, rubric_item) {
       # Hotkey button
       shiny::actionButton(
         ns("hotkey_btn"),
-        label = as.character(rubric_item@hotkey),
+        label = if (is.na(rubric_item@hotkey)) "" else as.character(rubric_item@hotkey),
         class = "btn-outline-secondary btn-sm w-100 d-flex align-items-center justify-content-center", # Default class, will be updated by server
         style = "font-size: 11px; padding: 4px;"
       ),
@@ -145,9 +145,18 @@ mark_rubric_item_ui = function(id, rubric_item) {
             var originalText = pointsDiv.innerHTML;
             var originalPoints = parseFloat(pointsDiv.getAttribute('data-points'));
             
-            // Handle focus - switch to plain number
+            // Handle focus - switch to plain number and select all
             pointsDiv.addEventListener('focus', function() {
               this.innerHTML = originalPoints.toString();
+              
+              // Select all text after a brief delay to ensure content is set
+              setTimeout(() => {
+                var range = document.createRange();
+                range.selectNodeContents(this);
+                var selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+              }, 10);
             });
             
             // Handle keydown to prevent multiline and exit on Enter
