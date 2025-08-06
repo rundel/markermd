@@ -1277,8 +1277,6 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
       }
     })
     
-    # Initialize rubric module
-    template_reactive = shiny::reactive(template_obj)
     
     # Create scrolling callback function
     scroll_to_question = function(selected_question) {
@@ -1400,7 +1398,7 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
     }
     
     # Initialize rubric module with callback
-    rubric_result = mark_rubric_server("rubric_module", template_reactive, scroll_to_question)
+    rubric_result = mark_rubric_server("rubric_module", template_obj, scroll_to_question)
     
     # Observer to trigger highlighting when content is loaded and question is selected
     shiny::observe({
@@ -1410,11 +1408,10 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
       shiny::invalidateLater(1000, session)
       shiny::isolate({
         selected_question = rubric_result$selected_question()
-        if (!is.null(selected_question) && nchar(selected_question) > 0) {
-          scroll_to_question(selected_question)
-        }
+        scroll_to_question(selected_question)
       })
-    }) |> shiny::bindEvent(input$content_repo_select, ignoreInit = FALSE)
+    }) |> 
+      shiny::bindEvent(input$content_repo_select, ignoreInit = FALSE)
     
     # Helper function to get target heading from question
     get_question_target_heading = function(question_obj, template_ast) {
