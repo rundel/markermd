@@ -1,11 +1,15 @@
 Package: markermd
-Title: What the Package Does (One Line, Title Case)
+Title: Interactive Shiny-Based Grading Interface for R Markdown Assignments
 Version: 0.0.0.9000
 Authors@R: 
-    person("First", "Last", , "first.last@example.com", role = c("aut", "cre"))
-Description: What the package does (one paragraph).
-License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
-    license
+    person("Colin", "Rundel", , "rundel@gmail.com", role = c("aut", "cre"))
+Description: Provides a comprehensive Shiny-based interface for grading assignments 
+    submitted as git repositories containing R Markdown or Quarto documents. Features 
+    include template creation with validation rules, interactive AST tree visualization, 
+    question-based grading workflows with customizable rubrics and hotkeys, automated 
+    validation and scoring systems, and support for both local directories and remote 
+    GitHub repositories with automatic syncing capabilities.
+License: GPL (>= 3)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
