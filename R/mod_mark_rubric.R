@@ -31,13 +31,30 @@ mark_rubric_ui = function(id) {
               )
             ),
             shiny::div(
-              style = "min-width: 200px;",
-              shiny::selectInput(
-                ns("content_repo_select"),
-                NULL,
-                choices = NULL,
-                width = "100%",
-                selectize = TRUE
+              style = "min-width: 200px; display: flex; align-items: center; gap: 5px;",
+              shiny::actionButton(
+                ns("repo_prev_btn"),
+                shiny::icon("chevron-left"),
+                class = "btn-sm",
+                style = "padding: 1px 4px; border: none; background: transparent; color: #6c757d; font-size: 12px;",
+                title = "Previous repo (z)"
+              ),
+              shiny::div(
+                style = "flex: 1;",
+                shiny::selectInput(
+                  ns("content_repo_select"),
+                  NULL,
+                  choices = NULL,
+                  width = "100%",
+                  selectize = TRUE
+                )
+              ),
+              shiny::actionButton(
+                ns("repo_next_btn"),
+                shiny::icon("chevron-right"),
+                class = "btn-sm",
+                style = "padding: 1px 4px; border: none; background: transparent; color: #6c757d; font-size: 12px;",
+                title = "Next repo (x)"
               )
             )
           )
@@ -56,19 +73,39 @@ mark_rubric_ui = function(id) {
           style = "display: flex; justify-content: space-between; align-items: center;",
           shiny::span("Rubric"),
           shiny::div(
-            style = "min-width: 150px;",
-            shiny::selectInput(
-              ns("question_select"),
-              NULL,
-              choices = NULL,
-              width = "100%",
-              selectize = TRUE
+            style = "min-width: 150px; display: flex; align-items: center; gap: 5px;",
+            shiny::actionButton(
+              ns("question_prev_btn"),
+              shiny::icon("chevron-left"),
+              class = "btn-sm",
+              style = "padding: 1px 4px; border: none; background: transparent; color: #6c757d; font-size: 12px;",
+              title = "Previous question (,)"
+            ),
+            shiny::div(
+              style = "flex: 1;",
+              shiny::selectInput(
+                ns("question_select"),
+                NULL,
+                choices = NULL,
+                width = "100%",
+                selectize = TRUE
+              )
+            ),
+            shiny::actionButton(
+              ns("question_next_btn"),
+              shiny::icon("chevron-right"),
+              class = "btn-sm",
+              style = "padding: 1px 4px; border: none; background: transparent; color: #6c757d; font-size: 12px;",
+              title = "Next question (.)"
             )
           )
         )
       ),
       bslib::card_body(
         class = "overflow-auto small",
+        id = ns("rubric_body"),
+        # Grade display at top
+        shiny::uiOutput(ns("grade_ui")),
         shiny::div(
           id = ns("rubric_items_container"),
           # Dynamic container for items
@@ -86,7 +123,75 @@ mark_rubric_ui = function(id) {
           shiny::span("Add Item", class = "ms-2 text-dark")
         )
       )
-    )
+    ),
+    # JavaScript for keyboard hotkey handling
+    shiny::tags$script(shiny::HTML(glue::glue("
+      $(document).ready(function() {
+        // Global keydown listener for hotkeys and navigation when rubric pane is active
+        document.addEventListener('keydown', function(e) {
+          // Check if rubric pane exists (indicates it's active)
+          var rubricBody = document.getElementById('<<ns('rubric_body')>>');
+          if (!rubricBody) return;
+          
+          // Check if any input is currently focused or if user is editing
+          var activeElement = document.activeElement;
+          var isInputFocused = activeElement && (
+            activeElement.matches('input, textarea, select, [contenteditable=\"true\"]') ||
+            activeElement.isContentEditable ||
+            activeElement.tagName === 'INPUT' ||
+            activeElement.tagName === 'TEXTAREA'
+          );
+          
+          // Also check if there's a text selection in the page
+          var hasSelection = window.getSelection && window.getSelection().toString().length > 0;
+          
+          // Only proceed if nothing is being edited and rubric pane is visible
+          if (!isInputFocused && !hasSelection) {
+            
+            // Handle numeric keys 0-9 for hotkeys
+            if (e.key >= '0' && e.key <= '9') {
+              // Map key to hotkey number (0 = 10, 1-9 = 1-9)
+              var hotkey = e.key === '0' ? 10 : parseInt(e.key);
+              
+              // Find button with matching hotkey in rubric pane
+              var buttons = document.querySelectorAll('#<<ns('rubric_items_container')>> button');
+              for (var i = 0; i < buttons.length; i++) {
+                var btn = buttons[i];
+                if (btn.textContent.trim() === hotkey.toString() || 
+                    (hotkey === 10 && btn.textContent.trim() === '0')) {
+                  e.preventDefault();
+                  btn.click();
+                  break;
+                }
+              }
+            }
+            
+            // Handle navigation keys by triggering button clicks
+            else if (e.key === 'x' || e.key === 'z') {
+              // Repository navigation (x = next, z = previous)
+              e.preventDefault();
+              
+              var btnId = e.key === 'x' ? '<<ns(\"repo_next_btn\")>>' : '<<ns(\"repo_prev_btn\")>>';
+              var btn = document.getElementById(btnId);
+              if (btn) {
+                btn.click();
+              }
+            }
+            
+            else if (e.key === ',' || e.key === '.') {
+              // Question navigation (, = previous, . = next)
+              e.preventDefault();
+              
+              var btnId = e.key === ',' ? '<<ns(\"question_prev_btn\")>>' : '<<ns(\"question_next_btn\")>>';
+              var btn = document.getElementById(btnId);
+              if (btn) {
+                btn.click();
+              }
+            }
+          }
+        });
+      });
+    ", .open = "<<", .close = ">>")))
   )
 }
 
@@ -494,9 +599,20 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
     }
 
     question_item_servers = shiny::reactiveValues()
+    question_grade_servers = shiny::reactiveValues()
     for(name in question_names) {
       question_item_servers[[name]] = list()
+      # Initialize grade server for each question 
+      local({
+        question_name = name
+        question_grade_servers[[question_name]] = mark_grade_server(
+          paste0("grade_", question_name),
+          markermd_grade_state(current_score = 0, total_score = 10),
+          ui_ns = session$ns
+        )
+      })
     }
+    
 
     redraw_ui = shiny::reactiveVal(0)
 
@@ -506,6 +622,18 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
         choices = question_names, selected = question_names[1]
       )
     })
+    
+    # Render grade UI for current question
+    output$grade_ui = shiny::renderUI({
+      req(input$question_select)
+      
+      current_grade_server = question_grade_servers[[input$question_select]]
+      if (!is.null(current_grade_server)) {
+        current_grade_state = current_grade_server$grade()
+        mark_grade_ui(session$ns(current_grade_server$id), current_grade_state)
+      }
+    }) |>
+      bindEvent(input$question_select, redraw_ui())
     
     output$rubric_items_ui = shiny::renderUI({
       req(input$question_select)
@@ -677,6 +805,7 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
     }) |>
       bindEvent(input$add_item, ignoreInit = TRUE)
     
+    
     # Content tab functionality - populate select input with all repos
     shiny::observe({
       artifact_status_data = artifact_status_reactive()
@@ -687,123 +816,133 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
       shiny::updateSelectInput(session, "content_repo_select", choices = choices)
     })
     
-    # Display content based on HTML toggle state
-    output$content_display = shiny::renderUI({
+    # HTML content reactive (only depends on repo and toggle, not question)
+    html_content_reactive = shiny::reactive({
       req(input$content_repo_select)
-      
       selected_repo = input$content_repo_select
-      show_html = input$html_toggle
       
-      if (show_html) {
-        # HTML mode - show artifact HTML
-        artifact_status_data = artifact_status_reactive()
-        status_val = artifact_status_data[[selected_repo]]
+      # HTML mode - show artifact HTML
+      artifact_status_data = artifact_status_reactive()
+      status_val = artifact_status_data[[selected_repo]]
+      
+      # Determine HTML path based on status structure
+      html_path = NULL
+      if (is.logical(status_val) && !is.na(status_val) && status_val) {
+        # Boolean structure - get path using the helper function
+        html_path = get_cached_artifact_path(collection_path, selected_repo)
+      } else if (is.list(status_val) && !is.null(status_val$path)) {
+        # List structure with path
+        html_path = status_val$path
+      }
+      
+      if (!is.null(html_path) && file.exists(html_path)) {
+        html_content = readLines(html_path, warn = FALSE)
+        html_content = paste(html_content, collapse = "\n")
         
-        # Determine HTML path based on status structure
-        html_path = NULL
-        if (is.logical(status_val) && !is.na(status_val) && status_val) {
-          # Boolean structure - get path using the helper function
-          html_path = get_cached_artifact_path(collection_path, selected_repo)
-        } else if (is.list(status_val) && !is.null(status_val$path)) {
-          # List structure with path
-          html_path = status_val$path
-        }
+        # Add IDs to headings for scrolling functionality
+        html_content = add_heading_ids(html_content)
         
-        if (!is.null(html_path) && file.exists(html_path)) {
-          html_content = readLines(html_path, warn = FALSE)
-          html_content = paste(html_content, collapse = "\n")
-          
-          # Add IDs to headings for scrolling functionality
-          html_content = add_heading_ids(html_content)
-          
-          # Wrap in a div with a specific ID for scrolling context
-          html_content = paste0('<div id="html-content-container">', html_content, '</div>')
-          
-          shiny::HTML(html_content)
-        } else {
-          # Check if repo has no artifact or artifact is not available
-          has_artifact = FALSE
-          if (is.logical(status_val) && !is.na(status_val) && status_val) {
-            has_artifact = TRUE
-          } else if (is.list(status_val) && !is.null(status_val$status) && status_val$status == "available") {
-            has_artifact = TRUE
-          }
-          
-          if (!has_artifact) {
-            shiny::div(
-              class = "text-center p-4",
-              shiny::div(
-                class = "d-flex align-items-center justify-content-center mb-3",
-                shiny::icon("exclamation-triangle", class = "fa-2x text-warning me-2"),
-                shiny::h5("No Artifact Available", class = "text-muted mb-0")
-              ),
-              shiny::p(glue::glue("Repository '{selected_repo}' does not have an associated artifact."), class = "text-muted"),
-              shiny::p("Use the sync button to download artifacts for GitHub repositories.", class = "small text-muted")
-            )
-          } else {
-            shiny::p("Artifact file not found for selected repository.", class = "text-muted") 
-          }
-        }
+        # Wrap in a div with a specific ID for scrolling context
+        html_content = paste0('<div id="html-content-container">', html_content, '</div>')
+        
+        shiny::HTML(html_content)
       } else {
-        # Raw document mode - show source content with syntax highlighting
-        # Get current question highlighting if available
-        highlight_ranges = NULL
-        current_question = input$question_select
+        # Check if repo has no artifact or artifact is not available
+        has_artifact = FALSE
+        if (is.logical(status_val) && !is.na(status_val) && status_val) {
+          has_artifact = TRUE
+        } else if (is.list(status_val) && !is.null(status_val$status) && status_val$status == "available") {
+          has_artifact = TRUE
+        }
         
-        if (!is.null(current_question) && !is.null(template)) {
-          # Find the selected question from template
-          question_obj = NULL
-          for (q in template@questions) {
-            if (q@name == current_question) {
-              question_obj = q
-              break
-            }
+        if (!has_artifact) {
+          shiny::div(
+            class = "text-center p-4",
+            shiny::div(
+              class = "d-flex align-items-center justify-content-center mb-3",
+              shiny::icon("exclamation-triangle", class = "fa-2x text-warning me-2"),
+              shiny::h5("No Artifact Available", class = "text-muted mb-0")
+            ),
+            shiny::p(glue::glue("Repository '{selected_repo}' does not have an associated artifact."), class = "text-muted"),
+            shiny::p("Use the sync button to download artifacts for GitHub repositories.", class = "small text-muted")
+          )
+        } else {
+          shiny::p("Artifact file not found for selected repository.", class = "text-muted") 
+        }
+      }
+    }) |> bindEvent(input$content_repo_select, ignoreNULL = FALSE)
+    
+    # Raw content reactive (depends on repo and question for highlighting)
+    raw_content_reactive = shiny::reactive({
+      req(input$content_repo_select)
+      selected_repo = input$content_repo_select
+      
+      # Raw document mode - show source content with syntax highlighting
+      # Get current question highlighting if available
+      highlight_ranges = NULL
+      current_question = input$question_select
+      
+      if (!is.null(current_question) && !is.null(template)) {
+        # Find the selected question from template
+        question_obj = NULL
+        for (q in template@questions) {
+          if (q@name == current_question) {
+            question_obj = q
+            break
           }
-          
-          if (!is.null(question_obj) && length(question_obj@selected_nodes@indices) > 0) {
-            # Get repository AST
-            repo_rows = collection$path |> dirname() |> basename() == selected_repo
-            if (any(repo_rows)) {
-              repo_ast = collection$ast[repo_rows][[1]]
-              if (!is.null(repo_ast)) {
-                # Get raw content lines first to map against
-                temp_result = get_raw_document_content(selected_repo, collection, use_qmd)
-                if (is.list(temp_result) && !is.null(temp_result$lines)) {
-                  highlight_ranges = map_content_to_lines(
-                    temp_result$lines, 
-                    question_obj@selected_nodes@indices, 
-                    repo_ast,
-                    template@original_ast
-                  )
-                }
+        }
+        
+        if (!is.null(question_obj) && length(question_obj@selected_nodes@indices) > 0) {
+          # Get repository AST
+          repo_rows = collection$path |> dirname() |> basename() == selected_repo
+          if (any(repo_rows)) {
+            repo_ast = collection$ast[repo_rows][[1]]
+            if (!is.null(repo_ast)) {
+              # Get raw content lines first to map against
+              temp_result = get_raw_document_content(selected_repo, collection, use_qmd)
+              if (is.list(temp_result) && !is.null(temp_result$lines)) {
+                highlight_ranges = map_content_to_lines(
+                  temp_result$lines, 
+                  question_obj@selected_nodes@indices, 
+                  repo_ast,
+                  template@original_ast
+                )
               }
             }
           }
         }
-        
-        raw_content = get_raw_document_content(selected_repo, collection, use_qmd, highlight_ranges)
-        
-        if (!is.null(raw_content)) {
-          content_to_display = if (is.list(raw_content)) {
-            raw_content$content
-          } else {
-            raw_content
-          }
-          
-          # Monaco Editor provides its own highlighting
-          content_with_highlight = paste0(
-            '<div id="raw-content-container">',
-            content_to_display,
-            '</div>'
-          )
-          shiny::HTML(content_with_highlight)
-        } else {
-          file_ext = if (use_qmd) ".qmd" else ".Rmd"
-          shiny::p(paste("No", file_ext, "content available for selected repository."), class = "text-muted")
-        }
       }
-    }) |>
-      bindEvent(input$content_repo_select, input$html_toggle, input$question_select, ignoreNULL = FALSE)
+      
+      raw_content = get_raw_document_content(selected_repo, collection, use_qmd, highlight_ranges)
+      
+      if (!is.null(raw_content)) {
+        content_to_display = if (is.list(raw_content)) {
+          raw_content$content
+        } else {
+          raw_content
+        }
+        
+        # Monaco Editor provides its own highlighting
+        content_with_highlight = paste0(
+          '<div id="raw-content-container">',
+          content_to_display,
+          '</div>'
+        )
+        shiny::HTML(content_with_highlight)
+      } else {
+        file_ext = if (use_qmd) ".qmd" else ".Rmd"
+        shiny::p(paste("No", file_ext, "content available for selected repository."), class = "text-muted")
+      }
+    }) |> bindEvent(input$content_repo_select, input$question_select, ignoreNULL = FALSE)
+    
+    # Display content based on HTML toggle state
+    output$content_display = shiny::renderUI({
+      if (input$html_toggle) {
+        html_content_reactive()
+      } else {
+        raw_content_reactive()
+      }
+    })
     
     # Create scrolling callback function
     scroll_to_question = function(selected_question) {
@@ -966,10 +1105,84 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
     }) |> 
       shiny::bindEvent(input$content_repo_select, ignoreInit = FALSE)
     
+    # Navigation button observers
+    
+    # Repository navigation buttons
+    shiny::observeEvent(input$repo_prev_btn, {
+      current_choices = names(shiny::isolate(artifact_status_reactive()))
+      current_selected = shiny::isolate(input$content_repo_select)
+      
+      if (length(current_choices) > 1 && !is.null(current_selected)) {
+        current_index = match(current_selected, current_choices)
+        if (!is.na(current_index)) {
+          # Previous repo (wrap around)
+          new_index = if (current_index <= 1) length(current_choices) else current_index - 1
+          new_selection = current_choices[new_index]
+          shiny::updateSelectInput(session, "content_repo_select", selected = new_selection)
+        }
+      }
+    }, ignoreInit = TRUE)
+    
+    shiny::observeEvent(input$repo_next_btn, {
+      current_choices = names(shiny::isolate(artifact_status_reactive()))
+      current_selected = shiny::isolate(input$content_repo_select)
+      
+      if (length(current_choices) > 1 && !is.null(current_selected)) {
+        current_index = match(current_selected, current_choices)
+        if (!is.na(current_index)) {
+          # Next repo (wrap around)
+          new_index = if (current_index >= length(current_choices)) 1 else current_index + 1
+          new_selection = current_choices[new_index]
+          shiny::updateSelectInput(session, "content_repo_select", selected = new_selection)
+        }
+      }
+    }, ignoreInit = TRUE)
+    
+    # Question navigation buttons  
+    shiny::observeEvent(input$question_prev_btn, {
+      current_choices = question_names
+      current_selected = shiny::isolate(input$question_select)
+      
+      if (length(current_choices) > 1 && !is.null(current_selected)) {
+        current_index = match(current_selected, current_choices)
+        if (!is.na(current_index)) {
+          # Previous question (wrap around)
+          new_index = if (current_index <= 1) length(current_choices) else current_index - 1
+          new_selection = current_choices[new_index]
+          shiny::updateSelectInput(session, "question_select", selected = new_selection)
+        }
+      }
+    }, ignoreInit = TRUE)
+    
+    shiny::observeEvent(input$question_next_btn, {
+      current_choices = question_names
+      current_selected = shiny::isolate(input$question_select)
+      
+      if (length(current_choices) > 1 && !is.null(current_selected)) {
+        current_index = match(current_selected, current_choices)
+        if (!is.na(current_index)) {
+          # Next question (wrap around)
+          new_index = if (current_index >= length(current_choices)) 1 else current_index + 1
+          new_selection = current_choices[new_index]
+          shiny::updateSelectInput(session, "question_select", selected = new_selection)
+        }
+      }
+    }, ignoreInit = TRUE)
+    
     # Return reactive values for external use
     return(list(
       selected_question = shiny::reactive(input$question_select),
-      selected_content_repo = shiny::reactive(input$content_repo_select)
+      selected_content_repo = shiny::reactive(input$content_repo_select),
+      question_grade_servers = question_grade_servers,
+      current_grade = shiny::reactive({
+        req(input$question_select)
+        current_server = question_grade_servers[[input$question_select]]
+        if (!is.null(current_server)) {
+          current_server$grade()
+        } else {
+          NULL
+        }
+      })
     ))
   })
 }
