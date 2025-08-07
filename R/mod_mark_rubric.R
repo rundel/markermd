@@ -574,45 +574,6 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
       })
     }
     
-    # Helper function to add IDs to headings in HTML content
-    add_heading_ids = function(html_content) {
-      # Find all headings and add IDs
-      # Use a more robust approach without nested gsub functions
-      
-      # Pattern to match headings
-      heading_pattern = "<h([1-6])([^>]*)>([^<]+)</h[1-6]>"
-      
-      # Find all matches
-      matches = gregexpr(heading_pattern, html_content, ignore.case = TRUE)
-      match_data = regmatches(html_content, matches)[[1]]
-      
-      if (length(match_data) > 0) {
-        for (i in seq_along(match_data)) {
-          original_heading = match_data[i]
-          
-          # Extract the heading text
-          heading_text = gsub("<h[1-6][^>]*>([^<]+)</h[1-6]>", "\\1", original_heading, ignore.case = TRUE)
-          
-          # Create clean ID
-          clean_id = gsub("[^a-zA-Z0-9\\s-]", "", heading_text)
-          clean_id = gsub("\\s+", "-", trimws(clean_id))
-          clean_id = tolower(clean_id)
-          
-          # Create new heading with ID
-          new_heading = gsub(
-            "<h([1-6])([^>]*)>([^<]+)</h([1-6])>",
-            paste0("<h\\1\\2 id='heading-", clean_id, "'>\\3</h\\4>"),
-            original_heading,
-            ignore.case = TRUE
-          )
-          
-          # Replace in content
-          html_content = gsub(original_heading, new_heading, html_content, fixed = TRUE)
-        }
-      }
-      
-      return(html_content)
-    }
 
     question_item_servers = shiny::reactiveValues()
     question_grade_servers = shiny::reactiveValues()
@@ -683,22 +644,17 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
 
       # Handle move up signal
       shiny::observe({
-        print(paste("Move up triggered for server:", server$id))
         server_list = question_item_servers[[input$question_select]]
         server_names = names(server_list)
-        print(paste("Server names before move:", paste(server_names, collapse = ", ")))
         current_index = which(server_names == server$id)
-        print(paste("Current index:", current_index))
         
         if (length(current_index) > 0 && length(server_names) > 1) {
           if (current_index == 1) {
             # Moving up from top - move item to end of list
-            print("Moving item from top to end")
             new_order = c(2:length(server_list), 1)
           } else {
             # Normal move up - swap with previous item
             new_index = current_index - 1
-            print(paste("New index:", new_index))
             new_order = seq_along(server_list)
             new_order[c(current_index, new_index)] = new_order[c(new_index, current_index)]
           }
@@ -709,14 +665,12 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
           
           # Update the list with new order
           question_item_servers[[input$question_select]] = new_server_list
-          print(paste("Server names after move:", paste(names(new_server_list), collapse = ", ")))
           
           # Update all hotkeys to maintain sequence
           for (i in seq_along(new_server_list)) {
             srv = new_server_list[[i]]
             current_item = srv$item()
             new_hotkey = if (i <= 10) as.integer(i) else NA_integer_
-            print(paste("Updating server", names(new_server_list)[i], "with hotkey", new_hotkey))
             
             updated_item = markermd_rubric_item(
               hotkey = new_hotkey,
@@ -735,22 +689,17 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
 
       # Handle move down signal
       shiny::observe({
-        print(paste("Move down triggered for server:", server$id))
         server_list = question_item_servers[[input$question_select]]
         server_names = names(server_list)
-        print(paste("Server names before move:", paste(server_names, collapse = ", ")))
         current_index = which(server_names == server$id)
-        print(paste("Current index:", current_index))
         
         if (length(current_index) > 0 && length(server_names) > 1) {
           if (current_index == length(server_names)) {
             # Moving down from bottom - move item to beginning of list
-            print("Moving item from bottom to beginning")
             new_order = c(length(server_list), 1:(length(server_list)-1))
           } else {
             # Normal move down - swap with next item
             new_index = current_index + 1
-            print(paste("New index:", new_index))
             new_order = seq_along(server_list)
             new_order[c(current_index, new_index)] = new_order[c(new_index, current_index)]
           }
@@ -761,14 +710,12 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
           
           # Update the list with new order
           question_item_servers[[input$question_select]] = new_server_list
-          print(paste("Server names after move:", paste(names(new_server_list), collapse = ", ")))
           
           # Update all hotkeys to maintain sequence
           for (i in seq_along(new_server_list)) {
             srv = new_server_list[[i]]
             current_item = srv$item()
             new_hotkey = if (i <= 10) as.integer(i) else NA_integer_
-            print(paste("Updating server", names(new_server_list)[i], "with hotkey", new_hotkey))
             
             updated_item = markermd_rubric_item(
               hotkey = new_hotkey,
@@ -855,8 +802,7 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
         html_content = readLines(html_path, warn = FALSE)
         html_content = paste(html_content, collapse = "\n")
         
-        # Add IDs to headings for scrolling functionality
-        html_content = add_heading_ids(html_content)
+        # Note: Using existing Quarto anchor IDs for highlighting
         
         # Wrap in a div with a specific ID for scrolling context
         html_content = paste0('<div id="html-content-container">', html_content, '</div>')
@@ -1129,7 +1075,6 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
     # Create scrolling callback function
     scroll_to_question = function(selected_question) {
       req(input$content_repo_select)
-      
       # Handle both HTML and raw content modes
       if (!input$html_toggle) {
         # Raw content mode - highlighting is handled by content display reactive
@@ -1162,7 +1107,6 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
           # Fallback to template AST if repo AST not found
           all_hierarchies = get_heading_selector(template@original_ast, question_obj@selected_nodes@indices)
         }
-        
         if (length(all_hierarchies) > 0) {
           # Use first hierarchy for scrolling
           first_hierarchy = all_hierarchies[[1]]
@@ -1170,26 +1114,33 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
             # Get the deepest heading from first hierarchy for scrolling
             target_heading = first_hierarchy[length(first_hierarchy)]
             
-            # Clean heading text to match our ID generation
-            clean_heading = gsub("[^a-zA-Z0-9\\s-]", "", target_heading)
-            clean_heading = gsub("\\s+", "-", trimws(clean_heading))
-            clean_heading = tolower(clean_heading)
-            target_id = paste0("heading-", clean_heading)
+            # Clean heading text to match Quarto's data-anchor-id format
+            # Quarto converts "Write up" -> "write-up", spaces become hyphens
+            clean_heading = gsub("[^a-zA-Z0-9 ]", "", target_heading)     # Remove punctuation but keep spaces
+            clean_heading = gsub(" +", "-", trimws(clean_heading))        # Convert spaces to hyphens
+            clean_heading = tolower(clean_heading)                       # Make lowercase
+            target_id = clean_heading  # Use Quarto's data-anchor-id format
             
-            # Create JavaScript array of all target IDs for highlighting
-            all_target_ids = sapply(all_hierarchies, function(hierarchy) {
+            # Create JavaScript array of all target headings and their expected IDs
+            all_target_data = lapply(all_hierarchies, function(hierarchy) {
               if (length(hierarchy) > 0) {
                 deepest_heading = hierarchy[length(hierarchy)]
-                clean_id = gsub("[^a-zA-Z0-9\\s-]", "", deepest_heading)
-                clean_id = gsub("\\s+", "-", trimws(clean_id))
-                clean_id = tolower(clean_id)
-                paste0("heading-", clean_id)
+                # Match Quarto's data-anchor-id format exactly
+                clean_id = gsub("[^a-zA-Z0-9 ]", "", deepest_heading)    # Remove punctuation but keep spaces
+                clean_id = gsub(" +", "-", trimws(clean_id))             # Convert spaces to hyphens  
+                clean_id = tolower(clean_id)                            # Make lowercase
+                list(text = deepest_heading, id = clean_id)
               } else {
                 NULL
               }
             })
-            all_target_ids = all_target_ids[!is.null(all_target_ids)]
-            js_target_ids = paste0("['", paste(all_target_ids, collapse = "', '"), "']")
+            all_target_data = all_target_data[!sapply(all_target_data, is.null)]
+            
+            # Create JavaScript array of the target data
+            js_target_data = paste0("[", paste(sapply(all_target_data, function(d) {
+              paste0("{text: '", d$text, "', id: '", d$id, "'}")
+            }), collapse = ", "), "]")
+            
             
             # JavaScript with scrolling to first and highlighting all
             scroll_js = paste0("
@@ -1197,8 +1148,8 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
                 // Check if HTML content container exists (ensures content is loaded)
                 var contentContainer = document.getElementById('html-content-container');
                 if (!contentContainer) {
-                  // Retry after a longer delay if content not loaded
-                  setTimeout(arguments.callee, 1000);
+                  // Retry after a shorter delay if content not loaded
+                  setTimeout(arguments.callee, 200);
                   return;
                 }
                 
@@ -1208,8 +1159,21 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
                   el.classList.remove('section-highlight');
                 });
                 
-                // Scroll to first target with headroom
-                var firstTarget = document.getElementById('", target_id, "');
+                // Try to find target by data-anchor-id first, then by text content if not found
+                var firstTarget = document.querySelector('[data-anchor-id=\"", target_id, "\"]');
+                
+                if (!firstTarget) {
+                  // Try to find by heading text content
+                  var allHeadings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
+                  for (var i = 0; i < allHeadings.length; i++) {
+                    var heading = allHeadings[i];
+                    if (heading.textContent.trim().toLowerCase() === '", tolower(target_heading), "') {
+                      firstTarget = heading;
+                      break;
+                    }
+                  }
+                }
+                
                 if (firstTarget) {
                   var targetRect = firstTarget.getBoundingClientRect();
                   var scrollContainer = firstTarget.closest('.overflow-auto') || window;
@@ -1230,9 +1194,22 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
                 }
                 
                 // Highlight all target sections
-                var targetIds = ", js_target_ids, ";
-                targetIds.forEach(function(targetId) {
-                  var targetElement = document.getElementById(targetId);
+                var targetData = ", js_target_data, ";
+                targetData.forEach(function(target) {
+                  var targetElement = document.querySelector('[data-anchor-id=\"' + target.id + '\"]');
+                  
+                  if (!targetElement) {
+                    // Try to find by heading text content
+                    var allHeadings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
+                    for (var i = 0; i < allHeadings.length; i++) {
+                      var heading = allHeadings[i];
+                      if (heading.textContent.trim().toLowerCase() === target.text.toLowerCase()) {
+                        targetElement = heading;
+                        break;
+                      }
+                    }
+                  }
+                  
                   if (targetElement) {
                     // Add highlighting to the heading
                     targetElement.classList.add('section-highlight');
@@ -1256,7 +1233,7 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
                     }
                   }
                 });
-              }, 800);
+              }, 100);
             ")
             
             shinyjs::runjs(scroll_js)
@@ -1272,20 +1249,19 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
       }
       # Always trigger scrolling when question changes
       scroll_to_question(input$question_select)
-    }) |> bindEvent(input$question_select)
+    }) |> bindEvent(input$question_select, ignoreInit = FALSE)
     
-    # Observer to trigger highlighting when content is loaded and question is selected
+    # Observer to trigger initial highlighting when switching repos
     shiny::observe({
       req(input$content_repo_select, input$question_select)
-      
-      # Small delay to ensure HTML content has rendered
-      shiny::invalidateLater(1000, session)
+      # Only trigger on repo changes, not question changes
+      shiny::invalidateLater(500, session)
       shiny::isolate({
         selected_question = input$question_select
         scroll_to_question(selected_question)
       })
     }) |> 
-      shiny::bindEvent(input$content_repo_select, ignoreInit = FALSE)
+      shiny::bindEvent(input$content_repo_select, ignoreInit = TRUE)
     
     # Navigation button observers
     
