@@ -636,12 +636,27 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
           }
           
           
-          /* Section highlighting for scrolling */
-          .section-highlight {
+          /* Section highlighting for scrolling - single wrapper container approach */
+          .section-highlight-wrapper {
             background-color: rgba(255, 235, 59, 0.15) !important;
             border-left: 3px solid rgba(255, 193, 7, 0.8) !important;
-            padding-left: 8px !important;
+            padding: 8px !important;
+            padding-left: 12px !important;
+            margin: 8px 0 !important;
             transition: background-color 0.3s ease, border-left 0.3s ease !important;
+          }
+          
+          /* Ensure content inside wrapper maintains natural spacing */
+          .section-highlight-wrapper > * {
+            margin-top: 0 !important;
+          }
+          
+          .section-highlight-wrapper > *:not(:last-child) {
+            margin-bottom: 1rem !important;
+          }
+          
+          .section-highlight-wrapper > *:last-child {
+            margin-bottom: 0 !important;
           }
           
           /* Override Quarto complex grid layout for simpler body-content focus */

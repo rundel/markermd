@@ -1153,10 +1153,15 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
                   return;
                 }
                 
-                // Clear any existing highlights
-                var previousHighlights = document.querySelectorAll('.section-highlight');
-                previousHighlights.forEach(function(el) {
-                  el.classList.remove('section-highlight');
+                // Clear any existing highlights by removing wrapper divs
+                var previousWrappers = document.querySelectorAll('.section-highlight-wrapper');
+                previousWrappers.forEach(function(wrapper) {
+                  // Move children back to original parent and remove wrapper
+                  var parent = wrapper.parentNode;
+                  while (wrapper.firstChild) {
+                    parent.insertBefore(wrapper.firstChild, wrapper);
+                  }
+                  parent.removeChild(wrapper);
                 });
                 
                 // Try to find target by data-anchor-id first, then by text content if not found
@@ -1211,10 +1216,10 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
                   }
                   
                   if (targetElement) {
-                    // Add highlighting to the heading
-                    targetElement.classList.add('section-highlight');
+                    // Collect all elements to wrap
+                    var elementsToWrap = [targetElement];
                     
-                    // Find and highlight all content until the next heading of same or higher level
+                    // Find all content until the next heading of same or higher level
                     var currentElement = targetElement.nextElementSibling;
                     var targetLevel = parseInt(targetElement.tagName.charAt(1));
                     
@@ -1227,10 +1232,23 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
                         }
                       }
                       
-                      // Add highlight to this element
-                      currentElement.classList.add('section-highlight');
+                      // Add to elements to wrap
+                      elementsToWrap.push(currentElement);
                       currentElement = currentElement.nextElementSibling;
                     }
+                    
+                    // Create wrapper div
+                    var wrapper = document.createElement('div');
+                    wrapper.className = 'section-highlight-wrapper';
+                    
+                    // Insert wrapper before the first element
+                    var parent = targetElement.parentNode;
+                    parent.insertBefore(wrapper, targetElement);
+                    
+                    // Move all elements into the wrapper
+                    elementsToWrap.forEach(function(element) {
+                      wrapper.appendChild(element);
+                    });
                   }
                 });
               }, 100);
