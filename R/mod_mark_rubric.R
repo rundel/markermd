@@ -551,9 +551,15 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
                   }, 100);
                 }
                 
-                // Store reference for cleanup
+                // Store reference for cleanup and global access
                 document.getElementById("', editor_id, '").editor = editor;
                 document.getElementById("', editor_id, '").decorations = decorations;
+                
+                // Store globally for dynamic highlighting
+                if (!window.monacoEditors) {
+                  window.monacoEditors = {};
+                }
+                window.monacoEditors["', editor_id, '"] = editor;
               }
             })();
           </script>'
@@ -882,15 +888,41 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
       }
     }) |> bindEvent(input$content_repo_select, ignoreNULL = FALSE)
     
-    # Raw content reactive (depends on repo and question for highlighting)
+    # Raw content reactive (only depends on repo, no highlighting)
     raw_content_reactive = shiny::reactive({
       req(input$content_repo_select)
       selected_repo = input$content_repo_select
       
-      # Raw document mode - show source content with syntax highlighting
-      # Get current question highlighting if available
-      highlight_ranges = NULL
+      # Get raw content without highlighting
+      raw_content = get_raw_document_content(selected_repo, collection, use_qmd)
+      
+      if (!is.null(raw_content)) {
+        content_to_display = if (is.list(raw_content)) {
+          raw_content$content
+        } else {
+          raw_content
+        }
+        
+        # Simple container without embedded highlights
+        content_with_container = paste0(
+          '<div id="raw-content-container">',
+          content_to_display,
+          '</div>'
+        )
+        shiny::HTML(content_with_container)
+      } else {
+        file_ext = if (use_qmd) ".qmd" else ".Rmd"
+        shiny::p(paste("No", file_ext, "content available for selected repository."), class = "text-muted")
+      }
+    }) |> bindEvent(input$content_repo_select, ignoreNULL = FALSE)
+    
+    # Separate reactive for highlight ranges (depends on both repo and question)
+    highlight_ranges_reactive = shiny::reactive({
+      req(input$content_repo_select, input$question_select)
+      selected_repo = input$content_repo_select
       current_question = input$question_select
+      
+      highlight_ranges = NULL
       
       if (!is.null(current_question) && !is.null(template)) {
         # Find the selected question from template
@@ -923,27 +955,167 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
         }
       }
       
-      raw_content = get_raw_document_content(selected_repo, collection, use_qmd, highlight_ranges)
+      return(highlight_ranges)
+    })
+    
+    # Observer to update Monaco Editor highlights when question changes
+    shiny::observe({
+      req(input$content_repo_select, input$question_select)
+      highlight_ranges = highlight_ranges_reactive()
       
-      if (!is.null(raw_content)) {
-        content_to_display = if (is.list(raw_content)) {
-          raw_content$content
-        } else {
-          raw_content
-        }
+      if (!is.null(highlight_ranges) && length(highlight_ranges) > 0) {
+        # Convert highlight ranges to Monaco decorations format
+        decorations = lapply(highlight_ranges, function(range) {
+          list(
+            range = list(
+              startLineNumber = range$start,
+              startColumn = 1,
+              endLineNumber = range$end,
+              endColumn = 1
+            ),
+            options = list(
+              isWholeLine = TRUE,
+              className = "highlight-line",
+              marginClassName = "highlight-margin"
+            )
+          )
+        })
         
-        # Monaco Editor provides its own highlighting
-        content_with_highlight = paste0(
-          '<div id="raw-content-container">',
-          content_to_display,
-          '</div>'
-        )
-        shiny::HTML(content_with_highlight)
+        highlight_decorations_json = jsonlite::toJSON(decorations, auto_unbox = TRUE)
+        
+        # Send decorations to Monaco Editor
+        shinyjs::runjs(glue::glue("
+          // Update Monaco Editor decorations with retry mechanism
+          function updateHighlights(retries) {{
+            retries = retries || 0;
+            var editorElements = document.querySelectorAll('[id^=\"monaco-editor-\"]');
+            var updated = false;
+            
+            editorElements.forEach(function(editorEl) {{
+              if (window.monacoEditors && window.monacoEditors[editorEl.id]) {{
+                var editor = window.monacoEditors[editorEl.id];
+                var newDecorations = {highlight_decorations_json};
+                
+                // Use deltaDecorations to replace all existing decorations
+                var oldDecorations = editor._currentDecorationIds || [];
+                editor._currentDecorationIds = editor.deltaDecorations(oldDecorations, newDecorations);
+                
+                // Scroll to first highlighted line if there are decorations
+                if (newDecorations.length > 0) {{
+                  setTimeout(function() {{
+                    var firstLine = newDecorations[0].range.startLineNumber;
+                    editor.revealLineNearTop(firstLine, monaco.editor.ScrollType.Smooth);
+                  }}, 100);
+                }}
+                
+                updated = true;
+              }}
+            }});
+            
+            // Retry if no editor found and we haven't exceeded max retries
+            if (!updated && retries < 10) {{
+              setTimeout(function() {{ updateHighlights(retries + 1); }}, 200);
+            }}
+          }}
+          
+          updateHighlights();
+        ", .open = "{", .close = "}"))
       } else {
-        file_ext = if (use_qmd) ".qmd" else ".Rmd"
-        shiny::p(paste("No", file_ext, "content available for selected repository."), class = "text-muted")
+        # Clear all highlights
+        shinyjs::runjs("
+          function clearHighlights(retries) {
+            retries = retries || 0;
+            var editorElements = document.querySelectorAll('[id^=\"monaco-editor-\"]');
+            var updated = false;
+            
+            editorElements.forEach(function(editorEl) {
+              if (window.monacoEditors && window.monacoEditors[editorEl.id]) {
+                var editor = window.monacoEditors[editorEl.id];
+                var oldDecorations = editor._currentDecorationIds || [];
+                editor._currentDecorationIds = editor.deltaDecorations(oldDecorations, []);
+                updated = true;
+              }
+            });
+            
+            // Retry if no editor found and we haven't exceeded max retries
+            if (!updated && retries < 10) {
+              setTimeout(function() { clearHighlights(retries + 1); }, 200);
+            }
+          }
+          
+          clearHighlights();
+        ")
       }
-    }) |> bindEvent(input$content_repo_select, input$question_select, ignoreNULL = FALSE)
+    }) |> shiny::bindEvent(highlight_ranges_reactive(), ignoreNULL = FALSE)
+    
+    # Observer to apply initial highlighting when switching to raw mode
+    shiny::observe({
+      # Only trigger when switching to raw mode (html_toggle = FALSE)
+      if (!input$html_toggle && !is.null(input$content_repo_select) && !is.null(input$question_select)) {
+        # Delay to ensure Monaco Editor is created
+        shinyjs::delay(500, {
+          highlight_ranges = highlight_ranges_reactive()
+          
+          if (!is.null(highlight_ranges) && length(highlight_ranges) > 0) {
+            # Convert highlight ranges to Monaco decorations format
+            decorations = lapply(highlight_ranges, function(range) {
+              list(
+                range = list(
+                  startLineNumber = range$start,
+                  startColumn = 1,
+                  endLineNumber = range$end,
+                  endColumn = 1
+                ),
+                options = list(
+                  isWholeLine = TRUE,
+                  className = "highlight-line",
+                  marginClassName = "highlight-margin"
+                )
+              )
+            })
+            
+            highlight_decorations_json = jsonlite::toJSON(decorations, auto_unbox = TRUE)
+            
+            # Apply initial highlighting
+            shinyjs::runjs(glue::glue("
+              function applyInitialHighlights(retries) {{
+                retries = retries || 0;
+                var editorElements = document.querySelectorAll('[id^=\"monaco-editor-\"]');
+                var updated = false;
+                
+                editorElements.forEach(function(editorEl) {{
+                  if (window.monacoEditors && window.monacoEditors[editorEl.id]) {{
+                    var editor = window.monacoEditors[editorEl.id];
+                    var newDecorations = {highlight_decorations_json};
+                    
+                    // Apply initial decorations
+                    var oldDecorations = editor._currentDecorationIds || [];
+                    editor._currentDecorationIds = editor.deltaDecorations(oldDecorations, newDecorations);
+                    
+                    // Scroll to first highlighted line if there are decorations
+                    if (newDecorations.length > 0) {{
+                      setTimeout(function() {{
+                        var firstLine = newDecorations[0].range.startLineNumber;
+                        editor.revealLineNearTop(firstLine, monaco.editor.ScrollType.Smooth);
+                      }}, 100);
+                    }}
+                    
+                    updated = true;
+                  }}
+                }});
+                
+                // Retry if no editor found and we haven't exceeded max retries
+                if (!updated && retries < 15) {{
+                  setTimeout(function() {{ applyInitialHighlights(retries + 1); }}, 300);
+                }}
+              }}
+              
+              applyInitialHighlights();
+            ", .open = "{", .close = "}"))
+          }
+        })
+      }
+    }) |> shiny::bindEvent(input$html_toggle, input$content_repo_select, input$question_select, ignoreInit = TRUE)
     
     # Display content based on HTML toggle state
     output$content_display = shiny::renderUI({
