@@ -188,6 +188,16 @@ mark_rubric_ui = function(id) {
                 btn.click();
               }
             }
+            
+            else if (e.key === 'h') {
+              // Toggle HTML switch
+              e.preventDefault();
+              
+              var htmlToggle = document.getElementById('<<ns(\"html_toggle\")>>');
+              if (htmlToggle) {
+                htmlToggle.click();
+              }
+            }
           }
         });
       });
