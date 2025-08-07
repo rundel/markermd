@@ -646,16 +646,28 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
           
           /* Override Quarto complex grid layout for simpler body-content focus */
           
-          body .page-columns {
-            display: grid !important;
+          body .page-columns,
+          #html-content-container .page-columns,
+          .page-columns {
+            display: block !important;
             gap: 0 !important;
-            grid-template-columns: [screen-start body-content-start] 1fr [body-content-end screen-end] !important;
-            
+            max-width: none !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
           }
 
-          body .page-columns main {
-            width: calc(100% - 2rem) !important;
+          body .page-columns main,
+          #html-content-container .page-columns main,
+          .page-columns main,
+          body main,
+          #html-content-container main,
+          main {
+            width: calc(100% - 1.5rem) !important;
+            max-width: calc(100% - 1.5rem) !important;
             font-size: 0.9em !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
           }
           
           /* Make switch more visible when in false state */
