@@ -20,7 +20,7 @@ mark_rubric_item_ui = function(id, rubric_item) {
     # Delete button (hidden by default, shown on hover)
     shiny::div(
       class = "rubric-delete-btn position-absolute",
-      style = "top: 8px; right: 8px; opacity: 0; transition: opacity 0.2s ease; cursor: pointer;",
+      style = "top: 0; right: 8px; opacity: 0; transition: opacity 0.2s ease; cursor: pointer;",
       shiny::actionButton(
         ns("delete_btn"),
         label = NULL,
@@ -39,8 +39,11 @@ mark_rubric_item_ui = function(id, rubric_item) {
       shiny::actionButton(
         ns("hotkey_btn"),
         label = if (is.na(rubric_item@hotkey)) "" else as.character(rubric_item@hotkey %% 10),
-        class = "btn-outline-secondary btn-sm w-100 d-flex align-items-center justify-content-center", # Default class, will be updated by server
-        style = "font-size: 11px; padding: 4px;"
+        class = paste(
+          if (rubric_item@selected) "btn-success" else "btn-outline-secondary",
+          "btn-sm d-flex align-items-center justify-content-center"
+        ),
+        style = "font-size: 10px; padding: 0; width: 28px; height: 28px;"
       ),
       # Points
       shiny::div(
@@ -208,8 +211,10 @@ mark_rubric_item_ui = function(id, rubric_item) {
 #' @param initial_item markermd_rubric_item S7 object with initial state
 #'
 mark_rubric_item_server = function(id, initial_item) {
+  ns = shiny::NS(id)
+
   shiny::moduleServer(id, function(input, output, session) {
-    
+  
     # Internal state using S7 class
     rubric_item_state = shiny::reactiveVal(initial_item)
     
@@ -250,35 +255,24 @@ mark_rubric_item_server = function(id, initial_item) {
         rubric_item_state(new_item)
       }
     }, ignoreInit = TRUE)
-    
-    # Update button appearance based on selection state
+  
+    # Update button appearance when state changes
     shiny::observe({
       current_item = rubric_item_state()
+      
+      # Update button class based on selection state
       if (current_item@selected) {
-        shiny::updateActionButton(
-          session, "hotkey_btn",
-          label = as.character(current_item@hotkey)
-        )
-        # Use JavaScript to update the button class since updateActionButton doesn't support class changes
-        shinyjs::runjs(paste0("
-          $('#", session$ns("hotkey_btn"), "').removeClass('btn-outline-secondary').addClass('btn-success');
-        "))
+        shinyjs::removeClass("hotkey_btn", "btn-outline-secondary")
+        shinyjs::addClass("hotkey_btn", "btn-success")
       } else {
-        shiny::updateActionButton(
-          session, "hotkey_btn",
-          label = as.character(current_item@hotkey)
-        )
-        shinyjs::runjs(paste0("
-          $('#", session$ns("hotkey_btn"), "').removeClass('btn-success').addClass('btn-outline-secondary');
-        "))
+        shinyjs::removeClass("hotkey_btn", "btn-success")
+        shinyjs::addClass("hotkey_btn", "btn-outline-secondary")
       }
     })
-    
-    # Handle hotkey button clicks
-    shiny::observeEvent(input$hotkey_btn, {
+
+    shiny::observe({
       current_item = rubric_item_state()
       
-      # Create new item with toggled selection state
       new_item = markermd_rubric_item(
         hotkey = current_item@hotkey,
         points = current_item@points,
@@ -287,12 +281,8 @@ mark_rubric_item_server = function(id, initial_item) {
       )
       
       rubric_item_state(new_item)
-      
-      # Call callback if provided
-      if (!is.null(on_select)) {
-        on_select(new_item)
-      }
-    })
+    }) |>
+      shiny::bindEvent(input$hotkey_btn, ignoreInit = TRUE)
     
     # Return reactive rubric item and delete signal for external use
     delete_signal = shiny::reactiveVal(0)
@@ -302,11 +292,14 @@ mark_rubric_item_server = function(id, initial_item) {
       delete_signal(delete_signal() + 1)
     })
     
-    # Return reactive rubric item and delete signal for external use
+    # Return reactive rubric item, delete signal, and update method for external use
     return(list(
       id = id,
       item = shiny::reactive(rubric_item_state()),
-      delete_signal = delete_signal
+      delete_signal = delete_signal,
+      update_item = function(new_item) {
+        rubric_item_state(new_item)
+      }
     ))
   })
 }
