@@ -255,3 +255,70 @@ markermd_rubric_item = S7::new_class(
   ),
   package = "markermd"
 )
+
+#' Grade State S7 Class
+#'
+#' Represents the grading state for a question including current score, total possible points,
+#' and grading configuration options.
+#'
+#' @param current_score Numeric. Current points awarded
+#' @param total_score Numeric. Maximum possible points  
+#' @param grading_mode Character. Either "positive" or "negative" grading
+#' @param bound_above_zero Logical. Whether to enforce score >= 0
+#' @param bound_below_max Logical. Whether to enforce score <= maximum
+#' @export
+markermd_grade_state = S7::new_class(
+  "markermd_grade_state",
+  properties = list(
+    current_score = S7::new_property(
+      S7::class_numeric,
+      default = quote(0),
+      validator = function(value) {
+        if (length(value) != 1) {
+          "current_score must be a single numeric value"
+        }
+      }
+    ),
+    total_score = S7::new_property(
+      S7::class_numeric,
+      default = quote(0),
+      validator = function(value) {
+        if (length(value) != 1) {
+          "total_score must be a single numeric value"
+        } else if (value < 0) {
+          "total_score must be >= 0"
+        }
+      }
+    ),
+    grading_mode = S7::new_property(
+      S7::class_character,
+      default = quote("positive"),
+      validator = function(value) {
+        if (length(value) != 1) {
+          "grading_mode must be a single character string"
+        } else if (!value %in% c("positive", "negative")) {
+          "grading_mode must be 'positive' or 'negative'"
+        }
+      }
+    ),
+    bound_above_zero = S7::new_property(
+      S7::class_logical,
+      default = quote(TRUE),
+      validator = function(value) {
+        if (length(value) != 1) {
+          "bound_above_zero must be a single logical value"
+        }
+      }
+    ),
+    bound_below_max = S7::new_property(
+      S7::class_logical,
+      default = quote(TRUE),
+      validator = function(value) {
+        if (length(value) != 1) {
+          "bound_below_max must be a single logical value"
+        }
+      }
+    )
+  ),
+  package = "markermd"
+)
