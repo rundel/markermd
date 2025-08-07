@@ -614,50 +614,12 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
       shiny::tags$head(
         shinyjs::useShinyjs(),
         shiny::tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"),
-        shiny::tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css"),
-        shiny::tags$script(src = "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"),
-        shiny::tags$script(src = "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"),
         # CSS to fix modal content formatting (copied from working template app)
-        shiny::tags$style(shiny::HTML("
+        shiny::tags$style(shiny::HTML('
           /* Modal styling */
           .modal-header { padding: 8px 15px !important; }
           .modal-title { margin: 0 !important; padding: 0 !important; line-height: 1.2 !important; }
 
-          /* Code syntax highlighting */
-          .modal-content pre[class*='language-'],
-          .modal-content pre#syntax-content {
-            margin: 0 !important;
-            padding: 15px !important;
-            text-indent: 0 !important;
-            background: #f5f2f0 !important;
-            white-space: pre-wrap !important;
-            word-wrap: break-word !important;
-            overflow-wrap: break-word !important;
-          }
-
-          .modal-content code[class*='language-'],
-          .modal-content .token {
-            text-indent: 0 !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            white-space: pre-wrap !important;
-            word-wrap: break-word !important;
-            overflow-wrap: break-word !important;
-          }
-
-          .modal-content code[class*='language-'] {
-            display: block !important;
-            padding-left: 0 !important;
-            margin-left: 0 !important;
-          }
-
-          .modal-content pre[class*='language-']:before,
-          .modal-content pre[class*='language-']:after,
-          .modal-content code[class*='language-']:before,
-          .modal-content code[class*='language-']:after {
-            content: none !important;
-          }
-          
           /* Content repo select styling - selectize */
           .selectize-control.single .selectize-input {
             font-size: 12px !important;
@@ -681,13 +643,33 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
             padding-left: 8px !important;
             transition: background-color 0.3s ease, border-left 0.3s ease !important;
           }
-        "))
+          
+          /* Override Quarto complex grid layout for simpler body-content focus */
+          
+          body .page-columns {
+            display: grid !important;
+            gap: 0 !important;
+            grid-template-columns: [screen-start body-content-start] 1fr [body-content-end screen-end] !important;
+            
+          }
+
+          body .page-columns main {
+            width: calc(100% - 2rem) !important;
+            font-size: 0.9em !important;
+          }
+          
+          /* Make switch more visible when in false state */
+          .form-switch .form-check-input:not(:checked) {
+            border-color: #212529 !important;
+          }
+        
+        '))
       ),
       # Main content area 
       shiny::div(
         id = "main-app-content",
         bslib::layout_columns(
-          col_widths = c(5, 7),
+          col_widths = c(6, 6),
           # Repository table card (left)
           bslib::card(
             bslib::card_header("Assignments", class = "bg-light"),
@@ -751,14 +733,14 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
     # Reactive trigger for auto-sync on app launch
     auto_sync_trigger = shiny::reactiveVal(0)
     
-    # Automatically trigger sync archives once on app launch if downloads are enabled and repos exist
-    if (download_archives && length(repo_to_github) > 0) {
-      # Use session$onFlushed to ensure app is fully loaded, then trigger sync
-      session$onFlushed(function() {
-        # Simple trigger without invalidateLater
-        auto_sync_trigger(1)
-      }, once = TRUE)
-    }
+    # Auto-sync disabled - user must manually sync archives
+    # if (download_archives && length(repo_to_github) > 0) {
+    #   # Use session$onFlushed to ensure app is fully loaded, then trigger sync
+    #   session$onFlushed(function() {
+    #     # Simple trigger without invalidateLater
+    #     auto_sync_trigger(1)
+    #   }, once = TRUE)
+    # }
     
     # Create repository table with gt
     output$repo_table = gt::render_gt({
@@ -819,9 +801,16 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
           button_id = paste0("artifact_", i)
           return(paste0('<button onclick="Shiny.setInputValue(\'', button_id, '\', Math.random())" class="btn btn-link p-0 border-0 text-reset" title="View artifact"><i class="far fa-file fs-6"></i></button>'))
         } else {
-          # GitHub repo but no artifacts - show blank space
-          return("")
+          # GitHub repo but no artifacts - show greyed out unclickable icon
+          return('<i class="far fa-file fs-6" style="opacity: 0.3;" title="No artifact available"></i>')
         }
+      })
+      
+      # Add source code column with clickable file-code icons
+      repo_df$Source = sapply(seq_along(repo_list), function(i) {
+        repo = repo_list[i]
+        button_id = paste0("source_", i)
+        return(paste0('<button onclick="Shiny.setInputValue(\'', button_id, '\', Math.random())" class="btn btn-link p-0 border-0 text-reset" title="View source code"><i class="far fa-file-code fs-6"></i></button>'))
       })
       
       # Add validation summary column
@@ -965,25 +954,27 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
       })
       
       # Create gt table with all columns
-      table_data = repo_df[, c("Repository", "Folder", "GitHub", "Artifacts", "Validation", "Grading"), drop = FALSE]
+      table_data = repo_df[, c("Repository", "Folder", "GitHub", "Artifacts", "Source", "Validation", "Grading"), drop = FALSE]
       
       gt_table = gt::gt(table_data) |>
         gt::fmt_markdown(columns = Repository) |>
         gt::fmt_markdown(columns = Folder) |>
         gt::fmt_markdown(columns = GitHub) |>
         gt::fmt_markdown(columns = Artifacts) |>
+        gt::fmt_markdown(columns = Source) |>
         gt::fmt_markdown(columns = Grading) |>
         gt::fmt_markdown(columns = Validation) |>
         gt::cols_label(
           Repository = "Repository", 
-          Folder = "", GitHub = "", Artifacts = "",
+          Folder = "", GitHub = "", Artifacts = "", Source = "",
           Validation = "Validation", Grading = "Progress"
         ) |>
         gt::cols_width(
-          Repository ~ pct(39),
+          Repository ~ pct(33),
           Folder ~ pct(6),
           GitHub ~ pct(6),
           Artifacts ~ pct(6),
+          Source ~ pct(6),
           Validation ~ pct(17),
           Grading ~ pct(26)
         ) |>
@@ -1095,6 +1086,120 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
       }
     })
     
+    # Handle source button clicks
+    shiny::observe({
+      for (i in seq_along(repo_list)) {
+        local({
+          row_index = i
+          source_button_id = paste0("source_", row_index)
+          
+          shiny::observeEvent(input[[source_button_id]], {
+            repo = repo_list[row_index]
+            
+            # Find the source file path from collection
+            repo_rows = collection$path |> dirname() |> basename() == repo
+            if (any(repo_rows)) {
+              file_path = collection$path[repo_rows][1]
+              
+              if (file.exists(file_path)) {
+                # Read the raw source content
+                raw_content = tryCatch({
+                  readLines(file_path, warn = FALSE) |> paste(collapse = "\n")
+                }, error = function(e) {
+                  paste("Error reading file:", e$message)
+                })
+                
+                # Determine file extension for title
+                file_ext = tools::file_ext(file_path)
+                file_name = basename(file_path)
+                
+                # Create unique editor ID
+                editor_id = paste0("monaco-editor-source-", gsub("[^A-Za-z0-9]", "", repo))
+                
+                # Show source in modal with Monaco Editor
+                shiny::showModal(
+                  markermd_modal(
+                    title = paste("Source Code:", file_name),
+                    size = "xl",
+                    easyClose = TRUE,
+                    footer = NULL,
+                    shiny::div(
+                      style = "height: 70vh;",
+                      shiny::div(
+                        id = editor_id,
+                        style = "height: 100%; width: 100%; border: 1px solid #e1e5e9;"
+                      )
+                    )
+                  )
+                )
+                
+                # Initialize Monaco Editor
+                shinyjs::runjs(paste0("
+                  (function() {
+                    // Load Monaco Editor if not already loaded
+                    if (typeof monaco === 'undefined') {
+                      var script = document.createElement('script');
+                      script.src = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js';
+                      script.onload = function() {
+                        require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } });
+                        require(['vs/editor/editor.main'], function() {
+                          createEditor();
+                        });
+                      };
+                      document.head.appendChild(script);
+                    } else {
+                      createEditor();
+                    }
+                    
+                    function createEditor() {
+                      // Clean up any existing editor
+                      var existingContainer = document.getElementById('", editor_id, "');
+                      if (existingContainer && existingContainer.editor) {
+                        existingContainer.editor.dispose();
+                      }
+                      
+                      // Create the editor
+                      var editor = monaco.editor.create(document.getElementById('", editor_id, "'), {
+                        value: ", jsonlite::toJSON(raw_content, auto_unbox = TRUE), ",
+                        language: 'markdown',
+                        theme: 'vs',
+                        readOnly: true,
+                        wordWrap: 'on',
+                        wrappingIndent: 'indent',
+                        fontSize: 12,
+                        lineNumbers: 'on',
+                        minimap: { enabled: false },
+                        scrollBeyondLastLine: false,
+                        automaticLayout: true,
+                        contextmenu: false,
+                        selectOnLineNumbers: false
+                      });
+                      
+                      // Store reference for cleanup
+                      document.getElementById('", editor_id, "').editor = editor;
+                    }
+                  })();
+                "))
+              } else {
+                # Show error modal - file not found
+                shiny::showModal(
+                  markermd_modal(
+                    title = "Source File Not Available",
+                    footer = NULL,
+                    shiny::div(
+                      class = "p-4 text-center",
+                      shiny::tags$i(class = "fas fa-exclamation-triangle fs-3 text-warning me-2"),
+                      "Source file not found."
+                    )
+                  )
+                )
+              }
+            }
+          })
+        })
+      }
+    })
+    
     # Handle folder button clicks
     shiny::observe({
       for (i in seq_along(repo_list)) {
@@ -1162,7 +1267,7 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
       if (length(repo_to_github) > 0) {
         shiny::actionButton(
           "sync_archives",
-          "Sync Archives",
+          "Sync Artifacts",
           icon = shiny::icon("sync-alt"),
           class = "btn-outline-primary btn-sm"
         )

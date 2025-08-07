@@ -21,11 +21,14 @@ mark_rubric_ui = function(id) {
           shiny::span("Content"),
           shiny::div(
             style = "display: flex; align-items: center; gap: 15px;",
-            bslib::input_switch(
-              ns("html_toggle"),
-              "HTML",
-              value = TRUE,
-              width = "auto"
+            shiny::div(
+              style = "font-size: 14px; font-weight: normal;",
+              bslib::input_switch(
+                ns("html_toggle"),
+                "html",
+                value = TRUE,
+                width = "auto"
+              )
             ),
             shiny::div(
               style = "min-width: 200px;",
@@ -337,8 +340,8 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
         # Create a unique ID for this editor instance
         editor_id = paste0("monaco-editor-", gsub("[^a-zA-Z0-9]", "", repo_name))
         
-        # Determine Monaco language
-        monaco_language = if (use_qmd) "markdown" else "markdown" # Monaco doesn't have native qmd support
+        # Determine Monaco language - use markdown for both qmd and rmd files
+        monaco_language = "markdown"
         
         # Prepare highlighting decorations JSON
         highlight_decorations = "[]" # Default: no highlights
@@ -674,23 +677,13 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
     }) |>
       bindEvent(input$add_item, ignoreInit = TRUE)
     
-    # Content tab functionality - populate select input with repos that have artifacts
+    # Content tab functionality - populate select input with all repos
     shiny::observe({
       artifact_status_data = artifact_status_reactive()
       
-      # Filter repos based on artifact status structure
-      repos_with_artifacts = character(0)
-      for (repo in names(artifact_status_data)) {
-        status_val = artifact_status_data[[repo]]
-        # Handle both boolean (TRUE/FALSE) and list structures
-        if (is.logical(status_val) && !is.na(status_val) && status_val) {
-          repos_with_artifacts = c(repos_with_artifacts, repo)
-        } else if (is.list(status_val) && !is.null(status_val$status) && status_val$status == "available") {
-          repos_with_artifacts = c(repos_with_artifacts, repo)
-        }
-      }
-      
-      choices = setNames(repos_with_artifacts, repos_with_artifacts)
+      # Include all repos regardless of artifact status
+      all_repos = names(artifact_status_data)
+      choices = setNames(all_repos, all_repos)
       shiny::updateSelectInput(session, "content_repo_select", choices = choices)
     })
     
@@ -728,7 +721,28 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
           
           shiny::HTML(html_content)
         } else {
-          shiny::p("No HTML content available for selected repository.", class = "text-muted") 
+          # Check if repo has no artifact or artifact is not available
+          has_artifact = FALSE
+          if (is.logical(status_val) && !is.na(status_val) && status_val) {
+            has_artifact = TRUE
+          } else if (is.list(status_val) && !is.null(status_val$status) && status_val$status == "available") {
+            has_artifact = TRUE
+          }
+          
+          if (!has_artifact) {
+            shiny::div(
+              class = "text-center p-4",
+              shiny::div(
+                class = "d-flex align-items-center justify-content-center mb-3",
+                shiny::icon("exclamation-triangle", class = "fa-2x text-warning me-2"),
+                shiny::h5("No Artifact Available", class = "text-muted mb-0")
+              ),
+              shiny::p(glue::glue("Repository '{selected_repo}' does not have an associated artifact."), class = "text-muted"),
+              shiny::p("Use the sync button to download artifacts for GitHub repositories.", class = "small text-muted")
+            )
+          } else {
+            shiny::p("Artifact file not found for selected repository.", class = "text-muted") 
+          }
         }
       } else {
         # Raw document mode - show source content with syntax highlighting
