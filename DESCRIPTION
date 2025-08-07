@@ -24,4 +24,5 @@ Imports:
     ghclass,
     gert,
     shinyjs,
-    htmltools
+    htmltools,
+    cli
