@@ -15,19 +15,38 @@ mark_rubric_item_ui = function(id, rubric_item) {
   shiny::div(
     class = "p-2 m-0 rounded position-relative",
     style = "transition: background-color 0.2s ease;",
-    onmouseover = "this.style.backgroundColor='#e9ecef'; this.querySelector('.rubric-delete-btn').style.opacity='1';",
-    onmouseout = "this.style.backgroundColor='transparent'; this.querySelector('.rubric-delete-btn').style.opacity='0';",
-    # Delete button (hidden by default, shown on hover)
+    onmouseover = "this.style.backgroundColor='#e9ecef'; this.querySelector('.rubric-action-btns').style.opacity='1';",
+    onmouseout = "this.style.backgroundColor='transparent'; this.querySelector('.rubric-action-btns').style.opacity='0';",
+    # Action buttons row (hidden by default, shown on hover)
     shiny::div(
-      class = "rubric-delete-btn position-absolute",
+      class = "rubric-action-btns position-absolute",
       style = "top: 0; right: 8px; opacity: 0; transition: opacity 0.2s ease; cursor: pointer;",
-      shiny::actionButton(
-        ns("delete_btn"),
-        label = NULL,
-        icon = shiny::icon("times"),
-        class = "btn btn-sm p-1",
-        style = "border: none; background: transparent; color: #6c757d; font-size: 16px;",
-        title = "Delete rubric item"
+      shiny::div(
+        style = "display: flex; gap: 2px;",
+        shiny::actionButton(
+          ns("move_up_btn"),
+          label = NULL,
+          icon = shiny::icon("chevron-up"),
+          class = "btn btn-sm p-1",
+          style = "border: none; background: transparent; color: #6c757d; font-size: 12px; line-height: 1;",
+          title = "Move item up"
+        ),
+        shiny::actionButton(
+          ns("move_down_btn"),
+          label = NULL,
+          icon = shiny::icon("chevron-down"),
+          class = "btn btn-sm p-1",
+          style = "border: none; background: transparent; color: #6c757d; font-size: 12px; line-height: 1;",
+          title = "Move item down"
+        ),
+        shiny::actionButton(
+          ns("delete_btn"),
+          label = NULL,
+          icon = shiny::icon("times"),
+          class = "btn btn-sm p-1",
+          style = "border: none; background: transparent; color: #6c757d; font-size: 16px;",
+          title = "Delete rubric item"
+        )
       )
     ),
     # Rubric item content in single layout
@@ -284,19 +303,32 @@ mark_rubric_item_server = function(id, initial_item) {
     }) |>
       shiny::bindEvent(input$hotkey_btn, ignoreInit = TRUE)
     
-    # Return reactive rubric item and delete signal for external use
+    # Return reactive rubric item and move/delete signals for external use
     delete_signal = shiny::reactiveVal(0)
+    move_up_signal = shiny::reactiveVal(0)
+    move_down_signal = shiny::reactiveVal(0)
     
     # Handle delete button clicks
     shiny::observeEvent(input$delete_btn, {
       delete_signal(delete_signal() + 1)
     })
     
-    # Return reactive rubric item, delete signal, and update method for external use
+    # Handle move button clicks
+    shiny::observeEvent(input$move_up_btn, {
+      move_up_signal(move_up_signal() + 1)
+    })
+    
+    shiny::observeEvent(input$move_down_btn, {
+      move_down_signal(move_down_signal() + 1)
+    })
+    
+    # Return reactive rubric item, move/delete signals, and update method for external use
     return(list(
       id = id,
       item = shiny::reactive(rubric_item_state()),
       delete_signal = delete_signal,
+      move_up_signal = move_up_signal,
+      move_down_signal = move_down_signal,
       update_item = function(new_item) {
         rubric_item_state(new_item)
       }

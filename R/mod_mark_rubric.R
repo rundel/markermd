@@ -534,6 +534,111 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
       )
       question_item_servers[[input$question_select]][[server_id]] = server
 
+      # Handle move up signal
+      shiny::observe({
+        print(paste("Move up triggered for server:", server$id))
+        server_list = question_item_servers[[input$question_select]]
+        server_names = names(server_list)
+        print(paste("Server names before move:", paste(server_names, collapse = ", ")))
+        current_index = which(server_names == server$id)
+        print(paste("Current index:", current_index))
+        
+        if (length(current_index) > 0 && length(server_names) > 1) {
+          if (current_index == 1) {
+            # Moving up from top - move item to end of list
+            print("Moving item from top to end")
+            new_order = c(2:length(server_list), 1)
+          } else {
+            # Normal move up - swap with previous item
+            new_index = current_index - 1
+            print(paste("New index:", new_index))
+            new_order = seq_along(server_list)
+            new_order[c(current_index, new_index)] = new_order[c(new_index, current_index)]
+          }
+          
+          # Reorder the server list
+          new_server_list = server_list[new_order]
+          names(new_server_list) = server_names[new_order]
+          
+          # Update the list with new order
+          question_item_servers[[input$question_select]] = new_server_list
+          print(paste("Server names after move:", paste(names(new_server_list), collapse = ", ")))
+          
+          # Update all hotkeys to maintain sequence
+          for (i in seq_along(new_server_list)) {
+            srv = new_server_list[[i]]
+            current_item = srv$item()
+            new_hotkey = if (i <= 10) as.integer(i) else NA_integer_
+            print(paste("Updating server", names(new_server_list)[i], "with hotkey", new_hotkey))
+            
+            updated_item = markermd_rubric_item(
+              hotkey = new_hotkey,
+              points = current_item@points,
+              description = current_item@description,
+              selected = current_item@selected
+            )
+            
+            srv$update_item(updated_item)
+          }
+          
+          redraw_ui(redraw_ui()+1)
+        }
+      }) |>
+        shiny::bindEvent(server$move_up_signal(), ignoreInit = TRUE)
+
+      # Handle move down signal
+      shiny::observe({
+        print(paste("Move down triggered for server:", server$id))
+        server_list = question_item_servers[[input$question_select]]
+        server_names = names(server_list)
+        print(paste("Server names before move:", paste(server_names, collapse = ", ")))
+        current_index = which(server_names == server$id)
+        print(paste("Current index:", current_index))
+        
+        if (length(current_index) > 0 && length(server_names) > 1) {
+          if (current_index == length(server_names)) {
+            # Moving down from bottom - move item to beginning of list
+            print("Moving item from bottom to beginning")
+            new_order = c(length(server_list), 1:(length(server_list)-1))
+          } else {
+            # Normal move down - swap with next item
+            new_index = current_index + 1
+            print(paste("New index:", new_index))
+            new_order = seq_along(server_list)
+            new_order[c(current_index, new_index)] = new_order[c(new_index, current_index)]
+          }
+          
+          # Reorder the server list
+          new_server_list = server_list[new_order]
+          names(new_server_list) = server_names[new_order]
+          
+          # Update the list with new order
+          question_item_servers[[input$question_select]] = new_server_list
+          print(paste("Server names after move:", paste(names(new_server_list), collapse = ", ")))
+          
+          # Update all hotkeys to maintain sequence
+          for (i in seq_along(new_server_list)) {
+            srv = new_server_list[[i]]
+            current_item = srv$item()
+            new_hotkey = if (i <= 10) as.integer(i) else NA_integer_
+            print(paste("Updating server", names(new_server_list)[i], "with hotkey", new_hotkey))
+            
+            updated_item = markermd_rubric_item(
+              hotkey = new_hotkey,
+              points = current_item@points,
+              description = current_item@description,
+              selected = current_item@selected
+            )
+            
+            srv$update_item(updated_item)
+          }
+          
+          redraw_ui(redraw_ui()+1)
+        }
+      }) |>
+        shiny::bindEvent(server$move_down_signal(), ignoreInit = TRUE)
+
+      # Handle delete signal
       shiny::observe({
         question_item_servers[[input$question_select]][[server$id]] = NULL
         
