@@ -223,7 +223,7 @@ markermd_rubric_item = S7::new_class(
         if (length(value) != 1) {
           "hotkey must be a single integer"
         } else if (!is.na(value) && (value < 1 || value > 10)) {
-          "hotkey must be between 0 and 9, or NA"
+          "hotkey must be between 1 and 10, or NA"
         }
       }
     ),
