@@ -5,7 +5,7 @@
 \title{Create Question Card}
 \usage{
 create_question_card(
-  template_question,
+  question,
   question_result,
   current_ast,
   original_ast,
@@ -13,7 +13,7 @@ create_question_card(
 )
 }
 \arguments{
-\item{template_question}{The question object}
+\item{question}{The question object}
 
 \item{question_result}{The validation result for this question}
 

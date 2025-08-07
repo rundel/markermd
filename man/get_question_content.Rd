@@ -2,30 +2,26 @@
 % Please edit documentation in R/mod_mark_validate.R
 \name{get_question_content}
 \alias{get_question_content}
-\title{Get Question Content Display}
+\title{Mark Validation Interface Module}
 \usage{
-get_question_content(
-  current_ast,
-  original_ast,
-  template_question,
-  session,
-  question_name
-)
+get_question_content(repo_ast, template_ast, question, session)
 }
 \arguments{
-\item{current_ast}{The current document AST}
+\item{repo_ast}{The current document AST}
 
-\item{original_ast}{The original template AST}
+\item{template_ast}{The original template AST}
 
-\item{template_question}{The question object with selected nodes}
+\item{question}{The question object with selected nodes}
 
 \item{session}{Shiny session object}
-
-\item{question_name}{The question name for unique IDs}
 }
 \value{
 Shiny UI element or paragraph with message
 }
 \description{
+Shiny module for displaying validation results during marking
+Get Question Content Display
+}
+\details{
 Creates the content display for a question including tree structure
 }

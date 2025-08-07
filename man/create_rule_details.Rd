@@ -4,10 +4,10 @@
 \alias{create_rule_details}
 \title{Create Rule Details Display}
 \usage{
-create_rule_details(template_question, question_result)
+create_rule_details(question, question_result)
 }
 \arguments{
-\item{template_question}{The question object with rules}
+\item{question}{The question object with rules}
 
 \item{question_result}{The validation result for this question}
 }
