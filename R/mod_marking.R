@@ -188,27 +188,12 @@ marking_server = function(id, ast, template_obj, validation_results = shiny::rea
         question_name = input$show_question_content$question
         content = input$show_question_content$content
         
-        # Remove leading whitespace from all lines to prevent Prism indentation issues
-        content_lines = strsplit(content, "\n")[[1]]
-        # Find the minimum indentation (excluding empty lines)
-        non_empty_lines = content_lines[nzchar(trimws(content_lines))]
-        if (length(non_empty_lines) > 0) {
-          min_indent = min(nchar(content_lines) - nchar(trimws(content_lines, which = "left")), na.rm = TRUE)
-          # Remove the minimum indentation from all lines
-          content_lines = sapply(content_lines, function(line) {
-            if (nzchar(trimws(line))) {
-              substr(line, min_indent + 1, nchar(line))
-            } else {
-              line  # Keep empty lines as-is
-            }
-          })
-        }
-        content = paste(content_lines, collapse = "\n")
+        # Monaco Editor handles indentation properly, so we keep original content
         
         
-        # Determine syntax highlighting language based on content type
+        # Determine Monaco Editor language based on content type
         # Try to detect the content type from the content itself
-        syntax_language = if (grepl("^---\\s*$", content, perl = TRUE)) {
+        monaco_language = if (grepl("^---\\s*$", content, perl = TRUE)) {
           "yaml"  # YAML front matter
         } else if (grepl("^```\\{r", content, perl = TRUE)) {
           "r"  # R chunk
@@ -217,27 +202,25 @@ marking_server = function(id, ast, template_obj, validation_results = shiny::rea
         } else if (grepl("^```\\{sql", content, perl = TRUE)) {
           "sql"  # SQL chunk
         } else if (grepl("^```\\{bash", content, perl = TRUE)) {
-          "bash"  # Bash chunk
+          "shell"  # Bash chunk
         } else if (grepl("^```", content, perl = TRUE)) {
-          "text"  # Generic code block
+          "markdown"  # Generic code block - use markdown
         } else {
           "markdown"  # Default to markdown
         }
         
-        # Generate unique modal ID for this question content
-        modal_id = paste0("syntax-content-", gsub("[^A-Za-z0-9]", "", question_name))
+        # Generate unique editor ID for this question content
+        editor_id = paste0("monaco-editor-marking-", gsub("[^A-Za-z0-9]", "", question_name))
         
         shiny::showModal(
           shiny::modalDialog(
             title = shiny::span(paste("Content for", question_name), style = "font-size: 16px; font-weight: bold;"),
             size = "l",
             shiny::div(
-              style = "max-height: 500px; overflow-y: auto;",
-              # Pre element with soft wrapping for long lines
-              shiny::tags$pre(
-                id = modal_id,
-                style = "margin: 0; font-size: 12px; line-height: 1.4; background: #f5f2f0; padding: 15px; border-radius: 3px; white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word;",
-                content  # Raw content without HTML escaping for now
+              style = "height: 400px;",
+              shiny::div(
+                id = editor_id,
+                style = "height: 100%; width: 100%; border: 1px solid #e1e5e9;"
               )
             ),
             footer = NULL,
@@ -245,24 +228,52 @@ marking_server = function(id, ast, template_obj, validation_results = shiny::rea
           )
         )
         
-        # Apply syntax highlighting manually to avoid Prism's auto-formatting
+        # Initialize Monaco Editor
         shinyjs::runjs(paste0("
-          setTimeout(function() {
-            var preElement = document.getElementById('", modal_id, "');
-            if (preElement && typeof Prism !== 'undefined') {
-              // Create a temporary code element with the language class
-              var codeElement = document.createElement('code');
-              codeElement.className = 'language-", syntax_language, "';
-              codeElement.textContent = preElement.textContent;
-              
-              // Clear the pre element and append the code element
-              preElement.innerHTML = '';
-              preElement.appendChild(codeElement);
-              
-              // Highlight just this element
-              Prism.highlightElement(codeElement);
+          (function() {
+            // Load Monaco Editor if not already loaded
+            if (typeof monaco === 'undefined') {
+              var script = document.createElement('script');
+              script.src = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js';
+              script.onload = function() {
+                require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } });
+                require(['vs/editor/editor.main'], function() {
+                  createEditor();
+                });
+              };
+              document.head.appendChild(script);
+            } else {
+              createEditor();
             }
-          }, 200);
+            
+            function createEditor() {
+              // Clean up any existing editor
+              var existingContainer = document.getElementById('", editor_id, "');
+              if (existingContainer && existingContainer.editor) {
+                existingContainer.editor.dispose();
+              }
+              
+              // Create the editor
+              var editor = monaco.editor.create(document.getElementById('", editor_id, "'), {
+                value: ", jsonlite::toJSON(content, auto_unbox = TRUE), ",
+                language: '", monaco_language, "',
+                theme: 'vs',
+                readOnly: true,
+                wordWrap: 'on',
+                wrappingIndent: 'indent',
+                fontSize: 12,
+                lineNumbers: 'on',
+                minimap: { enabled: false },
+                scrollBeyondLastLine: false,
+                automaticLayout: true,
+                contextmenu: false,
+                selectOnLineNumbers: false
+              });
+              
+              // Store reference for cleanup
+              document.getElementById('", editor_id, "').editor = editor;
+            }
+          })();
         "))
       }
     })

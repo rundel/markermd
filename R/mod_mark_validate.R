@@ -246,70 +246,56 @@ mark_validate_server = function(id, ast, current_repo_name = shiny::reactiveVal(
                         as.character() |>
                         paste(collapse = "\n")
                       
-                      # Remove leading whitespace from all lines to prevent Prism indentation issues
-                      content_lines = strsplit(content, "\n")[[1]]
-                      # Find the minimum indentation (excluding empty lines)
-                      non_empty_lines = content_lines[nzchar(trimws(content_lines))]
-                      if (length(non_empty_lines) > 0) {
-                        min_indent = min(nchar(content_lines) - nchar(trimws(content_lines, which = "left")), na.rm = TRUE)
-                        # Remove the minimum indentation from all lines
-                        content_lines = sapply(content_lines, function(line) {
-                          if (nzchar(trimws(line))) {
-                            substr(line, min_indent + 1, nchar(line))
-                          } else {
-                            line  # Keep empty lines as-is
-                          }
-                        })
-                      }
-                      content = paste(content_lines, collapse = "\n")
+                      # Monaco Editor handles indentation properly, so we keep original content
                       
                       # Get node type for title
                       node_type = class(node)[1]
                       
-                      # Determine syntax highlighting language based on node type
-                      syntax_language = switch(node_type,
+                      # Determine Monaco Editor language based on node type
+                      monaco_language = switch(node_type,
                         "rmd_yaml" = "yaml",
                         "rmd_markdown" = "markdown", 
                         "rmd_chunk" = {
                           # Extract engine from chunk
                           if (inherits(node, "rmd_chunk") && !is.null(node@engine)) {
-                            # Map common R Markdown engines to Prism languages
+                            # Map common R Markdown engines to Monaco languages
                             switch(node@engine,
                               "r" = "r",
                               "python" = "python",
                               "sql" = "sql",
-                              "bash" = "bash",
-                              "sh" = "bash",
+                              "bash" = "shell",
+                              "sh" = "shell",
                               "javascript" = "javascript",
                               "js" = "javascript",
                               "css" = "css",
                               "html" = "html",
                               "yaml" = "yaml",
                               "json" = "json",
-                              # Default to R for unknown engines
-                              "r"
+                              # Default to markdown for unknown engines
+                              "markdown"
                             )
                           } else {
-                            "r"  # Default to R
+                            "markdown"  # Default to markdown
                           }
                         },
-                        "rmd_raw_chunk" = "text",
-                        "rmd_code_block" = "text",
-                        # Default to text for other node types
-                        "text"
+                        "rmd_raw_chunk" = "markdown",
+                        "rmd_code_block" = "markdown",
+                        # Default to markdown for other node types
+                        "markdown"
                       )
+                      
+                      # Create unique editor ID
+                      editor_id = paste0("monaco-editor-validate-", local_node_index)
                       
                       shiny::showModal(
                         shiny::modalDialog(
                           title = shiny::span(node_type, style = "font-size: 16px; font-weight: bold;"),
                           size = "l",
                           shiny::div(
-                            style = "max-height: 500px; overflow-y: auto;",
-                            # Pre element with soft wrapping for long lines
-                            shiny::tags$pre(
-                              id = paste0("syntax-content-", local_node_index),
-                              style = "margin: 0; font-size: 12px; line-height: 1.4; background: #f5f2f0; padding: 15px; border-radius: 3px; white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word;",
-                              content  # Raw content without HTML escaping for now
+                            style = "height: 400px;",
+                            shiny::div(
+                              id = editor_id,
+                              style = "height: 100%; width: 100%; border: 1px solid #e1e5e9;"
                             )
                           ),
                           footer = NULL,
@@ -317,24 +303,52 @@ mark_validate_server = function(id, ast, current_repo_name = shiny::reactiveVal(
                         )
                       )
                       
-                      # Apply syntax highlighting manually to avoid Prism's auto-formatting
+                      # Initialize Monaco Editor
                       shinyjs::runjs(paste0("
-                        setTimeout(function() {
-                          var preElement = document.getElementById('syntax-content-", local_node_index, "');
-                          if (preElement && typeof Prism !== 'undefined') {
-                            // Create a temporary code element with the language class
-                            var codeElement = document.createElement('code');
-                            codeElement.className = 'language-", syntax_language, "';
-                            codeElement.textContent = preElement.textContent;
-                            
-                            // Clear the pre element and append the code element
-                            preElement.innerHTML = '';
-                            preElement.appendChild(codeElement);
-                            
-                            // Highlight just this element
-                            Prism.highlightElement(codeElement);
+                        (function() {
+                          // Load Monaco Editor if not already loaded
+                          if (typeof monaco === 'undefined') {
+                            var script = document.createElement('script');
+                            script.src = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js';
+                            script.onload = function() {
+                              require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } });
+                              require(['vs/editor/editor.main'], function() {
+                                createEditor();
+                              });
+                            };
+                            document.head.appendChild(script);
+                          } else {
+                            createEditor();
                           }
-                        }, 200);
+                          
+                          function createEditor() {
+                            // Clean up any existing editor
+                            var existingContainer = document.getElementById('", editor_id, "');
+                            if (existingContainer && existingContainer.editor) {
+                              existingContainer.editor.dispose();
+                            }
+                            
+                            // Create the editor
+                            var editor = monaco.editor.create(document.getElementById('", editor_id, "'), {
+                              value: ", jsonlite::toJSON(content, auto_unbox = TRUE), ",
+                              language: '", monaco_language, "',
+                              theme: 'vs',
+                              readOnly: true,
+                              wordWrap: 'on',
+                              wrappingIndent: 'indent',
+                              fontSize: 12,
+                              lineNumbers: 'on',
+                              minimap: { enabled: false },
+                              scrollBeyondLastLine: false,
+                              automaticLayout: true,
+                              contextmenu: false,
+                              selectOnLineNumbers: false
+                            });
+                            
+                            // Store reference for cleanup
+                            document.getElementById('", editor_id, "').editor = editor;
+                          }
+                        })();
                       "))
                     }
                   }, ignoreInit = TRUE)

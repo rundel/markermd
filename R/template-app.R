@@ -14,12 +14,6 @@ template_app = function(ast, template_obj = NULL) {
     # Initialize shinyjs
     shinyjs::useShinyjs(),
     
-    # Include Prism.js for syntax highlighting
-    shiny::tags$head(
-      shiny::tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css"),
-      shiny::tags$script(src = "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"),
-      shiny::tags$script(src = "https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js")
-    ),
       
       shiny::tags$style(shiny::HTML("
       /* Rule form controls */
@@ -47,34 +41,6 @@ template_app = function(ast, template_obj = NULL) {
       /* Modal styling */
       .modal-header { padding: 8px 15px !important; }
       .modal-title { margin: 0 !important; padding: 0 !important; line-height: 1.2 !important; }
-      
-      /* Code syntax highlighting */
-      .modal-content pre[class*='language-'],
-      .modal-content pre#syntax-content {
-        margin: 0 !important;
-        padding: 15px !important;
-        text-indent: 0 !important;
-        background: #f5f2f0 !important;
-        white-space: pre-wrap !important;
-        word-wrap: break-word !important;
-        overflow-wrap: break-word !important;
-      }
-      
-      .modal-content code[class*='language-'],
-      .modal-content .token {
-        text-indent: 0 !important;
-        padding: 0 !important;
-        margin: 0 !important;
-        white-space: pre-wrap !important;
-        word-wrap: break-word !important;
-        overflow-wrap: break-word !important;
-      }
-      
-      .modal-content code[class*='language-'] {
-        display: block !important;
-        padding-left: 0 !important;
-        margin-left: 0 !important;
-      }
       
       /* Questions container layout */
       #questions_container {
