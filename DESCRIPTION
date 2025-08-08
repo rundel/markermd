@@ -8,7 +8,7 @@ Description: Provides a comprehensive Shiny-based interface for grading assignme
     include template creation with validation rules, interactive AST tree visualization, 
     question-based grading workflows with customizable rubrics and hotkeys, automated 
     validation and scoring systems, and support for both local directories and remote 
-    GitHub repositories with automatic syncing capabilities.
+    GitHub repositories.
 License: GPL (>= 3)
 Depends: 
     R (>= 4.1)
