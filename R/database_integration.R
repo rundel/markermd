@@ -300,3 +300,70 @@ batch_save_rubric_items = function(collection_path, question_name, items_list) {
     })
   })
 }
+
+# Calculate grading progress for all assignments
+#
+# collection_path: Path to collection directory
+# question_names: Character vector of question names
+# assignment_repos: Character vector of assignment repository names
+# Returns: Named list with assignment repos as names and graded question counts as values
+
+calculate_grading_progress = function(collection_path, question_names, assignment_repos) {
+  progress = stats::setNames(rep(0L, length(assignment_repos)), assignment_repos)
+  
+  # Use database connection to check grading status efficiently
+  result = with_database(collection_path, function(conn) {
+    progress_results = list()
+    
+    for (repo in assignment_repos) {
+      graded_questions = 0L
+      
+      for (question in question_names) {
+        is_graded = FALSE
+        
+        # Check if there are any selected rubric items for this question/assignment
+        grade_query = DBI::dbGetQuery(conn, "
+          SELECT g1.*
+          FROM grades g1
+          INNER JOIN (
+            SELECT item_id, MAX(timestamp) as max_timestamp
+            FROM grades
+            WHERE question_name = ? AND assignment_repo = ?
+            GROUP BY item_id
+          ) g2 ON g1.item_id = g2.item_id AND g1.timestamp = g2.max_timestamp
+          WHERE g1.question_name = ? AND g1.assignment_repo = ? AND g1.selected = 1
+        ", params = list(question, repo, question, repo))
+        
+        # If any rubric items are selected, consider it graded
+        if (nrow(grade_query) > 0) {
+          is_graded = TRUE
+        } else {
+          # Check if there's a non-empty comment for this question/assignment
+          comment_query = DBI::dbGetQuery(conn, "
+            SELECT comment_text
+            FROM comments
+            WHERE question_name = ? AND assignment_repo = ?
+            ORDER BY timestamp DESC
+            LIMIT 1
+          ", params = list(question, repo))
+          
+          # If there's a non-empty comment, consider it graded
+          if (nrow(comment_query) > 0 && !is.na(comment_query$comment_text) && nchar(trimws(comment_query$comment_text)) > 0) {
+            is_graded = TRUE
+          }
+        }
+        
+        if (is_graded) {
+          graded_questions = graded_questions + 1L
+        }
+      }
+      
+      progress_results[[repo]] = graded_questions
+    }
+    
+    return(progress_results)
+  })
+  
+  # Convert to named integer vector
+  return(unlist(result))
+}

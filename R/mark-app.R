@@ -615,6 +615,7 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
     title = "markermd - Marking",
     theme = bslib::bs_theme(version = 5),
     selected = "validation",  # Set validation tab as default
+    id = "main_navbar",  # Add id to enable navigation tracking
     
     # Right-align the navigation tabs
     bslib::nav_spacer(),
@@ -782,8 +783,13 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
     #   }, once = TRUE)
     # }
     
+    # Create reactive trigger for progress updates (initialized here to ensure it exists)
+    progress_update_trigger = shiny::reactiveVal(0)
+    
     # Create repository table with gt
     output$repo_table = gt::render_gt({
+      # Include the progress update trigger as a dependency to force refresh when needed
+      trigger_value = progress_update_trigger()
       
       # Create table data with action buttons and validation summary
       repo_df = data.frame(
@@ -908,6 +914,14 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
         }
       })
       
+      # Calculate grading progress for all repos at once (for efficiency)
+      all_progress = NULL
+      question_names = NULL
+      if (!is.null(template_obj) && length(template_obj@questions) > 0) {
+        question_names = sapply(template_obj@questions, function(q) q@name)
+        all_progress = calculate_grading_progress(collection_path, question_names, repo_list)
+      }
+      
       # Add grading progress column with sparkline bars
       repo_df$Grading = sapply(repo_list, function(repo) {
         if (is.null(template_obj)) {
@@ -921,19 +935,57 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
           return("")
         }
         
-        # Get question names from template
-        question_names = sapply(template_obj@questions, function(q) q@name)
-        
-        # Generate random graded questions for testing (in real implementation, this would come from actual grading data)
-        graded_questions = sample(0:total_questions, 1)
+        # Get graded questions from pre-calculated progress
+        graded_questions = all_progress[[repo]]
         percentage = round((graded_questions / total_questions) * 100)
         
-        # Determine ungraded questions for tooltip in template order
+        # Determine ungraded questions for tooltip (only if needed)
         if (graded_questions < total_questions) {
-          # Randomly select which questions are ungraded for testing
-          ungraded_indices = sample(seq_len(total_questions), total_questions - graded_questions)
-          # Keep the ungraded questions in template order (not random order)
-          ungraded_questions = question_names[sort(ungraded_indices)]
+          ungraded_questions = character(0)
+          
+          # Get ungraded questions efficiently
+          graded_status = with_database(collection_path, function(conn) {
+            question_status = rep(FALSE, length(question_names))
+            names(question_status) = question_names
+            
+            for (i in seq_along(question_names)) {
+              question_name = question_names[i]
+              
+              # Check for selected rubric items
+              grade_query = DBI::dbGetQuery(conn, "
+                SELECT COUNT(*) as selected_count
+                FROM grades g1
+                INNER JOIN (
+                  SELECT item_id, MAX(timestamp) as max_timestamp
+                  FROM grades
+                  WHERE question_name = ? AND assignment_repo = ?
+                  GROUP BY item_id
+                ) g2 ON g1.item_id = g2.item_id AND g1.timestamp = g2.max_timestamp
+                WHERE g1.question_name = ? AND g1.assignment_repo = ? AND g1.selected = 1
+              ", params = list(question_name, repo, question_name, repo))
+              
+              if (grade_query$selected_count > 0) {
+                question_status[question_name] = TRUE
+              } else {
+                # Check for non-empty comment
+                comment_query = DBI::dbGetQuery(conn, "
+                  SELECT COUNT(*) as comment_count
+                  FROM comments
+                  WHERE question_name = ? AND assignment_repo = ? AND TRIM(comment_text) != ''
+                  ORDER BY timestamp DESC
+                  LIMIT 1
+                ", params = list(question_name, repo))
+                
+                if (comment_query$comment_count > 0) {
+                  question_status[question_name] = TRUE
+                }
+              }
+            }
+            
+            return(question_status)
+          })
+          
+          ungraded_questions = names(graded_status)[!graded_status]
         } else {
           ungraded_questions = character(0)
         }
@@ -1436,12 +1488,21 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
       }
     })
     
-    # Handle navbar tab switching
-    shiny::observeEvent(input$navbar, {
-      if (!is.null(input$navbar)) {
-        # Switched tabs
+    # Handle navbar tab switching to update grading progress
+    shiny::observeEvent(input$main_navbar, {
+      if (!is.null(input$main_navbar) && input$main_navbar == "validation") {
+        # When validation pane becomes active, refresh the grading progress
+        # This ensures the progress column reflects current grading status
+        
+        # Get current reactive values to check if we have necessary data
+        current_template = template_reactive()
+        
+        if (length(repo_list) > 0 && !is.null(current_template)) {
+          # Increment trigger to force table recalculation
+          progress_update_trigger(progress_update_trigger() + 1)
+        }
       }
-    })
+    }, ignoreInit = TRUE)
   }
   
   # Return the app
