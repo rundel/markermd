@@ -13,6 +13,9 @@ markermd provides a comprehensive Shiny-based interface for grading assignments 
 
 This package is currently in **experimental** development. APIs may change significantly, and some features may not be fully stable. Use with caution in production environments.
 
+This project is also an experimental exercise in "vibe" coding with claude code - not all implementation details have been thoroughly evaluated and there is a lot
+of wonkiness throughout the codebase.
+
 ## Key Features
 
 - 📝 **Template Creation**: Interactive interface for creating grading templates with validation rules
@@ -21,7 +24,7 @@ This package is currently in **experimental** development. APIs may change signi
 - 📊 **Question-Based Grading**: Organize grading around specific questions with customizable rubrics
 - ⌨️ **Hotkey Support**: Fast grading workflows with keyboard shortcuts
 - 🔗 **GitHub Integration**: Support for both local directories and remote GitHub repositories
-- 📋 **Export Options**: Export grades and feedback in various formats
+- 📋 **Export Options**: Export grades and feedback in various formats (*Coming soon*)
 
 ## Installation
 
@@ -46,8 +49,7 @@ remotes::install_github("rundel/parsermd")
 
 ## Quick Start
 
-
-Coming soon ...
+*Coming soon ...*
 
 ## Core Workflows
 
