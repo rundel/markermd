@@ -4,3 +4,7 @@
 ^\.claude$
 ^CLAUDE.md$
 ^test.R$
+^\.github$
+^_pkgdown\.yml$
+^docs$
+^pkgdown$
