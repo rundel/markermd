@@ -1351,6 +1351,67 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
       }
     }, ignoreInit = TRUE)
     
+    # Reactive calculation for selected rubric items' points for current question
+    selected_rubric_points = shiny::reactive({
+      shiny::req(input$question_select)
+      
+      current_servers = question_item_servers[[input$question_select]]
+      if (length(current_servers) == 0) {
+        return(0)
+      }
+      
+      # Sum points from all selected items
+      selected_points = purrr::map_dbl(current_servers, function(server) {
+        item = server$item()
+        if (item@selected) {
+          item@points
+        } else {
+          0
+        }
+      })
+      
+      sum(selected_points)
+    })
+    
+    # Observer to update grade when rubric selections change
+    shiny::observe({
+      shiny::req(input$question_select)
+      
+      current_grade_server = question_grade_servers[[input$question_select]]
+      if (!is.null(current_grade_server)) {
+        current_grade_state = current_grade_server$grade()
+        selected_points_sum = selected_rubric_points()
+        
+        # Calculate new current score based on grading mode
+        new_current_score = if (current_grade_state@grading_mode == "positive") {
+          0 + selected_points_sum
+        } else {
+          current_grade_state@total_score + selected_points_sum
+        }
+        
+        # Apply bounds if enabled
+        if (current_grade_state@bound_above_zero && new_current_score < 0) {
+          new_current_score = 0
+        }
+        if (current_grade_state@bound_below_max && new_current_score > current_grade_state@total_score) {
+          new_current_score = current_grade_state@total_score
+        }
+        
+        # Only update if the score actually changed
+        if (new_current_score != current_grade_state@current_score) {
+          updated_grade_state = markermd_grade_state(
+            current_score = new_current_score,
+            total_score = current_grade_state@total_score,
+            grading_mode = current_grade_state@grading_mode,
+            bound_above_zero = current_grade_state@bound_above_zero,
+            bound_below_max = current_grade_state@bound_below_max
+          )
+          
+          current_grade_server$update_grade(updated_grade_state)
+        }
+      }
+    })
+    
     # Return reactive values for external use
     return(list(
       selected_question = shiny::reactive(input$question_select),
