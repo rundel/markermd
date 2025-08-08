@@ -103,31 +103,31 @@ rule_server = function(id, initial_rule = NULL) {
     
     # Handle node type changes
     shiny::observe({
-      req(input$node_types)
+      shiny::req(input$node_types)
       current_state = state()
       current_state@node_type = input$node_types
       state(current_state)
     }) |>
-      bindEvent(input$node_types)
+      shiny::bindEvent(input$node_types)
     
     # Handle verb changes - reset values when verb changes
     shiny::observe({
-      req(input$verb)
+      shiny::req(input$verb)
       current_state = state()
       current_state@verb = input$verb
       current_state@values = get_default_rule_values(input$verb)
       state(current_state)
     }) |>
-      bindEvent(input$verb)
+      shiny::bindEvent(input$verb)
     
     # Handle value input changes for different verb types
     shiny::observe({
-      req(input$values)
+      shiny::req(input$values)
       current_state = state()
       current_state@values = input$values
       state(current_state)
     }) |>
-      bindEvent(input$values)
+      shiny::bindEvent(input$values)
     
     # Return reactive rule data and delete signal
     return(list(

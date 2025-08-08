@@ -48,9 +48,9 @@ evaluate_rule_has_at_least = function(nodes, rule, num_selected_nodes) {
   
   passed = actual_count >= min_count
   message = if (passed) {
-    cli::pluralize("count check passed: {actual_count} node{?s} (expected ≥ {min_count})")
+    cli::pluralize("count check passed: {actual_count} node{?s} (expected \u2265 {min_count})")
   } else {
-    cli::pluralize("count check failed: {actual_count} node{?s} (expected ≥ {min_count})")
+    cli::pluralize("count check failed: {actual_count} node{?s} (expected \u2265 {min_count})")
   }
   
   list(passed = passed, message = message)
@@ -68,9 +68,9 @@ evaluate_rule_has_at_most = function(nodes, rule, num_selected_nodes) {
   
   passed = actual_count <= max_count
   message = if (passed) {
-    cli::pluralize("count check passed: {actual_count} node{?s} (expected ≤ {max_count})")
+    cli::pluralize("count check passed: {actual_count} node{?s} (expected \u2264 {max_count})")
   } else {
-    cli::pluralize("count check failed: {actual_count} node{?s} (expected ≤ {max_count})")
+    cli::pluralize("count check failed: {actual_count} node{?s} (expected \u2264 {max_count})")
   }
   
   list(passed = passed, message = message)

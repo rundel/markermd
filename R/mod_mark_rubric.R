@@ -602,7 +602,7 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
     
     # Render grade UI for current question
     output$grade_ui = shiny::renderUI({
-      req(input$question_select)
+      shiny::req(input$question_select)
       
       current_grade_server = question_grade_servers[[input$question_select]]
       if (!is.null(current_grade_server)) {
@@ -610,10 +610,10 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
         mark_grade_ui(session$ns(current_grade_server$id), current_grade_state)
       }
     }) |>
-      bindEvent(input$question_select, redraw_ui())
+      shiny::bindEvent(input$question_select, redraw_ui())
     
     output$rubric_items_ui = shiny::renderUI({
-      req(input$question_select)
+      shiny::req(input$question_select)
 
       uis = lapply(question_item_servers[[input$question_select]], function(server) {
         mark_rubric_item_ui(session$ns(server$id), server$item())
@@ -621,13 +621,14 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
       
       return(shiny::tagList(uis))
     }) |>
-      bindEvent(redraw_ui(), input$question_select)
+      shiny::bindEvent(redraw_ui(), input$question_select)
     
     shiny::observe({
       if (!is.null(on_question_change)) {
         on_question_change(input$question_select)
       }
-    }) |> bindEvent(input$question_select)
+    }) |> 
+      shiny::bindEvent(input$question_select)
 
     # Handle add item button
     shiny::observe({
@@ -761,12 +762,12 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
         
         redraw_ui(redraw_ui()+1)
       }) |>
-        bindEvent(server$delete_signal(), ignoreInit = TRUE)
+        shiny::bindEvent(server$delete_signal(), ignoreInit = TRUE)
 
       id_idx <<- id_idx + 1
       redraw_ui(redraw_ui()+1)
     }) |>
-      bindEvent(input$add_item, ignoreInit = TRUE)
+      shiny::bindEvent(input$add_item, ignoreInit = TRUE)
     
     
     # Content tab functionality - populate select input with all repos
@@ -775,13 +776,13 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
       
       # Include all repos regardless of artifact status
       all_repos = names(artifact_status_data)
-      choices = setNames(all_repos, all_repos)
+      choices = stats::setNames(all_repos, all_repos)
       shiny::updateSelectInput(session, "content_repo_select", choices = choices)
     })
     
     # HTML content reactive (only depends on repo and toggle, not question)
     html_content_reactive = shiny::reactive({
-      req(input$content_repo_select)
+      shiny::req(input$content_repo_select)
       selected_repo = input$content_repo_select
       
       # HTML mode - show artifact HTML
@@ -832,11 +833,12 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
           shiny::p("Artifact file not found for selected repository.", class = "text-muted") 
         }
       }
-    }) |> bindEvent(input$content_repo_select, ignoreNULL = FALSE)
+    }) |> 
+      shiny::bindEvent(input$content_repo_select, ignoreNULL = FALSE)
     
     # Raw content reactive (only depends on repo, no highlighting)
     raw_content_reactive = shiny::reactive({
-      req(input$content_repo_select)
+      shiny::req(input$content_repo_select)
       selected_repo = input$content_repo_select
       
       # Get raw content without highlighting
@@ -860,11 +862,12 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
         file_ext = if (use_qmd) ".qmd" else ".Rmd"
         shiny::p(paste("No", file_ext, "content available for selected repository."), class = "text-muted")
       }
-    }) |> bindEvent(input$content_repo_select, ignoreNULL = FALSE)
+    }) |> 
+      shiny::bindEvent(input$content_repo_select, ignoreNULL = FALSE)
     
     # Separate reactive for highlight ranges (depends on both repo and question)
     highlight_ranges_reactive = shiny::reactive({
-      req(input$content_repo_select, input$question_select)
+      shiny::req(input$content_repo_select, input$question_select)
       selected_repo = input$content_repo_select
       current_question = input$question_select
       
@@ -906,7 +909,7 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
     
     # Observer to update Monaco Editor highlights when question changes
     shiny::observe({
-      req(input$content_repo_select, input$question_select)
+      shiny::req(input$content_repo_select, input$question_select)
       highlight_ranges = highlight_ranges_reactive()
       
       if (!is.null(highlight_ranges) && length(highlight_ranges) > 0) {
@@ -992,7 +995,8 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
           clearHighlights();
         ")
       }
-    }) |> shiny::bindEvent(highlight_ranges_reactive(), ignoreNULL = FALSE)
+    }) |> 
+      shiny::bindEvent(highlight_ranges_reactive(), ignoreNULL = FALSE)
     
     # Observer to apply initial highlighting when switching to raw mode
     shiny::observe({
@@ -1061,7 +1065,8 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
           }
         })
       }
-    }) |> shiny::bindEvent(input$html_toggle, input$content_repo_select, input$question_select, ignoreInit = TRUE)
+    }) |> 
+      shiny::bindEvent(input$html_toggle, input$content_repo_select, input$question_select, ignoreInit = TRUE)
     
     # Display content based on HTML toggle state
     output$content_display = shiny::renderUI({
@@ -1074,7 +1079,7 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
     
     # Create scrolling callback function
     scroll_to_question = function(selected_question) {
-      req(input$content_repo_select)
+      shiny::req(input$content_repo_select)
       # Handle both HTML and raw content modes
       if (!input$html_toggle) {
         # Raw content mode - highlighting is handled by content display reactive
@@ -1267,11 +1272,12 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
       }
       # Always trigger scrolling when question changes
       scroll_to_question(input$question_select)
-    }) |> bindEvent(input$question_select, ignoreInit = FALSE)
+    }) |> 
+      shiny::bindEvent(input$question_select, ignoreInit = FALSE)
     
     # Observer to trigger initial highlighting when switching repos
     shiny::observe({
-      req(input$content_repo_select, input$question_select)
+      shiny::req(input$content_repo_select, input$question_select)
       # Only trigger on repo changes, not question changes
       shiny::invalidateLater(500, session)
       shiny::isolate({
@@ -1351,7 +1357,7 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
       selected_content_repo = shiny::reactive(input$content_repo_select),
       question_grade_servers = question_grade_servers,
       current_grade = shiny::reactive({
-        req(input$question_select)
+        shiny::req(input$question_select)
         current_server = question_grade_servers[[input$question_select]]
         if (!is.null(current_server)) {
           current_server$grade()

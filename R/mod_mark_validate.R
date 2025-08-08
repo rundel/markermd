@@ -175,7 +175,7 @@ mark_validate_server = function(id, ast, current_repo_name = shiny::reactiveVal(
     
     
     output$template_validation_ui = shiny::renderUI({
-      req(template(), validation_results(), ast())
+      shiny::req(template(), validation_results(), ast())
       
       current_validation = validation_results()
       current_template = template()
@@ -204,7 +204,7 @@ mark_validate_server = function(id, ast, current_repo_name = shiny::reactiveVal(
     # Create preview button observers once when template and AST are available
     shiny::observe({
       # Use req() for cleaner validation 
-      req(template(), ast())
+      shiny::req(template(), ast())
       
       current_template = template()
       current_ast = ast()

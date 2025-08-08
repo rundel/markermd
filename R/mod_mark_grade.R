@@ -75,8 +75,8 @@ mark_grade_ui = function(id, grade_state) {
               ns("grade_bounds"),
               shiny::strong("Grade bounds:"),
               choices = list(
-                "Enforce score ≥ 0" = "above_zero",
-                "Enforce score ≤ max" = "below_max"
+                "Enforce score \u2265 0" = "above_zero",
+                "Enforce score \u2264 max" = "below_max"
               ),
               selected = c(
                 if (grade_state@bound_above_zero) "above_zero",

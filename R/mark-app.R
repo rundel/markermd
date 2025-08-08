@@ -65,7 +65,7 @@ download_artifact_if_needed = function(github_repo, repo_name, collection_path, 
     tryCatch({
       # Use ghclass to download the artifact - specify the temporary directory
       suppressMessages({
-        capture.output({
+        utils::capture.output({
           ghclass::action_artifact_download(github_repo, dir = temp_download_dir)
         }, type = "output")
       })
@@ -152,7 +152,7 @@ get_archive_metadata = function(github_repos) {
   tryCatch({
     # Suppress all output and messages from ghclass
     all_artifacts = suppressMessages(suppressWarnings({
-      capture.output({
+      utils::capture.output({
         result = tryCatch({
           ghclass::action_artifacts(github_repos)
         }, error = function(e) {
@@ -878,7 +878,7 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
         if (fail_count > 0) {
           if (length(failed_questions) > 0) {
             tooltip_parts = c(tooltip_parts, "Failed validation:")
-            tooltip_parts = c(tooltip_parts, paste("•", failed_questions))
+            tooltip_parts = c(tooltip_parts, paste("\u2022", failed_questions))
           }
         } else {
           tooltip_parts = paste("All", total_count, "validation rules passed")
@@ -932,7 +932,7 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
         } else {
           if (length(ungraded_questions) > 0) {
             tooltip_parts = c(tooltip_parts, "Ungraded questions:")
-            tooltip_parts = c(tooltip_parts, paste("•", ungraded_questions))
+            tooltip_parts = c(tooltip_parts, paste("\u2022", ungraded_questions))
           }
         }
         
@@ -984,13 +984,13 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
       table_data = repo_df[, c("Repository", "Folder", "GitHub", "Artifacts", "Source", "Validation", "Grading"), drop = FALSE]
       
       gt_table = gt::gt(table_data) |>
-        gt::fmt_markdown(columns = Repository) |>
-        gt::fmt_markdown(columns = Folder) |>
-        gt::fmt_markdown(columns = GitHub) |>
-        gt::fmt_markdown(columns = Artifacts) |>
-        gt::fmt_markdown(columns = Source) |>
-        gt::fmt_markdown(columns = Grading) |>
-        gt::fmt_markdown(columns = Validation) |>
+        gt::fmt_markdown(columns = .data$Repository) |>
+        gt::fmt_markdown(columns = .data$Folder) |>
+        gt::fmt_markdown(columns = .data$GitHub) |>
+        gt::fmt_markdown(columns = .data$Artifacts) |>
+        gt::fmt_markdown(columns = .data$Source) |>
+        gt::fmt_markdown(columns = .data$Grading) |>
+        gt::fmt_markdown(columns = .data$Validation) |>
         gt::cols_label(
           Repository = "Repository", 
           Folder = "", GitHub = "", Artifacts = "", Source = "",
@@ -1005,7 +1005,7 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
           Validation ~ pct(17),
           Grading ~ pct(26)
         ) |>
-        gt::cols_align(align = "center", columns = Validation)
+        gt::cols_align(align = "center", columns = .data$Validation)
       
       gt_table |>
         gt::tab_options(

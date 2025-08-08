@@ -135,13 +135,13 @@ question_server = function(id, ast, initial_question = NULL) {
       }
     })
         
-    observe({
-      req(input$question_name)
+    shiny::observe({
+      shiny::req(input$question_name)
       cur_state = state()
       cur_state@name = input$question_name
       state(cur_state)
     }) |>
-      bindEvent(input$question_name)
+      shiny::bindEvent(input$question_name)
     
     # Rule management - simplified working approach
     rules_list = shiny::reactiveVal(list())
@@ -219,7 +219,7 @@ question_server = function(id, ast, initial_question = NULL) {
       # Increment rule ID for next rule
       next_rule_id(rule_id + 1L)
     }) |>
-      bindEvent(input$add_rule)
+      shiny::bindEvent(input$add_rule)
     
     # Dynamic delete observer management
     delete_observers = shiny::reactiveVal(list())
@@ -333,7 +333,7 @@ question_server = function(id, ast, initial_question = NULL) {
         values_input = paste0("rule_", rule_id, "-values")
         
         # Update rule if inputs have changed
-        req(input[[node_types_input]], input[[verb_input]])
+        shiny::req(input[[node_types_input]], input[[verb_input]])
         
         rule = current_rules[[rule_id]]
         new_node_type = input[[node_types_input]]
@@ -425,7 +425,7 @@ question_server = function(id, ast, initial_question = NULL) {
         current_verb_value = all_inputs[[verb_input_id]]
         
         
-        req(current_verb_value)
+        shiny::req(current_verb_value)
         
         rule = current_rules[[rule_id]]
         if (rule@verb != current_verb_value) {

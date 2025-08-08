@@ -81,7 +81,7 @@ build_ast_tree_structure = function(ast) {
       depth = depth,
       parent_index = parent_index,
       description = description,
-      prefix = "├── " # Will be updated later
+      prefix = "\\u251c\\u2500\\u2500 " # Will be updated later
     )
     
     tree_items[[i + 1]] = item  # Store at i+1 because document root is at index 1
@@ -90,9 +90,9 @@ build_ast_tree_structure = function(ast) {
   # Set appropriate prefixes for all items
   for (i in seq_along(tree_items)) {
     if (tree_items[[i]]$type == "document_root") {
-      tree_items[[i]]$prefix = "📄 "  # Document icon for root
+      tree_items[[i]]$prefix = "\\U0001F4C4 "  # Document icon for root
     } else {
-      tree_items[[i]]$prefix = "├── "
+      tree_items[[i]]$prefix = "\\u251c\\u2500\\u2500 "
     }
   }
   
@@ -335,7 +335,7 @@ build_simple_tree_level = function(tree_items, target_depth, parent_index, all_s
       document_icon = shiny::div(
         class = "tree-toggle-btn",
         style = "background: transparent; border: none; cursor: default; pointer-events: none; font-size: 16px;",
-        shiny::HTML("📄")
+        shiny::HTML("\\U0001F4C4")
       )
       
       node_content = shiny::div(
@@ -475,9 +475,9 @@ create_tree_connector = function(item, tree_items, current_index) {
   prefix = item$prefix
   prefix_chars = strsplit(prefix, "")[[1]]
   
-  # The prefix structure is: "│   │   ├── " (no leading space)
-  # Each level is 4 characters: either "│   " (continuation) or "    " (gap)
-  # Final level ends with "├── " or "└── "
+  # The prefix structure is: "\u2502   \u2502   \u251c\u2500\u2500 " (no leading space)
+  # Each level is 4 characters: either "\u2502   " (continuation) or "    " (gap)
+  # Final level ends with "\u251c\u2500\u2500 " or "\u2514\u2500\u2500 "
   
   # Find the positions of the tree characters
   continuation_levels = c()
@@ -492,7 +492,7 @@ create_tree_connector = function(item, tree_items, current_index) {
         
         if (pos <= length(prefix_chars)) {
           char = prefix_chars[pos]
-          if (char == "│") {
+          if (char == "\u2502") {
             continuation_levels = c(continuation_levels, level)
           }
         }
@@ -503,7 +503,7 @@ create_tree_connector = function(item, tree_items, current_index) {
     branch_pos = depth * 4 + 1  # Branch character position
     if (branch_pos <= length(prefix_chars)) {
       char = prefix_chars[branch_pos]
-      if (char %in% c("├", "└")) {
+      if (char %in% c("\u251c", "\u2514")) {
         branch_char = char
       }
     }
@@ -532,8 +532,8 @@ create_tree_connector = function(item, tree_items, current_index) {
       )
     )
     
-    # Bottom half - only if this is not the last child (├ vs └)
-    if (branch_char == "├") {
+    # Bottom half - only if this is not the last child (\u251c vs \u2514)
+    if (branch_char == "\u251c") {
       connectors[[length(connectors) + 1]] = shiny::div(
         style = paste0(
           "position: absolute; left: ", x_pos, "px; top: 10px; width: 2px; height: 10px; ",
@@ -817,7 +817,7 @@ create_simple_tree_readonly_at_depth = function(tree_items, ns, repo_id = NULL, 
     
     /* Document icon for root node */
     .", css_class, " li.document-root::after {
-      content: '📄';
+      content: '\\U0001F4C4';
       background: transparent;
       border-radius: 0;
       width: calc(2 * var(--radius));
@@ -1117,7 +1117,7 @@ create_unified_tree_css = function(css_class, selection_mode) {
       
       /* Document icon for root node */
       .", css_class, " li.document-root::after {
-        content: '📄';
+        content: '\\U0001F4C4';
         background: transparent;
         border-radius: 0;
         width: calc(2 * var(--radius));
@@ -1152,7 +1152,7 @@ create_unified_tree_css = function(css_class, selection_mode) {
       
       /* Document icon for root node */
       .", css_class, " li.document-root::after {
-        content: '📄';
+        content: '\\U0001F4C4';
         background: transparent;
         border-radius: 0;
         width: calc(2 * var(--radius));
@@ -1212,7 +1212,7 @@ build_unified_tree_level = function(tree_items, target_depth, parent_index, all_
         document_icon = shiny::div(
           class = "tree-toggle-btn",
           style = "background: transparent; border: none; cursor: default; pointer-events: none; font-size: 16px;",
-          shiny::HTML("📄")
+          shiny::HTML("\\U0001F4C4")
         )
         
         node_content = shiny::div(

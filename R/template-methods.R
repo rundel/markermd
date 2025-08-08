@@ -134,7 +134,7 @@ as_markermd_metadata = function(x) {
   }
   
   if (is.null(x) || length(x) == 0) {
-    return(template_metadata())
+    return(markermd_metadata())
   }
   
   if (!is.list(x)) {
