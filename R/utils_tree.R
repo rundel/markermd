@@ -90,7 +90,7 @@ build_ast_tree_structure = function(ast) {
   # Set appropriate prefixes for all items
   for (i in seq_along(tree_items)) {
     if (tree_items[[i]]$type == "document_root") {
-      tree_items[[i]]$prefix = "\\U0001F4C4 "  # Document icon for root
+      tree_items[[i]]$prefix = ""  # Document icon for root handled by CSS
     } else {
       tree_items[[i]]$prefix = "\\u251c\\u2500\\u2500 "
     }
@@ -334,8 +334,7 @@ build_simple_tree_level = function(tree_items, target_depth, parent_index, all_s
       # Create a positioned icon similar to the tree-toggle-btn
       document_icon = shiny::div(
         class = "tree-toggle-btn",
-        style = "background: transparent; border: none; cursor: default; pointer-events: none; font-size: 16px;",
-        shiny::HTML("\\U0001F4C4")
+        style = "background: #ddd; border: 1px solid #bbb; cursor: default; pointer-events: none;"
       )
       
       node_content = shiny::div(
@@ -817,15 +816,11 @@ create_simple_tree_readonly_at_depth = function(tree_items, ns, repo_id = NULL, 
     
     /* Document icon for root node */
     .", css_class, " li.document-root::after {
-      content: '\\U0001F4C4';
-      background: transparent;
-      border-radius: 0;
+      content: '';
+      background: #ddd;
+      border-radius: 50%;
       width: calc(2 * var(--radius));
       height: calc(2 * var(--radius));
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 16px;
     }
     
     .", css_class, " .tree-node-content {
@@ -1117,15 +1112,11 @@ create_unified_tree_css = function(css_class, selection_mode) {
       
       /* Document icon for root node */
       .", css_class, " li.document-root::after {
-        content: '\\U0001F4C4';
-        background: transparent;
-        border-radius: 0;
+        content: '';
+        background: #ddd;
+        border-radius: 50%;
         width: calc(2 * var(--radius));
         height: calc(2 * var(--radius));
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 16px;
       }
     "),
     "highlight_only" = paste0("
@@ -1152,15 +1143,11 @@ create_unified_tree_css = function(css_class, selection_mode) {
       
       /* Document icon for root node */
       .", css_class, " li.document-root::after {
-        content: '\\U0001F4C4';
-        background: transparent;
-        border-radius: 0;
+        content: '';
+        background: #ddd;
+        border-radius: 50%;
         width: calc(2 * var(--radius));
         height: calc(2 * var(--radius));
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 16px;
       }
     ")
   )
@@ -1211,8 +1198,7 @@ build_unified_tree_level = function(tree_items, target_depth, parent_index, all_
         # Interactive mode - positioned icon similar to tree-toggle-btn
         document_icon = shiny::div(
           class = "tree-toggle-btn",
-          style = "background: transparent; border: none; cursor: default; pointer-events: none; font-size: 16px;",
-          shiny::HTML("\\U0001F4C4")
+          style = "background: #ddd; border: 1px solid #bbb; cursor: default; pointer-events: none;"
         )
         
         node_content = shiny::div(
