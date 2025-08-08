@@ -469,6 +469,17 @@ mark = function(collection_path, template = NULL, use_qmd = TRUE, download_archi
     }
   }
   
+  # Initialize database for persistent storage
+  database_state = NULL
+  if (!is.null(template_obj)) {
+    # Initialize database and load existing state
+    tryCatch({
+      database_state = initialize_database_state(collection_path, template_obj)
+    }, error = function(e) {
+      warning("Database initialization failed: ", e$message)
+      database_state = NULL
+    })
+  }
   
   # Parse the collection using parsermd
   if (use_qmd) {
@@ -570,7 +581,8 @@ mark = function(collection_path, template = NULL, use_qmd = TRUE, download_archi
     artifact_status,
     repo_to_github,
     template_path = if(is.character(template)) template else NULL,
-    download_archives = download_archives
+    download_archives = download_archives,
+    database_state = database_state
   )
   shiny::runApp(app, ...)
 }
@@ -592,10 +604,11 @@ mark = function(collection_path, template = NULL, use_qmd = TRUE, download_archi
 #' @param repo_to_github Named list mapping repository names to GitHub repos
 #' @param template_path Character string. Path to template file (optional)
 #' @param download_archives Logical. Whether archives were downloaded at launch
+#' @param database_state List. Database state loaded from SQLite (optional)
 #'
 #' @return Shiny app object
 #'
-create_markermd_app = function(collection_path, template_obj, use_qmd, collection, repo_list, validation_results, initial_repo_ast, initial_repo_name, artifact_status, repo_to_github, template_path = NULL, download_archives = TRUE) {
+create_markermd_app = function(collection_path, template_obj, use_qmd, collection, repo_list, validation_results, initial_repo_ast, initial_repo_name, artifact_status, repo_to_github, template_path = NULL, download_archives = TRUE, database_state = NULL) {
   
   # Define UI  
   ui = bslib::page_navbar(
@@ -1285,7 +1298,7 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
     
     
     # Initialize rubric module with callback
-    rubric_result = mark_rubric_server("rubric_module", template_obj, artifact_status_reactive, collection_path, use_qmd, collection)
+    rubric_result = mark_rubric_server("rubric_module", template_obj, artifact_status_reactive, collection_path, use_qmd, collection, database_state)
     
     
     

@@ -141,8 +141,10 @@ mark_grade_ui = function(id, grade_state) {
 #' @param id Character. Module namespace ID
 #' @param initial_grade markermd_grade_state S7 object with initial state
 #' @param ui_ns Function. Optional UI namespace function for JavaScript element targeting
+#' @param collection_path Character string. Path to collection directory (optional)
+#' @param question_name Character string. Name of the question (optional)
 #' @export
-mark_grade_server = function(id, initial_grade, ui_ns = NULL) {
+mark_grade_server = function(id, initial_grade, ui_ns = NULL, collection_path = NULL, question_name = NULL) {
   # Use same sanitized ID as the UI
   safe_id = gsub("[^A-Za-z0-9_-]", "_", id)
   ns = shiny::NS(safe_id)
@@ -195,6 +197,11 @@ mark_grade_server = function(id, initial_grade, ui_ns = NULL) {
         
         grade_state(new_grade)
         
+        # Save to database if parameters are provided
+        if (!is.null(collection_path) && !is.null(question_name)) {
+          save_grade_state(collection_path, question_name, new_grade)
+        }
+        
         # Update display with new total and potentially adjusted current score
         shinyjs::runjs(glue::glue("
           var scoreDiv = document.getElementById('{target_ns('score_display')}');
@@ -230,6 +237,11 @@ mark_grade_server = function(id, initial_grade, ui_ns = NULL) {
         
         grade_state(new_grade)
         
+        # Save to database if parameters are provided
+        if (!is.null(collection_path) && !is.null(question_name)) {
+          save_grade_state(collection_path, question_name, new_grade)
+        }
+        
         # Update the display
         shinyjs::runjs(glue::glue("
           var scoreDiv = document.getElementById('{target_ns('score_display')}');
@@ -262,6 +274,11 @@ mark_grade_server = function(id, initial_grade, ui_ns = NULL) {
         )
         
         grade_state(new_grade)
+        
+        # Save to database if parameters are provided
+        if (!is.null(collection_path) && !is.null(question_name)) {
+          save_grade_state(collection_path, question_name, new_grade)
+        }
       }
     }, ignoreInit = TRUE)
     
@@ -272,6 +289,11 @@ mark_grade_server = function(id, initial_grade, ui_ns = NULL) {
       grade = shiny::reactive(grade_state()),
       update_grade = function(new_grade) {
         grade_state(new_grade)
+        
+        # Save to database if parameters are provided
+        if (!is.null(collection_path) && !is.null(question_name)) {
+          save_grade_state(collection_path, question_name, new_grade)
+        }
         
         # Update the display
         shinyjs::runjs(glue::glue("

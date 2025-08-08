@@ -213,9 +213,10 @@ mark_rubric_ui = function(id) {
 #' @param collection_path Character string. Path to collection directory
 #' @param use_qmd Logical. Whether to parse .qmd files (TRUE) or .Rmd files (FALSE)
 #' @param collection Parsed collection data from parsermd
+#' @param database_state List. Database state loaded from SQLite (optional)
 #' @param on_question_change Reactive function. Callback when question selection changes
 #'
-mark_rubric_server = function(id, template, artifact_status_reactive, collection_path, use_qmd, collection, on_question_change = NULL) {
+mark_rubric_server = function(id, template, artifact_status_reactive, collection_path, use_qmd, collection, database_state = NULL, on_question_change = NULL) {
   shiny::moduleServer(id, function(input, output, session) {
     
     # Global id index
@@ -579,19 +580,54 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
     question_grade_servers = shiny::reactiveValues()
     for(name in question_names) {
       question_item_servers[[name]] = list()
-      # Initialize grade server for each question 
+      # Initialize grade server for each question using database state if available
       local({
         question_name = name
+        initial_grade_state = if (!is.null(database_state) && 
+                                   !is.null(database_state$grade_states[[question_name]])) {
+          database_state$grade_states[[question_name]]
+        } else {
+          markermd_grade_state(current_score = 0, total_score = 10)
+        }
+        
         question_grade_servers[[question_name]] = mark_grade_server(
           paste0("grade_", question_name),
-          markermd_grade_state(current_score = 0, total_score = 10),
-          ui_ns = session$ns
+          initial_grade_state,
+          ui_ns = session$ns,
+          collection_path = collection_path,
+          question_name = question_name
         )
       })
     }
     
 
     redraw_ui = shiny::reactiveVal(0)
+    
+    # Initialize rubric items from database state inside an observer
+    shiny::observe({
+      if (!is.null(database_state) && !is.null(database_state$rubric_items)) {
+        for (question_name in question_names) {
+          if (!is.null(database_state$rubric_items[[question_name]]) &&
+              length(database_state$rubric_items[[question_name]]) > 0) {
+            saved_items = database_state$rubric_items[[question_name]]
+            for (item_id in names(saved_items)) {
+              server_id = item_id  # Use the same ID from database
+              server = mark_rubric_item_server(
+                server_id,
+                saved_items[[item_id]],
+                collection_path = collection_path,
+                question_name = question_name,
+                item_id = item_id
+              )
+              question_item_servers[[question_name]][[server_id]] = server
+            }
+          }
+        }
+        # Trigger UI redraw to show loaded items
+        redraw_ui(redraw_ui() + 1)
+      }
+    }) |>
+      shiny::bindEvent(TRUE, once = TRUE)  # Run once when module starts
 
     shiny::observe({
       shiny::updateSelectInput(
@@ -632,16 +668,33 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
 
     # Handle add item button
     shiny::observe({
+      # Find a unique server_id by checking existing items
+      current_servers = question_item_servers[[input$question_select]]
+      existing_ids = names(current_servers)
+      
+      # Generate unique server_id
       server_id = paste0("item_", id_idx)
+      while (server_id %in% existing_ids) {
+        id_idx <<- id_idx + 1
+        server_id = paste0("item_", id_idx)
+      }
 
-      hotkey = max( 0L, purrr::map_int(question_item_servers[[input$question_select]], ~ .x$item()@hotkey) )+1L
+      hotkey = max( 0L, purrr::map_int(current_servers, ~ .x$item()@hotkey) )+1L
       hotkey = if (hotkey > 10) NA_integer_ else hotkey
 
+      new_item = markermd_rubric_item(hotkey, 0, "")
+      
       server = mark_rubric_item_server(
           server_id,
-          markermd_rubric_item(hotkey, 0, "")
+          new_item,
+          collection_path = collection_path,
+          question_name = input$question_select,
+          item_id = server_id
       )
       question_item_servers[[input$question_select]][[server_id]] = server
+      
+      # Save new item to database
+      save_rubric_item(collection_path, input$question_select, server_id, new_item)
 
       # Handle move up signal
       shiny::observe({
@@ -1372,6 +1425,125 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
       
       sum(selected_points)
     })
+    
+    # Store previous selection states to detect changes
+    previous_selections = shiny::reactiveVal(list())
+    
+    # Observer to log grade selection changes to database
+    shiny::observe({
+      shiny::req(input$question_select, 
+                 input$content_repo_select,
+                 cancelOutput = TRUE)
+      
+      current_question = input$question_select
+      current_repo = input$content_repo_select
+      
+      # Ensure question_item_servers is available and has the current question
+      shiny::req(length(question_item_servers) > 0, 
+                 current_question %in% names(question_item_servers),
+                 cancelOutput = TRUE)
+      
+      current_servers = question_item_servers[[current_question]]
+      
+      if (length(current_servers) == 0) {
+        return()
+      }
+      
+      # Get current selection states
+      current_selections = purrr::map_lgl(current_servers, function(server) {
+        server$item()@selected
+      })
+      names(current_selections) = names(current_servers)
+      
+      # Get previous selections for this question/repo combination
+      prev_key = paste(current_question, current_repo, sep = ":")
+      all_prev = previous_selections()
+      prev_selections = if (!is.null(all_prev) && prev_key %in% names(all_prev)) {
+        all_prev[[prev_key]]
+      } else {
+        NULL
+      }
+      
+      if (!is.null(prev_selections) && length(prev_selections) > 0) {
+        # Compare with previous state and log changes
+        for (item_id in names(current_selections)) {
+          current_selected = current_selections[[item_id]]
+          prev_selected = if (item_id %in% names(prev_selections)) prev_selections[[item_id]] else NULL
+          
+          # Log to database if selection state changed
+          if (is.null(prev_selected) || current_selected != prev_selected) {
+            save_grade_selection(collection_path, current_question, current_repo, item_id, current_selected)
+          }
+        }
+      }
+      
+      # Update stored selections
+      if (is.null(all_prev)) all_prev = list()
+      all_prev[[prev_key]] = current_selections
+      previous_selections(all_prev)
+    })
+    
+    # Observer to load saved grade selections when switching repos or questions
+    shiny::observe({
+      shiny::req(input$question_select, 
+                 input$content_repo_select,
+                 cancelOutput = TRUE)
+      
+      current_question = input$question_select
+      current_repo = input$content_repo_select
+      
+      # Ensure question_item_servers is available and has the current question
+      shiny::req(length(question_item_servers) > 0, 
+                 current_question %in% names(question_item_servers),
+                 cancelOutput = TRUE)
+      
+      current_servers = question_item_servers[[current_question]]
+      
+      if (length(current_servers) == 0) {
+        return()
+      }
+      
+      # Load saved selections from database
+      saved_selections = load_grade_selections(collection_path, current_question, current_repo)
+      
+      # Apply saved selections to current servers (or reset to defaults)
+      for (item_id in names(current_servers)) {
+        server = current_servers[[item_id]]
+        current_item = server$item()
+        
+        # Get saved selection state, default to FALSE if not found
+        saved_selected = if (length(saved_selections) > 0 && item_id %in% names(saved_selections)) {
+          saved_selections[[item_id]]
+        } else {
+          FALSE  # Default state when no saved selection exists
+        }
+        
+        # Update if different from current state
+        if (current_item@selected != saved_selected) {
+          updated_item = markermd_rubric_item(
+            hotkey = current_item@hotkey,
+            points = current_item@points,
+            description = current_item@description,
+            selected = saved_selected
+          )
+          server$update_item(updated_item)
+        }
+      }
+      
+      # Initialize current selections in tracking
+      current_selections = purrr::map_lgl(current_servers, function(server) {
+        server$item()@selected
+      })
+      names(current_selections) = names(current_servers)
+      
+      prev_key = paste(current_question, current_repo, sep = ":")
+      all_prev = previous_selections()
+      if (is.null(all_prev)) all_prev = list()
+      all_prev[[prev_key]] = current_selections
+      previous_selections(all_prev)
+      
+    }) |>
+      shiny::bindEvent(input$question_select, input$content_repo_select, ignoreInit = TRUE)
     
     # Observer to update grade when rubric selections change
     shiny::observe({

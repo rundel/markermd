@@ -33,5 +33,7 @@ Imports:
     cli,
     S7,
     rlang,
-    shinyWidgets
+    shinyWidgets,
+    DBI,
+    RSQLite
 URL: https://rundel.github.io/markermd/

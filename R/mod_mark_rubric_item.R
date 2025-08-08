@@ -228,8 +228,11 @@ mark_rubric_item_ui = function(id, rubric_item) {
 #'
 #' @param id Character. Module namespace ID
 #' @param initial_item markermd_rubric_item S7 object with initial state
+#' @param collection_path Character string. Path to collection directory (optional)
+#' @param question_name Character string. Name of the question (optional)
+#' @param item_id Character string. Unique identifier for this item (optional)
 #'
-mark_rubric_item_server = function(id, initial_item) {
+mark_rubric_item_server = function(id, initial_item, collection_path = NULL, question_name = NULL, item_id = NULL) {
   ns = shiny::NS(id)
 
   shiny::moduleServer(id, function(input, output, session) {
@@ -254,6 +257,11 @@ mark_rubric_item_server = function(id, initial_item) {
         )
         
         rubric_item_state(new_item)
+        
+        # Save to database if parameters are provided
+        if (!is.null(collection_path) && !is.null(question_name) && !is.null(item_id)) {
+          save_rubric_item(collection_path, question_name, item_id, new_item)
+        }
       }
     }, ignoreInit = TRUE)
     
@@ -272,6 +280,11 @@ mark_rubric_item_server = function(id, initial_item) {
         )
         
         rubric_item_state(new_item)
+        
+        # Save to database if parameters are provided
+        if (!is.null(collection_path) && !is.null(question_name) && !is.null(item_id)) {
+          save_rubric_item(collection_path, question_name, item_id, new_item)
+        }
       }
     }, ignoreInit = TRUE)
   
