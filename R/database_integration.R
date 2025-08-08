@@ -367,3 +367,62 @@ calculate_grading_progress = function(collection_path, question_names, assignmen
   # Convert to named integer vector
   return(unlist(result))
 }
+
+# Calculate grading progress for a single question across all assignments
+#
+# collection_path: Path to collection directory
+# question_name: Character string - name of the question
+# assignment_repos: Character vector of assignment repository names
+# Returns: List with graded_count and total_count
+
+calculate_question_progress = function(collection_path, question_name, assignment_repos) {
+  result = with_database(collection_path, function(conn) {
+    graded_count = 0L
+    
+    for (repo in assignment_repos) {
+      is_graded = FALSE
+      
+      # Check if there are any selected rubric items for this question/assignment
+      grade_query = DBI::dbGetQuery(conn, "
+        SELECT COUNT(*) as selected_count
+        FROM grades g1
+        INNER JOIN (
+          SELECT item_id, MAX(timestamp) as max_timestamp
+          FROM grades
+          WHERE question_name = ? AND assignment_repo = ?
+          GROUP BY item_id
+        ) g2 ON g1.item_id = g2.item_id AND g1.timestamp = g2.max_timestamp
+        WHERE g1.question_name = ? AND g1.assignment_repo = ? AND g1.selected = 1
+      ", params = list(question_name, repo, question_name, repo))
+      
+      # If any rubric items are selected, consider it graded
+      if (grade_query$selected_count > 0) {
+        is_graded = TRUE
+      } else {
+        # Check if there's a non-empty comment for this question/assignment
+        comment_query = DBI::dbGetQuery(conn, "
+          SELECT COUNT(*) as comment_count
+          FROM comments
+          WHERE question_name = ? AND assignment_repo = ? AND TRIM(comment_text) != ''
+          ORDER BY timestamp DESC
+          LIMIT 1
+        ", params = list(question_name, repo))
+        
+        if (comment_query$comment_count > 0) {
+          is_graded = TRUE
+        }
+      }
+      
+      if (is_graded) {
+        graded_count = graded_count + 1L
+      }
+    }
+    
+    return(list(
+      graded_count = graded_count,
+      total_count = length(assignment_repos)
+    ))
+  })
+  
+  return(result)
+}
