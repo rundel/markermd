@@ -104,17 +104,12 @@ The template interface shows:
 
 ### Grading Interface
 
-#### Validation Tab
+#### Validation
 ![Grading Validation Interface](man/figures/mark_validation_screenshot.png)
 
-#### Rubric Tab  
+#### Grading Rubric  
 ![Grading Rubric Interface](man/figures/mark_rubric_screenshot.png)
 
-The grading interface provides:
-- Repository overview with validation status
-- Question-based rubric grading
-- Content viewing with highlighting
-- Progress tracking across assignments
 
 ## Contributing
 
