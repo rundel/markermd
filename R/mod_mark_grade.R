@@ -6,8 +6,9 @@
 #'
 #' Creates UI for displaying current score and grading configuration options
 #'
-# grade_state: markermd_grade_state S7 object containing grade properties
-#
+#' @param id Character. Module namespace ID
+#' @param grade_state markermd_grade_state S7 object containing grade properties
+#' @export
 mark_grade_ui = function(id, grade_state) {
   # Sanitize ID to avoid spaces and special characters that could break JavaScript
   safe_id = gsub("[^A-Za-z0-9_-]", "_", id)
@@ -137,10 +138,10 @@ mark_grade_ui = function(id, grade_state) {
 #'
 #' Server logic for grade management with S7 state management
 #'
-# id: Character. Module namespace ID
-# initial_grade: markermd_grade_state S7 object with initial state
-# ui_ns: Function. Optional UI namespace function for JavaScript element targeting
-#
+#' @param id Character. Module namespace ID
+#' @param initial_grade markermd_grade_state S7 object with initial state
+#' @param ui_ns Function. Optional UI namespace function for JavaScript element targeting
+#' @export
 mark_grade_server = function(id, initial_grade, ui_ns = NULL) {
   # Use same sanitized ID as the UI
   safe_id = gsub("[^A-Za-z0-9_-]", "_", id)

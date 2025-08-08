@@ -2,12 +2,12 @@
 #'
 #' Functions for handling git repositories in markermd
 
-# Handles both local directories and remote GitHub repositories
-#
-# @param assignment_path Character. Local path or "owner/repo" format
-# @param local_dir Character. Local directory for cloning (required for remote)
-# @param is_github_repo Logical. Whether this is a GitHub repo
-
+#' Handles both local directories and remote GitHub repositories
+#'
+#' @param assignment_path Character. Local path or "owner/repo" format
+#' @param local_dir Character. Local directory for cloning (required for remote)
+#' @param is_github_repo Logical. Whether this is a GitHub repo
+#' @export
 setup_assignment_repo = function(assignment_path, local_dir = NULL, is_github_repo = FALSE) {
   
   if (!is_github_repo) {

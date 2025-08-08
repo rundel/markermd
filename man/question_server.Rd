@@ -11,7 +11,7 @@ question_server(id, ast, initial_question = NULL)
 
 \item{ast}{Reactive. The parsed AST object for building tree structure}
 
-\item{question_id}{Integer. The question ID}
+\item{initial_question}{S7 markermd_question object. Optional initial question state}
 }
 \description{
 Question Server

@@ -8,6 +8,8 @@
 }
 \arguments{
 \item{x}{question object}
+
+\item{...}{Additional arguments (currently unused)}
 }
 \description{
 Convert question to List

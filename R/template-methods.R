@@ -160,6 +160,7 @@ as_markermd_metadata = function(x) {
 
 #' Convert node_selection to List
 #' @param x node_selection object
+#' @param ... Additional arguments (currently unused)
 #' @export
 as.list.markermd_node_selection = function(x, ...) {
   list(indices = x@indices)
@@ -167,6 +168,7 @@ as.list.markermd_node_selection = function(x, ...) {
 
 #' Convert question to List  
 #' @param x question object
+#' @param ... Additional arguments (currently unused)
 #' @export
 as.list.markermd_question = function(x, ...) {
   list(
@@ -178,6 +180,7 @@ as.list.markermd_question = function(x, ...) {
 
 #' Convert template_metadata to List
 #' @param x template_metadata object
+#' @param ... Additional arguments (currently unused)
 #' @export
 as.list.markermd_metadata = function(x, ...) {
   list(
@@ -190,6 +193,7 @@ as.list.markermd_metadata = function(x, ...) {
 
 #' Convert template to List
 #' @param x template object
+#' @param ... Additional arguments (currently unused)
 #' @export
 as.list.markermd_template = function(x, ...) {
   list(

@@ -8,6 +8,8 @@
 }
 \arguments{
 \item{x}{template_metadata object}
+
+\item{...}{Additional arguments (currently unused)}
 }
 \description{
 Convert template_metadata to List

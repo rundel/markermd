@@ -8,6 +8,8 @@
 }
 \arguments{
 \item{x}{node_selection object}
+
+\item{...}{Additional arguments (currently unused)}
 }
 \description{
 Convert node_selection to List

@@ -2,10 +2,10 @@
 #'
 #' Functions for parsing Rmd/qmd documents using parsermd
 
-# Parse an Rmd or qmd document into an AST using parsermd
-#
-# @param file_path Character. Path to the assignment file
-
+#' Parse an Rmd or qmd document into an AST using parsermd
+#'
+#' @param file_path Character. Path to the assignment file
+#' @export
 parse_assignment_document = function(file_path) {
   
   if (!file.exists(file_path)) {

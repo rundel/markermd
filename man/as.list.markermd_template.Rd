@@ -8,6 +8,8 @@
 }
 \arguments{
 \item{x}{template object}
+
+\item{...}{Additional arguments (currently unused)}
 }
 \description{
 Convert template to List

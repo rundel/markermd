@@ -89,9 +89,9 @@ question_ui = function(id, name_id) {
 #' Question Server
 #'
 #' @param id Character. Module namespace ID
-#' @param question_id Integer. The question ID
 #' @param ast Reactive. The parsed AST object for building tree structure
-#'
+#' @param initial_question S7 markermd_question object. Optional initial question state
+#' @export
 question_server = function(id, ast, initial_question = NULL) {
   shiny::moduleServer(id, function(input, output, session) {
     

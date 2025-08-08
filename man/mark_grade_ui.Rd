@@ -6,6 +6,11 @@
 \usage{
 mark_grade_ui(id, grade_state)
 }
+\arguments{
+\item{id}{Character. Module namespace ID}
+
+\item{grade_state}{markermd_grade_state S7 object containing grade properties}
+}
 \description{
 Shiny module for displaying and managing question grades with scoring options
 Mark Grade UI

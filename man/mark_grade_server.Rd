@@ -6,6 +6,13 @@
 \usage{
 mark_grade_server(id, initial_grade, ui_ns = NULL)
 }
+\arguments{
+\item{id}{Character. Module namespace ID}
+
+\item{initial_grade}{markermd_grade_state S7 object with initial state}
+
+\item{ui_ns}{Function. Optional UI namespace function for JavaScript element targeting}
+}
 \description{
 Server logic for grade management with S7 state management
 }
