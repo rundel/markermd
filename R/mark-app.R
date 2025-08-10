@@ -740,12 +740,6 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
       mark_rubric_ui("rubric_module")
     ),
     
-    # Marking tab (right aligned)
-    bslib::nav_panel(
-      title = "Marking", 
-      value = "marking",
-      marking_ui("marking_module")
-    ),
     
     # Footer with collection and template info
     footer = shiny::div(
@@ -1329,13 +1323,6 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
       }
     })
     
-    # Mark validation module - pass validation data
-    explore_result = mark_validate_server("explore_module", current_repo_ast, current_repo_name, current_repo_validation, shiny::reactiveVal(NULL), shiny::reactiveVal(template_obj))
-    
-    
-    # Marking module with template object for content extraction
-    template_reactive = shiny::reactiveVal(template_obj)
-    
     # Create reactive for current repository validation results
     current_repo_validation = shiny::reactive({
       repo_name = current_repo_name()
@@ -1346,7 +1333,8 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
       }
     })
     
-    marking_result = marking_server("marking_module", current_repo_ast, template_reactive, current_repo_validation)
+    # Mark validation module - pass validation data
+    explore_result = mark_validate_server("explore_module", current_repo_ast, current_repo_name, current_repo_validation, shiny::reactiveVal(NULL), shiny::reactiveVal(template_obj))
     
     
     # Initialize rubric module with callback
