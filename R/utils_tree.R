@@ -1,6 +1,137 @@
 # Tree Display Utilities
 # Functions for creating hierarchical tree displays of AST structures
 
+# Find fenced div open/close pairs
+# @param nodes List of rmd nodes
+# @return List of pairs with open_pos and close_pos indices
+
+find_fenced_div_pairs = function(nodes) {
+  if (length(nodes) == 0) return(list())
+  
+  pairs = list()
+  stack = integer(0)  # Stack to track open positions
+  
+  for (i in seq_along(nodes)) {
+    node = nodes[[i]]
+    
+    if (inherits(node, "rmd_fenced_div_open")) {
+      stack = c(stack, i)  # Push open position onto stack
+    } else if (inherits(node, "rmd_fenced_div_close")) {
+      if (length(stack) > 0) {
+        # Pop the most recent open position
+        open_pos = stack[length(stack)]
+        stack = stack[-length(stack)]
+        
+        # Record the pair
+        pairs[[length(pairs) + 1]] = list(
+          open_pos = open_pos,
+          close_pos = i
+        )
+      }
+    }
+  }
+  
+  pairs
+}
+
+# Check if node is a heading
+is_heading = function(x) {
+  inherits(x, "rmd_heading")
+}
+
+# Scale levels to start from 0
+scale_levels = function(x) {
+  levels = as.character(sort(unique(x)))
+  
+  lookup = seq_along(levels)
+  names(lookup) = levels
+  
+  res = lookup[as.character(x)]
+  names(res) = NULL
+  
+  res - 1
+}
+
+# Calculate nesting levels with proper fenced div handling
+# Based on parsermd's get_nesting_levels function
+get_nesting_levels = function(nodes) {
+  # First, find all fenced div pairs to understand the structure
+  fdiv_pairs = find_fenced_div_pairs(nodes)
+  
+  levels = 0
+  node_levels = integer()
+  fdiv_depth = 0
+
+  for(i in seq_along(nodes)) {
+    node = nodes[[i]]
+    
+    if (is_heading(node)) {
+      levels = levels[levels < node@level]
+    }
+
+    # Check if this is a fenced div and find its pair
+    fdiv_pair = NULL
+    if (inherits(node, "rmd_fenced_div_open") || inherits(node, "rmd_fenced_div_close")) {
+      for (pair in fdiv_pairs) {
+        if (pair$open_pos == i || pair$close_pos == i) {
+          fdiv_pair = pair
+          break
+        }
+      }
+    }
+
+    if (inherits(node, "rmd_fenced_div_open")) {
+      # For open fenced div, it should be at the same level as the first content it wraps
+      if (!is.null(fdiv_pair) && fdiv_pair$close_pos > fdiv_pair$open_pos + 1) {
+        # Look at the first wrapped node to determine the appropriate level
+        first_content_pos = fdiv_pair$open_pos + 1
+        first_content_node = nodes[[first_content_pos]]
+        
+        if (is_heading(first_content_node)) {
+          # If first content is a heading, the fenced div should be at the level
+          # that would make the heading a child (one level up from where the heading would naturally be)
+          # Since headings at the same level are siblings, we want the fenced div to be their parent
+          
+          # Temporarily calculate what level the heading would be at without the fenced div
+          temp_levels = levels
+          if (is_heading(first_content_node)) {
+            temp_levels = temp_levels[temp_levels < first_content_node@level]
+          }
+          heading_level = max(temp_levels)
+          # Fenced div should be at the same level as other headings of this level
+          node_levels = append(node_levels, heading_level)
+        } else {
+          # For non-heading first content, use current context
+          node_levels = append(node_levels, max(levels))
+        }
+      } else {
+        # Empty fenced div - use current level
+        node_levels = append(node_levels, max(levels))
+      }
+      fdiv_depth = fdiv_depth + 1
+    } else if (inherits(node, "rmd_fenced_div_close")) {
+      fdiv_depth = fdiv_depth - 1
+      # Close div should be at the same level as its matching open div
+      if (!is.null(fdiv_pair)) {
+        open_level = node_levels[fdiv_pair$open_pos]
+        node_levels = append(node_levels, open_level)
+      } else {
+        node_levels = append(node_levels, max(levels))
+      }
+    } else {
+      # Regular content - include fdiv_depth for proper nesting inside fenced divs
+      node_levels = append(node_levels, max(levels) + fdiv_depth)
+    }
+
+    # Update state AFTER calculating the current node's level
+    if (is_heading(node)) {
+      levels = append(levels, node@level)
+    }
+  }
+
+  scale_levels(node_levels)
+}
+
 # Create a hierarchical tree structure similar to parsermd's print output
 #
 # @param ast parkermd AST object
@@ -22,8 +153,10 @@ build_ast_tree_structure = function(ast) {
     return(list())
   }
   
+  # Calculate proper nesting levels using the new fenced div aware logic
+  nesting_levels = get_nesting_levels(nodes)
+  
   tree_items = list()
-  heading_stack = list() # Stack to track heading hierarchy
   
   # Add a visual root node for display purposes (not selectable)
   document_root = list(
@@ -36,6 +169,7 @@ build_ast_tree_structure = function(ast) {
   )
   tree_items[[1]] = document_root
   
+  # Build parent index mapping based on nesting levels
   for (i in seq_along(nodes)) {
     node = nodes[[i]]
     node_type = class(node)[1]
@@ -47,30 +181,17 @@ build_ast_tree_structure = function(ast) {
     clean_label = gsub("\033\\[[0-9;]*m", "", node_info$label)
     description = paste(clean_text, clean_label)
     
-    # Determine hierarchy depth and parent relationships
-    if (grepl("heading", node_type, ignore.case = TRUE)) {
-      heading_level = if (!is.null(node@level)) node@level else 1
-      
-      # Pop headings from stack that are at same or higher level
-      while (length(heading_stack) > 0 && heading_stack[[length(heading_stack)]]$level >= heading_level) {
-        heading_stack = heading_stack[-length(heading_stack)]
-      }
-      
-      # Current heading depth is based on remaining stack + 1 (for document root)
-      depth = length(heading_stack) + 1
-      parent_index = if (length(heading_stack) > 0) heading_stack[[length(heading_stack)]]$index else 0  # Document root has index 0
-      
-      # Add current heading to stack
-      heading_stack[[length(heading_stack) + 1]] = list(level = heading_level, index = i, depth = depth)
-      
-    } else {
-      # Non-heading nodes go under the most recent heading
-      if (length(heading_stack) > 0) {
-        depth = heading_stack[[length(heading_stack)]]$depth + 1
-        parent_index = heading_stack[[length(heading_stack)]]$index
-      } else {
-        depth = 1  # Direct children of document root
-        parent_index = 0  # Document root has index 0
+    # Calculate depth and parent based on nesting levels
+    depth = nesting_levels[i] + 1  # Add 1 to account for document root at depth 0
+    
+    # Find parent by looking backward for the most recent node at depth-1
+    parent_index = 0  # Default to document root
+    if (depth > 1) {
+      for (j in (i-1):1) {
+        if (nesting_levels[j] == depth - 2) {  # depth-2 because we added 1 above
+          parent_index = j
+          break
+        }
       }
     }
     
