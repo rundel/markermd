@@ -160,7 +160,7 @@ template_app = function(ast, template_obj = NULL) {
       if (is.null(ast())) return(NULL)
       
       # Handle new parsermd structure with nodes slot
-      if (inherits(ast(), "rmd_ast") && !is.null(ast()@nodes)) {
+      if (S7::S7_inherits(ast(), parsermd::rmd_ast) && !is.null(ast()@nodes)) {
         ast()@nodes
       } else {
         ast()
@@ -834,19 +834,12 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", ..
       resolved_filename = fs::path_file(matched_files[1])
     }
     
-    # Setup repository and parse document before creating app
     repo_path = setup_assignment_repo(assignment_path, local_dir, is_github_repo)
-    
-    # Validate and get assignment file path
     file_path = validate_assignment_file(repo_path, resolved_filename)
-    
-    # Parse the document
     ast = parse_assignment_document(file_path)
     
-    # Create app without template
     app = template_app_standalone(shiny::reactiveVal(ast), NULL, assignment_path)
   }
   
-  # Launch the app
-  shiny::runApp(app, ...)
+  shiny::shinyApp(ui=app$ui, server=app$server, ...)
 }

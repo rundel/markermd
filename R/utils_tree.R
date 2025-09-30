@@ -1,6 +1,12 @@
 # Tree Display Utilities
 # Functions for creating hierarchical tree displays of AST structures
 
+# Strip ANSI escape codes from text
+strip_ansi = function(text) {
+  gsub("\033\\[[0-9;]*m", "", text)
+}
+
+
 # Find fenced div open/close pairs
 # @param nodes List of rmd nodes
 # @return List of pairs with open_pos and close_pos indices
@@ -13,10 +19,10 @@ find_fenced_div_pairs = function(nodes) {
   
   for (i in seq_along(nodes)) {
     node = nodes[[i]]
-    
-    if (inherits(node, "rmd_fenced_div_open")) {
+
+    if (S7::S7_inherits(node, parsermd::rmd_fenced_div_open)) {
       stack = c(stack, i)  # Push open position onto stack
-    } else if (inherits(node, "rmd_fenced_div_close")) {
+    } else if (S7::S7_inherits(node, parsermd::rmd_fenced_div_close)) {
       if (length(stack) > 0) {
         # Pop the most recent open position
         open_pos = stack[length(stack)]
@@ -36,7 +42,7 @@ find_fenced_div_pairs = function(nodes) {
 
 # Check if node is a heading
 is_heading = function(x) {
-  inherits(x, "rmd_heading")
+  S7::S7_inherits(x, parsermd::rmd_heading)
 }
 
 # Scale levels to start from 0
@@ -71,7 +77,7 @@ get_nesting_levels = function(nodes) {
 
     # Check if this is a fenced div and find its pair
     fdiv_pair = NULL
-    if (inherits(node, "rmd_fenced_div_open") || inherits(node, "rmd_fenced_div_close")) {
+    if (S7::S7_inherits(node, parsermd::rmd_fenced_div_open) || S7::S7_inherits(node, parsermd::rmd_fenced_div_close)) {
       for (pair in fdiv_pairs) {
         if (pair$open_pos == i || pair$close_pos == i) {
           fdiv_pair = pair
@@ -80,7 +86,7 @@ get_nesting_levels = function(nodes) {
       }
     }
 
-    if (inherits(node, "rmd_fenced_div_open")) {
+    if (S7::S7_inherits(node, parsermd::rmd_fenced_div_open)) {
       # For open fenced div, it should be at the same level as the first content it wraps
       if (!is.null(fdiv_pair) && fdiv_pair$close_pos > fdiv_pair$open_pos + 1) {
         # Look at the first wrapped node to determine the appropriate level
@@ -109,7 +115,7 @@ get_nesting_levels = function(nodes) {
         node_levels = append(node_levels, max(levels))
       }
       fdiv_depth = fdiv_depth + 1
-    } else if (inherits(node, "rmd_fenced_div_close")) {
+    } else if (S7::S7_inherits(node, parsermd::rmd_fenced_div_close)) {
       fdiv_depth = fdiv_depth - 1
       # Close div should be at the same level as its matching open div
       if (!is.null(fdiv_pair)) {
@@ -143,7 +149,7 @@ build_ast_tree_structure = function(ast) {
   }
   
   # Handle new parsermd structure with nodes slot
-  nodes = if (inherits(ast, "rmd_ast") && !is.null(ast@nodes)) {
+  nodes = if (S7::S7_inherits(ast, parsermd::rmd_ast) && !is.null(ast@nodes)) {
     ast@nodes
   } else {
     ast
@@ -176,10 +182,10 @@ build_ast_tree_structure = function(ast) {
     
     # Use parsermd's tree_node method to get proper description
     node_info = parsermd:::tree_node(node)
-    # Remove ASCII/ANSI escape codes from the text components
-    clean_text = gsub("\033\\[[0-9;]*m", "", node_info$text)
-    clean_label = gsub("\033\\[[0-9;]*m", "", node_info$label)
-    description = paste(clean_text, clean_label)
+    description = paste(
+      strip_ansi(node_info$text), 
+      strip_ansi(node_info$label)
+    )
     
     # Calculate depth and parent based on nesting levels
     depth = nesting_levels[i] + 1  # Add 1 to account for document root at depth 0

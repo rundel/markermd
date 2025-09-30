@@ -155,10 +155,10 @@ evaluate_rule_has_name = function(nodes, rule) {
   name_found = FALSE
   for (node in nodes) {
     node_name = ""
-    
-    if (inherits(node, "rmd_heading") && !is.null(node@name)) {
+
+    if (S7::S7_inherits(node, parsermd::rmd_heading) && !is.null(node@name)) {
       node_name = node@name
-    } else if (inherits(node, "rmd_chunk") && !is.null(node@name)) {
+    } else if (S7::S7_inherits(node, parsermd::rmd_chunk) && !is.null(node@name)) {
       node_name = node@name
     }
     
@@ -188,7 +188,7 @@ evaluate_rule = function(ast, rule, num_selected_nodes = 0) {
   stopifnot(S7::S7_inherits(rule, markermd_rule))
   
   # Convert ast to nodes if needed
-  nodes = if (inherits(ast, "rmd_ast")) {
+  nodes = if (S7::S7_inherits(ast, parsermd::rmd_ast)) {
     ast@nodes
   } else {
     ast

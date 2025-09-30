@@ -50,7 +50,7 @@ ast_base_server = function(id, ast, selected_nodes = shiny::reactive(integer(0))
       if (is.null(ast())) return(NULL)
       
       # Handle new parsermd structure with nodes slot
-      if (inherits(ast(), "rmd_ast") && !is.null(ast()@nodes)) {
+      if (S7::S7_inherits(ast(), parsermd::rmd_ast) && !is.null(ast()@nodes)) {
         ast()@nodes
       } else {
         ast()
@@ -124,7 +124,7 @@ ast_base_server = function(id, ast, selected_nodes = shiny::reactive(integer(0))
                   "rmd_markdown" = "markdown", 
                   "rmd_chunk" = {
                     # Extract engine from chunk
-                    if (inherits(node, "rmd_chunk") && !is.null(node@engine)) {
+                    if (S7::S7_inherits(node, parsermd::rmd_chunk) && !is.null(node@engine)) {
                       # Map common R Markdown engines to Monaco languages
                       switch(node@engine,
                         "r" = "r",

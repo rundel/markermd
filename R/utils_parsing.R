@@ -44,7 +44,7 @@ get_document_summary = function(ast) {
   }
   
   # Handle new parsermd structure with nodes slot
-  nodes = if (inherits(ast, "rmd_ast") && !is.null(ast@nodes)) {
+  nodes = if (S7::S7_inherits(ast, parsermd::rmd_ast) && !is.null(ast@nodes)) {
     ast@nodes
   } else {
     ast

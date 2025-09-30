@@ -257,7 +257,7 @@ mark_validate_server = function(id, ast, current_repo_name = shiny::reactiveVal(
                         "rmd_markdown" = "markdown", 
                         "rmd_chunk" = {
                           # Extract engine from chunk
-                          if (inherits(node, "rmd_chunk") && !is.null(node@engine)) {
+                          if (S7::S7_inherits(node, parsermd::rmd_chunk) && !is.null(node@engine)) {
                             # Map common R Markdown engines to Monaco languages
                             switch(node@engine,
                               "r" = "r",
