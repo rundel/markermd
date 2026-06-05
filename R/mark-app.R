@@ -424,7 +424,22 @@ open_folder = function(folder_path) {
 #' mark("/path/to/assignments/", download_archives = FALSE)
 #' }
 mark = function(collection_path, template = NULL, use_qmd = TRUE, download_archives = TRUE, ...) {
-  
+  app = mark_app(collection_path, template = template, use_qmd = use_qmd, download_archives = download_archives)
+  shiny::runApp(app, ...)
+}
+
+# Build the Shiny application object for the marking interface
+#
+# Performs all setup (template load, collection parse, validation, database
+# init) and returns the app object without running it, so it can be tested.
+#
+# collection_path: Path to the directory of assignment repositories
+# template: markermd_template object, path to a template .rds, or NULL
+# use_qmd: Whether to match .qmd files (TRUE) or .Rmd files (FALSE)
+# download_archives: Whether to download all archives at launch
+
+mark_app = function(collection_path, template = NULL, use_qmd = TRUE, download_archives = TRUE) {
+
   # Validate inputs
   if (missing(collection_path)) {
     stop("collection_path is required")
@@ -568,7 +583,6 @@ mark = function(collection_path, template = NULL, use_qmd = TRUE, download_archi
     download_archives = download_archives,
     database_state = database_state
   )
-  shiny::runApp(app, ...)
 }
 
 
@@ -734,7 +748,16 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
   
   # Define server logic
   server = function(input, output, session) {
-    
+
+    # Export values for testing
+    shiny::exportTestValues(
+      repo_names = repo_list,
+      n_questions = if (is.null(template_obj)) 0L else length(template_obj@questions),
+      validation_status = lapply(validation_results, function(repo_res) {
+        vapply(repo_res, function(q) q$status, character(1))
+      })
+    )
+
     # Reactive values for user selections
     current_repo_ast = shiny::reactiveVal(initial_repo_ast)
     current_repo_name = shiny::reactiveVal(initial_repo_name)

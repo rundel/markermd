@@ -149,24 +149,12 @@ template_app = function(ast, template_obj = NULL) {
     }) |>
       shiny::bindEvent(template_obj, once = TRUE, ignoreNULL = TRUE)
     
-    # Ensure current question exists in the modules list
-    #
-    ensure_current_question_exists = function() {
-      current_q_id = current_question_id()
-      modules_list = question_modules()
-      
-      if (is.null(modules_list[[as.character(current_q_id)]])) {
-        # Create new question
-        add_new_question()
-      }
-    }
-    
     # Add a new question to the modules list
     #
     add_new_question = function() {
       next_id = last_question_id() + 1
       last_question_id(next_id)
-      
+
       # Create initial question object
       initial_question = markermd_question(
         id = as.integer(next_id),
@@ -174,10 +162,10 @@ template_app = function(ast, template_obj = NULL) {
         selected_nodes = markermd_node_selection(indices = integer()),
         rules = list()
       )
-      
+
       # Create question module
       module_id = paste0("question_", next_id)
-      
+
       # Update question modules (store the initial question, server will be created when UI is inserted)
       modules_list = question_modules()
       modules_list[[as.character(next_id)]] = list(
@@ -187,11 +175,23 @@ template_app = function(ast, template_obj = NULL) {
         server = NULL  # Will be created when UI is inserted
       )
       question_modules(modules_list)
-      
+
       # Set as current question
       current_question_id(next_id)
-      
+
       return(next_id)
+    }
+
+    # Ensure current question exists in the modules list
+    #
+    ensure_current_question_exists = function() {
+      current_q_id = current_question_id()
+      modules_list = question_modules()
+
+      if (is.null(modules_list[[as.character(current_q_id)]])) {
+        # Create new question
+        add_new_question()
+      }
     }
     
     # Get selected nodes for current question
