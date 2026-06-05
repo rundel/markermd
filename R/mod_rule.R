@@ -78,20 +78,6 @@ rule_item_ui = function(rule = NULL, input_id, verb_inputs) {
   )
 }
 
-# Rule UI for use as a Shiny module
-#
-# id: Character. Module namespace ID
-# initial_rule: markermd_rule object. Initial rule for default values (optional)
-
-rule_ui = function(id, initial_rule = NULL) {
-  ns = shiny::NS(id)
-  rule_item_ui(
-    initial_rule,
-    input_id = function(name) ns(name),
-    verb_inputs = shiny::uiOutput(ns("verb_inputs"))
-  )
-}
-
 # Rule UI without server module (direct input handling)
 #
 # id: Character. The rule ID for input naming
@@ -106,70 +92,6 @@ rule_ui_direct = function(id, rule, ns = NULL) {
     input_id = input_id,
     verb_inputs = create_rule_verb_inputs(rule@verb, rule@values, input_id("values"))
   )
-}
-
-# Rule Server
-#
-# id: Character. Module namespace ID
-# initial_rule: markermd_rule object. Initial rule data (optional)
-
-rule_server = function(id, initial_rule = NULL) {
-  shiny::moduleServer(id, function(input, output, session) {
-
-    # Rule state using S7 object
-    state = shiny::reactiveVal({
-      if (!is.null(initial_rule) && S7::S7_inherits(initial_rule, markermd_rule)) {
-        initial_rule
-      } else {
-        new_markermd_rule()
-      }
-    })
-
-
-    # Render dynamic verb inputs - trigger on state changes
-    output$verb_inputs = shiny::renderUI({
-      current_state = state()
-      create_rule_verb_inputs(current_state@verb, current_state@values, session$ns("values"))
-    })
-
-    # Handle node type changes
-    shiny::observe({
-      shiny::req(input$node_types)
-      current_state = state()
-      current_state@node_type = input$node_types
-      state(current_state)
-    }) |>
-      shiny::bindEvent(input$node_types)
-
-    # Handle verb changes - reset values when verb changes
-    shiny::observe({
-      shiny::req(input$verb)
-      current_state = state()
-      current_state@verb = input$verb
-      current_state@values = get_default_rule_values(input$verb)
-      state(current_state)
-    }) |>
-      shiny::bindEvent(input$verb)
-
-    # Handle value input changes for different verb types
-    shiny::observe({
-      shiny::req(input$values)
-      current_state = state()
-      current_state@values = input$values
-      state(current_state)
-    }) |>
-      shiny::bindEvent(input$values)
-
-    # Return reactive rule data and delete signal
-    return(list(
-      rule = shiny::reactive({
-        state()
-      }),
-      delete_clicked = shiny::reactive({
-        input$delete
-      })
-    ))
-  })
 }
 
 # Create dynamic verb input UI based on rule verb type

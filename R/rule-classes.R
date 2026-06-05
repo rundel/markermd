@@ -141,34 +141,3 @@ validate_markermd_rule = function(rule) {
   )
 }
 
-#' Convert rule object to list format
-#'
-#' @description Converts a markermd_rule S7 object to the list format used by
-#' the existing rules module for backward compatibility.
-#'
-#' @param rule markermd_rule object
-#' @param rule_id Numeric. ID to assign to the rule in list format
-#' @return Named list with rule data
-#' @export
-rule_to_list = function(rule, rule_id = 1) {
-  if (!S7::S7_inherits(rule, markermd_rule)) {
-    stop("Object must be a markermd_rule")
-  }
-  
-  list(
-    id = rule_id,
-    node_types = rule@node_type,
-    verb = rule@verb,
-    verb_inputs = switch(rule@verb,
-      "has between" = list(count_range = rule@values),
-      "has at least" = list(min_count = rule@values),
-      "has at most" = list(max_count = rule@values),
-      "has content" = list(content_pattern = rule@values),
-      "lacks content" = list(content_pattern = rule@values),
-      "has name" = list(name_pattern = rule@values),
-      list()
-    ),
-    delete_observer = NULL  # Will be set by the module
-  )
-}
-

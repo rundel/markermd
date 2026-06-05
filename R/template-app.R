@@ -341,6 +341,27 @@ template_app = function(ast, template_obj = NULL) {
     })
     
     # Use insertUI/removeUI approach for stable question modules
+    # Lazily create a server for any question module that lacks one. Doing this
+    # in an observer (not inside the question_items render) keeps the render pure
+    # and avoids the re-entrant output state errors that a render writing its own
+    # reactive dependency would cause.
+    shiny::observe({
+      modules_list = question_modules()
+      needs_server = vapply(modules_list, function(m) is.null(m$server), logical(1))
+      if (!any(needs_server)) {
+        return()
+      }
+
+      for (q_id_str in names(modules_list)[needs_server]) {
+        modules_list[[q_id_str]]$server = question_server(
+          modules_list[[q_id_str]]$module_id,
+          ast,
+          initial_question = modules_list[[q_id_str]]$initial_question
+        )
+      }
+      question_modules(modules_list)
+    })
+
     output$question_items = shiny::renderUI({
       modules_list = question_modules()
       current_q_id = current_question_id()
@@ -353,19 +374,6 @@ template_app = function(ast, template_obj = NULL) {
           lapply(names(modules_list), function(q_id_str) {
             q_id = as.numeric(q_id_str)
             question_module = modules_list[[q_id_str]]
-
-            # Create the server for this question if it doesn't exist
-            if (is.null(question_module$server)) {
-              question_server_fn = question_server(
-                question_module$module_id,
-                ast,
-                initial_question = question_module$initial_question
-              )
-
-              # Store the server in the modules list
-              modules_list[[q_id_str]]$server = question_server_fn
-              question_modules(modules_list)
-            }
 
             card_class = if (q_id == current_q_id) "border border-primary border-2" else "border"
 

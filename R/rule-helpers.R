@@ -231,25 +231,3 @@ get_default_rule_values = function(verb) {
   )
 }
 
-#' Convert S7 Rule to List Format
-#'
-#' @description Converts an S7 markermd_rule object to the list format expected by the rules module.
-#' This is used when loading existing templates in the template interface.
-#'
-#' @param rule S7 markermd_rule object
-#' @param rule_id Integer. ID to assign to the rule in list format
-#' @return List with rule data formatted for the rules module
-#' @export
-rule_to_list = function(rule, rule_id) {
-  if (!S7::S7_inherits(rule, markermd_rule)) {
-    stop("rule must be a markermd_rule S7 object")
-  }
-  
-  list(
-    id = as.integer(rule_id),
-    node_types = rule@node_type,  # Note: UI expects 'node_types' (plural)
-    verb = rule@verb,
-    values = rule@values
-  )
-}
-

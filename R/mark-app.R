@@ -59,20 +59,16 @@ download_artifact_if_needed = function(github_repo, repo_name, collection_path, 
       }
     })
     
-    tryCatch({
-      # Use ghclass to download the artifact - specify the temporary directory
+    # Download the artifact; treat a download failure as "no files found"
+    all_files = tryCatch({
       suppressMessages({
         utils::capture.output({
           ghclass::action_artifact_download(github_repo, dir = temp_download_dir)
         }, type = "output")
       })
-      
-      # List files in the temporary directory
-      all_files = list.files(temp_download_dir, full.names = TRUE, recursive = TRUE)
-      
+      list.files(temp_download_dir, full.names = TRUE, recursive = TRUE)
     }, error = function(e) {
-      # Return error result
-      return(list(success = FALSE, message = paste("Download failed:", e$message)))
+      character(0)
     })
     
     # Also check for files that might have been downloaded with tilde paths (legacy)

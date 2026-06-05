@@ -182,29 +182,3 @@ parse_assignment_collection = function(collection_path, use_qmd = TRUE) {
   collection
 }
 
-# Extract basic information about a parsed document
-#
-# ast: q2r pandoc AST object
-
-get_document_summary = function(ast) {
-  if (is.null(ast)) {
-    return(list(
-      total_nodes = 0,
-      node_types = character(0),
-      has_yaml = FALSE,
-      code_chunks = 0,
-      markdown_sections = 0
-    ))
-  }
-
-  nodes = ast@blocks@content
-  node_types = sapply(nodes, function(x) class(x)[1])
-
-  list(
-    total_nodes = length(nodes),
-    node_types = table(node_types),
-    has_yaml = length(ast@meta) > 0,
-    code_chunks = sum(vapply(nodes, q2r::is_code_cell, logical(1))),
-    markdown_sections = sum(grepl("pandoc_header", node_types))
-  )
-}
