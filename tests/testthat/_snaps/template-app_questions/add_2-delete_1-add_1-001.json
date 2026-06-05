@@ -1,0 +1,21 @@
+{
+  "export": {
+    "n_questions": 2,
+    "n_rules_per_question": {
+      "1": 0,
+      "3": 0
+    },
+    "question_names": {
+      "1": "Question 1",
+      "3": "Question 3"
+    },
+    "selected_nodes": {
+      "1": [
+
+      ],
+      "3": [
+
+      ]
+    }
+  }
+}
