@@ -14,12 +14,12 @@ Depends:
     R (>= 4.1)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.2
 Suggests: 
+    shinytest2,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
-Imports: 
-    parsermd,
+Imports:
+    q2r,
     jsonlite,
     shiny,
     bslib,
@@ -32,8 +32,10 @@ Imports:
     shinyjs,
     cli,
     S7,
-    rlang,
     shinyWidgets,
     DBI,
     RSQLite
+Remotes:
+    rundel/q2r
 URL: https://rundel.github.io/markermd/
+Config/roxygen2/version: 8.0.0

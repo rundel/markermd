@@ -52,7 +52,7 @@ S7::method(print, markermd_template) = function(x, ...) {
       cat("  - ", q@name, " (", node_count, " ", node_text, ", ", rule_count, " ", rule_text, ")\n", sep = "")
     }
   }
-  ast_node_count = length(x@original_ast@nodes)
+  ast_node_count = length(q2r_flatten(x@original_ast))
   ast_node_text = if (ast_node_count == 1) "node" else "nodes"
   cat("\nOriginal AST:", ast_node_count, ast_node_text, "\n")
   invisible(x)

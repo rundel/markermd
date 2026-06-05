@@ -11,7 +11,7 @@ markermd_template(
 )
 }
 \arguments{
-\item{original_ast}{rmd_ast. The original parsed AST from parsermd}
+\item{original_ast}{pandoc. The original parsed AST from q2r}
 
 \item{questions}{List of question objects}
 

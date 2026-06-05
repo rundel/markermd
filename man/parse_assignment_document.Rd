@@ -2,7 +2,7 @@
 % Please edit documentation in R/utils_parsing.R
 \name{parse_assignment_document}
 \alias{parse_assignment_document}
-\title{Document Parsing Utilities}
+\title{Parse an assignment document into a Pandoc AST}
 \usage{
 parse_assignment_document(file_path)
 }
@@ -10,6 +10,6 @@ parse_assignment_document(file_path)
 \item{file_path}{Character. Path to the assignment file}
 }
 \description{
-Functions for parsing Rmd/qmd documents using parsermd
-Parse an Rmd or qmd document into an AST using parsermd
+Reads a qmd document, normalises any knitr-style chunk headers so the
+Quarto parser accepts them, and parses it into a q2r \code{pandoc} AST.
 }

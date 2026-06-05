@@ -1,15 +1,15 @@
-#' AST Module
-#'
-#' Shiny modules for displaying AST tree structures with various interaction modes
+# AST Module
+#
+# Shiny modules for displaying AST tree structures with various interaction modes
 
 # Base AST Module ----------------------------------------------------------------
 
-#' Base AST UI
-#'
-#' @param id Character. Module namespace ID
-#' @param title Character. Panel title (default: "Document Structure")
-#' @param show_clear_button Logical. Whether to show clear selections button
-#'
+# Base AST UI
+#
+# id: Character. Module namespace ID
+# title: Character. Panel title (default: "Document Structure")
+# show_clear_button: Logical. Whether to show clear selections button
+
 ast_base_ui = function(id, title = "Document Structure", show_clear_button = FALSE) {
   ns = shiny::NS(id)
   
@@ -33,28 +33,22 @@ ast_base_ui = function(id, title = "Document Structure", show_clear_button = FAL
   )
 }
 
-#' Base AST Server
-#'
-#' @param id Character. Module namespace ID
-#' @param ast Reactive. The parsed AST object
-#' @param selected_nodes Reactive. Currently selected node indices (optional)
-#' @param enable_preview Logical. Whether to enable preview functionality
-#' @param selection_mode Character. Selection mode ("interactive", "readonly", "highlight_only")
-#' @param id_prefix Character. Optional prefix for button IDs to avoid collisions
-#'
+# Base AST Server
+#
+# id: Character. Module namespace ID
+# ast: Reactive. The parsed AST object
+# selected_nodes: Reactive. Currently selected node indices (optional)
+# enable_preview: Logical. Whether to enable preview functionality
+# selection_mode: Character. Selection mode ("interactive", "readonly", "highlight_only")
+# id_prefix: Character. Optional prefix for button IDs to avoid collisions
+
 ast_base_server = function(id, ast, selected_nodes = shiny::reactive(integer(0)), enable_preview = TRUE, selection_mode = "readonly", id_prefix = NULL) {
   shiny::moduleServer(id, function(input, output, session) {
     
-    # Get AST nodes for easier handling
+    # Flattened AST nodes in tree order (index i aligns with the tree's node i)
     ast_nodes = shiny::reactive({
       if (is.null(ast())) return(NULL)
-      
-      # Handle new parsermd structure with nodes slot
-      if (S7::S7_inherits(ast(), parsermd::rmd_ast) && !is.null(ast()@nodes)) {
-        ast()@nodes
-      } else {
-        ast()
-      }
+      lapply(q2r_flatten(ast()), function(record) record$node)
     })
     
     # Create AST tree display
@@ -92,7 +86,7 @@ ast_base_server = function(id, ast, selected_nodes = shiny::reactive(integer(0))
         local({
           node_index = i
           node = ast_nodes()[[node_index]]
-          node_type = class(node)[1]
+          node_type = sub("^q2r::", "", class(node)[1])
           
           # Create button IDs with optional prefix
           preview_id = if (!is.null(id_prefix)) {
@@ -103,53 +97,19 @@ ast_base_server = function(id, ast, selected_nodes = shiny::reactive(integer(0))
           
           # Handle "Preview" button if enabled
           if (enable_preview) {
-            shiny::observeEvent(input[[preview_id]], {
+            shiny::observe({
               if (node_index >= 1 && node_index <= length(ast_nodes())) {
                 node = ast_nodes()[[node_index]]
-                
-                # Use enhanced preview logic from selectable module
-                raw_content = parsermd::as_document(node) |>
+
+                content = node_to_qmd(node) |>
                   as.character() |>
-                  paste(collapse="\n")
-                
-                # Monaco Editor handles indentation properly, so we keep original content
-                content = raw_content
+                  paste(collapse = "\n")
 
                 # Get node type for title
-                node_type = class(node)[1]
-                
+                node_type = sub("^q2r::", "", class(node)[1])
+
                 # Determine Monaco Editor language based on node type
-                monaco_language = switch(node_type,
-                  "rmd_yaml" = "yaml",
-                  "rmd_markdown" = "markdown", 
-                  "rmd_chunk" = {
-                    # Extract engine from chunk
-                    if (S7::S7_inherits(node, parsermd::rmd_chunk) && !is.null(node@engine)) {
-                      # Map common R Markdown engines to Monaco languages
-                      switch(node@engine,
-                        "r" = "r",
-                        "python" = "python",
-                        "sql" = "sql",
-                        "bash" = "shell",
-                        "sh" = "shell",
-                        "javascript" = "javascript",
-                        "js" = "javascript",
-                        "css" = "css",
-                        "html" = "html",
-                        "yaml" = "yaml",
-                        "json" = "json",
-                        # Default to markdown for unknown engines
-                        "markdown"
-                      )
-                    } else {
-                      "markdown"  # Default to markdown
-                    }
-                  },
-                  "rmd_raw_chunk" = "markdown",
-                  "rmd_code_block" = "markdown",
-                  # Default to markdown for other node types
-                  "markdown"
-                )
+                monaco_language = monaco_language_for_node(node)
                 
                 # Create unique editor ID
                 editor_id = paste0("monaco-editor-ast-", node_index)
@@ -217,33 +177,36 @@ ast_base_server = function(id, ast, selected_nodes = shiny::reactive(integer(0))
                   })();
                 "))
               }
-            })
+            }) |>
+              shiny::bindEvent(input[[preview_id]])
           }
-          
+
           # Handle node selection functionality for interactive mode
-          if (selection_mode == "interactive" && node_type == "rmd_heading") {
+          if (selection_mode == "interactive" && node_type == "pandoc_header") {
             # Handle node selection (both text and circle button)
             select_id = paste0("select_", node_index)
             select_children_id = paste0("select_children_", node_index)
-            
-            shiny::observeEvent(input[[select_id]], {
+
+            shiny::observe({
               # Store the click event with timestamp to ensure uniqueness
               node_clicked(list(
                 node_index = node_index,
                 action = "toggle",
                 timestamp = Sys.time()
               ))
-            })
-            
+            }) |>
+              shiny::bindEvent(input[[select_id]])
+
             # Handle circle button selection (same behavior as text)
-            shiny::observeEvent(input[[select_children_id]], {
+            shiny::observe({
               # Store the click event with timestamp to ensure uniqueness
               node_clicked(list(
                 node_index = node_index,
                 action = "toggle",
                 timestamp = Sys.time()
               ))
-            })
+            }) |>
+              shiny::bindEvent(input[[select_children_id]])
           }
         })
       }
@@ -270,21 +233,21 @@ ast_base_server = function(id, ast, selected_nodes = shiny::reactive(integer(0))
 
 # Selectable AST Module ----------------------------------------------------------
 
-#' Selectable AST UI
-#'
-#' @param id Character. Module namespace ID
-#' @param title Character. Panel title (default: "Document Structure")
-#'
+# Selectable AST UI
+#
+# id: Character. Module namespace ID
+# title: Character. Panel title (default: "Document Structure")
+
 ast_selectable_ui = function(id, title = "Document Structure") {
   ast_base_ui(id, title = title, show_clear_button = TRUE)
 }
 
-#' Selectable AST Server
-#'
-#' @param id Character. Module namespace ID
-#' @param ast Reactive. The parsed AST object
-#' @param selected_nodes Reactive. Currently selected node indices
-#'
+# Selectable AST Server
+#
+# id: Character. Module namespace ID
+# ast: Reactive. The parsed AST object
+# selected_nodes: Reactive. Currently selected node indices
+
 ast_selectable_server = function(id, ast, selected_nodes = shiny::reactive(integer(0))) {
   
   # Use base AST server with interactive mode
@@ -293,23 +256,23 @@ ast_selectable_server = function(id, ast, selected_nodes = shiny::reactive(integ
 
 # Read-Only AST Module -----------------------------------------------------------
 
-#' Read-Only AST UI
-#'
-#' @param id Character. Module namespace ID
-#' @param title Character. Panel title (default: "Document Structure")
-#'
+# Read-Only AST UI
+#
+# id: Character. Module namespace ID
+# title: Character. Panel title (default: "Document Structure")
+
 ast_readonly_ui = function(id, title = "Document Structure") {
   ast_base_ui(id, title = title, show_clear_button = FALSE)
 }
 
-#' Read-Only AST Server
-#'
-#' @param id Character. Module namespace ID
-#' @param ast Reactive. The parsed AST object
-#' @param selected_nodes Reactive. Optional selected nodes to highlight (default: none)
-#' @param enable_preview Logical. Whether to enable preview functionality (default: TRUE)
-#' @param id_prefix Character. Optional prefix for button IDs to avoid collisions
-#'
+# Read-Only AST Server
+#
+# id: Character. Module namespace ID
+# ast: Reactive. The parsed AST object
+# selected_nodes: Reactive. Optional selected nodes to highlight (default: none)
+# enable_preview: Logical. Whether to enable preview functionality (default: TRUE)
+# id_prefix: Character. Optional prefix for button IDs to avoid collisions
+
 ast_readonly_server = function(id, ast, selected_nodes = shiny::reactive(integer(0)), enable_preview = TRUE, id_prefix = NULL) {
   
   # Determine selection mode based on whether nodes are provided for highlighting

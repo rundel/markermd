@@ -9,21 +9,21 @@ NULL
 #' Get allowed node types for rules
 #'
 #' @description Returns the list of valid node types that can be used in validation rules.
-#' This includes both a catch-all "Any node" option and specific parsermd node types.
+#' This includes both a catch-all "Any node" option and specific Pandoc (q2r) node types.
 #'
 #' @return Character vector of allowed node types
 #' @export
 get_allowed_node_types = function() {
   c(
     "Any node",
-    "rmd_yaml",
-    "rmd_heading", 
-    "rmd_chunk",
-    "rmd_raw_chunk",
-    "rmd_markdown",
-    "rmd_code_block",
-    "rmd_fenced_div_open",
-    "rmd_fenced_div_close"
+    "pandoc_header",
+    "pandoc_paragraph",
+    "pandoc_code_block",
+    "pandoc_div",
+    "pandoc_bullet_list",
+    "pandoc_ordered_list",
+    "pandoc_block_quote",
+    "pandoc_table"
   )
 }
 

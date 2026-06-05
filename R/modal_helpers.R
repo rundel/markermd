@@ -1,18 +1,14 @@
-#' MarkerMD Modal Dialog with Bootstrap 5 Close Button
-#'
-#' A modified version of Shiny's modalDialog that adds a properly positioned
-#' close button in the header when easyClose is TRUE.
-#'
-#' @param ... UI elements to include within the modal
-#' @param title Character string. Modal title
-#' @param footer UI elements for the modal footer (default: modalButton("Dismiss"))  
-#' @param size Character. Modal size: "m", "s", "l", or "xl"
-#' @param easyClose Logical. If TRUE, adds close button to header and allows closing by clicking outside
-#' @param fade Logical. If TRUE, modal fades in/out
-#'
-#' @return Modal dialog HTML structure
-#'
-markermd_modal = function(..., title = NULL, footer = shiny::modalButton("Dismiss"), 
+# A modified version of Shiny's modalDialog that adds a properly positioned
+# close button in the header when easyClose is TRUE.
+#
+# ...: UI elements to include within the modal
+# title: Character string. Modal title
+# footer: UI elements for the modal footer (default: modalButton("Dismiss"))
+# size: Character. Modal size: "m", "s", "l", or "xl"
+# easyClose: Logical. If TRUE, adds close button to header and allows closing by clicking outside
+# fade: Logical. If TRUE, modal fades in/out
+
+markermd_modal = function(..., title = NULL, footer = shiny::modalButton("Dismiss"),
                         size = c("m", "s", "l", "xl"), easyClose = FALSE, fade = TRUE) {
   
   size = match.arg(size)

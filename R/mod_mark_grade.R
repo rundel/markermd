@@ -1,14 +1,10 @@
-#' Mark Grade Module - Clean Version
-#'
-#' Shiny module for displaying and managing question grades with scoring options
+# Shiny module for displaying and managing question grades with scoring options
 
-#' Mark Grade UI
-#'
-#' Creates UI for displaying current score and grading configuration options
-#'
-#' @param id Character. Module namespace ID
-#' @param grade_state markermd_grade_state S7 object containing grade properties
-#' @export
+# Creates UI for displaying current score and grading configuration options
+#
+# id: Character. Module namespace ID
+# grade_state: markermd_grade_state S7 object containing grade properties
+
 mark_grade_ui = function(id, grade_state) {
   # Sanitize ID to avoid spaces and special characters that could break JavaScript
   safe_id = gsub("[^A-Za-z0-9_-]", "_", id)
@@ -134,16 +130,14 @@ mark_grade_ui = function(id, grade_state) {
   )
 }
 
-#' Mark Grade Server
-#'
-#' Server logic for grade management with S7 state management
-#'
-#' @param id Character. Module namespace ID
-#' @param initial_grade markermd_grade_state S7 object with initial state
-#' @param ui_ns Function. Optional UI namespace function for JavaScript element targeting
-#' @param collection_path Character string. Path to collection directory (optional)
-#' @param question_name Character string. Name of the question (optional)
-#' @export
+# Server logic for grade management with S7 state management
+#
+# id: Character. Module namespace ID
+# initial_grade: markermd_grade_state S7 object with initial state
+# ui_ns: Function. Optional UI namespace function for JavaScript element targeting
+# collection_path: Character string. Path to collection directory (optional)
+# question_name: Character string. Name of the question (optional)
+
 mark_grade_server = function(id, initial_grade, ui_ns = NULL, collection_path = NULL, question_name = NULL) {
   # Use same sanitized ID as the UI
   safe_id = gsub("[^A-Za-z0-9_-]", "_", id)
@@ -163,9 +157,9 @@ mark_grade_server = function(id, initial_grade, ui_ns = NULL, collection_path = 
     
     
     # Handle total score changes
-    shiny::observeEvent(input$total_score_input, {
+    shiny::observe({
       current_grade = grade_state()
-      
+
       new_total = input$total_score_input
       if (new_total < 0) new_total = 0  # Total can't be negative
       
@@ -213,10 +207,10 @@ mark_grade_server = function(id, initial_grade, ui_ns = NULL, collection_path = 
           }}
         ", .open = "{", .close = "}"))
       }
-    }, ignoreInit = TRUE)
-    
+    }) |> shiny::bindEvent(input$total_score_input, ignoreInit = TRUE)
+
     # Handle grading mode changes
-    shiny::observeEvent(input$grading_mode, {
+    shiny::observe({
       current_grade = grade_state()
       
       if (input$grading_mode != current_grade@grading_mode) {
@@ -252,12 +246,12 @@ mark_grade_server = function(id, initial_grade, ui_ns = NULL, collection_path = 
             scoreDiv.innerHTML = {new_current_score} + ' / ' + total + ' ' + suffix;
           }}
         ", .open = "{", .close = "}"))
-        
+
       }
-    }, ignoreInit = TRUE)
-    
+    }) |> shiny::bindEvent(input$grading_mode, ignoreInit = TRUE)
+
     # Handle bounds changes
-    shiny::observeEvent(input$grade_bounds, {
+    shiny::observe({
       current_grade = grade_state()
       
       new_bound_above_zero = "above_zero" %in% input$grade_bounds
@@ -280,9 +274,9 @@ mark_grade_server = function(id, initial_grade, ui_ns = NULL, collection_path = 
           save_grade_state(collection_path, question_name, new_grade)
         }
       }
-    }, ignoreInit = TRUE)
-    
-    
+    }) |> shiny::bindEvent(input$grade_bounds, ignoreInit = TRUE)
+
+
     # Return reactive grade state and update method for external use
     return(list(
       id = safe_id,

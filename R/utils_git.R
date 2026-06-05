@@ -1,13 +1,10 @@
-#' Git Operations Utilities
-#'
-#' Functions for handling git repositories in markermd
+# Set up an assignment repository, handling both local directories and remote
+# GitHub repositories
+#
+# assignment_path: Character. Local path or "owner/repo" format
+# local_dir: Character. Local directory for cloning (required for remote)
+# is_github_repo: Logical. Whether this is a GitHub repo
 
-#' Handles both local directories and remote GitHub repositories
-#'
-#' @param assignment_path Character. Local path or "owner/repo" format
-#' @param local_dir Character. Local directory for cloning (required for remote)
-#' @param is_github_repo Logical. Whether this is a GitHub repo
-#' @export
 setup_assignment_repo = function(assignment_path, local_dir = NULL, is_github_repo = FALSE) {
   
   if (!is_github_repo) {
@@ -49,13 +46,8 @@ setup_assignment_repo = function(assignment_path, local_dir = NULL, is_github_re
       warning("Could not pull latest changes: ", e$message)
     })
   } else {
-    # Clone the repository
-    tryCatch({
-      gert::git_clone(url = github_url, path = repo_local_path)
-      message("Cloned repository to: ", repo_local_path)
-    }, error = function(e) {
-      stop("Failed to clone repository: ", e$message)
-    })
+    gert::git_clone(url = github_url, path = repo_local_path)
+    message("Cloned repository to: ", repo_local_path)
   }
   
   return(normalizePath(repo_local_path))
@@ -63,8 +55,8 @@ setup_assignment_repo = function(assignment_path, local_dir = NULL, is_github_re
 
 # Check if the specified assignment file exists and is valid
 #
-# @param repo_path Character. Path to the assignment repository
-# @param filename Character. Name of the assignment file
+# repo_path: Character. Path to the assignment repository
+# filename: Character. Name of the assignment file
 
 validate_assignment_file = function(repo_path, filename) {
   

@@ -11,5 +11,5 @@ Character vector of allowed node types
 }
 \description{
 Returns the list of valid node types that can be used in validation rules.
-This includes both a catch-all "Any node" option and specific parsermd node types.
+This includes both a catch-all "Any node" option and specific Pandoc (q2r) node types.
 }

@@ -1,8 +1,7 @@
-#' Create cache directory for artifacts
-#'
-#' @param collection_path Character string. Path to collection directory
-#' @return Character string. Path to cache directory
-#'
+# Create cache directory for artifacts and return its path
+#
+# collection_path: Path to collection directory
+
 create_cache_dir = function(collection_path) {
   # Expand tilde in path
   expanded_path = path.expand(collection_path)
@@ -13,25 +12,23 @@ create_cache_dir = function(collection_path) {
   return(cache_dir)
 }
 
-#' Get cached artifact path
-#'
-#' @param collection_path Character string. Path to collection directory
-#' @param repo_name Character string. Repository name
-#' @return Character string. Path to cached artifact file
-#'
+# Get the path to a repository's cached artifact file
+#
+# collection_path: Path to collection directory
+# repo_name: Repository name
+
 get_cached_artifact_path = function(collection_path, repo_name) {
   cache_dir = create_cache_dir(collection_path)
   normalizePath(file.path(cache_dir, paste0(repo_name, ".html")), mustWork = FALSE)
 }
 
-#' Download artifact if not cached or forced
-#'
-#' @param github_repo Character string. GitHub repository in format "owner/repo"
-#' @param repo_name Character string. Local repository name
-#' @param collection_path Character string. Path to collection directory
-#' @param force Logical. Whether to force download even if file exists
-#' @return List with success status and file path or error message
-#'
+# Download a repository's artifact, returning a cached copy when available
+#
+# github_repo: GitHub repository in format "owner/repo"
+# repo_name: Local repository name
+# collection_path: Path to collection directory
+# force: Whether to force download even if file exists
+
 download_artifact_if_needed = function(github_repo, repo_name, collection_path, force = FALSE) {
   cached_path = get_cached_artifact_path(collection_path, repo_name)
   
@@ -139,11 +136,10 @@ download_artifact_if_needed = function(github_repo, repo_name, collection_path, 
   })
 }
 
-#' Get archive metadata from GitHub
-#'
-#' @param github_repos Character vector. GitHub repositories in format "owner/repo"
-#' @return Data frame with repository and artifact metadata
-#'
+# Get archive metadata for a set of GitHub repositories
+#
+# github_repos: GitHub repositories in format "owner/repo"
+
 get_archive_metadata = function(github_repos) {
   if (length(github_repos) == 0) {
     return(data.frame())
@@ -183,13 +179,12 @@ get_archive_metadata = function(github_repos) {
   })
 }
 
-#' Check if local archive is up to date
-#'
-#' @param cached_path Character string. Path to cached archive file
-#' @param github_repo Character string. GitHub repository in format "owner/repo"
-#' @param metadata Data frame. Archive metadata from get_archive_metadata()
-#' @return Logical. TRUE if local file is up to date, FALSE otherwise
-#'
+# Check whether a local archive is up to date relative to remote metadata
+#
+# cached_path: Path to cached archive file
+# github_repo: GitHub repository in format "owner/repo"
+# metadata: Archive metadata from get_archive_metadata()
+
 check_archive_freshness = function(cached_path, github_repo, metadata) {
   # File doesn't exist - needs download
   if (!file.exists(cached_path)) {
@@ -235,14 +230,13 @@ check_archive_freshness = function(cached_path, github_repo, metadata) {
   return(TRUE)
 }
 
-#' Download all archives with progress tracking
-#'
-#' @param github_repos Character vector. GitHub repositories to download
-#' @param repo_to_github Named list. Mapping from local repo names to GitHub repos
-#' @param collection_path Character string. Path to collection directory
-#' @param progress_callback Function. Optional callback for progress updates
-#' @return List with success status and results
-#'
+# Download all out-of-date archives with progress tracking
+#
+# github_repos: GitHub repositories to download
+# repo_to_github: Named mapping from local repo names to GitHub repos
+# collection_path: Path to collection directory
+# progress_callback: Optional callback for progress updates
+
 download_all_archives = function(github_repos, repo_to_github, collection_path, progress_callback = NULL) {
   if (length(github_repos) == 0) {
     return(list(success = TRUE, results = list()))
@@ -322,10 +316,9 @@ download_all_archives = function(github_repos, repo_to_github, collection_path, 
       progress_callback(paste("Downloading", local_repo, "..."), processed_count)
     }
     
-    # Force download since this repo is in the needs_download list
-    cached_path = get_cached_artifact_path(collection_path, local_repo)
-    force_download = !file.exists(cached_path) || TRUE  # Always force since it's in the needs_download list
-    result = download_artifact_if_needed(github_repo, local_repo, collection_path, force = force_download)
+    # Always force re-download: this repo is in the needs_download list because
+    # its cached file is missing or stale, so an existing file must be overwritten.
+    result = download_artifact_if_needed(github_repo, local_repo, collection_path, force = TRUE)
     results[[local_repo]] = result
     
     # Always increment processed count
@@ -362,14 +355,13 @@ download_all_archives = function(github_repos, repo_to_github, collection_path, 
   return(list(success = TRUE, results = results, downloaded_count = downloaded_count, total_needing_download = total_count))
 }
 
-#' Sync archives (update only out-of-date files)
-#'
-#' @param github_repos Character vector. GitHub repositories to sync
-#' @param repo_to_github Named list. Mapping from local repo names to GitHub repos
-#' @param collection_path Character string. Path to collection directory
-#' @param progress_callback Function. Optional callback for progress updates
-#' @return List with success status and results
-#'
+# Sync archives, updating only out-of-date files
+#
+# github_repos: GitHub repositories to sync
+# repo_to_github: Named mapping from local repo names to GitHub repos
+# collection_path: Path to collection directory
+# progress_callback: Optional callback for progress updates
+
 sync_archives = function(github_repos, repo_to_github, collection_path, progress_callback = NULL) {
   if (!is.null(progress_callback)) {
     progress_callback("Checking for archive updates...")
@@ -379,10 +371,10 @@ sync_archives = function(github_repos, repo_to_github, collection_path, progress
   return(result)
 }
 
-#' Open folder in system file manager (cross-platform)
-#'
-#' @param folder_path Character string. Path to folder to open
-#'
+# Open a folder in the system file manager (cross-platform)
+#
+# folder_path: Path to folder to open
+
 open_folder = function(folder_path) {
   if (!dir.exists(folder_path)) {
     return(FALSE)
@@ -481,13 +473,9 @@ mark = function(collection_path, template = NULL, use_qmd = TRUE, download_archi
     })
   }
   
-  # Parse the collection using parsermd
-  if (use_qmd) {
-    collection = parsermd::parse_qmd_collection(collection_path)
-  } else {
-    collection = parsermd::parse_rmd_collection(collection_path)
-  }
-  
+  # Parse the collection (knitr-style chunk headers are normalised per file)
+  collection = parse_assignment_collection(collection_path, use_qmd)
+
   # Get repository names from collection tibble
   repo_list = character(0)
   validation_results = list()
@@ -588,26 +576,22 @@ mark = function(collection_path, template = NULL, use_qmd = TRUE, download_archi
 }
 
 
-#' Create Shiny App for markermd
-#'
-#' Internal function to create the Shiny application
-#'
-#' @param collection_path Character string. Path to directory containing assignment repositories
-#' @param template_obj markermd_template S7 object with node selections, or NULL
-#' @param use_qmd Logical. Whether to parse .qmd files (TRUE) or .Rmd files (FALSE)
-#' @param collection Parsed collection data from parsermd
-#' @param repo_list Character vector of repository names
-#' @param validation_results List of validation results for each repository
-#' @param initial_repo_ast Initial repository AST to display
-#' @param initial_repo_name Name of initial repository
-#' @param artifact_status List of artifact availability status for each repository
-#' @param repo_to_github Named list mapping repository names to GitHub repos
-#' @param template_path Character string. Path to template file (optional)
-#' @param download_archives Logical. Whether archives were downloaded at launch
-#' @param database_state List. Database state loaded from SQLite (optional)
-#'
-#' @return Shiny app object
-#'
+# Create the Shiny application object for the marking interface
+#
+# collection_path: Path to directory containing assignment repositories
+# template_obj: markermd_template S7 object with node selections, or NULL
+# use_qmd: Whether to parse .qmd files (TRUE) or .Rmd files (FALSE)
+# collection: Parsed collection data (data frame with path and ast columns)
+# repo_list: Character vector of repository names
+# validation_results: List of validation results for each repository
+# initial_repo_ast: Initial repository AST to display
+# initial_repo_name: Name of initial repository
+# artifact_status: List of artifact availability status for each repository
+# repo_to_github: Named list mapping repository names to GitHub repos
+# template_path: Path to template file (optional)
+# download_archives: Whether archives were downloaded at launch
+# database_state: Database state loaded from SQLite (optional)
+
 create_markermd_app = function(collection_path, template_obj, use_qmd, collection, repo_list, validation_results, initial_repo_ast, initial_repo_name, artifact_status, repo_to_github, template_path = NULL, download_archives = TRUE, database_state = NULL) {
   
   # Define UI  
@@ -767,16 +751,7 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
     
     # Reactive trigger for auto-sync on app launch
     auto_sync_trigger = shiny::reactiveVal(0)
-    
-    # Auto-sync disabled - user must manually sync archives
-    # if (download_archives && length(repo_to_github) > 0) {
-    #   # Use session$onFlushed to ensure app is fully loaded, then trigger sync
-    #   session$onFlushed(function() {
-    #     # Simple trigger without invalidateLater
-    #     auto_sync_trigger(1)
-    #   }, once = TRUE)
-    # }
-    
+
     # Create reactive trigger for progress updates (initialized here to ensure it exists)
     progress_update_trigger = shiny::reactiveVal(0)
     
@@ -1097,12 +1072,12 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
             row_index = i
             button_id = paste0("repo_select_", row_index)
             
-            shiny::observeEvent(input[[button_id]], {
+            shiny::observe({
               selected_repo = repo_list[row_index]
-              
+
               # Update selected index for highlighting
               selected_repo_index(row_index)
-              
+
               # Find rows for the selected repository
               repo_rows = collection$path |> dirname() |> basename() == selected_repo
               if (any(repo_rows)) {
@@ -1110,7 +1085,7 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
                 current_repo_ast(collection$ast[repo_rows][[1]])
                 current_repo_name(selected_repo)
               }
-            })
+            }) |> bindEvent(input[[button_id]])
           })
         }
     })
@@ -1122,9 +1097,9 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
           row_index = i
           artifact_button_id = paste0("artifact_", row_index)
           
-          shiny::observeEvent(input[[artifact_button_id]], {
+          shiny::observe({
             repo = repo_list[row_index]
-            
+
             # Only process if this repo has artifacts
             if (!is.na(artifact_status[[repo]]) && artifact_status[[repo]]) {
               # Get cached path and check if file exists
@@ -1167,7 +1142,7 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
                 )
               }
             }
-          })
+          }) |> bindEvent(input[[artifact_button_id]])
         })
       }
     })
@@ -1179,9 +1154,9 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
           row_index = i
           source_button_id = paste0("source_", row_index)
           
-          shiny::observeEvent(input[[source_button_id]], {
+          shiny::observe({
             repo = repo_list[row_index]
-            
+
             # Find the source file path from collection
             repo_rows = collection$path |> dirname() |> basename() == repo
             if (any(repo_rows)) {
@@ -1281,11 +1256,11 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
                 )
               }
             }
-          })
+          }) |> bindEvent(input[[source_button_id]])
         })
       }
     })
-    
+
     # Handle folder button clicks
     shiny::observe({
       for (i in seq_along(repo_list)) {
@@ -1293,16 +1268,16 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
           row_index = i
           folder_button_id = paste0("folder_", row_index)
           
-          shiny::observeEvent(input[[folder_button_id]], {
+          shiny::observe({
             repo = repo_list[row_index]
             # Expand tilde in collection path and normalize the full path
             expanded_collection_path = path.expand(collection_path)
             repo_path = file.path(expanded_collection_path, repo)
             repo_path = normalizePath(repo_path, mustWork = FALSE)
-            
+
             # Attempt to open the folder
             success = open_folder(repo_path)
-            
+
             if (!success) {
               # Show error modal if folder couldn't be opened
               shiny::showModal(
@@ -1318,7 +1293,7 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
                 )
               )
             }
-          })
+          }) |> bindEvent(input[[folder_button_id]])
         })
       }
     })
@@ -1465,32 +1440,28 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
     }
     
     # Handle sync archives button click
-    shiny::observeEvent(input$sync_archives, {
+    shiny::observe({
       perform_sync()
-    })
-    
+    }) |> bindEvent(input$sync_archives)
+
     # Handle auto-sync trigger
-    shiny::observeEvent(auto_sync_trigger(), {
+    shiny::observe({
       if (auto_sync_trigger() > 0) {
         perform_sync()
       }
-    })
+    }) |> bindEvent(auto_sync_trigger())
     
     # Handle navbar tab switching to update grading progress
-    shiny::observeEvent(input$main_navbar, {
+    shiny::observe({
       if (!is.null(input$main_navbar) && input$main_navbar == "validation") {
         # When validation pane becomes active, refresh the grading progress
         # This ensures the progress column reflects current grading status
-        
-        # Get current reactive values to check if we have necessary data
-        current_template = template_reactive()
-        
-        if (length(repo_list) > 0 && !is.null(current_template)) {
+        if (length(repo_list) > 0 && !is.null(template_obj)) {
           # Increment trigger to force table recalculation
           progress_update_trigger(progress_update_trigger() + 1)
         }
       }
-    }, ignoreInit = TRUE)
+    }) |> bindEvent(input$main_navbar, ignoreInit = TRUE)
   }
   
   # Return the app

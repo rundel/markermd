@@ -1,12 +1,12 @@
-#' Question Module
-#'
-#' Shiny module for managing a single question with its rules
+# Question Module
+#
+# Shiny module for managing a single question with its rules
 
-#' Question UI
-#'
-#' @param id Character. Module namespace ID
-#' @param name_id Integer. The question ID used for default naming
-#'
+# Question UI
+#
+# id: Character. Module namespace ID
+# name_id: Integer. The question ID used for default naming
+
 question_ui = function(id, name_id) {
   ns = shiny::NS(id)
   
@@ -86,21 +86,14 @@ question_ui = function(id, name_id) {
   )
 }
 
-#' Question Server
-#'
-#' @param id Character. Module namespace ID
-#' @param ast Reactive. The parsed AST object for building tree structure
-#' @param initial_question S7 markermd_question object. Optional initial question state
-#' @export
+# Question Server
+#
+# id: Character. Module namespace ID
+# ast: Reactive. The parsed AST object for building tree structure
+# initial_question: S7 markermd_question object. Optional initial question state
+
 question_server = function(id, ast, initial_question = NULL) {
   shiny::moduleServer(id, function(input, output, session) {
-    
-    # Validate AST in a reactive context (disabled for testing)
-    # shiny::observe({
-    #   if (!is.null(ast())) {
-    #     stopifnot(S7::S7_inherits(ast(), parsermd::rmd_ast))
-    #   }
-    # })
 
     # Question state - use initial_question if provided, otherwise default
     state = shiny::reactiveVal({
@@ -162,48 +155,67 @@ question_server = function(id, ast, initial_question = NULL) {
       }
     }, priority = 1000)  # High priority to run before other observers
     
+    # Capture the current input values for a single rule into a new
+    # markermd_rule. The values input is validated for the active verb; when it
+    # is absent or invalid the supplied fallback is used instead.
+    #
+    # rule_id: Character. The rule ID whose inputs should be read
+    # rule: markermd_rule. The currently stored rule, used for fallbacks
+    # invalid_values_fallback: Function(verb, rule). Produces the values to use
+    #   when the values input is missing or fails validation
+
+    capture_rule_inputs = function(rule_id, rule, invalid_values_fallback) {
+      node_types_input = paste0("rule_", rule_id, "-node_types")
+      verb_input = paste0("rule_", rule_id, "-verb")
+      values_input = paste0("rule_", rule_id, "-values")
+
+      final_node_type = if (!is.null(input[[node_types_input]])) input[[node_types_input]] else rule@node_type
+      final_verb = if (!is.null(input[[verb_input]])) input[[verb_input]] else rule@verb
+      final_values = if (!is.null(input[[values_input]])) {
+        values_value = input[[values_input]]
+        if (is.null(validate_rule_values(final_verb, values_value))) {
+          values_value
+        } else {
+          invalid_values_fallback(final_verb, rule)
+        }
+      } else {
+        invalid_values_fallback(final_verb, rule)
+      }
+
+      new_markermd_rule(
+        node_type = final_node_type,
+        verb = final_verb,
+        values = final_values
+      )
+    }
+
     # Add rule button observer
     shiny::observe({
       rule_id = next_rule_id()
-      
-      
+
       # Before adding new rule, capture current input values for existing rules
       # This mirrors the question name handling approach
       current_rules = rules_list()
       for (existing_rule_id in names(current_rules)) {
         rule = current_rules[[existing_rule_id]]
-        
-        # Get current input values
+
         node_types_input = paste0("rule_", existing_rule_id, "-node_types")
-        verb_input = paste0("rule_", existing_rule_id, "-verb") 
-        values_input = paste0("rule_", existing_rule_id, "-values")
-        
+        verb_input = paste0("rule_", existing_rule_id, "-verb")
+
         # Update rule with current input values if available
         if (!is.null(input[[node_types_input]]) && !is.null(input[[verb_input]])) {
-          final_node_type = input[[node_types_input]]
-          final_verb = input[[verb_input]]
-          final_values = if (!is.null(input[[values_input]])) {
-            values_value = input[[values_input]]
-            if (is.null(validate_rule_values(final_verb, values_value))) {
-              values_value
-            } else {
-              get_default_rule_values(final_verb)
-            }
-          } else {
-            get_default_rule_values(final_verb)
-          }
-          
+          updated_rule = capture_rule_inputs(
+            existing_rule_id, rule,
+            function(verb, rule) get_default_rule_values(verb)
+          )
+
           # Update the rule if anything changed
-          if (rule@node_type != final_node_type || rule@verb != final_verb || !identical(rule@values, final_values)) {
-            current_rules[[existing_rule_id]] = new_markermd_rule(
-              node_type = final_node_type,
-              verb = final_verb,
-              values = final_values
-            )
+          if (rule@node_type != updated_rule@node_type || rule@verb != updated_rule@verb || !identical(rule@values, updated_rule@values)) {
+            current_rules[[existing_rule_id]] = updated_rule
           }
         }
       }
-      
+
       # Create new rule with default values
       new_rule = new_markermd_rule()
       
@@ -226,48 +238,29 @@ question_server = function(id, ast, initial_question = NULL) {
     
     # Create a delete observer for a specific rule
     #
-    # @param rule_id Character. The rule ID to create observer for
-    
+    # rule_id: Character. The rule ID to create observer for
+
     create_delete_observer = function(rule_id) {
       delete_input_id = paste0("rule_", rule_id, "-delete")
-      
-      observer = shiny::observeEvent(input[[delete_input_id]], {
+
+      observer = shiny::observe({
         current_rules = rules_list()
-        
+
         # Before deletion, capture current input values for all remaining rules
         preserved_rules = list()
         for (preserve_rule_id in names(current_rules)) {
           if (preserve_rule_id != rule_id) {  # Skip the rule being deleted
             rule = current_rules[[preserve_rule_id]]
-            
-            # Get current input values
-            node_types_input = paste0("rule_", preserve_rule_id, "-node_types")
-            verb_input = paste0("rule_", preserve_rule_id, "-verb")
-            values_input = paste0("rule_", preserve_rule_id, "-values")
-            
-            # Use current input values if available, otherwise keep existing
-            final_node_type = if (!is.null(input[[node_types_input]])) input[[node_types_input]] else rule@node_type
-            final_verb = if (!is.null(input[[verb_input]])) input[[verb_input]] else rule@verb
-            final_values = if (!is.null(input[[values_input]])) {
-              values_value = input[[values_input]]
-              if (is.null(validate_rule_values(final_verb, values_value))) {
-                values_value
-              } else {
-                rule@values
-              }
-            } else {
-              rule@values
-            }
-            
-            # Create updated rule with current input values
-            preserved_rules[[preserve_rule_id]] = new_markermd_rule(
-              node_type = final_node_type,
-              verb = final_verb,
-              values = final_values
+
+            # Create updated rule with current input values, keeping the stored
+            # values when the values input is absent or invalid
+            preserved_rules[[preserve_rule_id]] = capture_rule_inputs(
+              preserve_rule_id, rule,
+              function(verb, rule) rule@values
             )
           }
         }
-        
+
         # Re-index preserved rules to maintain sequential numbering
         if (length(preserved_rules) > 0) {
           reindexed_rules = list()
@@ -279,22 +272,23 @@ question_server = function(id, ast, initial_question = NULL) {
         } else {
           current_rules = list()
         }
-        
+
         rules_list(current_rules)
-        
+
         # Update question state
         cur_state = state()
         cur_state@rules = current_rules
         state(cur_state)
-        
+
         # Reset next rule ID for sequential numbering
         next_rule_id(length(current_rules) + 1L)
-        
+
         # The monitor observer will handle creating new observers for the updated rules_list
         # No need for manual cleanup here since re-indexing changes rule IDs anyway
-        
-      }, ignoreInit = TRUE)
-      
+
+      }) |>
+        shiny::bindEvent(input[[delete_input_id]], ignoreInit = TRUE)
+
       return(observer)
     }
     
@@ -326,49 +320,29 @@ question_server = function(id, ast, initial_question = NULL) {
     shiny::observe({
       current_rules = rules_list()
       rules_changed = FALSE
-      
+
       for (rule_id in names(current_rules)) {
         node_types_input = paste0("rule_", rule_id, "-node_types")
         verb_input = paste0("rule_", rule_id, "-verb")
-        values_input = paste0("rule_", rule_id, "-values")
-        
+
         # Update rule if inputs have changed
         shiny::req(input[[node_types_input]], input[[verb_input]])
-        
+
         rule = current_rules[[rule_id]]
-        new_node_type = input[[node_types_input]]
-        new_verb = input[[verb_input]]
-        
-        # Determine new values
-        new_values = if (!is.null(input[[values_input]])) {
-          values_value = input[[values_input]]
-          
-          # Validate the values for the current verb
-          if (is.null(validate_rule_values(new_verb, values_value))) {
-            values_value
-          } else {
-            get_default_rule_values(new_verb)
-          }
-        } else {
-          get_default_rule_values(new_verb)
-        }
-        
+        new_rule = capture_rule_inputs(
+          rule_id, rule,
+          function(verb, rule) get_default_rule_values(verb)
+        )
+
         # Check if anything changed (including values)
-        values_changed = !identical(rule@values, new_values)
-        
-        if (rule@node_type != new_node_type || rule@verb != new_verb || values_changed) {
-          # Create new rule to avoid S7 validation issues
-          new_rule = new_markermd_rule(
-            node_type = new_node_type,
-            verb = new_verb,
-            values = new_values
-          )
-          
+        values_changed = !identical(rule@values, new_rule@values)
+
+        if (rule@node_type != new_rule@node_type || rule@verb != new_rule@verb || values_changed) {
           current_rules[[rule_id]] = new_rule
           rules_changed = TRUE
         }
       }
-      
+
       # Update reactive values if there were changes
       if (rules_changed) {
         rules_list(current_rules)

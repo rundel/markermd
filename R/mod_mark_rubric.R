@@ -1,11 +1,11 @@
-#' Mark Rubric Interface Module
-#'
-#' Shiny module for displaying and navigating rubric questions during marking
+# Mark Rubric Interface Module
+#
+# Shiny module for displaying and navigating rubric questions during marking
 
-#' Mark Rubric UI
-#'
-#' @param id Character. Module namespace ID
-#'
+# Mark Rubric UI
+#
+# id: Character. Module namespace ID
+
 mark_rubric_ui = function(id) {
   ns = shiny::NS(id)
   
@@ -205,17 +205,17 @@ mark_rubric_ui = function(id) {
   )
 }
 
-#' Mark Rubric Server
-#'
-#' @param id Character. Module namespace ID
-#' @param template markermd_template. Static template object containing questions
-#' @param artifact_status_reactive Reactive value. Artifact status for repositories
-#' @param collection_path Character string. Path to collection directory
-#' @param use_qmd Logical. Whether to parse .qmd files (TRUE) or .Rmd files (FALSE)
-#' @param collection Parsed collection data from parsermd
-#' @param database_state List. Database state loaded from SQLite (optional)
-#' @param on_question_change Reactive function. Callback when question selection changes
-#'
+# Mark Rubric Server
+#
+# id: Character. Module namespace ID
+# template: markermd_template. Static template object containing questions
+# artifact_status_reactive: Reactive value. Artifact status for repositories
+# collection_path: Character string. Path to collection directory
+# use_qmd: Logical. Whether to parse .qmd files (TRUE) or .Rmd files (FALSE)
+# collection: Parsed collection data (data frame with path and ast columns)
+# database_state: List. Database state loaded from SQLite (optional)
+# on_question_change: Reactive function. Callback when question selection changes
+
 mark_rubric_server = function(id, template, artifact_status_reactive, collection_path, use_qmd, collection, database_state = NULL, on_question_change = NULL) {
   shiny::moduleServer(id, function(input, output, session) {
     
@@ -230,204 +230,63 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
       normalizePath(file.path(cache_dir, paste0(repo_name, ".html")), mustWork = FALSE)
     }
     
-    # Helper function to find correct AST indices by matching against template
-    find_matching_ast_indices = function(template_ast, repo_ast, template_indices) {
-      matched_indices = c()
-      
-      for (template_idx in template_indices) {
-        if (template_idx > length(template_ast)) {
-          next
-        }
-        
-        template_node = template_ast[[template_idx]]
-        if (is.null(template_node)) {
-          next
-        }
-        
-        if ("rmd_heading" %in% class(template_node)) {
-          # For headings, match by name and level
-          template_name = attr(template_node, "name")
-          template_level = attr(template_node, "level")
-          
-          # Find matching heading in repo AST
-          for (repo_idx in seq_along(repo_ast)) {
-            repo_node = repo_ast[[repo_idx]]
-            if (!is.null(repo_node) && "rmd_heading" %in% class(repo_node)) {
-              repo_name = attr(repo_node, "name")
-              repo_level = attr(repo_node, "level")
-              
-              if (identical(repo_name, template_name) && identical(repo_level, template_level)) {
-                matched_indices = c(matched_indices, repo_idx)
-                break
-              }
-            }
-          }
+    # Group consecutive line numbers into start/end ranges
+    #
+    # line_numbers: Sorted integer vector of line numbers
+
+    group_consecutive_lines = function(line_numbers) {
+      if (length(line_numbers) == 0) {
+        return(list())
+      }
+
+      ranges = list()
+      start = line_numbers[1]
+      prev = line_numbers[1]
+
+      for (line_number in line_numbers[-1]) {
+        if (line_number == prev + 1) {
+          prev = line_number
         } else {
-          # For non-headings, try to use the template index if it exists and matches type
-          if (template_idx <= length(repo_ast)) {
-            repo_node = repo_ast[[template_idx]]
-            if (!is.null(repo_node) && identical(class(template_node), class(repo_node))) {
-              matched_indices = c(matched_indices, template_idx)
-            }
-          }
+          ranges[[length(ranges) + 1]] = list(start = start, end = prev)
+          start = line_number
+          prev = line_number
         }
       }
-      
-      return(matched_indices)
+
+      ranges[[length(ranges) + 1]] = list(start = start, end = prev)
+      ranges
     }
 
-    # Helper function to map node content to line numbers using AST structure
+    # Map a question's selected sections to line ranges in the repo document
+    #
+    # Resolves the selected node indices to heading-section paths (against the
+    # template AST when supplied, otherwise the repo AST) and highlights every
+    # line of the displayed (normalised) document whose enclosing heading chain
+    # falls under one of those sections.
+    #
+    # raw_content_lines: Character vector of the displayed (normalised) document
+    # node_indices: Integer selected node indices
+    # repo_ast: q2r pandoc AST of the repo document
+    # template_ast: Optional q2r pandoc AST of the template document
+
     map_content_to_lines = function(raw_content_lines, node_indices, repo_ast, template_ast = NULL) {
       if (length(node_indices) == 0) {
         return(list())
       }
-      
-      # If we have template AST, find matching indices in repo AST
-      if (!is.null(template_ast)) {
-        actual_indices = find_matching_ast_indices(template_ast, repo_ast, node_indices)
-      } else {
-        actual_indices = node_indices
-      }
-      
-      if (length(actual_indices) == 0) {
+
+      selector_ast = if (is.null(template_ast)) repo_ast else template_ast
+      selectors = Filter(function(selector) length(selector) > 0, get_heading_selector(selector_ast, node_indices))
+      if (length(selectors) == 0) {
         return(list())
       }
-      
-      highlight_ranges = list()
-      
-      # Process each selected node
-      for (node_index in actual_indices) {
-          # Get the current node
-          current_node = repo_ast[[node_index]]
-          if (is.null(current_node)) {
-            next
-          }
-          
-          # Get node content
-          node_content = parsermd::as_document(current_node) |> as.character() |> trimws()
-          
-          if (length(node_content) == 0 || nchar(node_content)[1] == 0) {
-            next
-          }
-          
-          # Extract first line for matching
-          node_lines = strsplit(node_content, "\n")[[1]]
-          if (length(node_lines) == 0) {
-            next
-          }
-          node_first_line = trimws(node_lines[1])
-          
-          # Find start line by exact match
-          start_line = NULL
-          for (line_idx in seq_along(raw_content_lines)) {
-            raw_line = trimws(raw_content_lines[line_idx])
-            # Ensure both are single strings before comparison
-            if (length(raw_line) == 1 && length(node_first_line) == 1 && 
-                nchar(raw_line) > 0 && nchar(node_first_line) > 0 &&
-                raw_line == node_first_line) {
-              start_line = line_idx
-              break
-            }
-          }
-          
-          if (is.null(start_line)) {
-            next
-          }
-          
-          # Find end line using AST structure
-          end_line = length(raw_content_lines)  # Default to end of document
-          
-          if ("rmd_heading" %in% class(current_node)) {
-            current_level = attr(current_node, "level")
-            
-            # Find the next heading at same or higher level in the AST
-            next_heading_index = NULL
-            for (i in (node_index + 1):length(repo_ast)) {
-              if (i > length(repo_ast)) break
-              next_node = repo_ast[[i]]
-              
-              if (!is.null(next_node) && "rmd_heading" %in% class(next_node)) {
-                next_level = attr(next_node, "level")
-                
-                if (length(current_level) == 1 && length(next_level) == 1 && next_level <= current_level) {
-                  next_heading_index = i
-                  break
-                }
-              }
-            }
-            
-            # If we found a next heading, find its line in the document
-            if (!is.null(next_heading_index)) {
-              next_heading_content = parsermd::as_document(repo_ast[[next_heading_index]]) |> 
-                as.character() |> trimws()
-              
-              if (nchar(next_heading_content) > 0) {
-                next_lines = strsplit(next_heading_content, "\n")[[1]]
-                if (length(next_lines) > 0) {
-                  next_first_line = trimws(next_lines[1])
-                  
-                  # Find where this next heading appears
-                  for (line_idx in (start_line + 1):length(raw_content_lines)) {
-                    raw_line = trimws(raw_content_lines[line_idx])
-                    # Ensure both are single strings before comparison
-                    if (length(raw_line) == 1 && length(next_first_line) == 1 && 
-                        nchar(raw_line) > 0 && nchar(next_first_line) > 0 &&
-                        raw_line == next_first_line) {
-                      end_line = line_idx - 1
-                      break
-                    }
-                  }
-                }
-              }
-            }
-          } else {
-            # For non-heading nodes, use a reasonable default
-            end_line = min(start_line + 10, length(raw_content_lines))
-          }
-          
-          # Check if the last line is blank and adjust end_line if needed
-          if (end_line <= length(raw_content_lines)) {
-            last_line_content = trimws(raw_content_lines[end_line])
-            if (nchar(last_line_content) == 0 && end_line > start_line) {
-              end_line = end_line - 1
-            }
-          }
-          
-          # Add to highlight ranges
-          highlight_ranges[[length(highlight_ranges) + 1]] = list(
-            start = start_line,
-            end = end_line
-          )
-      }
-      
-      # Merge overlapping ranges
-      if (length(highlight_ranges) > 1) {
-        # Sort ranges by start line
-        highlight_ranges = highlight_ranges[order(sapply(highlight_ranges, function(r) r$start))]
-        
-        merged_ranges = list()
-        current_range = highlight_ranges[[1]]
-        
-        for (i in 2:length(highlight_ranges)) {
-          next_range = highlight_ranges[[i]]
-          
-          # If ranges overlap or are adjacent, merge them
-          if (next_range$start <= current_range$end + 1) {
-            current_range$end = max(current_range$end, next_range$end)
-          } else {
-            # No overlap, add current range and start new one
-            merged_ranges[[length(merged_ranges) + 1]] = current_range
-            current_range = next_range
-          }
-        }
-        
-        # Add the final range
-        merged_ranges[[length(merged_ranges) + 1]] = current_range
-        highlight_ranges = merged_ranges
-      }
-      
-      
-      return(highlight_ranges)
+
+      chains = line_section_chains(raw_content_lines)
+      matched = which(vapply(chains, function(chain) {
+        chain = chain[!is.na(chain)]
+        any(vapply(selectors, function(selector) section_chain_matches(chain, selector), logical(1)))
+      }, logical(1)))
+
+      group_consecutive_lines(matched)
     }
     
     # Helper function to get raw document content
@@ -444,9 +303,10 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
         return(NULL)
       }
       
-      # Read the raw file content
+      # Read the raw file content (normalised so knitr chunk headers match the
+      # parsed AST and section-based highlighting lines up)
       tryCatch({
-        raw_content_lines = readLines(file_path, warn = FALSE)
+        raw_content_lines = normalize_knitr_chunks(readLines(file_path, warn = FALSE))
         raw_content = paste(raw_content_lines, collapse = "\n")
         
         # Determine file extension for syntax highlighting
@@ -1153,18 +1013,8 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
         # Get the repository AST for the current repo
         selected_repo = input$content_repo_select
         repo_rows = collection$path |> dirname() |> basename() == selected_repo
-        repo_ast = if (any(repo_rows)) collection$ast[repo_rows][[1]] else NULL
-        
-        if (!is.null(repo_ast)) {
-          # Map template indices to actual repo AST indices
-          actual_indices = find_matching_ast_indices(template@original_ast, repo_ast, question_obj@selected_nodes@indices)
-          
-          # Get all hierarchies for highlighting using actual repo AST and mapped indices
-          all_hierarchies = get_heading_selector(repo_ast, actual_indices)
-        } else {
-          # Fallback to template AST if repo AST not found
-          all_hierarchies = get_heading_selector(template@original_ast, question_obj@selected_nodes@indices)
-        }
+        # Section paths come from the template and match the repo by heading name
+        all_hierarchies = get_heading_selector(template@original_ast, question_obj@selected_nodes@indices)
         if (length(all_hierarchies) > 0) {
           # Use first hierarchy for scrolling
           first_hierarchy = all_hierarchies[[1]]
@@ -1341,68 +1191,76 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
       shiny::bindEvent(input$content_repo_select, ignoreInit = TRUE)
     
     # Navigation button observers
-    
+
+    # Compute the next selection in a list of choices, wrapping around at the ends
+    #
+    # current: Currently selected value
+    # choices: Character vector of available choices
+    # direction: -1 for previous, 1 for next
+
+    navigate_select = function(current, choices, direction) {
+      if (length(choices) <= 1 || is.null(current)) {
+        return(NULL)
+      }
+
+      current_index = match(current, choices)
+      if (is.na(current_index)) {
+        return(NULL)
+      }
+
+      new_index = (current_index - 1 + direction) %% length(choices) + 1
+      choices[new_index]
+    }
+
     # Repository navigation buttons
-    shiny::observeEvent(input$repo_prev_btn, {
-      current_choices = names(shiny::isolate(artifact_status_reactive()))
-      current_selected = shiny::isolate(input$content_repo_select)
-      
-      if (length(current_choices) > 1 && !is.null(current_selected)) {
-        current_index = match(current_selected, current_choices)
-        if (!is.na(current_index)) {
-          # Previous repo (wrap around)
-          new_index = if (current_index <= 1) length(current_choices) else current_index - 1
-          new_selection = current_choices[new_index]
-          shiny::updateSelectInput(session, "content_repo_select", selected = new_selection)
-        }
+    shiny::observe({
+      new_selection = navigate_select(
+        shiny::isolate(input$content_repo_select),
+        names(shiny::isolate(artifact_status_reactive())),
+        direction = -1
+      )
+      if (!is.null(new_selection)) {
+        shiny::updateSelectInput(session, "content_repo_select", selected = new_selection)
       }
-    }, ignoreInit = TRUE)
-    
-    shiny::observeEvent(input$repo_next_btn, {
-      current_choices = names(shiny::isolate(artifact_status_reactive()))
-      current_selected = shiny::isolate(input$content_repo_select)
-      
-      if (length(current_choices) > 1 && !is.null(current_selected)) {
-        current_index = match(current_selected, current_choices)
-        if (!is.na(current_index)) {
-          # Next repo (wrap around)
-          new_index = if (current_index >= length(current_choices)) 1 else current_index + 1
-          new_selection = current_choices[new_index]
-          shiny::updateSelectInput(session, "content_repo_select", selected = new_selection)
-        }
+    }) |>
+      shiny::bindEvent(input$repo_prev_btn, ignoreInit = TRUE)
+
+    shiny::observe({
+      new_selection = navigate_select(
+        shiny::isolate(input$content_repo_select),
+        names(shiny::isolate(artifact_status_reactive())),
+        direction = 1
+      )
+      if (!is.null(new_selection)) {
+        shiny::updateSelectInput(session, "content_repo_select", selected = new_selection)
       }
-    }, ignoreInit = TRUE)
-    
-    # Question navigation buttons  
-    shiny::observeEvent(input$question_prev_btn, {
-      current_choices = question_names
-      current_selected = shiny::isolate(input$question_select)
-      
-      if (length(current_choices) > 1 && !is.null(current_selected)) {
-        current_index = match(current_selected, current_choices)
-        if (!is.na(current_index)) {
-          # Previous question (wrap around)
-          new_index = if (current_index <= 1) length(current_choices) else current_index - 1
-          new_selection = current_choices[new_index]
-          shiny::updateSelectInput(session, "question_select", selected = new_selection)
-        }
+    }) |>
+      shiny::bindEvent(input$repo_next_btn, ignoreInit = TRUE)
+
+    # Question navigation buttons
+    shiny::observe({
+      new_selection = navigate_select(
+        shiny::isolate(input$question_select),
+        question_names,
+        direction = -1
+      )
+      if (!is.null(new_selection)) {
+        shiny::updateSelectInput(session, "question_select", selected = new_selection)
       }
-    }, ignoreInit = TRUE)
-    
-    shiny::observeEvent(input$question_next_btn, {
-      current_choices = question_names
-      current_selected = shiny::isolate(input$question_select)
-      
-      if (length(current_choices) > 1 && !is.null(current_selected)) {
-        current_index = match(current_selected, current_choices)
-        if (!is.na(current_index)) {
-          # Next question (wrap around)
-          new_index = if (current_index >= length(current_choices)) 1 else current_index + 1
-          new_selection = current_choices[new_index]
-          shiny::updateSelectInput(session, "question_select", selected = new_selection)
-        }
+    }) |>
+      shiny::bindEvent(input$question_prev_btn, ignoreInit = TRUE)
+
+    shiny::observe({
+      new_selection = navigate_select(
+        shiny::isolate(input$question_select),
+        question_names,
+        direction = 1
+      )
+      if (!is.null(new_selection)) {
+        shiny::updateSelectInput(session, "question_select", selected = new_selection)
       }
-    }, ignoreInit = TRUE)
+    }) |>
+      shiny::bindEvent(input$question_next_btn, ignoreInit = TRUE)
     
     # Reactive calculation for selected rubric items' points for current question
     selected_rubric_points = shiny::reactive({

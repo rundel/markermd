@@ -1,11 +1,9 @@
-#' Marking Interface Module
-#'
-#' Shiny module for grading assignments
+# Shiny module for grading assignments
 
-#' Marking UI
-#'
-#' @param id Character. Module namespace ID
-#'
+# Marking UI
+#
+# id: Character. Module namespace ID
+
 marking_ui = function(id) {
   ns = shiny::NS(id)
   
@@ -63,20 +61,19 @@ marking_ui = function(id) {
   )
 }
 
-#' Marking Server
-#'
-#' @param id Character. Module namespace ID
-#' @param ast Reactive. The parsed AST object
-#' @param template_obj Reactive. markermd_template S7 object with questions and rules
-#' @param validation_results Reactive. Optional validation results for current repository
-#'
+# Marking server
+#
+# id: Character. Module namespace ID
+# ast: Reactive. The parsed AST object
+# template_obj: Reactive. markermd_template S7 object with questions and rules
+# validation_results: Reactive. Optional validation results for current repository
+
 marking_server = function(id, ast, template_obj, validation_results = shiny::reactiveVal(NULL)) {
   shiny::moduleServer(id, function(input, output, session) {
-    
-    # Reactive values for managing grading
-    current_question = shiny::reactiveVal(1)
+
+    # Reactive value for managing saved grades
     grades = shiny::reactiveVal(list())
-    
+
     # Display document content
     output$document_content = shiny::renderText({
       if (is.null(ast())) {
@@ -103,40 +100,36 @@ marking_server = function(id, ast, template_obj, validation_results = shiny::rea
     
     # Update questions list based on template
     shiny::observe({
-      current_template_obj = template_obj()
-      if (is.null(current_template_obj) || length(current_template_obj@questions) == 0) {
+      if (is.null(template_obj()) || length(template_obj()@questions) == 0) {
         content = shiny::p("No template loaded. Please create a template first.")
       } else {
-        current_ast = ast()
-        
         # Extract question content for tooltips
-        question_contents = if (!is.null(current_ast)) {
-          extract_question_content(current_ast, current_template_obj)
+        question_contents = if (!is.null(ast())) {
+          extract_question_content(ast(), template_obj())
         } else {
           list()
         }
-        
+
         content = shiny::div(
           style = "padding: 10px;",
           shiny::h5("Questions:", style = "margin-bottom: 10px;"),
-          
+
           shiny::tags$ul(
             style = "list-style-type: none; padding-left: 0; margin: 0;",
-            lapply(seq_along(current_template_obj@questions), function(i) {
-              question_name = current_template_obj@questions[[i]]@name
+            lapply(seq_along(template_obj()@questions), function(i) {
+              question_name = template_obj()@questions[[i]]@name
               # Get tooltip content
               tooltip_content = question_contents[[question_name]] %||% "No content available for this question."
-              
+
               # Get validation status if available
-              current_validation = validation_results()
-              validation_status = if (!is.null(current_validation) && !is.null(current_validation[[question_name]])) {
-                status = current_validation[[question_name]]$status
+              validation_status = if (!is.null(validation_results()) && !is.null(validation_results()[[question_name]])) {
+                status = validation_results()[[question_name]]$status
                 if (status == "pass") {
-                  '<span class="text-success ms-2"><i class="fas fa-check-circle"></i></span>'
+                  as.character(shiny::span(class = "text-success ms-2", shiny::icon("check-circle")))
                 } else if (status == "fail") {
-                  '<span class="text-danger ms-2"><i class="fas fa-times-circle"></i></span>'
+                  as.character(shiny::span(class = "text-danger ms-2", shiny::icon("times-circle")))
                 } else if (status == "error") {
-                  '<span class="text-warning ms-2"><i class="fas fa-exclamation-triangle"></i></span>'
+                  as.character(shiny::span(class = "text-warning ms-2", shiny::icon("exclamation-triangle")))
                 } else {
                   ""
                 }
@@ -183,14 +176,13 @@ marking_server = function(id, ast, template_obj, validation_results = shiny::rea
     })
     
     # Handle question content modal display
-    shiny::observeEvent(input$show_question_content, {
+    shiny::observe({
       if (!is.null(input$show_question_content)) {
         question_name = input$show_question_content$question
         content = input$show_question_content$content
-        
+
         # Monaco Editor handles indentation properly, so we keep original content
-        
-        
+
         # Determine Monaco Editor language based on content type
         # Try to detect the content type from the content itself
         monaco_language = if (grepl("^---\\s*$", content, perl = TRUE)) {
@@ -208,10 +200,10 @@ marking_server = function(id, ast, template_obj, validation_results = shiny::rea
         } else {
           "markdown"  # Default to markdown
         }
-        
+
         # Generate unique editor ID for this question content
         editor_id = paste0("monaco-editor-marking-", gsub("[^A-Za-z0-9]", "", question_name))
-        
+
         shiny::showModal(
           shiny::modalDialog(
             title = shiny::span(paste("Content for", question_name), style = "font-size: 16px; font-weight: bold;"),
@@ -227,78 +219,28 @@ marking_server = function(id, ast, template_obj, validation_results = shiny::rea
             easyClose = TRUE
           )
         )
-        
-        # Initialize Monaco Editor
-        shinyjs::runjs(paste0("
-          (function() {
-            // Load Monaco Editor if not already loaded
-            if (typeof monaco === 'undefined') {
-              var script = document.createElement('script');
-              script.src = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js';
-              script.onload = function() {
-                require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } });
-                require(['vs/editor/editor.main'], function() {
-                  createEditor();
-                });
-              };
-              document.head.appendChild(script);
-            } else {
-              createEditor();
-            }
-            
-            function createEditor() {
-              // Clean up any existing editor
-              var existingContainer = document.getElementById('", editor_id, "');
-              if (existingContainer && existingContainer.editor) {
-                existingContainer.editor.dispose();
-              }
-              
-              // Create the editor
-              var editor = monaco.editor.create(document.getElementById('", editor_id, "'), {
-                value: ", jsonlite::toJSON(content, auto_unbox = TRUE), ",
-                language: '", monaco_language, "',
-                theme: 'vs',
-                readOnly: true,
-                wordWrap: 'on',
-                wrappingIndent: 'indent',
-                fontSize: 12,
-                lineNumbers: 'on',
-                minimap: { enabled: false },
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
-                contextmenu: false,
-                selectOnLineNumbers: false
-              });
-              
-              // Store reference for cleanup
-              document.getElementById('", editor_id, "').editor = editor;
-            }
-          })();
-        "))
+
+        render_monaco_editor(editor_id, content, monaco_language)
       }
-    })
-    
-    # Question selection is no longer interactive - questions are just displayed as a list
-    
-    # Save grade (note: with non-interactive questions list, this may need to be reworked)
-    shiny::observeEvent(input$save_grade, {
+    }) |>
+      shiny::bindEvent(input$show_question_content)
+
+    # Save grade for the current assignment
+    shiny::observe({
       current_grades = grades()
-      question_id = as.character(current_question())
-      
-      current_grades[[question_id]] = list(
+
+      current_grades[["assignment"]] = list(
         score = input$score,
         feedback = input$feedback,
         timestamp = Sys.time()
       )
-      
+
       grades(current_grades)
-    })
-    
-    # Next question functionality removed since questions are no longer interactive
-    
+    }) |>
+      shiny::bindEvent(input$save_grade)
+
     # Return reactive values
     return(list(
-      current_question = current_question,
       grades = grades
     ))
   })

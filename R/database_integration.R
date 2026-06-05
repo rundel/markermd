@@ -2,6 +2,54 @@
 #
 # These functions bridge between S7 objects and SQLite database operations
 
+# SQL fragment selecting the most recent grade row per item_id for a given
+# question_name / assignment_repo pair. The outer query must alias the grades
+# table as g1 and supply two pairs of (question_name, assignment_repo) params:
+# one pair for this inner subquery and one for the outer WHERE clause.
+
+most_recent_grade_join = "
+  FROM grades g1
+  INNER JOIN (
+    SELECT item_id, MAX(timestamp) as max_timestamp
+    FROM grades
+    WHERE question_name = ? AND assignment_repo = ?
+    GROUP BY item_id
+  ) g2 ON g1.item_id = g2.item_id AND g1.timestamp = g2.max_timestamp
+  WHERE g1.question_name = ? AND g1.assignment_repo = ?"
+
+# Determine whether a question/assignment has any grading data: either a
+# selected rubric item (using the most recent grade per item) or a non-empty
+# comment.
+#
+# conn: DBI connection object
+# question_name: Character string
+# assignment_repo: Character string
+# Returns: Logical indicating if grading data exists
+
+has_grading_data = function(conn, question_name, assignment_repo) {
+  grade_query = DBI::dbGetQuery(conn, glue::glue("
+    SELECT COUNT(*) as selected_count
+    <<most_recent_grade_join>> AND g1.selected = 1
+  ", .open = "<<", .close = ">>"),
+    params = list(question_name, assignment_repo, question_name, assignment_repo))
+
+  if (grade_query$selected_count > 0) {
+    return(TRUE)
+  }
+
+  comment_query = DBI::dbGetQuery(conn, "
+    SELECT comment_text
+    FROM comments
+    WHERE question_name = ? AND assignment_repo = ?
+    ORDER BY timestamp DESC
+    LIMIT 1
+  ", params = list(question_name, assignment_repo))
+
+  nrow(comment_query) > 0 &&
+    !is.na(comment_query$comment_text) &&
+    nchar(trimws(comment_query$comment_text)) > 0
+}
+
 # Convert database settings row to markermd_grade_state S7 object
 #
 # settings_row: Single row data frame from settings table
@@ -149,30 +197,17 @@ load_rubric_items = function(collection_path, question_name) {
 
 load_grade_selections = function(collection_path, question_name, assignment_repo) {
   with_database(collection_path, function(conn) {
-    grades_data = DBI::dbGetQuery(conn, "
+    grades_data = DBI::dbGetQuery(conn, glue::glue("
       SELECT g1.*
-      FROM grades g1
-      INNER JOIN (
-        SELECT item_id, MAX(timestamp) as max_timestamp
-        FROM grades
-        WHERE question_name = ? AND assignment_repo = ?
-        GROUP BY item_id
-      ) g2 ON g1.item_id = g2.item_id AND g1.timestamp = g2.max_timestamp
-      WHERE g1.question_name = ? AND g1.assignment_repo = ?
-    ", params = list(question_name, assignment_repo, question_name, assignment_repo))
-    
+      <<most_recent_grade_join>>
+    ", .open = "<<", .close = ">>"),
+      params = list(question_name, assignment_repo, question_name, assignment_repo))
+
     if (nrow(grades_data) == 0) {
       return(list())
     }
-    
-    # Convert to named list
-    selections = list()
-    for (i in seq_len(nrow(grades_data))) {
-      row = grades_data[i, ]
-      selections[[row$item_id]] = as.logical(row$selected)
-    }
-    
-    return(selections)
+
+    as.list(stats::setNames(as.logical(grades_data$selected), grades_data$item_id))
   })
 }
 
@@ -309,63 +344,25 @@ batch_save_rubric_items = function(collection_path, question_name, items_list) {
 # Returns: Named list with assignment repos as names and graded question counts as values
 
 calculate_grading_progress = function(collection_path, question_names, assignment_repos) {
-  progress = stats::setNames(rep(0L, length(assignment_repos)), assignment_repos)
-  
-  # Use database connection to check grading status efficiently
   result = with_database(collection_path, function(conn) {
     progress_results = list()
-    
+
     for (repo in assignment_repos) {
       graded_questions = 0L
-      
+
       for (question in question_names) {
-        is_graded = FALSE
-        
-        # Check if there are any selected rubric items for this question/assignment
-        grade_query = DBI::dbGetQuery(conn, "
-          SELECT g1.*
-          FROM grades g1
-          INNER JOIN (
-            SELECT item_id, MAX(timestamp) as max_timestamp
-            FROM grades
-            WHERE question_name = ? AND assignment_repo = ?
-            GROUP BY item_id
-          ) g2 ON g1.item_id = g2.item_id AND g1.timestamp = g2.max_timestamp
-          WHERE g1.question_name = ? AND g1.assignment_repo = ? AND g1.selected = 1
-        ", params = list(question, repo, question, repo))
-        
-        # If any rubric items are selected, consider it graded
-        if (nrow(grade_query) > 0) {
-          is_graded = TRUE
-        } else {
-          # Check if there's a non-empty comment for this question/assignment
-          comment_query = DBI::dbGetQuery(conn, "
-            SELECT comment_text
-            FROM comments
-            WHERE question_name = ? AND assignment_repo = ?
-            ORDER BY timestamp DESC
-            LIMIT 1
-          ", params = list(question, repo))
-          
-          # If there's a non-empty comment, consider it graded
-          if (nrow(comment_query) > 0 && !is.na(comment_query$comment_text) && nchar(trimws(comment_query$comment_text)) > 0) {
-            is_graded = TRUE
-          }
-        }
-        
-        if (is_graded) {
+        if (has_grading_data(conn, question, repo)) {
           graded_questions = graded_questions + 1L
         }
       }
-      
+
       progress_results[[repo]] = graded_questions
     }
-    
+
     return(progress_results)
   })
-  
-  # Convert to named integer vector
-  return(unlist(result))
+
+  unlist(result)
 }
 
 # Calculate grading progress for a single question across all assignments
@@ -378,23 +375,17 @@ calculate_grading_progress = function(collection_path, question_names, assignmen
 calculate_question_progress = function(collection_path, question_name, assignment_repos) {
   result = with_database(collection_path, function(conn) {
     graded_count = 0L
-    
+
     for (repo in assignment_repos) {
       is_graded = FALSE
-      
+
       # Check if there are any selected rubric items for this question/assignment
-      grade_query = DBI::dbGetQuery(conn, "
+      grade_query = DBI::dbGetQuery(conn, glue::glue("
         SELECT COUNT(*) as selected_count
-        FROM grades g1
-        INNER JOIN (
-          SELECT item_id, MAX(timestamp) as max_timestamp
-          FROM grades
-          WHERE question_name = ? AND assignment_repo = ?
-          GROUP BY item_id
-        ) g2 ON g1.item_id = g2.item_id AND g1.timestamp = g2.max_timestamp
-        WHERE g1.question_name = ? AND g1.assignment_repo = ? AND g1.selected = 1
-      ", params = list(question_name, repo, question_name, repo))
-      
+        <<most_recent_grade_join>> AND g1.selected = 1
+      ", .open = "<<", .close = ">>"),
+        params = list(question_name, repo, question_name, repo))
+
       # If any rubric items are selected, consider it graded
       if (grade_query$selected_count > 0) {
         is_graded = TRUE
@@ -407,22 +398,22 @@ calculate_question_progress = function(collection_path, question_name, assignmen
           ORDER BY timestamp DESC
           LIMIT 1
         ", params = list(question_name, repo))
-        
+
         if (comment_query$comment_count > 0) {
           is_graded = TRUE
         }
       }
-      
+
       if (is_graded) {
         graded_count = graded_count + 1L
       }
     }
-    
+
     return(list(
       graded_count = graded_count,
       total_count = length(assignment_repos)
     ))
   })
-  
+
   return(result)
 }

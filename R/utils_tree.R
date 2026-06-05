@@ -1,238 +1,57 @@
 # Tree Display Utilities
 # Functions for creating hierarchical tree displays of AST structures
 
-# Strip ANSI escape codes from text
-strip_ansi = function(text) {
-  gsub("\033\\[[0-9;]*m", "", text)
-}
-
-
-# Find fenced div open/close pairs
-# @param nodes List of rmd nodes
-# @return List of pairs with open_pos and close_pos indices
-
-find_fenced_div_pairs = function(nodes) {
-  if (length(nodes) == 0) return(list())
-  
-  pairs = list()
-  stack = integer(0)  # Stack to track open positions
-  
-  for (i in seq_along(nodes)) {
-    node = nodes[[i]]
-
-    if (S7::S7_inherits(node, parsermd::rmd_fenced_div_open)) {
-      stack = c(stack, i)  # Push open position onto stack
-    } else if (S7::S7_inherits(node, parsermd::rmd_fenced_div_close)) {
-      if (length(stack) > 0) {
-        # Pop the most recent open position
-        open_pos = stack[length(stack)]
-        stack = stack[-length(stack)]
-        
-        # Record the pair
-        pairs[[length(pairs) + 1]] = list(
-          open_pos = open_pos,
-          close_pos = i
-        )
-      }
-    }
-  }
-  
-  pairs
-}
-
-# Check if node is a heading
-is_heading = function(x) {
-  S7::S7_inherits(x, parsermd::rmd_heading)
-}
-
-# Scale levels to start from 0
-scale_levels = function(x) {
-  levels = as.character(sort(unique(x)))
-  
-  lookup = seq_along(levels)
-  names(lookup) = levels
-  
-  res = lookup[as.character(x)]
-  names(res) = NULL
-  
-  res - 1
-}
-
-# Calculate nesting levels with proper fenced div handling
-# Based on parsermd's get_nesting_levels function
-get_nesting_levels = function(nodes) {
-  # First, find all fenced div pairs to understand the structure
-  fdiv_pairs = find_fenced_div_pairs(nodes)
-  
-  levels = 0
-  node_levels = integer()
-  fdiv_depth = 0
-
-  for(i in seq_along(nodes)) {
-    node = nodes[[i]]
-    
-    if (is_heading(node)) {
-      levels = levels[levels < node@level]
-    }
-
-    # Check if this is a fenced div and find its pair
-    fdiv_pair = NULL
-    if (S7::S7_inherits(node, parsermd::rmd_fenced_div_open) || S7::S7_inherits(node, parsermd::rmd_fenced_div_close)) {
-      for (pair in fdiv_pairs) {
-        if (pair$open_pos == i || pair$close_pos == i) {
-          fdiv_pair = pair
-          break
-        }
-      }
-    }
-
-    if (S7::S7_inherits(node, parsermd::rmd_fenced_div_open)) {
-      # For open fenced div, it should be at the same level as the first content it wraps
-      if (!is.null(fdiv_pair) && fdiv_pair$close_pos > fdiv_pair$open_pos + 1) {
-        # Look at the first wrapped node to determine the appropriate level
-        first_content_pos = fdiv_pair$open_pos + 1
-        first_content_node = nodes[[first_content_pos]]
-        
-        if (is_heading(first_content_node)) {
-          # If first content is a heading, the fenced div should be at the level
-          # that would make the heading a child (one level up from where the heading would naturally be)
-          # Since headings at the same level are siblings, we want the fenced div to be their parent
-          
-          # Temporarily calculate what level the heading would be at without the fenced div
-          temp_levels = levels
-          if (is_heading(first_content_node)) {
-            temp_levels = temp_levels[temp_levels < first_content_node@level]
-          }
-          heading_level = max(temp_levels)
-          # Fenced div should be at the same level as other headings of this level
-          node_levels = append(node_levels, heading_level)
-        } else {
-          # For non-heading first content, use current context
-          node_levels = append(node_levels, max(levels))
-        }
-      } else {
-        # Empty fenced div - use current level
-        node_levels = append(node_levels, max(levels))
-      }
-      fdiv_depth = fdiv_depth + 1
-    } else if (S7::S7_inherits(node, parsermd::rmd_fenced_div_close)) {
-      fdiv_depth = fdiv_depth - 1
-      # Close div should be at the same level as its matching open div
-      if (!is.null(fdiv_pair)) {
-        open_level = node_levels[fdiv_pair$open_pos]
-        node_levels = append(node_levels, open_level)
-      } else {
-        node_levels = append(node_levels, max(levels))
-      }
-    } else {
-      # Regular content - include fdiv_depth for proper nesting inside fenced divs
-      node_levels = append(node_levels, max(levels) + fdiv_depth)
-    }
-
-    # Update state AFTER calculating the current node's level
-    if (is_heading(node)) {
-      levels = append(levels, node@level)
-    }
-  }
-
-  scale_levels(node_levels)
-}
-
-# Create a hierarchical tree structure similar to parsermd's print output
+# Build a hierarchical tree structure from a q2r document
 #
-# @param ast parkermd AST object
+# Produces the tree_items contract the selection and render code depends on:
+# a document-root entry at index 0 followed by one entry per flattened node,
+# each with index, type, depth (root = 0), parent_index (0 = root),
+# description, and prefix. Node index i is stored at tree_items[[i + 1]].
+#
+# ast: q2r pandoc AST object
 
 build_ast_tree_structure = function(ast) {
-  
   if (is.null(ast)) {
     return(list())
   }
-  
-  # Handle new parsermd structure with nodes slot
-  nodes = if (S7::S7_inherits(ast, parsermd::rmd_ast) && !is.null(ast@nodes)) {
-    ast@nodes
-  } else {
-    ast
-  }
-  
-  if (length(nodes) == 0) {
+
+  records = q2r_flatten(ast)
+  if (length(records) == 0) {
     return(list())
   }
-  
-  # Calculate proper nesting levels using the new fenced div aware logic
-  nesting_levels = get_nesting_levels(nodes)
-  
+
   tree_items = list()
-  
-  # Add a visual root node for display purposes (not selectable)
-  document_root = list(
-    index = 0,  # Use index 0 to distinguish from actual nodes
+  tree_items[[1]] = list(
+    index = 0,
     type = "document_root",
     depth = 0,
     parent_index = NULL,
     description = "Document",
     prefix = ""
   )
-  tree_items[[1]] = document_root
-  
-  # Build parent index mapping based on nesting levels
-  for (i in seq_along(nodes)) {
-    node = nodes[[i]]
-    node_type = class(node)[1]
-    
-    # Use parsermd's tree_node method to get proper description
-    node_info = parsermd:::tree_node(node)
-    description = paste(
-      strip_ansi(node_info$text), 
-      strip_ansi(node_info$label)
+
+  for (record in records) {
+    tree_items[[record$index + 1]] = list(
+      index = record$index,
+      type = record$type,
+      depth = record$depth,
+      parent_index = record$parent,
+      description = record$label,
+      prefix = "\\u251c\\u2500\\u2500 "
     )
-    
-    # Calculate depth and parent based on nesting levels
-    depth = nesting_levels[i] + 1  # Add 1 to account for document root at depth 0
-    
-    # Find parent by looking backward for the most recent node at depth-1
-    parent_index = 0  # Default to document root
-    if (depth > 1) {
-      for (j in (i-1):1) {
-        if (nesting_levels[j] == depth - 2) {  # depth-2 because we added 1 above
-          parent_index = j
-          break
-        }
-      }
-    }
-    
-    # Create tree item using direct node index
-    item = list(
-      index = i,  # Use direct node index
-      type = node_type,
-      depth = depth,
-      parent_index = parent_index,
-      description = description,
-      prefix = "\\u251c\\u2500\\u2500 " # Will be updated later
-    )
-    
-    tree_items[[i + 1]] = item  # Store at i+1 because document root is at index 1
   }
-  
-  # Set appropriate prefixes for all items
-  for (i in seq_along(tree_items)) {
-    if (tree_items[[i]]$type == "document_root") {
-      tree_items[[i]]$prefix = ""  # Document icon for root handled by CSS
-    } else {
-      tree_items[[i]]$prefix = "\\u251c\\u2500\\u2500 "
-    }
-  }
-  
-  return(tree_items)
+
+  tree_items
 }
 
 # Create a tree view for AST nodes supporting different selection modes
 #
-# @param tree_items List of tree items from build_ast_tree_structure
-# @param selected_nodes Vector of selected node indices
-# @param ns Shiny namespace function
-# @param selection_mode Character. Selection mode ("interactive", "readonly", "highlight_only")
-# @param id_prefix Character. Optional prefix for button IDs to avoid collisions
+# tree_items: List of tree items from build_ast_tree_structure
+# selected_nodes: Vector of selected node indices
+# ns: Shiny namespace function
+# selection_mode: Character. Selection mode ("interactive", "readonly", "highlight_only")
+# id_prefix: Character. Optional prefix for button IDs to avoid collisions
+
 create_unified_tree = function(tree_items, selected_nodes, ns, selection_mode = "readonly", id_prefix = NULL) {
   
   if (length(tree_items) == 0) {
@@ -261,432 +80,11 @@ create_unified_tree = function(tree_items, selected_nodes, ns, selection_mode = 
   )
 }
 
-# Create a simple flat tree view for AST nodes
-#
-# @param tree_items List of tree items from build_ast_tree_structure
-# @param selected_nodes Vector of selected node indices
-# @param ns Shiny namespace function
-create_simple_tree = function(tree_items, selected_nodes, ns) {
-  
-  if (length(tree_items) == 0) {
-    return(shiny::p("No document structure available"))
-  }
-  
-  # Create tree CSS using iamkate.com styling (without collapsible functionality)
-  tree_css = shiny::tags$style(shiny::HTML("
-    .ast-tree {
-      --spacing: 1.5rem;
-      --radius: 10px;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      font-size: 13px;
-      list-style: none;
-      padding: 0;
-      margin: 0;
-    }
-    
-    .ast-tree li {
-      display: block;
-      position: relative;
-      padding-left: calc(2 * var(--spacing) - var(--radius) - 2px);
-    }
-    
-    .ast-tree ul {
-      margin-left: calc(var(--radius) - var(--spacing));
-      padding-left: 0;
-      list-style: none;
-    }
-    
-    .ast-tree ul li {
-      border-left: 2px solid #ddd;
-    }
-    
-    .ast-tree ul li:last-child {
-      border-color: transparent;
-    }
-    
-    .ast-tree ul li::before {
-      content: '';
-      display: block;
-      position: absolute;
-      top: calc(var(--spacing) / -2);
-      left: -2px;
-      width: calc(var(--spacing) + 2px);
-      height: calc(var(--spacing) + 1px);
-      border: solid #ddd;
-      border-width: 0 0 2px 2px;
-    }
-    
-    /* Style for tree toggle buttons */
-    .ast-tree .tree-toggle-btn {
-      position: absolute;
-      top: calc(var(--spacing) / 2 - var(--radius));
-      left: calc(var(--spacing) - var(--radius) - 1px);
-      width: calc(2 * var(--radius));
-      height: calc(2 * var(--radius));
-      border-radius: 50%;
-      background: #ddd;
-      border: 1px solid #bbb;
-      padding: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 8px;
-      cursor: pointer;
-      z-index: 10;
-    }
-    
-    .ast-tree .tree-toggle-btn:hover {
-      background: #007bff;
-      color: white;
-      border-color: #0056b3;
-    }
-    
-    .ast-tree .tree-toggle-btn:focus {
-      outline: 2px solid #28a745;
-      outline-offset: 1px;
-    }
-    
-    .ast-tree .tree-toggle-btn.selected {
-      background: #28a745;
-      color: white;
-      border-color: #1e7e34;
-    }
-    
-    .ast-tree .tree-node-content {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 4px 8px;
-      border-radius: 3px;
-      margin-bottom: 2px;
-      min-height: calc(2 * var(--radius));
-    }
-    
-    .ast-tree .tree-node-info {
-      display: flex;
-      align-items: center;
-      flex-grow: 1;
-    }
-    
-    .ast-tree .tree-node-description {
-      margin-right: 12px;
-      line-height: 1.4;
-    }
-    
-    .ast-tree .tree-node-description.selected {
-      background-color: #28a745;
-      color: white;
-      padding-left: 4px;
-      padding-right: 4px;
-      border-radius: 3px;
-    }
-    
-    .ast-tree .tree-node-description-btn {
-      margin-right: 12px;
-      line-height: 1.4;
-      text-decoration: none;
-      outline: none;
-      box-shadow: none;
-    }
-    
-    .ast-tree .tree-node-description-btn:hover {
-      background-color: #f8f9fa !important;
-      border-radius: 3px;
-    }
-    
-    .ast-tree .tree-node-description-btn:focus {
-      outline: 2px solid #28a745;
-      outline-offset: 1px;
-    }
-    
-    .ast-tree .tree-node-description-btn.selected {
-      background-color: #28a745 !important;
-      color: white !important;
-      padding-left: 4px;
-      padding-right: 4px;
-      border-radius: 3px;
-    }
-    
-  "))
-  
-  # Compute all selected nodes from directly selected ones
-  all_selected_nodes = compute_all_selected_nodes(tree_items, selected_nodes)
-  
-  # Build nested tree structure (but without collapsible functionality)
-  tree_html = build_simple_tree_level(tree_items, 0, NULL, all_selected_nodes, ns, selected_nodes)
-  
-  shiny::tagList(
-    tree_css,
-    shiny::tags$ul(class = "ast-tree", tree_html)
-  )
-}
-
-# Build a nested tree structure for proper CSS styling without collapsible functionality
-#
-# @param tree_items All tree items
-# @param target_depth Current depth level to build
-# @param parent_index Parent node index (NULL for root)
-# @param all_selected_nodes Vector of all selected node indices
-# @param ns Shiny namespace function
-# @param directly_selected_nodes Vector of directly selected node indices
-build_simple_tree_level = function(tree_items, target_depth, parent_index, all_selected_nodes, ns, directly_selected_nodes = integer(0)) {
-  
-  # Find items at this depth with the specified parent
-  level_items = tree_items[sapply(tree_items, function(x) {
-    x$depth == target_depth && 
-    ((is.null(parent_index) && is.null(x$parent_index)) || 
-     (!is.null(parent_index) && !is.null(x$parent_index) && x$parent_index == parent_index))
-  })]
-  
-  if (length(level_items) == 0) {
-    return(list())
-  }
-  
-  lapply(level_items, function(item) {
-    
-    is_selected = item$index %in% all_selected_nodes
-    is_directly_selected = item$index %in% directly_selected_nodes
-    is_indirectly_selected = is_selected && !is_directly_selected
-    
-    # Find children for this item
-    children = tree_items[sapply(tree_items, function(x) {
-      !is.null(x$parent_index) && x$parent_index == item$index
-    })]
-    
-    has_children = length(children) > 0
-    
-    # Create node content - special handling for document root
-    if (item$type == "document_root") {
-      # Document root node - no action buttons, not selectable
-      # Create a positioned icon similar to the tree-toggle-btn
-      document_icon = shiny::div(
-        class = "tree-toggle-btn",
-        style = "background: #ddd; border: 1px solid #bbb; cursor: default; pointer-events: none;"
-      )
-      
-      node_content = shiny::div(
-        class = "tree-node-content",
-        document_icon,
-        shiny::div(
-          class = "tree-node-info",
-          shiny::span(
-            item$description, 
-            class = "tree-node-description",
-            style = "font-weight: bold; color: #333;"
-          )
-        )
-      )
-    } else {
-      # Create preview button (always available)
-      preview_btn = shiny::actionButton(
-        ns(paste0("preview_", item$index)),
-        shiny::icon("search"),
-        class = "btn-outline-info",
-        style = "font-size: 8px; padding: 1px 4px; min-width: 18px; height: 18px; border-width: 1px; margin-left: 8px;",
-        title = "Preview content"
-      )
-      
-      # Only show selection buttons for heading nodes that don't have selected ancestors
-      is_selectable_heading = item$type == "rmd_heading" && !has_selected_ancestor(tree_items, item$index, directly_selected_nodes)
-      
-      if (is_selectable_heading) {
-        # Create toggle button for tree structure  
-        button_icon = if(is_directly_selected) {
-          shiny::icon("check")
-        } else if(is_indirectly_selected) {
-          shiny::icon("ellipsis-v") 
-        } else {
-          ""
-        }
-        
-        toggle_button = shiny::actionButton(
-          ns(paste0("select_children_", item$index)),
-          button_icon,
-          class = paste("tree-toggle-btn", if(is_selected) "selected" else ""),
-          title = "Toggle this node and its children"
-        )
-        
-        node_content = shiny::div(
-          class = "tree-node-content",
-          toggle_button,
-          shiny::div(
-            class = "tree-node-info",
-            shiny::actionButton(
-              ns(paste0("select_", item$index)),
-              item$description,
-              class = paste("tree-node-description-btn", if(is_selected) "selected" else ""),
-              style = "background: none; border: none; padding: 0; margin: 0; font: inherit; cursor: pointer; text-align: left; color: inherit;"
-            ),
-            preview_btn
-          )
-        )
-      } else {
-        # Non-selectable nodes (all should show selection state the same way)
-        # Show selection state visually but not clickable
-        indicator_icon = if(is_indirectly_selected) {
-          shiny::icon("ellipsis-v")
-        } else if(is_directly_selected) {
-          shiny::icon("check") 
-        } else {
-          ""
-        }
-        
-        selection_indicator = shiny::div(
-          class = paste("tree-toggle-btn", if(is_selected) "selected" else ""),
-          style = "cursor: default; pointer-events: none;",
-          indicator_icon,
-          title = if(is_selected) "Selected via parent heading" else "Non-selectable node"
-        )
-        
-        # All non-selectable nodes use the same styling
-        text_class = paste("tree-node-description", if(is_selected) "selected" else "")
-        text_style = "margin-right: 12px; line-height: 1.4;"
-        
-        node_content = shiny::div(
-          class = "tree-node-content",
-          selection_indicator,
-          shiny::div(
-            class = "tree-node-info",
-            shiny::span(
-              item$description,
-              class = text_class,
-              style = text_style
-            ),
-            preview_btn
-          )
-        )
-      }
-    }
-    
-    if (has_children) {
-      # Create nested structure (but not collapsible)
-      child_elements = build_simple_tree_level(tree_items, target_depth + 1, item$index, all_selected_nodes, ns, directly_selected_nodes)
-      
-      shiny::tags$li(
-        node_content,
-        shiny::tags$ul(child_elements)
-      )
-    } else {
-      # Leaf node - just the content
-      shiny::tags$li(node_content)
-    }
-  })
-}
-
-
-# Create visual tree connectors with proper vertical line management
-#
-# @param item Tree item with depth and parent info
-# @param tree_items Full list of tree items for context
-# @param current_index Current item's position in the list
-create_tree_connector = function(item, tree_items, current_index) {
-  
-  depth = item$depth
-  
-  if (depth == 0) {
-    # Root level nodes - simple horizontal line
-    return(shiny::div(
-      style = "width: 20px; height: 20px; position: relative; flex-shrink: 0;",
-      shiny::div(
-        style = "position: absolute; left: 8px; top: 10px; width: 12px; height: 2px; background-color: #8e9aaf;"
-      )
-    ))
-  }
-  
-  # Calculate connector width based on depth
-  connector_width = depth * 24 + 20
-  connectors = list()
-  
-  # Build the connector by analyzing the text prefix that was already calculated correctly
-  prefix = item$prefix
-  prefix_chars = strsplit(prefix, "")[[1]]
-  
-  # The prefix structure is: "\u2502   \u2502   \u251c\u2500\u2500 " (no leading space)
-  # Each level is 4 characters: either "\u2502   " (continuation) or "    " (gap)
-  # Final level ends with "\u251c\u2500\u2500 " or "\u2514\u2500\u2500 "
-  
-  # Find the positions of the tree characters
-  continuation_levels = c()
-  branch_char = ""
-  
-  # Parse the prefix to identify vertical continuation lines and branch type  
-  if (depth > 0 && length(prefix_chars) > 0) {
-    # Check continuation lines for levels 1 to (depth-1)
-    if (depth > 1) {
-      for (level in 1:(depth-1)) {
-        pos = (level - 1) * 4 + 1  # Position for this level
-        
-        if (pos <= length(prefix_chars)) {
-          char = prefix_chars[pos]
-          if (char == "\u2502") {
-            continuation_levels = c(continuation_levels, level)
-          }
-        }
-      }
-    }
-    
-    # Check branch character at the final position
-    branch_pos = depth * 4 + 1  # Branch character position
-    if (branch_pos <= length(prefix_chars)) {
-      char = prefix_chars[branch_pos]
-      if (char %in% c("\u251c", "\u2514")) {
-        branch_char = char
-      }
-    }
-  }
-  
-  # Draw vertical continuation lines for intermediate levels
-  for (level in continuation_levels) {
-    x_pos = (level - 1) * 24 + 8
-    connectors[[length(connectors) + 1]] = shiny::div(
-      style = paste0(
-        "position: absolute; left: ", x_pos, "px; top: 0; width: 2px; height: 20px; ",
-        "background-color: #8e9aaf;"
-      )
-    )
-  }
-  
-  # Draw the branch connector for the current level
-  if (depth > 0 && branch_char != "") {
-    x_pos = (depth - 1) * 24 + 8
-    
-    # Top half - connecting up to parent
-    connectors[[length(connectors) + 1]] = shiny::div(
-      style = paste0(
-        "position: absolute; left: ", x_pos, "px; top: 0; width: 2px; height: 10px; ",
-        "background-color: #8e9aaf;"
-      )
-    )
-    
-    # Bottom half - only if this is not the last child (\u251c vs \u2514)
-    if (branch_char == "\u251c") {
-      connectors[[length(connectors) + 1]] = shiny::div(
-        style = paste0(
-          "position: absolute; left: ", x_pos, "px; top: 10px; width: 2px; height: 10px; ",
-          "background-color: #8e9aaf;"
-        )
-      )
-    }
-    
-    # Horizontal line to the node
-    connectors[[length(connectors) + 1]] = shiny::div(
-      style = paste0(
-        "position: absolute; left: ", x_pos, "px; top: 10px; width: 14px; height: 2px; ",
-        "background-color: #8e9aaf;"
-      )
-    )
-  }
-  
-  shiny::div(
-    style = paste0("width: ", connector_width, "px; height: 20px; position: relative; flex-shrink: 0;"),
-    shiny::tagList(connectors)
-  )
-}
-
 # Find all child nodes for a given parent node
 #
-# @param tree_items List of tree items
-# @param parent_node_index Index of parent node
+# tree_items: List of tree items
+# parent_node_index: Index of parent node
+
 find_node_children = function(tree_items, parent_node_index) {
   
   children = integer(0)
@@ -712,8 +110,9 @@ find_node_children = function(tree_items, parent_node_index) {
 
 # Find all descendant nodes (children, grandchildren, etc.) for a given parent node
 #
-# @param tree_items List of tree items
-# @param parent_node_index Index of parent node
+# tree_items: List of tree items
+# parent_node_index: Index of parent node
+
 find_all_descendants = function(tree_items, parent_node_index) {
   
   all_descendants = integer(0)
@@ -742,9 +141,10 @@ find_all_descendants = function(tree_items, parent_node_index) {
 
 # Check if any ancestor node of the given node is in the directly selected list
 #
-# @param tree_items List of tree items
-# @param node_index Index of the node to check
-# @param directly_selected_nodes Vector of directly selected node indices
+# tree_items: List of tree items
+# node_index: Index of the node to check
+# directly_selected_nodes: Vector of directly selected node indices
+
 has_selected_ancestor = function(tree_items, node_index, directly_selected_nodes) {
   
   # Handle edge cases
@@ -795,8 +195,9 @@ has_selected_ancestor = function(tree_items, node_index, directly_selected_nodes
 
 # Given a list of directly selected nodes, compute the full list including all descendants
 #
-# @param tree_items List of tree items
-# @param directly_selected_nodes Vector of directly selected node indices
+# tree_items: List of tree items
+# directly_selected_nodes: Vector of directly selected node indices
+
 compute_all_selected_nodes = function(tree_items, directly_selected_nodes) {
   
   if (length(directly_selected_nodes) == 0) {
@@ -817,11 +218,13 @@ compute_all_selected_nodes = function(tree_items, directly_selected_nodes) {
   return(unique(sort(all_selected)))
 }
 
-# Given a list of currently selected nodes and a new node, find which selected nodes are descendants of the new node (and should be removed)
+# Given a list of currently selected nodes and a new node, find which selected
+# nodes are descendants of the new node (and should be removed)
 #
-# @param tree_items List of tree items
-# @param new_node_index Index of the newly selected node
-# @param current_selected Vector of currently selected node indices
+# tree_items: List of tree items
+# new_node_index: Index of the newly selected node
+# current_selected: Vector of currently selected node indices
+
 find_selected_descendants = function(tree_items, new_node_index, current_selected) {
   
   if (length(current_selected) == 0) {
@@ -837,21 +240,14 @@ find_selected_descendants = function(tree_items, new_node_index, current_selecte
   return(selected_descendants)
 }
 
-# Create a simple flat tree view for AST nodes without selection functionality
+# Create a simple flat tree view for AST nodes without selection functionality,
+# starting at a specific depth
 #
-# @param tree_items List of tree items from build_ast_tree_structure
-# @param ns Shiny namespace function
-# @param repo_id Character. Unique identifier for the repository to avoid ID collisions
-create_simple_tree_readonly = function(tree_items, ns, repo_id = NULL) {
-  create_simple_tree_readonly_at_depth(tree_items, ns, repo_id, start_depth = 0)
-}
+# tree_items: List of tree items from build_ast_tree_structure
+# ns: Shiny namespace function
+# repo_id: Character. Unique identifier for the repository to avoid ID collisions
+# start_depth: Integer. The depth level to start rendering from
 
-# Create a simple flat tree view for AST nodes without selection functionality, starting at a specific depth
-#
-# @param tree_items List of tree items from build_ast_tree_structure
-# @param ns Shiny namespace function
-# @param repo_id Character. Unique identifier for the repository to avoid ID collisions
-# @param start_depth Integer. The depth level to start rendering from
 create_simple_tree_readonly_at_depth = function(tree_items, ns, repo_id = NULL, start_depth = 0) {
   
   if (length(tree_items) == 0) {
@@ -984,11 +380,12 @@ create_simple_tree_readonly_at_depth = function(tree_items, ns, repo_id = NULL, 
 
 # Build a nested tree structure for display without any interactive elements
 #
-# @param tree_items All tree items
-# @param target_depth Current depth level to build
-# @param parent_index Parent node index (NULL for root)
-# @param ns Shiny namespace function
-# @param repo_id Character. Unique identifier for the repository to avoid ID collisions
+# tree_items: All tree items
+# target_depth: Current depth level to build
+# parent_index: Parent node index (NULL for root)
+# ns: Shiny namespace function
+# repo_id: Character. Unique identifier for the repository to avoid ID collisions
+
 build_simple_tree_level_readonly = function(tree_items, target_depth, parent_index, ns, repo_id = NULL) {
   
   # Find items at this depth with the specified parent
@@ -1079,8 +476,9 @@ build_simple_tree_level_readonly = function(tree_items, target_depth, parent_ind
 
 # Create CSS styling for unified tree display
 #
-# @param css_class Character. CSS class name to use
-# @param selection_mode Character. Selection mode for mode-specific styling
+# css_class: Character. CSS class name to use
+# selection_mode: Character. Selection mode for mode-specific styling
+
 create_unified_tree_css = function(css_class, selection_mode) {
   
   # Base CSS common to all modes
@@ -1284,14 +682,15 @@ create_unified_tree_css = function(css_class, selection_mode) {
 
 # Build a nested tree structure supporting different selection modes
 #
-# @param tree_items All tree items
-# @param target_depth Current depth level to build
-# @param parent_index Parent node index (NULL for root)
-# @param all_selected_nodes Vector of all selected node indices
-# @param ns Shiny namespace function
-# @param directly_selected_nodes Vector of directly selected node indices
-# @param selection_mode Character. Selection mode
-# @param id_prefix Character. Optional prefix for button IDs
+# tree_items: All tree items
+# target_depth: Current depth level to build
+# parent_index: Parent node index (NULL for root)
+# all_selected_nodes: Vector of all selected node indices
+# ns: Shiny namespace function
+# directly_selected_nodes: Vector of directly selected node indices
+# selection_mode: Character. Selection mode
+# id_prefix: Character. Optional prefix for button IDs
+
 build_unified_tree_level = function(tree_items, target_depth, parent_index, all_selected_nodes, ns, directly_selected_nodes = integer(0), selection_mode = "readonly", id_prefix = NULL) {
   
   # Find items at this depth with the specified parent
@@ -1373,7 +772,7 @@ build_unified_tree_level = function(tree_items, target_depth, parent_index, all_
       
       if (selection_mode == "interactive") {
         # Interactive mode - full selection functionality
-        is_selectable_heading = item$type == "rmd_heading" && !has_selected_ancestor(tree_items, item$index, directly_selected_nodes)
+        is_selectable_heading = item$type == "pandoc_header" && !has_selected_ancestor(tree_items, item$index, directly_selected_nodes)
         
         if (is_selectable_heading) {
           # Create toggle button for tree structure  

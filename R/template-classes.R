@@ -48,20 +48,24 @@ markermd_question = S7::new_class(
       S7::class_integer,
       validator = function(value) {
         if (length(value) != 1) {
-          "@id must be a single integer"
-        } else if (value < 1) {
-          "@id must be positive"
+          return("@id must be a single integer")
         }
+        if (value < 1) {
+          return("@id must be positive")
+        }
+        return(NULL)
       }
     ),
     name = S7::new_property(
       S7::class_character,
       validator = function(value) {
         if (length(value) != 1) {
-          "@name must be a single character string"
-        } else if (nchar(value) == 0) {
-          "@name cannot be empty"
+          return("@name must be a single character string")
         }
+        if (nchar(value) == 0) {
+          return("@name cannot be empty")
+        }
+        return(NULL)
       }
     ),
     selected_nodes = S7::new_property(
@@ -104,8 +108,9 @@ markermd_metadata = S7::new_class(
       default = quote(Sys.getenv("USER", "unknown")),
       validator = function(value) {
         if (length(value) != 1) {
-          "@created_by must be a single character string"
+          return("@created_by must be a single character string")
         }
+        return(NULL)
       }
     ),
     total_nodes = S7::new_property(
@@ -113,10 +118,12 @@ markermd_metadata = S7::new_class(
       default = quote(0L),
       validator = function(value) {
         if (length(value) != 1) {
-          "@total_nodes must be a single integer"
-        } else if (value < 0) {
-          "@total_nodes must be non-negative"
+          return("@total_nodes must be a single integer")
         }
+        if (value < 0) {
+          return("@total_nodes must be non-negative")
+        }
+        return(NULL)
       }
     ),
     version = S7::new_property(
@@ -124,8 +131,9 @@ markermd_metadata = S7::new_class(
       default = quote("1.0"),
       validator = function(value) {
         if (length(value) != 1) {
-          "@version must be a single character string"
+          return("@version must be a single character string")
         }
+        return(NULL)
       }
     )
   ),
@@ -134,7 +142,7 @@ markermd_metadata = S7::new_class(
 
 #' @title Markermd Template
 #' @description S7 class representing a complete markermd template with questions and metadata
-#' @param original_ast rmd_ast. The original parsed AST from parsermd
+#' @param original_ast pandoc. The original parsed AST from q2r
 #' @param questions List of question objects
 #' @param metadata template_metadata. Template metadata
 #' @export
@@ -142,10 +150,10 @@ markermd_template = S7::new_class(
   "markermd_template",
   properties = list(
     original_ast = S7::new_property(
-      S7::class_any,  # Will validate manually since we need parsermd classes
+      S7::class_any,  # Will validate manually since we need q2r classes
       validator = function(value) {
-        if (!S7::S7_inherits(value, parsermd::rmd_ast)) {
-          return("@original_ast must be an rmd_ast object from parsermd")
+        if (!S7::S7_inherits(value, q2r::pandoc)) {
+          return("@original_ast must be a pandoc object from q2r")
         }
         NULL
       }
@@ -188,7 +196,7 @@ markermd_template = S7::new_class(
   validator = function(self) {
     # Validate that node selections are within bounds of the AST
     if (!is.null(self@original_ast) && length(self@questions) > 0) {
-      n_nodes = length(self@original_ast@nodes)
+      n_nodes = length(q2r_flatten(self@original_ast))
       
       for (i in seq_along(self@questions)) {
         q = self@questions[[i]]
@@ -221,26 +229,30 @@ markermd_rubric_item = S7::new_class(
       S7::class_integer,
       validator = function(value) {
         if (length(value) != 1) {
-          "hotkey must be a single integer"
-        } else if (!is.na(value) && (value < 1 || value > 10)) {
-          "hotkey must be between 1 and 10, or NA"
+          return("hotkey must be a single integer")
         }
+        if (!is.na(value) && (value < 1 || value > 10)) {
+          return("hotkey must be between 1 and 10, or NA")
+        }
+        return(NULL)
       }
     ),
     points = S7::new_property(
       S7::class_numeric,
       validator = function(value) {
         if (length(value) != 1) {
-          "points must be a single numeric value"
+          return("points must be a single numeric value")
         }
+        return(NULL)
       }
     ),
     description = S7::new_property(
       S7::class_character,
       validator = function(value) {
         if (length(value) != 1) {
-          "description must be a single character string"
+          return("description must be a single character string")
         }
+        return(NULL)
       }
     ),
     selected = S7::new_property(
@@ -248,8 +260,9 @@ markermd_rubric_item = S7::new_class(
       default = quote(FALSE),
       validator = function(value) {
         if (length(value) != 1) {
-          "selected must be a single logical value"
+          return("selected must be a single logical value")
         }
+        return(NULL)
       }
     )
   ),
@@ -275,8 +288,9 @@ markermd_grade_state = S7::new_class(
       default = quote(0),
       validator = function(value) {
         if (length(value) != 1) {
-          "current_score must be a single numeric value"
+          return("current_score must be a single numeric value")
         }
+        return(NULL)
       }
     ),
     total_score = S7::new_property(
@@ -284,10 +298,12 @@ markermd_grade_state = S7::new_class(
       default = quote(0),
       validator = function(value) {
         if (length(value) != 1) {
-          "total_score must be a single numeric value"
-        } else if (value < 0) {
-          "total_score must be >= 0"
+          return("total_score must be a single numeric value")
         }
+        if (value < 0) {
+          return("total_score must be >= 0")
+        }
+        return(NULL)
       }
     ),
     grading_mode = S7::new_property(
@@ -295,10 +311,12 @@ markermd_grade_state = S7::new_class(
       default = quote("positive"),
       validator = function(value) {
         if (length(value) != 1) {
-          "grading_mode must be a single character string"
-        } else if (!value %in% c("positive", "negative")) {
-          "grading_mode must be 'positive' or 'negative'"
+          return("grading_mode must be a single character string")
         }
+        if (!value %in% c("positive", "negative")) {
+          return("grading_mode must be 'positive' or 'negative'")
+        }
+        return(NULL)
       }
     ),
     bound_above_zero = S7::new_property(
@@ -306,8 +324,9 @@ markermd_grade_state = S7::new_class(
       default = quote(TRUE),
       validator = function(value) {
         if (length(value) != 1) {
-          "bound_above_zero must be a single logical value"
+          return("bound_above_zero must be a single logical value")
         }
+        return(NULL)
       }
     ),
     bound_below_max = S7::new_property(
@@ -315,8 +334,9 @@ markermd_grade_state = S7::new_class(
       default = quote(TRUE),
       validator = function(value) {
         if (length(value) != 1) {
-          "bound_below_max must be a single logical value"
+          return("bound_below_max must be a single logical value")
         }
+        return(NULL)
       }
     )
   ),

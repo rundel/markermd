@@ -27,14 +27,14 @@ NULL
 #' \dontrun{
 #' # Create a count rule
 #' count_rule = markermd_rule(
-#'   node_type = "rmd_heading",
-#'   verb = "has between", 
+#'   node_type = "pandoc_header",
+#'   verb = "has between",
 #'   values = c(1, 5)
 #' )
 #'
 #' # Create a content rule
 #' content_rule = markermd_rule(
-#'   node_type = "rmd_chunk",
+#'   node_type = "pandoc_code_block",
 #'   verb = "has content",
 #'   values = "*plot*"
 #' )
@@ -71,8 +71,8 @@ markermd_rule = S7::new_class(
     if (!is.null(verb_values_error)) {
       return(verb_values_error)
     }
-    
-    NULL
+
+    return(NULL)
   },
   package = "markermd"
 )

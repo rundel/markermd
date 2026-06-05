@@ -1,14 +1,36 @@
-#' Mark Rubric Item Module
-#'
-#' Shiny module for individual rubric items with hotkey selection and point values
+# Mark Rubric Item Module
+#
+# Shiny module for individual rubric items with hotkey selection and point values
 
-#' Mark Rubric Item UI
-#'
-#' Creates UI for a single rubric item with hotkey button and description
-#'
-#' @param id Character. Module namespace ID
-#' @param rubric_item markermd_rubric_item S7 object containing item properties
-#'
+# Colors used to indicate positive vs negative point values
+POINTS_POSITIVE_COLOR = "#28a745"
+POINTS_NEGATIVE_COLOR = "#dc3545"
+
+# Builds the hotkey action button for a rubric item, applying the
+# selected-state styling (green when selected, outline otherwise)
+#
+# id: Character. Module namespace ID
+# rubric_item: markermd_rubric_item S7 object containing item properties
+
+mark_rubric_item_hotkey_btn = function(id, rubric_item) {
+  ns = shiny::NS(id)
+
+  shiny::actionButton(
+    ns("hotkey_btn"),
+    label = if (is.na(rubric_item@hotkey)) "" else as.character(rubric_item@hotkey %% 10),
+    class = paste(
+      if (rubric_item@selected) "btn-success" else "btn-outline-secondary",
+      "btn-sm d-flex align-items-center justify-content-center"
+    ),
+    style = "font-size: 10px; padding: 0; width: 28px; height: 28px;"
+  )
+}
+
+# Creates UI for a single rubric item with hotkey button and description
+#
+# id: Character. Module namespace ID
+# rubric_item: markermd_rubric_item S7 object containing item properties
+
 mark_rubric_item_ui = function(id, rubric_item) {
   ns = shiny::NS(id)
   
@@ -54,16 +76,8 @@ mark_rubric_item_ui = function(id, rubric_item) {
       col_widths = c(1, 11, -1, 11),
       class = "mb-0",
       row_heights = c("auto", "auto"),
-      # Hotkey button
-      shiny::actionButton(
-        ns("hotkey_btn"),
-        label = if (is.na(rubric_item@hotkey)) "" else as.character(rubric_item@hotkey %% 10),
-        class = paste(
-          if (rubric_item@selected) "btn-success" else "btn-outline-secondary",
-          "btn-sm d-flex align-items-center justify-content-center"
-        ),
-        style = "font-size: 10px; padding: 0; width: 28px; height: 28px;"
-      ),
+      # Hotkey button (re-rendered reactively to reflect selection state)
+      shiny::uiOutput(ns("hotkey_btn_ui")),
       # Points
       shiny::div(
         id = ns("points_text"),
@@ -80,7 +94,7 @@ mark_rubric_item_ui = function(id, rubric_item) {
           "font-weight: bold; ",
           "display: inline-block; ",
           "width: fit-content; ",
-          "color: <<if (rubric_item@points >= 0) '#28a745' else '#dc3545'>>;",
+          "color: <<if (rubric_item@points >= 0) POINTS_POSITIVE_COLOR else POINTS_NEGATIVE_COLOR>>;",
           .open = "<<", .close = ">>"
         ),
         cli::pluralize(paste0(
@@ -204,7 +218,7 @@ mark_rubric_item_ui = function(id, rubric_item) {
               this.innerHTML = sign + newValue + ' ' + suffix;
               
               // Update color
-              this.style.color = newValue >= 0 ? '#28a745' : '#dc3545';
+              this.style.color = newValue >= 0 ? '<<POINTS_POSITIVE_COLOR>>' : '<<POINTS_NEGATIVE_COLOR>>';
               
               Shiny.setInputValue('<<ns('points_text')>>', newValue);
             });
@@ -222,16 +236,14 @@ mark_rubric_item_ui = function(id, rubric_item) {
   )
 }
 
-#' Mark Rubric Item Server
-#'
-#' Server logic for rubric item with state management using S7 class
-#'
-#' @param id Character. Module namespace ID
-#' @param initial_item markermd_rubric_item S7 object with initial state
-#' @param collection_path Character string. Path to collection directory (optional)
-#' @param question_name Character string. Name of the question (optional)
-#' @param item_id Character string. Unique identifier for this item (optional)
-#'
+# Server logic for rubric item with state management using S7 class
+#
+# id: Character. Module namespace ID
+# initial_item: markermd_rubric_item S7 object with initial state
+# collection_path: Character string. Path to collection directory (optional)
+# question_name: Character string. Name of the question (optional)
+# item_id: Character string. Unique identifier for this item (optional)
+
 mark_rubric_item_server = function(id, initial_item, collection_path = NULL, question_name = NULL, item_id = NULL) {
   ns = shiny::NS(id)
 
@@ -243,9 +255,9 @@ mark_rubric_item_server = function(id, initial_item, collection_path = NULL, que
 
     
     # Handle description text changes
-    shiny::observeEvent(input$description_text, {
+    shiny::observe({
       current_item = rubric_item_state()
-      
+
       # Only update if the value actually changed
       if (input$description_text != current_item@description) {
         # Create new item with updated description
@@ -255,20 +267,21 @@ mark_rubric_item_server = function(id, initial_item, collection_path = NULL, que
           description = input$description_text,
           selected = current_item@selected
         )
-        
+
         rubric_item_state(new_item)
-        
+
         # Save to database if parameters are provided
         if (!is.null(collection_path) && !is.null(question_name) && !is.null(item_id)) {
           save_rubric_item(collection_path, question_name, item_id, new_item)
         }
       }
-    }, ignoreInit = TRUE)
+    }) |>
+      shiny::bindEvent(input$description_text, ignoreInit = TRUE)
     
     # Handle points text changes
-    shiny::observeEvent(input$points_text, {
+    shiny::observe({
       current_item = rubric_item_state()
-      
+
       # Only update if the value actually changed
       if (input$points_text != current_item@points) {
         # Create new item with updated points
@@ -278,28 +291,20 @@ mark_rubric_item_server = function(id, initial_item, collection_path = NULL, que
           description = current_item@description,
           selected = current_item@selected
         )
-        
+
         rubric_item_state(new_item)
-        
+
         # Save to database if parameters are provided
         if (!is.null(collection_path) && !is.null(question_name) && !is.null(item_id)) {
           save_rubric_item(collection_path, question_name, item_id, new_item)
         }
       }
-    }, ignoreInit = TRUE)
+    }) |>
+      shiny::bindEvent(input$points_text, ignoreInit = TRUE)
   
-    # Update button appearance when state changes
-    shiny::observe({
-      current_item = rubric_item_state()
-      
-      # Update button class based on selection state
-      if (current_item@selected) {
-        shinyjs::removeClass("hotkey_btn", "btn-outline-secondary")
-        shinyjs::addClass("hotkey_btn", "btn-success")
-      } else {
-        shinyjs::removeClass("hotkey_btn", "btn-success")
-        shinyjs::addClass("hotkey_btn", "btn-outline-secondary")
-      }
+    # Render the hotkey button so its styling tracks the selection state
+    output$hotkey_btn_ui = shiny::renderUI({
+      mark_rubric_item_hotkey_btn(session$ns(NULL), rubric_item_state())
     })
 
     shiny::observe({
@@ -322,18 +327,21 @@ mark_rubric_item_server = function(id, initial_item, collection_path = NULL, que
     move_down_signal = shiny::reactiveVal(0)
     
     # Handle delete button clicks
-    shiny::observeEvent(input$delete_btn, {
+    shiny::observe({
       delete_signal(delete_signal() + 1)
-    })
-    
+    }) |>
+      shiny::bindEvent(input$delete_btn)
+
     # Handle move button clicks
-    shiny::observeEvent(input$move_up_btn, {
+    shiny::observe({
       move_up_signal(move_up_signal() + 1)
-    })
-    
-    shiny::observeEvent(input$move_down_btn, {
+    }) |>
+      shiny::bindEvent(input$move_up_btn)
+
+    shiny::observe({
       move_down_signal(move_down_signal() + 1)
-    })
+    }) |>
+      shiny::bindEvent(input$move_down_btn)
     
     # Return reactive rubric item, move/delete signals, and update method for external use
     return(list(

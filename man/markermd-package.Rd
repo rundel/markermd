@@ -6,10 +6,22 @@
 \alias{markermd-package}
 \title{markermd: Interactive Shiny-Based Grading Interface for R Markdown Assignments}
 \description{
-Provides a comprehensive Shiny-based interface for grading assignments submitted as git repositories containing R Markdown or Quarto documents. Features include template creation with validation rules, interactive AST tree visualization, question-based grading workflows with customizable rubrics and hotkeys, automated validation and scoring systems, and support for both local directories and remote GitHub repositories with automatic syncing capabilities.
+Provides a comprehensive Shiny-based interface for grading assignments submitted as git repositories containing R Markdown or Quarto documents. Features include template creation with validation rules, interactive AST tree visualization, question-based grading workflows with customizable rubrics and hotkeys, automated validation and scoring systems, and support for both local directories and remote GitHub repositories.
+}
+\seealso{
+Useful links:
+\itemize{
+  \item \url{https://rundel.github.io/markermd/}
+}
+
 }
 \author{
 \strong{Maintainer}: Colin Rundel \email{rundel@gmail.com}
+
+Authors:
+\itemize{
+  \item Colin Rundel \email{rundel@gmail.com}
+}
 
 }
 \keyword{internal}

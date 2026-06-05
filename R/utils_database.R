@@ -146,17 +146,9 @@ close_database = function(conn) {
 # query_func: Function that takes a connection and executes queries
 
 with_database = function(collection_path, query_func) {
-  conn = NULL
-  tryCatch({
-    conn = initialize_database(collection_path)
-    result = query_func(conn)
-    return(result)
-  }, error = function(e) {
-    warning("Database operation failed: ", e$message)
-    return(NULL)
-  }, finally = {
-    close_database(conn)
-  })
+  conn = initialize_database(collection_path)
+  on.exit(close_database(conn))
+  query_func(conn)
 }
 
 # Upsert settings record
