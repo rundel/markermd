@@ -42,10 +42,10 @@ remotes::install_github("rundel/markermd")
 
 ### Dependencies
 
-markermd relies on the development version of [parsermd](https://github.com/rundel/parsermd) for parsing R Markdown and Quarto documents:
+markermd relies on [q2r](https://github.com/rundel/q2r) for parsing Quarto documents. q2r wraps the Quarto parser via Rust, so a Rust toolchain (`rustc >= 1.85`) is required to install it:
 
 ```r
-remotes::install_github("rundel/parsermd")
+remotes::install_github("rundel/q2r")
 ```
 
 ## Quick Start
