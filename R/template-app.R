@@ -684,7 +684,14 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", ..
     }
     
   } else {
-    stop("assignment_path must be a character string (assignment path or template file) or markermd_template S7 object")
+    stop(
+      "assignment_path must be a single character string (an assignment file, a ",
+      "directory containing one, a saved template .rds, or a GitHub '<owner>/<repo>') ",
+      "or a markermd_template object, not ",
+      if (is.character(assignment_path)) paste0("a length-", length(assignment_path), " character vector") else paste0("an object of class ", class(assignment_path)[1]),
+      ".",
+      call. = FALSE
+    )
   }
   
   # Handle template mode vs assignment mode
@@ -705,44 +712,37 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", ..
     app = template_app_standalone(shiny::reactiveVal(ast), template_obj, footer_path)
     
   } else {
-    # Assignment mode: parse document and create template
-    
-    # Check if assignment_path is a GitHub repo (contains "/")
-    is_github_repo = grepl("/", assignment_path) && !file.exists(assignment_path)
-  
-    if (is_github_repo && is.null(local_dir)) {
-      stop("local_dir is required for GitHub repositories")
-    }
-    
-    # Validate local directory exists for local assignments
-    if (!is_github_repo && !dir.exists(assignment_path)) {
-      stop("Local assignment directory does not exist: ", assignment_path)
-    }
-    
-    # For local assignments, resolve the filename pattern immediately
-    resolved_filename = filename
-    if (!is_github_repo) {
-      
-      matched_files = Sys.glob(file.path(assignment_path, filename) )
-      
-      if (length(matched_files) == 0) {
-        stop("No files found matching pattern '", filename, "' in directory: ", assignment_path)
+    # Assignment mode: a single assignment file, a directory containing one, or
+    # a GitHub "<owner>/<repo>" to clone.
+    is_github_repo = grepl("^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$", assignment_path) &&
+      !file.exists(assignment_path)
+
+    if (is_github_repo) {
+      if (is.null(local_dir)) {
+        stop("local_dir is required when cloning the GitHub repository '", assignment_path, "'.", call. = FALSE)
       }
-      
-      if (length(matched_files) > 1) {
-        stop("Multiple files found matching pattern '", filename, "':\n  ", 
-             paste(fs::path_file(matched_files), collapse = "\n  "), 
-             "\nPlease specify a more specific pattern that matches exactly one file.")
+      repo_path = setup_assignment_repo(assignment_path, local_dir, is_github_repo = TRUE)
+      file_path = resolve_assignment_file(repo_path, filename)
+
+    } else if (dir.exists(assignment_path)) {
+      file_path = resolve_assignment_file(assignment_path, filename)
+
+    } else if (file.exists(assignment_path)) {
+      if (!tolower(tools::file_ext(assignment_path)) %in% c("qmd", "rmd")) {
+        stop("Assignment file must be a .qmd or .Rmd document: ", assignment_path, call. = FALSE)
       }
-      
-      # Use just the filename, not the full path
-      resolved_filename = fs::path_file(matched_files[1])
+      file_path = normalizePath(assignment_path)
+
+    } else {
+      stop(
+        "assignment_path not found: '", assignment_path, "'.\n",
+        "Pass a path to an assignment file (.qmd/.Rmd), a directory containing one, ",
+        "a saved template (.rds), or a GitHub repository as '<owner>/<repo>'.",
+        call. = FALSE
+      )
     }
-    
-    repo_path = setup_assignment_repo(assignment_path, local_dir, is_github_repo)
-    file_path = validate_assignment_file(repo_path, resolved_filename)
+
     ast = parse_assignment_document(file_path)
-    
     app = template_app_standalone(shiny::reactiveVal(ast), NULL, assignment_path)
   }
   

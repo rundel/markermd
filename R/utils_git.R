@@ -53,24 +53,30 @@ setup_assignment_repo = function(assignment_path, local_dir = NULL, is_github_re
   return(normalizePath(repo_local_path))
 }
 
-# Check if the specified assignment file exists and is valid
+# Find the single assignment file in a directory matching a glob pattern
 #
-# repo_path: Character. Path to the assignment repository
-# filename: Character. Name of the assignment file
+# dir: Character. Directory to search
+# pattern: Character. Glob pattern (e.g. "*.[Rq]md")
 
-validate_assignment_file = function(repo_path, filename) {
-  
-  assignment_file = file.path(repo_path, filename)
-  
-  if (!file.exists(assignment_file)) {
-    stop("Assignment file not found: ", assignment_file)
+resolve_assignment_file = function(dir, pattern) {
+  matched = Sys.glob(file.path(dir, pattern))
+
+  if (length(matched) == 0) {
+    stop(
+      "No files matching '", pattern, "' found in directory: ", dir, "\n",
+      "Pass the assignment file directly, or a `filename` pattern that matches one file.",
+      call. = FALSE
+    )
   }
-  
-  # Check file extension
-  file_ext = tools::file_ext(filename)
-  if (!file_ext %in% c("Rmd", "qmd", "rmd")) {
-    stop("Assignment file must be .Rmd or .qmd, got: .", file_ext)
+
+  if (length(matched) > 1) {
+    stop(
+      "Multiple files match '", pattern, "' in ", dir, ":\n  ",
+      paste(fs::path_file(matched), collapse = "\n  "), "\n",
+      "Pass the assignment file directly, or a `filename` pattern that matches exactly one file.",
+      call. = FALSE
+    )
   }
-  
-  return(normalizePath(assignment_file))
+
+  normalizePath(matched[1])
 }

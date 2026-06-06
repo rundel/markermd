@@ -65,6 +65,9 @@ mark_app = function(collection_path, template = NULL, use_qmd = TRUE, download_a
   
   if (!is.null(template)) {
     if (is.character(template) && length(template) == 1) {
+      if (!file.exists(template)) {
+        stop("Template file does not exist: ", template, call. = FALSE)
+      }
       template_obj = readRDS(template)
       if (!S7::S7_inherits(template_obj, markermd_template)) {
         stop("Template file must contain a markermd_template S7 object")
