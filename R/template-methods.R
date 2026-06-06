@@ -10,12 +10,12 @@ NULL
 
 #' @export
 S7::method(print, markermd_node_selection) = function(x, ...) {
-  cat("Node selection with", length(x@indices), "indices\n")
-  if (length(x@indices) > 0) {
-    if (length(x@indices) <= 10) {
-      cat("Indices:", paste(x@indices, collapse = ", "), "\n")
+  cat("Node selection with", length(x@heading_ids), "heading(s)\n")
+  if (length(x@heading_ids) > 0) {
+    if (length(x@heading_ids) <= 10) {
+      cat("Headings:", paste0("#", x@heading_ids, collapse = ", "), "\n")
     } else {
-      cat("Indices:", paste(x@indices[1:10], collapse = ", "), "... (", length(x@indices) - 10, "more)\n")
+      cat("Headings:", paste0("#", x@heading_ids[1:10], collapse = ", "), "... (", length(x@heading_ids) - 10, "more)\n")
     }
   }
   invisible(x)
@@ -24,7 +24,7 @@ S7::method(print, markermd_node_selection) = function(x, ...) {
 #' @export
 S7::method(print, markermd_question) = function(x, ...) {
   cat("Question:", x@name, "(ID:", x@id, ")\n")
-  cat("Selected nodes:", length(x@selected_nodes@indices), "\n")
+  cat("Selected headings:", length(x@selected_nodes@heading_ids), "\n")
   cat("Rules:", length(x@rules), "\n")
   invisible(x)
 }
@@ -45,11 +45,11 @@ S7::method(print, markermd_template) = function(x, ...) {
   if (length(x@questions) > 0) {
     cat("Questions:\n")
     for (q in x@questions) {
-      node_count = length(q@selected_nodes@indices)
+      section_count = length(q@selected_nodes@heading_ids)
       rule_count = length(q@rules)
-      node_text = if (node_count == 1) "node" else "nodes"
+      section_text = if (section_count == 1) "section" else "sections"
       rule_text = if (rule_count == 1) "rule" else "rules"
-      cat("  - ", q@name, " (", node_count, " ", node_text, ", ", rule_count, " ", rule_text, ")\n", sep = "")
+      cat("  - ", q@name, " (", section_count, " ", section_text, ", ", rule_count, " ", rule_text, ")\n", sep = "")
     }
   }
   ast_node_count = length(q2r_flatten(x@original_ast))
@@ -61,146 +61,12 @@ S7::method(print, markermd_template) = function(x, ...) {
 # Length methods
 #' @export
 S7::method(length, markermd_node_selection) = function(x) {
-  length(x@indices)
+  length(x@heading_ids)
 }
 
 #' @export  
 S7::method(length, markermd_template) = function(x) {
   length(x@questions)
-}
-
-# Conversion functions from list format
-
-#' Convert List to node_selection
-#' @param x Integer vector or list with indices
-#' @export
-as_markermd_node_selection = function(x) {
-  if (S7::S7_inherits(x, markermd_node_selection)) {
-    return(x)
-  }
-  
-  if (is.list(x) && "indices" %in% names(x)) {
-    indices = as.integer(x$indices)
-  } else {
-    indices = as.integer(x)
-  }
-  
-  markermd_node_selection(indices = indices)
-}
-
-#' Convert List to question
-#' @param x List with id, name, selected_nodes fields
-#' @export
-as_markermd_question = function(x) {
-  if (S7::S7_inherits(x, markermd_question)) {
-    return(x)
-  }
-  
-  if (!is.list(x)) {
-    stop("Input must be a list")
-  }
-  
-  # Extract and validate required fields
-  id = x$id
-  if (is.null(id)) {
-    stop("Question must have an id field")
-  }
-  
-  name = x$name
-  if (is.null(name)) {
-    stop("Question must have a name field")
-  }
-  
-  # Handle selected_nodes - could be a vector or node_selection object
-  selected_nodes = if (!is.null(x$selected_nodes)) {
-    as_markermd_node_selection(x$selected_nodes)
-  } else {
-    markermd_node_selection()
-  }
-  
-  markermd_question(
-    id = as.integer(id),
-    name = as.character(name),
-    selected_nodes = selected_nodes
-  )
-}
-
-#' Convert List to template_metadata
-#' @param x List with metadata fields
-#' @export
-as_markermd_metadata = function(x) {
-  if (S7::S7_inherits(x, markermd_metadata)) {
-    return(x)
-  }
-  
-  if (is.null(x) || length(x) == 0) {
-    return(markermd_metadata())
-  }
-  
-  if (!is.list(x)) {
-    stop("Input must be a list or NULL")
-  }
-  
-  # Extract fields with defaults
-  created_at = x$created_at %||% Sys.time()
-  created_by = x$created_by %||% Sys.getenv("USER", "unknown")
-  total_nodes = x$total_nodes %||% 0L
-  version = x$version %||% "1.0"
-  
-  markermd_metadata(
-    created_at = as.POSIXct(created_at),
-    created_by = as.character(created_by),
-    total_nodes = as.integer(total_nodes),
-    version = as.character(version)
-  )
-}
-
-
-# Conversion functions to list format (for backward compatibility)
-
-#' Convert node_selection to List
-#' @param x node_selection object
-#' @param ... Additional arguments (currently unused)
-#' @export
-as.list.markermd_node_selection = function(x, ...) {
-  list(indices = x@indices)
-}
-
-#' Convert question to List  
-#' @param x question object
-#' @param ... Additional arguments (currently unused)
-#' @export
-as.list.markermd_question = function(x, ...) {
-  list(
-    id = x@id,
-    name = x@name,
-    selected_nodes = x@selected_nodes@indices
-  )
-}
-
-#' Convert template_metadata to List
-#' @param x template_metadata object
-#' @param ... Additional arguments (currently unused)
-#' @export
-as.list.markermd_metadata = function(x, ...) {
-  list(
-    created_at = x@created_at,
-    created_by = x@created_by,
-    total_nodes = x@total_nodes,
-    version = x@version
-  )
-}
-
-#' Convert template to List
-#' @param x template object
-#' @param ... Additional arguments (currently unused)
-#' @export
-as.list.markermd_template = function(x, ...) {
-  list(
-    original_ast = x@original_ast,
-    questions = lapply(x@questions, as.list),
-    metadata = as.list(x@metadata)
-  )
 }
 
 # Utility functions

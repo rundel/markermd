@@ -41,36 +41,68 @@ truncate_text = function(x, n) {
   if (nchar(x) > n) paste0(substr(x, 1, n - 1), "…") else x
 }
 
+# Canonical friendly category for a Pandoc node
+#
+# Single source of truth shared by the tree labels (q2r_node_label) and the
+# validation-rule node-type vocabulary (get_allowed_node_types), so the two
+# always use the same words. Returns one short category string.
+#
+# node: A q2r pandoc node
+
+q2r_node_kind = function(node) {
+  if (S7::S7_inherits(node, q2r::pandoc_header)) return("Heading")
+  if (S7::S7_inherits(node, q2r::pandoc_code_block)) {
+    return(if (isTRUE(q2r::is_code_cell(node))) "Chunk" else "Code block")
+  }
+  if (S7::S7_inherits(node, q2r::pandoc_raw_block)) return("Raw Block")
+  if (S7::S7_inherits(node, q2r::pandoc_div)) return("Div")
+  if (S7::S7_inherits(node, q2r::pandoc_paragraph) || S7::S7_inherits(node, q2r::pandoc_plain)) return("Markdown")
+  if (S7::S7_inherits(node, q2r::pandoc_bullet_list)) return("Bullet list")
+  if (S7::S7_inherits(node, q2r::pandoc_ordered_list)) return("Ordered list")
+  if (S7::S7_inherits(node, q2r::pandoc_block_quote)) return("Block quote")
+  if (S7::S7_inherits(node, q2r::pandoc_table)) return("Table")
+  if (S7::S7_inherits(node, q2r::pandoc_figure)) return("Figure")
+  if (S7::S7_inherits(node, q2r::pandoc_horizontal_rule)) return("Horizontal rule")
+  if (S7::S7_inherits(node, q2r::pandoc_definition_list)) return("Definition list")
+  if (S7::S7_inherits(node, q2r::pandoc_line_block)) return("Line block")
+
+  # Fallback for any other block type: friendly-case the class name
+  raw = gsub("_", " ", sub("^q2r::pandoc_", "", class(node)[1]))
+  paste0(toupper(substr(raw, 1, 1)), substr(raw, 2, nchar(raw)))
+}
+
 # Human-readable label describing a Pandoc node for the tree view
+#
+# Builds on q2r_node_kind() so the tree's leading word always matches the rule
+# node-type vocabulary, appending node-specific detail.
 #
 # node: A q2r pandoc node
 
 q2r_node_label = function(node) {
-  if (S7::S7_inherits(node, q2r::pandoc_header)) {
+  kind = q2r_node_kind(node)
+
+  if (kind == "Heading") {
     level = node@level
     title = q2r::ast_text(node)
     return(as.character(glue::glue("Heading [h{level}] - {title}")))
   }
 
-  if (S7::S7_inherits(node, q2r::pandoc_code_block)) {
-    if (q2r::is_code_cell(node)) {
-      engine = q2r::cell_engine(node)
-      label = q2r::cell_label(node)
-      n_lines = length(unlist(strsplit(q2r::cell_code(node), "\n", fixed = TRUE)))
-      lines_txt = glue::glue("({n_lines} line{if (n_lines == 1) '' else 's'})")
-      if (is.na(label)) {
-        return(as.character(glue::glue("Chunk [{engine}] {lines_txt}")))
-      }
-      return(as.character(glue::glue("Chunk [{engine}] - {label} {lines_txt}")))
+  if (kind == "Chunk") {
+    engine = q2r::cell_engine(node)
+    label = q2r::cell_label(node)
+    n_lines = length(unlist(strsplit(q2r::cell_code(node), "\n", fixed = TRUE)))
+    lines_txt = glue::glue("({n_lines} line{if (n_lines == 1) '' else 's'})")
+    if (is.na(label)) {
+      return(as.character(glue::glue("Chunk [{engine}] {lines_txt}")))
     }
-    return("Code block")
+    return(as.character(glue::glue("Chunk [{engine}] - {label} {lines_txt}")))
   }
 
-  if (S7::S7_inherits(node, q2r::pandoc_raw_block)) {
+  if (kind == "Raw Block") {
     return(if (nzchar(node@format)) as.character(glue::glue("Raw Block [{node@format}]")) else "Raw Block")
   }
 
-  if (S7::S7_inherits(node, q2r::pandoc_div)) {
+  if (kind == "Div") {
     classes = node_classes(node)
     if (length(classes) > 0) {
       return(paste0("Div (.", paste(classes, collapse = " ."), ")"))
@@ -78,11 +110,7 @@ q2r_node_label = function(node) {
     return("Div")
   }
 
-  if (S7::S7_inherits(node, q2r::pandoc_paragraph) || S7::S7_inherits(node, q2r::pandoc_plain)) {
-    return("Markdown")
-  }
-
-  gsub("_", " ", sub("^q2r::pandoc_", "", class(node)[1]))
+  kind
 }
 
 # A node's content preview, shown as a smaller second line under its label in
@@ -97,48 +125,64 @@ q2r_node_detail = function(node) {
   ""
 }
 
-# Heading-section chain for each line of a markdown document
+# Enclosing-heading id chain for each line of a markdown document
 #
 # Scans lines tracking ATX headings (ignoring any inside fenced code blocks so
-# R comments are not mistaken for headings) and assigns every line the chain of
-# enclosing heading titles as a length-6 NA-filled vector (h1..h6). A heading
-# line belongs to the section it introduces. Used to map selected sections onto
-# line ranges in the displayed document.
+# R comments are not mistaken for headings). Each heading line, in document
+# order, is zipped to the next parsed header of repo_ast so it inherits that
+# header's authoritative q2r id (including dedup suffixes and explicit {#id}),
+# avoiding any re-implementation of the Pandoc slug algorithm. Every line is
+# assigned the vector of enclosing heading ids; a heading line includes its own.
+# Used to map selected sections onto line ranges in the displayed document.
 #
 # lines: Character vector of document lines
+# repo_ast: q2r pandoc AST parsed from the same document
 
-line_section_chains = function(lines) {
+line_section_id_chains = function(lines, repo_ast) {
+  header_records = Filter(
+    function(record) S7::S7_inherits(record$node, q2r::pandoc_header),
+    q2r_flatten(repo_ast)
+  )
+  header_ids = vapply(header_records, function(record) record$node@attr@id, character(1))
+
   fence_open = "^\\s*(`{3,}|~{3,})"
   fence_close = "^\\s*(`{3,}|~{3,})\\s*$"
   heading_re = "^(#{1,6})\\s+(.*?)\\s*#*\\s*$"
 
-  section = rep(NA_character_, 6)
+  stack = list()
+  next_header = 1L
   in_block = FALSE
   chains = vector("list", length(lines))
+
+  stack_ids = function() vapply(stack, function(s) s$id, character(1))
 
   for (i in seq_along(lines)) {
     line = lines[i]
 
     if (in_block) {
       if (grepl(fence_close, line)) in_block = FALSE
-      chains[[i]] = section
+      chains[[i]] = stack_ids()
       next
     }
 
     if (grepl(fence_open, line)) {
       in_block = TRUE
-      chains[[i]] = section
+      chains[[i]] = stack_ids()
       next
     }
 
     m = regmatches(line, regexec(heading_re, line))[[1]]
     if (length(m) == 3L) {
       level = nchar(m[2])
-      section[level] = trimws(m[3])
-      if (level < 6) section[(level + 1):6] = NA_character_
+      id = if (next_header <= length(header_ids)) header_ids[next_header] else ""
+      next_header = next_header + 1L
+      while (length(stack) > 0 && stack[[length(stack)]]$level >= level) {
+        stack[[length(stack)]] = NULL
+      }
+      stack[[length(stack) + 1]] = list(level = level, id = id)
     }
 
-    chains[[i]] = section
+    chains[[i]] = stack_ids()
   }
 
   chains

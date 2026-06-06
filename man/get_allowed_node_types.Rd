@@ -11,5 +11,6 @@ Character vector of allowed node types
 }
 \description{
 Returns the list of valid node types that can be used in validation rules.
-This includes both a catch-all "Any node" option and specific Pandoc (q2r) node types.
+These are the same friendly category names shown in the AST tree (see
+\code{q2r_node_kind()}), plus a catch-all "Any node" option.
 }

@@ -7,27 +7,35 @@
 #' @name template_classes
 NULL
 
+# Current template format version. Bumped whenever the persisted template shape
+# changes incompatibly (e.g. node-selection representation, rule vocabulary).
+# assert_template_compatible() rejects templates older than this.
+
+markermd_template_version = function() "2.1"
+
 #' @title Node Selection for Questions
-#' @description S7 class representing selected AST nodes for a template question
-#' @param indices Integer vector of 1-based AST node indices
+#' @description S7 class representing the headings a template question targets,
+#'   identified by their q2r/Pandoc header ids. An empty vector means no
+#'   selection (the whole document).
+#' @param heading_ids Character vector of document-unique header ids
 #' @export
 markermd_node_selection = S7::new_class(
   "markermd_node_selection",
   properties = list(
-    indices = S7::new_property(
-      S7::class_integer, 
-      default = quote(integer(0))
+    heading_ids = S7::new_property(
+      S7::class_character,
+      default = quote(character(0))
     )
   ),
   validator = function(self) {
-    if (length(self@indices) > 0 && (any(is.na(self@indices)) || !all(is.finite(self@indices)))) {
-      return("All node indices must be finite integers")
+    if (anyNA(self@heading_ids)) {
+      return("Header ids must not be NA")
     }
-    if (any(self@indices < 1)) {
-      return("All node indices must be >= 1 (1-based indexing)")
+    if (any(nchar(self@heading_ids) == 0)) {
+      return("Header ids must be non-empty strings")
     }
-    if (any(duplicated(self@indices))) {
-      return("Node indices must be unique")
+    if (any(duplicated(self@heading_ids))) {
+      return("Header ids must be unique")
     }
     NULL
   },
@@ -128,7 +136,7 @@ markermd_metadata = S7::new_class(
     ),
     version = S7::new_property(
       S7::class_character,
-      default = quote("1.0"),
+      default = quote(markermd_template_version()),
       validator = function(value) {
         if (length(value) != 1) {
           return("@version must be a single character string")
@@ -193,25 +201,6 @@ markermd_template = S7::new_class(
       default = quote(markermd_metadata())
     )
   ),
-  validator = function(self) {
-    # Validate that node selections are within bounds of the AST
-    if (!is.null(self@original_ast) && length(self@questions) > 0) {
-      n_nodes = length(q2r_flatten(self@original_ast))
-      
-      for (i in seq_along(self@questions)) {
-        q = self@questions[[i]]
-        indices = q@selected_nodes@indices
-        
-        if (length(indices) > 0 && any(indices > n_nodes)) {
-          invalid_indices = indices[indices > n_nodes]
-          return(paste0("Question '", q@name, "' has invalid node indices (> ", n_nodes, "): ", 
-                       paste(invalid_indices, collapse = ", ")))
-        }
-      }
-    }
-    
-    NULL
-  },
   package = "markermd"
 )
 

@@ -8,7 +8,7 @@ markermd_metadata(
   created_at = Sys.time(),
   created_by = Sys.getenv("USER", "unknown"),
   total_nodes = 0L,
-  version = "1.0"
+  version = markermd_template_version()
 )
 }
 \arguments{

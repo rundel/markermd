@@ -119,6 +119,7 @@ ast_base_server = function(id, ast, selected_nodes = shiny::reactive(integer(0))
                     title = shiny::span(node_type, style = "font-size: 16px; font-weight: bold;"),
                     size = "l",
                     easyClose = TRUE,
+                    footer = NULL,
                     shiny::div(
                       style = "height: 400px;",
                       shiny::div(

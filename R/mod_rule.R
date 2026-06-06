@@ -30,6 +30,12 @@ rule_item_ui = function(rule = NULL, input_id, verb_inputs) {
     shiny::div(
       style = "display: flex; align-items: center; gap: 4px; width: 100%; position: relative; z-index: 1000;",
 
+      # Live validation status against the current document
+      shiny::div(
+        style = "flex: 0 0 auto; display: flex; align-items: center;",
+        shiny::uiOutput(input_id("status"), inline = TRUE)
+      ),
+
       # Node types selection
       shiny::div(
         style = "flex: 0 0 35%; position: relative;",

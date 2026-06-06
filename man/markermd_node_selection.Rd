@@ -4,11 +4,13 @@
 \alias{markermd_node_selection}
 \title{Node Selection for Questions}
 \usage{
-markermd_node_selection(indices = integer(0))
+markermd_node_selection(heading_ids = character(0))
 }
 \arguments{
-\item{indices}{Integer vector of 1-based AST node indices}
+\item{heading_ids}{Character vector of document-unique header ids}
 }
 \description{
-S7 class representing selected AST nodes for a template question
+S7 class representing the headings a template question targets,
+identified by their q2r/Pandoc header ids. An empty vector means no
+selection (the whole document).
 }

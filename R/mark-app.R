@@ -609,6 +609,7 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
                     title = repo,
                     size = "xl",
                     easyClose = TRUE,
+                    footer = NULL,
                     shiny::div(
                       style = "height: 70vh; width: 100%; overflow: auto; border: 1px solid #dee2e6; background: white; font-size: 12px; padding: 8px;",
                       shiny::HTML(html_content)
@@ -671,6 +672,7 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
                     title = paste("Source Code:", file_name),
                     size = "xl",
                     easyClose = TRUE,
+                    footer = NULL,
                     shiny::div(
                       style = "height: 70vh;",
                       shiny::div(

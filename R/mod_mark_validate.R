@@ -3,13 +3,12 @@
 # Creates the content display for a question including tree structure
 #
 # repo_ast: The current document AST
-# template_ast: The original template AST
-# question: The question object with selected nodes
+# question: The question object with selected headings
 # session: Shiny session object
 
-get_question_content = function(repo_ast, template_ast, question, session) {
-  
-  question_ast = get_question_ast(repo_ast, template_ast, question)
+get_question_content = function(repo_ast, question, session) {
+
+  question_ast = get_question_ast(repo_ast, question)
   tree_items = build_ast_tree_structure(question_ast)
   
   # Filter out document root (index 0) and adjust depths for question display
@@ -83,10 +82,9 @@ create_rule_details = function(question, question_result) {
 # question: The question object
 # question_result: The validation result for this question
 # current_ast: The current document AST
-# original_ast: The original template AST
 # session: Shiny session object
 
-create_question_card = function(question, question_result, current_ast, original_ast, session) {
+create_question_card = function(question, question_result, current_ast, session) {
   question_name = question@name
   
   # Overall status styling - only pass/fail states
@@ -104,7 +102,7 @@ create_question_card = function(question, question_result, current_ast, original
   )
   
   # Get the document nodes for this question using section selection
-  question_nodes_content = get_question_content(current_ast, original_ast, question, session)
+  question_nodes_content = get_question_content(current_ast, question, session)
   
   # Create rule details
   rule_details = create_rule_details(question, question_result)
@@ -169,8 +167,8 @@ mark_validate_server = function(id, ast, current_repo_name = shiny::reactiveVal(
       
       question_cards = lapply(current_template@questions, function(question) {
         create_question_card(
-          question, current_validation[[question@name]], 
-          current_ast, current_template@original_ast, session
+          question, current_validation[[question@name]],
+          current_ast, session
         )
       })
       
@@ -205,7 +203,7 @@ mark_validate_server = function(id, ast, current_repo_name = shiny::reactiveVal(
         }
         
         # Get the question AST using the shared function from utils_template.R
-        question_ast = get_question_ast(current_ast, current_template@original_ast, question)
+        question_ast = get_question_ast(current_ast, question)
         question_nodes = if (is.null(question_ast)) list() else lapply(q2r_flatten(question_ast), function(record) record$node)
 
         if (length(question_nodes) > 0) {

@@ -104,27 +104,20 @@ question_server = function(id, ast, initial_question = NULL) {
       }
     })
     
-    # Render selected nodes display
+    # Render selected nodes display: each header-id selector followed by the
+    # number of nodes it covers (the selected heading and its descendants).
     output$selected_nodes_display = shiny::renderUI({
-      nodes = state()@selected_nodes@indices
-      if (length(nodes) == 0) {
+      ids = state()@selected_nodes@heading_ids
+      if (length(ids) == 0) {
         shiny::span("None", class = "text-muted")
       } else {
         tree_items = build_ast_tree_structure(ast())
-        
-        node_displays = sapply(nodes, function(node_index) {
-          children = find_all_descendants(tree_items, node_index)
-          if (length(children) > 0) {
-            paste0(node_index, " [", paste(children, collapse = ","), "]")
-          } else {
-            as.character(node_index)
-          }
-        })
-        
-        shiny::span(
-          paste(node_displays, collapse = ", "), 
-          class = "text-success"
-        )
+        labels = vapply(ids, function(id) {
+          n = length(compute_all_selected_nodes(tree_items, heading_ids_to_indices(ast(), id)))
+          paste0("#", id, " (", n, " node", if (n != 1) "s" else "", ")")
+        }, character(1))
+
+        shiny::span(paste(labels, collapse = ", "), class = "text-success")
       }
     })
         
@@ -139,6 +132,35 @@ question_server = function(id, ast, initial_question = NULL) {
     # Rule management - simplified working approach
     rules_list = shiny::reactiveVal(list())
     next_rule_id = shiny::reactiveVal(1L)
+
+    # Live evaluation of every rule against the template's own document. Keyed by
+    # rule_id ("1".."k", matching the rules_list ordering) so per-rule status
+    # outputs can look up their result. Empty when no document/rules yet. When no
+    # section is selected, get_question_ast() evaluates against the whole document.
+    rule_status = shiny::reactive({
+      q = state()
+      rules = q@rules
+      if (is.null(ast()) || length(rules) == 0) {
+        return(list())
+      }
+      question_ast = get_question_ast(ast(), q)
+      stats::setNames(
+        lapply(rules, function(rule) evaluate_rule(question_ast, rule)),
+        as.character(seq_along(rules))
+      )
+    })
+
+    # Small pass/fail badge from an evaluate_rule() result (or NULL)
+    rule_status_badge = function(status) {
+      if (is.null(status)) {
+        return(NULL)
+      }
+      if (isTRUE(status$passed)) {
+        shiny::icon("check", style = "color: #28a745; font-size: 16px;", title = status$message)
+      } else {
+        shiny::icon("times", style = "color: #dc3545; font-size: 16px;", title = status$message)
+      }
+    }
     
     # Initialize rules_list from loaded question state
     shiny::observe({
@@ -235,6 +257,21 @@ question_server = function(id, ast, initial_question = NULL) {
     
     # Dynamic delete observer management
     delete_observers = shiny::reactiveVal(list())
+
+    # Dynamic per-rule live-status output management (ids already wired)
+    status_outputs = shiny::reactiveVal(character(0))
+
+    # Wire the live-status uiOutput for a rule. Reads rule_status() by rule_id
+    # reactively, so re-indexing on delete is transparent (id "1" always shows
+    # whichever rule now occupies slot 1).
+    #
+    # rule_id: Character. The rule ID to wire a status output for
+
+    create_status_output = function(rule_id) {
+      output[[paste0("rule_", rule_id, "-status")]] = shiny::renderUI({
+        rule_status_badge(rule_status()[[rule_id]])
+      })
+    }
     
     # Create a delete observer for a specific rule
     #
@@ -312,8 +349,19 @@ question_server = function(id, ast, initial_question = NULL) {
           new_observers[[obs_id]] = NULL
         }
       }
-      
+
       delete_observers(new_observers)
+
+      # Wire a live-status output for any newly seen rule id; keep the tracked
+      # set mirroring the current rules (outputs persist but read by id).
+      wired = status_outputs()
+      for (rule_id in names(current_rules)) {
+        if (!rule_id %in% wired) {
+          create_status_output(rule_id)
+          wired = c(wired, rule_id)
+        }
+      }
+      status_outputs(wired[wired %in% names(current_rules)])
     })
     
     # Handle rule input updates
@@ -371,16 +419,29 @@ question_server = function(id, ast, initial_question = NULL) {
       }
     })
     
-    # Render rules status
+    # Render rules status: rule count plus an aggregate pass/fail badge from the
+    # live evaluation against the current document.
     output$rules_status = shiny::renderUI({
       current_rules = rules_list()
       rule_count = length(current_rules)
-      
+
       if (rule_count == 0) {
         shiny::span("None", class = "text-muted")
       } else {
+        statuses = rule_status()
+        badge = if (length(statuses) > 0) {
+          if (all(vapply(statuses, function(s) isTRUE(s$passed), logical(1)))) {
+            shiny::icon("check", style = "color: #28a745; margin-left: 4px;", title = "All rules pass on the current document")
+          } else {
+            shiny::icon("times", style = "color: #dc3545; margin-left: 4px;", title = "Some rules fail on the current document")
+          }
+        } else {
+          NULL
+        }
+
         shiny::span(
           paste0("(", rule_count, " rule", if (rule_count != 1) "s" else "", ")"),
+          badge,
           class = "text-success"
         )
       }
@@ -434,30 +495,39 @@ question_server = function(id, ast, initial_question = NULL) {
         state()
       }),
       
-      # Node management methods
+      # Node management methods. The public interface stays index-based (the tree
+      # interaction works in index space), but selections are stored as the
+      # headings' q2r ids, converted at this boundary.
       add_node = function(node_index) {
+        id = heading_id_for_index(ast(), node_index)
+        if (nchar(id) == 0) {
+          return(invisible(NULL))
+        }
         cur_state = state()
-        cur_nodes = cur_state@selected_nodes@indices
-        if (!node_index %in% cur_nodes) {
-          cur_state@selected_nodes = markermd_node_selection(indices = sort(c(cur_nodes, node_index)))
+        cur_ids = cur_state@selected_nodes@heading_ids
+        if (!id %in% cur_ids) {
+          cur_state@selected_nodes = markermd_node_selection(heading_ids = c(cur_ids, id))
           state(cur_state)
         }
       },
 
       remove_node = function(node_index) {
+        id = heading_id_for_index(ast(), node_index)
         cur_state = state()
-        cur_state@selected_nodes = markermd_node_selection(indices = setdiff(cur_state@selected_nodes@indices, node_index))
+        cur_state@selected_nodes = markermd_node_selection(
+          heading_ids = setdiff(cur_state@selected_nodes@heading_ids, id)
+        )
         state(cur_state)
       },
-    
+
       clear_nodes = function() {
         cur_state = state()
-        cur_state@selected_nodes = markermd_node_selection(indices = integer())
+        cur_state@selected_nodes = markermd_node_selection(heading_ids = character(0))
         state(cur_state)
       },
-        
+
       get_selected_nodes = shiny::reactive({
-        state()@selected_nodes@indices
+        heading_ids_to_indices(ast(), state()@selected_nodes@heading_ids)
       }),
       
       delete_clicked = shiny::reactive({

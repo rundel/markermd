@@ -9,21 +9,24 @@ NULL
 #' Get allowed node types for rules
 #'
 #' @description Returns the list of valid node types that can be used in validation rules.
-#' This includes both a catch-all "Any node" option and specific Pandoc (q2r) node types.
+#' These are the same friendly category names shown in the AST tree (see
+#' `q2r_node_kind()`), plus a catch-all "Any node" option.
 #'
 #' @return Character vector of allowed node types
 #' @export
 get_allowed_node_types = function() {
   c(
     "Any node",
-    "pandoc_header",
-    "pandoc_paragraph",
-    "pandoc_code_block",
-    "pandoc_div",
-    "pandoc_bullet_list",
-    "pandoc_ordered_list",
-    "pandoc_block_quote",
-    "pandoc_table"
+    "Heading",
+    "Markdown",
+    "Chunk",
+    "Code block",
+    "Raw Block",
+    "Div",
+    "Bullet list",
+    "Ordered list",
+    "Block quote",
+    "Table"
   )
 }
 

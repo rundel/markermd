@@ -2,7 +2,7 @@
   "export": {
     "n_questions": 1,
     "n_rules_per_question": {
-      "1": 0
+      "1": 1
     },
     "question_names": {
       "1": "Question 1"

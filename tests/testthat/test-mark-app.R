@@ -10,18 +10,16 @@ make_mark_fixture = function() {
 
   qmd = file.path(collection, "student1-excellent", "assignment.qmd")
   ast = markermd:::parse_assignment_document(qmd)
-  records = markermd:::q2r_flatten(ast)
-  idx = function(pattern) which(vapply(records, function(r) grepl(pattern, r$label), logical(1)))
 
   template = markermd::markermd_template(
     original_ast = ast,
     questions = list(
       markermd::markermd_question(
-        1L, "Q2", markermd::markermd_node_selection(indices = idx("Question 2")),
+        1L, "Q2", markermd::markermd_node_selection(heading_ids = "question-2-basic-programming"),
         list(markermd::markermd_rule(node_type = "Any node", verb = "has content", values = "*quantile*"))
       ),
       markermd::markermd_question(
-        2L, "Q3", markermd::markermd_node_selection(indices = idx("Question 3")),
+        2L, "Q3", markermd::markermd_node_selection(heading_ids = "question-3-data-visualization"),
         list(markermd::markermd_rule(node_type = "Any node", verb = "has content", values = "*ggplot*"))
       )
     ),

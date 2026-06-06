@@ -589,7 +589,18 @@ create_unified_tree_css = function(css_class, selection_mode) {
         color: white;
         border-color: #1e7e34;
       }
-      
+
+      /* Non-selectable nodes use a square instead of the selectable circle.
+         Background/border inherit the circle's styling from .tree-toggle-btn. */
+      .", css_class, " .tree-toggle-btn.tree-marker-square {
+        border-radius: 0;
+        transform: scale(0.75);
+      }
+
+      .", css_class, " .tree-toggle-btn.tree-marker-square.selected {
+        background: #28a745;
+      }
+
       .", css_class, " .tree-node-description.selected {
         background-color: #28a745;
         color: white;
@@ -742,10 +753,12 @@ build_unified_tree_level = function(tree_items, target_depth, parent_index, all_
     if (item$type == "document_root") {
       # Document root node
       if (selection_mode == "interactive") {
-        # Interactive mode - positioned icon similar to tree-toggle-btn
+        # Interactive mode - positioned icon similar to tree-toggle-btn. The
+        # root is non-selectable, so it uses the square marker like other
+        # non-selectable nodes.
         document_icon = shiny::div(
-          class = "tree-toggle-btn",
-          style = "background: #ddd; border: 1px solid #bbb; cursor: default; pointer-events: none;"
+          class = "tree-toggle-btn tree-marker-square",
+          style = "cursor: default; pointer-events: none;"
         )
         
         node_content = shiny::div(
@@ -799,7 +812,7 @@ build_unified_tree_level = function(tree_items, target_depth, parent_index, all_
       if (selection_mode == "interactive") {
         # Interactive mode - full selection functionality
         is_selectable_heading = item$type == "pandoc_header" && !has_selected_ancestor(tree_items, item$index, directly_selected_nodes)
-        
+
         if (is_selectable_heading) {
           # Create toggle button for tree structure  
           button_icon = if(is_directly_selected) {
@@ -842,7 +855,7 @@ build_unified_tree_level = function(tree_items, target_depth, parent_index, all_
           }
           
           selection_indicator = shiny::div(
-            class = paste("tree-toggle-btn", if(is_selected) "selected" else ""),
+            class = paste("tree-toggle-btn tree-marker-square", if(is_selected) "selected" else ""),
             style = "cursor: default; pointer-events: none;",
             indicator_icon,
             title = if(is_selected) "Selected via parent heading" else "Non-selectable node"

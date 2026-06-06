@@ -259,31 +259,23 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
 
     # Map a question's selected sections to line ranges in the repo document
     #
-    # Resolves the selected node indices to heading-section paths (against the
-    # template AST when supplied, otherwise the repo AST) and highlights every
-    # line of the displayed (normalised) document whose enclosing heading chain
-    # falls under one of those sections.
+    # Highlights every line of the displayed (normalised) document whose
+    # enclosing heading-id chain contains one of the question's selected header
+    # ids (so a selected heading covers its whole section, nested subsections
+    # included).
     #
     # raw_content_lines: Character vector of the displayed (normalised) document
-    # node_indices: Integer selected node indices
+    # heading_ids: Character vector of selected header ids
     # repo_ast: q2r pandoc AST of the repo document
-    # template_ast: Optional q2r pandoc AST of the template document
 
-    map_content_to_lines = function(raw_content_lines, node_indices, repo_ast, template_ast = NULL) {
-      if (length(node_indices) == 0) {
+    map_content_to_lines = function(raw_content_lines, heading_ids, repo_ast) {
+      if (length(heading_ids) == 0) {
         return(list())
       }
 
-      selector_ast = if (is.null(template_ast)) repo_ast else template_ast
-      selectors = Filter(function(selector) length(selector) > 0, get_heading_selector(selector_ast, node_indices))
-      if (length(selectors) == 0) {
-        return(list())
-      }
-
-      chains = line_section_chains(raw_content_lines)
+      chains = line_section_id_chains(raw_content_lines, repo_ast)
       matched = which(vapply(chains, function(chain) {
-        chain = chain[!is.na(chain)]
-        any(vapply(selectors, function(selector) section_chain_matches(chain, selector), logical(1)))
+        any(heading_ids %in% chain)
       }, logical(1)))
 
       group_consecutive_lines(matched)
@@ -796,7 +788,7 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
           }
         }
         
-        if (!is.null(question_obj) && length(question_obj@selected_nodes@indices) > 0) {
+        if (!is.null(question_obj) && length(question_obj@selected_nodes@heading_ids) > 0) {
           # Get repository AST
           repo_rows = collection$path |> dirname() |> basename() == selected_repo
           if (any(repo_rows)) {
@@ -806,10 +798,9 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
               temp_result = get_raw_document_content(selected_repo, collection, use_qmd)
               if (is.list(temp_result) && !is.null(temp_result$lines)) {
                 highlight_ranges = map_content_to_lines(
-                  temp_result$lines, 
-                  question_obj@selected_nodes@indices, 
-                  repo_ast,
-                  template@original_ast
+                  temp_result$lines,
+                  question_obj@selected_nodes@heading_ids,
+                  repo_ast
                 )
               }
             }
@@ -1013,36 +1004,26 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
         # Get the repository AST for the current repo
         selected_repo = input$content_repo_select
         repo_rows = collection$path |> dirname() |> basename() == selected_repo
-        # Section paths come from the template and match the repo by heading name
-        all_hierarchies = get_heading_selector(template@original_ast, question_obj@selected_nodes@indices)
-        if (length(all_hierarchies) > 0) {
-          # Use first hierarchy for scrolling
-          first_hierarchy = all_hierarchies[[1]]
-          if (length(first_hierarchy) > 0) {
-            # Get the deepest heading from first hierarchy for scrolling
-            target_heading = first_hierarchy[length(first_hierarchy)]
-            
-            # Clean heading text to match Quarto's data-anchor-id format
-            # Quarto converts "Write up" -> "write-up", spaces become hyphens
-            clean_heading = gsub("[^a-zA-Z0-9 ]", "", target_heading)     # Remove punctuation but keep spaces
-            clean_heading = gsub(" +", "-", trimws(clean_heading))        # Convert spaces to hyphens
-            clean_heading = tolower(clean_heading)                       # Make lowercase
-            target_id = clean_heading  # Use Quarto's data-anchor-id format
-            
-            # Create JavaScript array of all target headings and their expected IDs
-            all_target_data = lapply(all_hierarchies, function(hierarchy) {
-              if (length(hierarchy) > 0) {
-                deepest_heading = hierarchy[length(hierarchy)]
-                # Match Quarto's data-anchor-id format exactly
-                clean_id = gsub("[^a-zA-Z0-9 ]", "", deepest_heading)    # Remove punctuation but keep spaces
-                clean_id = gsub(" +", "-", trimws(clean_id))             # Convert spaces to hyphens  
-                clean_id = tolower(clean_id)                            # Make lowercase
-                list(text = deepest_heading, id = clean_id)
-              } else {
-                NULL
+        # The stored header ids are the Quarto data-anchor-ids to scroll to
+        heading_ids = question_obj@selected_nodes@heading_ids
+        if (length(heading_ids) > 0) {
+          # Resolve heading titles (used only as a text fallback in the scroll JS)
+          template_records = q2r_flatten(template@original_ast)
+          id_to_title = function(id) {
+            for (record in template_records) {
+              if (S7::S7_inherits(record$node, q2r::pandoc_header) && record$node@attr@id == id) {
+                return(q2r::ast_text(record$node))
               }
-            })
-            all_target_data = all_target_data[!sapply(all_target_data, is.null)]
+            }
+            id
+          }
+
+          target_id = heading_ids[1]
+          target_heading = id_to_title(target_id)
+
+          all_target_data = lapply(heading_ids, function(id) {
+            list(text = id_to_title(id), id = id)
+          })
             
             # Create JavaScript array of the target data
             js_target_data = paste0("[", paste(sapply(all_target_data, function(d) {
@@ -1074,7 +1055,7 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
                 
                 // Try to find target by data-anchor-id first, then by text content if not found
                 var firstTarget = document.querySelector('[data-anchor-id=\"", target_id, "\"]');
-                
+
                 if (!firstTarget) {
                   // Try to find by heading text content
                   var allHeadings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
@@ -1110,7 +1091,7 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
                 var targetData = ", js_target_data, ";
                 targetData.forEach(function(target) {
                   var targetElement = document.querySelector('[data-anchor-id=\"' + target.id + '\"]');
-                  
+
                   if (!targetElement) {
                     // Try to find by heading text content
                     var allHeadings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
@@ -1122,15 +1103,15 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
                       }
                     }
                   }
-                  
+
                   if (targetElement) {
                     // Collect all elements to wrap
                     var elementsToWrap = [targetElement];
-                    
+
                     // Find all content until the next heading of same or higher level
                     var currentElement = targetElement.nextElementSibling;
                     var targetLevel = parseInt(targetElement.tagName.charAt(1));
-                    
+
                     while (currentElement) {
                       // If we hit another heading, check its level
                       if (currentElement.tagName && currentElement.tagName.match(/^H[1-6]$/)) {
@@ -1139,20 +1120,20 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
                           break;
                         }
                       }
-                      
+
                       // Add to elements to wrap
                       elementsToWrap.push(currentElement);
                       currentElement = currentElement.nextElementSibling;
                     }
-                    
+
                     // Create wrapper div
                     var wrapper = document.createElement('div');
                     wrapper.className = 'section-highlight-wrapper';
-                    
+
                     // Insert wrapper before the first element
                     var parent = targetElement.parentNode;
                     parent.insertBefore(wrapper, targetElement);
-                    
+
                     // Move all elements into the wrapper
                     elementsToWrap.forEach(function(element) {
                       wrapper.appendChild(element);
@@ -1163,11 +1144,10 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
             ")
             
             shinyjs::runjs(scroll_js)
-          }
         }
       }
     }
-    
+
     # Handle question selection change for scrolling
     shiny::observe({
       if (!is.null(on_question_change)) {

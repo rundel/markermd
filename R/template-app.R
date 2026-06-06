@@ -159,7 +159,7 @@ template_app = function(ast, template_obj = NULL) {
       initial_question = markermd_question(
         id = as.integer(next_id),
         name = paste("Question", next_id),
-        selected_nodes = markermd_node_selection(indices = integer()),
+        selected_nodes = markermd_node_selection(),
         rules = list()
       )
 
@@ -521,10 +521,11 @@ template_app = function(ast, template_obj = NULL) {
           }
         }
 
-        # Create template object
+        # Create template object stamped with the current format version
         template_obj = markermd_template(
           original_ast = ast(),
-          questions = questions_list
+          questions = questions_list,
+          metadata = markermd_metadata(version = markermd_template_version())
         )
 
         # Save to file
@@ -562,9 +563,9 @@ template_app = function(ast, template_obj = NULL) {
         modules = question_modules()
         purrr::map(modules, function(m) {
           if (!is.null(m$server) && !is.null(m$server$question)) {
-            m$server$question()@selected_nodes@indices
+            m$server$question()@selected_nodes@heading_ids
           } else {
-            integer(0)
+            character(0)
           }
         })
       }
