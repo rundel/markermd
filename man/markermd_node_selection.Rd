@@ -4,13 +4,13 @@
 \alias{markermd_node_selection}
 \title{Node Selection for Questions}
 \usage{
-markermd_node_selection(heading_ids = character(0))
+markermd_node_selection(node_ids = character(0))
 }
 \arguments{
-\item{heading_ids}{Character vector of document-unique header ids}
+\item{node_ids}{Character vector of document-unique node ids (header or div ids)}
 }
 \description{
-S7 class representing the headings a template question targets,
-identified by their q2r/Pandoc header ids. An empty vector means no
-selection (the whole document).
+S7 class representing the headings and id'd divs a template
+question targets, identified by their q2r/Pandoc ids (header ids or div
+ids). An empty vector means no selection (the whole document).
 }

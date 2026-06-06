@@ -1,0 +1,23 @@
+---
+title: "Div Assignment"
+---
+
+# Question 1
+
+Write your answer in the div below.
+
+::: {#q1-answer .answer}
+The mean is computed with `mean()`.
+
+```{r}
+mean(1:10)
+```
+:::
+
+::: {.callout-note}
+This callout has no id and cannot be selected.
+:::
+
+## Question 2
+
+Discuss the result.

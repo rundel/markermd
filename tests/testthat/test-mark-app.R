@@ -15,11 +15,11 @@ make_mark_fixture = function() {
     original_ast = ast,
     questions = list(
       markermd::markermd_question(
-        1L, "Q2", markermd::markermd_node_selection(heading_ids = "question-2-basic-programming"),
+        1L, "Q2", markermd::markermd_node_selection(node_ids = "question-2-basic-programming"),
         list(markermd::markermd_rule(node_type = "Any node", verb = "has content", values = "*quantile*"))
       ),
       markermd::markermd_question(
-        2L, "Q3", markermd::markermd_node_selection(heading_ids = "question-3-data-visualization"),
+        2L, "Q3", markermd::markermd_node_selection(node_ids = "question-3-data-visualization"),
         list(markermd::markermd_rule(node_type = "Any node", verb = "has content", values = "*ggplot*"))
       )
     ),

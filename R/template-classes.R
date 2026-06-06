@@ -11,31 +11,31 @@ NULL
 # changes incompatibly (e.g. node-selection representation, rule vocabulary).
 # assert_template_compatible() rejects templates older than this.
 
-markermd_template_version = function() "2.1"
+markermd_template_version = function() "2.2"
 
 #' @title Node Selection for Questions
-#' @description S7 class representing the headings a template question targets,
-#'   identified by their q2r/Pandoc header ids. An empty vector means no
-#'   selection (the whole document).
-#' @param heading_ids Character vector of document-unique header ids
+#' @description S7 class representing the headings and id'd divs a template
+#'   question targets, identified by their q2r/Pandoc ids (header ids or div
+#'   ids). An empty vector means no selection (the whole document).
+#' @param node_ids Character vector of document-unique node ids (header or div ids)
 #' @export
 markermd_node_selection = S7::new_class(
   "markermd_node_selection",
   properties = list(
-    heading_ids = S7::new_property(
+    node_ids = S7::new_property(
       S7::class_character,
       default = quote(character(0))
     )
   ),
   validator = function(self) {
-    if (anyNA(self@heading_ids)) {
-      return("Header ids must not be NA")
+    if (anyNA(self@node_ids)) {
+      return("Node ids must not be NA")
     }
-    if (any(nchar(self@heading_ids) == 0)) {
-      return("Header ids must be non-empty strings")
+    if (any(nchar(self@node_ids) == 0)) {
+      return("Node ids must be non-empty strings")
     }
-    if (any(duplicated(self@heading_ids))) {
-      return("Header ids must be unique")
+    if (any(duplicated(self@node_ids))) {
+      return("Node ids must be unique")
     }
     NULL
   },

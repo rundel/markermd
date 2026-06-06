@@ -32,9 +32,16 @@ build_ast_tree_structure = function(ast) {
   )
 
   for (record in records) {
+    node = record$node
+    node_id = if (S7::S7_inherits(node, q2r::pandoc_header) || S7::S7_inherits(node, q2r::pandoc_div)) {
+      node@attr@id
+    } else {
+      ""
+    }
     tree_items[[record$index + 1]] = list(
       index = record$index,
       type = record$type,
+      node_id = node_id,
       depth = record$depth,
       parent_index = record$parent,
       description = record$label,
@@ -810,10 +817,14 @@ build_unified_tree_level = function(tree_items, target_depth, parent_index, all_
       }
       
       if (selection_mode == "interactive") {
-        # Interactive mode - full selection functionality
-        is_selectable_heading = item$type == "pandoc_header" && !has_selected_ancestor(tree_items, item$index, directly_selected_nodes)
+        # Interactive mode - full selection functionality. Headings are always
+        # selectable; divs only when they carry an explicit id.
+        is_selectable_node = (
+          item$type == "pandoc_header" ||
+          (item$type == "pandoc_div" && !is.null(item$node_id) && nzchar(item$node_id))
+        ) && !has_selected_ancestor(tree_items, item$index, directly_selected_nodes)
 
-        if (is_selectable_heading) {
+        if (is_selectable_node) {
           # Create toggle button for tree structure  
           button_icon = if(is_directly_selected) {
             shiny::icon("check")
@@ -858,7 +869,7 @@ build_unified_tree_level = function(tree_items, target_depth, parent_index, all_
             class = paste("tree-toggle-btn tree-marker-square", if(is_selected) "selected" else ""),
             style = "cursor: default; pointer-events: none;",
             indicator_icon,
-            title = if(is_selected) "Selected via parent heading" else "Non-selectable node"
+            title = if(is_selected) "Selected via parent selection" else "Non-selectable node"
           )
           
           text_class = paste("tree-node-description", if(is_selected) "selected" else "")

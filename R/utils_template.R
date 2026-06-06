@@ -1,32 +1,78 @@
-# The q2r/Pandoc header id of the node at a flattened index
+# The q2r/Pandoc id of the selectable node at a flattened index
 #
-# Only headings are selectable, so a non-heading index yields "".
+# Headings and id'd divs are selectable; everything else (and a div without an
+# explicit id) yields "".
 #
 # ast: q2r pandoc AST object
 # index: Integer. A 1-based flattened node index
 
-heading_id_for_index = function(ast, index) {
+node_id_for_index = function(ast, index) {
   node = q2r_flatten(ast)[[index]]$node
-  if (!S7::S7_inherits(node, q2r::pandoc_header)) {
-    return("")
+  if (S7::S7_inherits(node, q2r::pandoc_header) || S7::S7_inherits(node, q2r::pandoc_div)) {
+    return(node@attr@id)
   }
-  node@attr@id
+  ""
 }
 
-# Flattened node indices of the headings carrying the given ids
+# Flattened node indices of the headings and id'd divs carrying the given ids
 #
 # ast: q2r pandoc AST object
-# ids: Character vector of header ids
+# ids: Character vector of node ids (header or div ids)
 
-heading_ids_to_indices = function(ast, ids) {
+node_ids_to_indices = function(ast, ids) {
   if (length(ids) == 0) {
     return(integer(0))
   }
   records = q2r_flatten(ast)
   hits = vapply(records, function(record) {
-    S7::S7_inherits(record$node, q2r::pandoc_header) && record$node@attr@id %in% ids
+    node = record$node
+    (S7::S7_inherits(node, q2r::pandoc_header) || S7::S7_inherits(node, q2r::pandoc_div)) &&
+      nzchar(node@attr@id) && node@attr@id %in% ids
   }, logical(1))
   sort(which(hits))
+}
+
+# Locate a div node anywhere in a block tree by its explicit id, or NULL
+#
+# Recurses into nested divs so a div inside another div is reachable.
+#
+# blocks: List of q2r pandoc block nodes
+# id: Character. The div id to find
+
+find_div_by_id = function(blocks, id) {
+  for (block in blocks) {
+    if (S7::S7_inherits(block, q2r::pandoc_div)) {
+      if (nzchar(block@attr@id) && block@attr@id == id) {
+        return(block)
+      }
+      hit = find_div_by_id(block@content@content, id)
+      if (!is.null(hit)) {
+        return(hit)
+      }
+    }
+  }
+  NULL
+}
+
+# Partition selected ids into heading ids and div ids using the AST
+#
+# An id carried by a pandoc_div in the document is a div id; everything else is
+# treated as a heading id (an id that resolves to nothing simply matches no
+# blocks during extraction).
+#
+# ast: q2r pandoc AST object
+# ids: Character vector of selected node ids
+
+classify_selected_ids = function(ast, ids) {
+  records = q2r_flatten(ast)
+  div_ids = character(0)
+  for (record in records) {
+    node = record$node
+    if (S7::S7_inherits(node, q2r::pandoc_div) && nzchar(node@attr@id) && node@attr@id %in% ids) {
+      div_ids = c(div_ids, node@attr@id)
+    }
+  }
+  list(heading_ids = setdiff(ids, div_ids), div_ids = div_ids)
 }
 
 # Enclosing-heading id chain for each top-level block of a document
@@ -272,12 +318,12 @@ validate_question_rules = function(repo_ast, question) {
   question_ast = get_question_ast(repo_ast, question)
 
   if (is.null(question_ast)) {
-    stop("No sections could be resolved from the selected headings")
+    stop("No sections could be resolved from the selected nodes")
   }
 
-  # Selected headings (by id) for details display
-  heading_ids = question@selected_nodes@heading_ids
-  formatted_hierarchies = if (length(heading_ids) > 0) paste0("#", heading_ids) else character(0)
+  # Selected nodes (by id) for details display
+  node_ids = question@selected_nodes@node_ids
+  formatted_hierarchies = if (length(node_ids) > 0) paste0("#", node_ids) else character(0)
 
   # If no rules, consider it a pass
   if (length(question@rules) == 0) {
@@ -285,7 +331,7 @@ validate_question_rules = function(repo_ast, question) {
       question_name = question@name,
       status = "pass",
       messages = "No rules defined - validation passed",
-      details = paste0("Selected section(s): ", paste(formatted_hierarchies, collapse = ", "))
+      details = paste0("Selected node(s): ", paste(formatted_hierarchies, collapse = ", "))
     ))
   }
   
@@ -362,32 +408,47 @@ validate_repo_against_rules = function(ast, template) {
   return(results)
 }
 
-# Extracts the AST subset for a specific question by header-id section matching
+# Extracts the AST subset for a specific question by node-id matching
 #
-# A block is kept when one of the question's selected header ids appears in its
-# enclosing-heading id chain (so selecting a heading keeps the heading and every
-# block in its section, including nested subsections). An empty selection keeps
-# the whole document.
+# Heading ids match by section: a top-level block is kept when a selected
+# heading id appears in its enclosing-heading id chain (the heading plus every
+# block in its section, nested subsections included). Div ids drill in: the
+# selected div's own child blocks are contributed, making nested content visible
+# to rule evaluation. The two are unioned. An empty selection keeps the whole
+# document.
 #
 # current_ast: q2r pandoc AST object from the document to analyze
-# question: markermd_question S7 object containing selected headings
+# question: markermd_question S7 object containing selected nodes
 
 get_question_ast = function(current_ast, question) {
 
   stopifnot(S7::S7_inherits(question, markermd_question))
 
-  ids = question@selected_nodes@heading_ids
+  ids = question@selected_nodes@node_ids
 
   if (length(ids) == 0) {
     return(current_ast)
   }
 
   blocks = current_ast@blocks@content
-  chains = block_id_chains(current_ast)
+  split = classify_selected_ids(current_ast, ids)
 
-  matched = vapply(chains, function(chain) any(ids %in% chain), logical(1))
+  result_blocks = list()
 
-  q2r::pandoc(blocks = q2r::pandoc_blocks(blocks[matched]))
+  if (length(split$heading_ids) > 0) {
+    chains = block_id_chains(current_ast)
+    matched = vapply(chains, function(chain) any(split$heading_ids %in% chain), logical(1))
+    result_blocks = c(result_blocks, blocks[matched])
+  }
+
+  for (did in split$div_ids) {
+    div = find_div_by_id(blocks, did)
+    if (!is.null(div)) {
+      result_blocks = c(result_blocks, div@content@content)
+    }
+  }
+
+  q2r::pandoc(blocks = q2r::pandoc_blocks(result_blocks))
 }
 
 # Extracts the content for specific questions from a parsed AST based on template node selections
@@ -402,7 +463,7 @@ extract_question_content = function(repo_ast, template) {
   results = list()
   
   for (q in template@questions) {
-    if (length(q@selected_nodes@heading_ids) == 0) {
+    if (length(q@selected_nodes@node_ids) == 0) {
       results[[q@name]] = "No content selected for this question."
       next
     }

@@ -257,25 +257,25 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
       ranges
     }
 
-    # Map a question's selected sections to line ranges in the repo document
+    # Map a question's selected nodes to line ranges in the repo document
     #
     # Highlights every line of the displayed (normalised) document whose
-    # enclosing heading-id chain contains one of the question's selected header
-    # ids (so a selected heading covers its whole section, nested subsections
-    # included).
+    # enclosing node-id chain contains one of the question's selected ids (a
+    # selected heading covers its whole section, nested subsections included; a
+    # selected id'd div covers the lines between its fences).
     #
     # raw_content_lines: Character vector of the displayed (normalised) document
-    # heading_ids: Character vector of selected header ids
+    # node_ids: Character vector of selected node ids (header or div ids)
     # repo_ast: q2r pandoc AST of the repo document
 
-    map_content_to_lines = function(raw_content_lines, heading_ids, repo_ast) {
-      if (length(heading_ids) == 0) {
+    map_content_to_lines = function(raw_content_lines, node_ids, repo_ast) {
+      if (length(node_ids) == 0) {
         return(list())
       }
 
-      chains = line_section_id_chains(raw_content_lines, repo_ast)
+      chains = line_node_id_chains(raw_content_lines, repo_ast)
       matched = which(vapply(chains, function(chain) {
-        any(heading_ids %in% chain)
+        any(node_ids %in% chain)
       }, logical(1)))
 
       group_consecutive_lines(matched)
@@ -788,7 +788,7 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
           }
         }
         
-        if (!is.null(question_obj) && length(question_obj@selected_nodes@heading_ids) > 0) {
+        if (!is.null(question_obj) && length(question_obj@selected_nodes@node_ids) > 0) {
           # Get repository AST
           repo_rows = collection$path |> dirname() |> basename() == selected_repo
           if (any(repo_rows)) {
@@ -799,7 +799,7 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
               if (is.list(temp_result) && !is.null(temp_result$lines)) {
                 highlight_ranges = map_content_to_lines(
                   temp_result$lines,
-                  question_obj@selected_nodes@heading_ids,
+                  question_obj@selected_nodes@node_ids,
                   repo_ast
                 )
               }
@@ -1004,24 +1004,29 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
         # Get the repository AST for the current repo
         selected_repo = input$content_repo_select
         repo_rows = collection$path |> dirname() |> basename() == selected_repo
-        # The stored header ids are the Quarto data-anchor-ids to scroll to
-        heading_ids = question_obj@selected_nodes@heading_ids
-        if (length(heading_ids) > 0) {
-          # Resolve heading titles (used only as a text fallback in the scroll JS)
+        # The stored node ids are the rendered element ids to scroll to
+        node_ids = question_obj@selected_nodes@node_ids
+        if (length(node_ids) > 0) {
+          # Resolve node titles (used only as a text fallback in the scroll JS):
+          # a heading's text, or a div's first class label.
           template_records = q2r_flatten(template@original_ast)
           id_to_title = function(id) {
             for (record in template_records) {
               if (S7::S7_inherits(record$node, q2r::pandoc_header) && record$node@attr@id == id) {
                 return(q2r::ast_text(record$node))
               }
+              if (S7::S7_inherits(record$node, q2r::pandoc_div) && nzchar(record$node@attr@id) && record$node@attr@id == id) {
+                cls = node_classes(record$node)
+                return(if (length(cls) > 0) paste0(".", cls[1]) else id)
+              }
             }
             id
           }
 
-          target_id = heading_ids[1]
+          target_id = node_ids[1]
           target_heading = id_to_title(target_id)
 
-          all_target_data = lapply(heading_ids, function(id) {
+          all_target_data = lapply(node_ids, function(id) {
             list(text = id_to_title(id), id = id)
           })
             
@@ -1053,8 +1058,10 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
                   parent.removeChild(wrapper);
                 });
                 
-                // Try to find target by data-anchor-id first, then by text content if not found
-                var firstTarget = document.querySelector('[data-anchor-id=\"", target_id, "\"]');
+                // Try to find target by data-anchor-id, then by element id (a
+                // rendered id'd div is <div id=...>), then by heading text
+                var firstTarget = document.querySelector('[data-anchor-id=\"", target_id, "\"]')
+                  || document.getElementById('", target_id, "');
 
                 if (!firstTarget) {
                   // Try to find by heading text content
@@ -1090,7 +1097,8 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
                 // Highlight all target sections
                 var targetData = ", js_target_data, ";
                 targetData.forEach(function(target) {
-                  var targetElement = document.querySelector('[data-anchor-id=\"' + target.id + '\"]');
+                  var targetElement = document.querySelector('[data-anchor-id=\"' + target.id + '\"]')
+                    || document.getElementById(target.id);
 
                   if (!targetElement) {
                     // Try to find by heading text content
@@ -1108,22 +1116,26 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
                     // Collect all elements to wrap
                     var elementsToWrap = [targetElement];
 
-                    // Find all content until the next heading of same or higher level
-                    var currentElement = targetElement.nextElementSibling;
-                    var targetLevel = parseInt(targetElement.tagName.charAt(1));
+                    // A heading selects its whole section (its siblings until the
+                    // next same-or-higher heading); a rendered div already
+                    // contains its children, so wrap just the div element.
+                    if (targetElement.tagName && targetElement.tagName.match(/^H[1-6]$/)) {
+                      var currentElement = targetElement.nextElementSibling;
+                      var targetLevel = parseInt(targetElement.tagName.charAt(1));
 
-                    while (currentElement) {
-                      // If we hit another heading, check its level
-                      if (currentElement.tagName && currentElement.tagName.match(/^H[1-6]$/)) {
-                        var currentLevel = parseInt(currentElement.tagName.charAt(1));
-                        if (currentLevel <= targetLevel) {
-                          break;
+                      while (currentElement) {
+                        // If we hit another heading, check its level
+                        if (currentElement.tagName && currentElement.tagName.match(/^H[1-6]$/)) {
+                          var currentLevel = parseInt(currentElement.tagName.charAt(1));
+                          if (currentLevel <= targetLevel) {
+                            break;
+                          }
                         }
-                      }
 
-                      // Add to elements to wrap
-                      elementsToWrap.push(currentElement);
-                      currentElement = currentElement.nextElementSibling;
+                        // Add to elements to wrap
+                        elementsToWrap.push(currentElement);
+                        currentElement = currentElement.nextElementSibling;
+                      }
                     }
 
                     // Create wrapper div

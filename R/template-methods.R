@@ -10,12 +10,12 @@ NULL
 
 #' @export
 S7::method(print, markermd_node_selection) = function(x, ...) {
-  cat("Node selection with", length(x@heading_ids), "heading(s)\n")
-  if (length(x@heading_ids) > 0) {
-    if (length(x@heading_ids) <= 10) {
-      cat("Headings:", paste0("#", x@heading_ids, collapse = ", "), "\n")
+  cat("Node selection with", length(x@node_ids), "node(s)\n")
+  if (length(x@node_ids) > 0) {
+    if (length(x@node_ids) <= 10) {
+      cat("Nodes:", paste0("#", x@node_ids, collapse = ", "), "\n")
     } else {
-      cat("Headings:", paste0("#", x@heading_ids[1:10], collapse = ", "), "... (", length(x@heading_ids) - 10, "more)\n")
+      cat("Nodes:", paste0("#", x@node_ids[1:10], collapse = ", "), "... (", length(x@node_ids) - 10, "more)\n")
     }
   }
   invisible(x)
@@ -24,7 +24,7 @@ S7::method(print, markermd_node_selection) = function(x, ...) {
 #' @export
 S7::method(print, markermd_question) = function(x, ...) {
   cat("Question:", x@name, "(ID:", x@id, ")\n")
-  cat("Selected headings:", length(x@selected_nodes@heading_ids), "\n")
+  cat("Selected nodes:", length(x@selected_nodes@node_ids), "\n")
   cat("Rules:", length(x@rules), "\n")
   invisible(x)
 }
@@ -45,7 +45,7 @@ S7::method(print, markermd_template) = function(x, ...) {
   if (length(x@questions) > 0) {
     cat("Questions:\n")
     for (q in x@questions) {
-      section_count = length(q@selected_nodes@heading_ids)
+      section_count = length(q@selected_nodes@node_ids)
       rule_count = length(q@rules)
       section_text = if (section_count == 1) "section" else "sections"
       rule_text = if (rule_count == 1) "rule" else "rules"
@@ -61,7 +61,7 @@ S7::method(print, markermd_template) = function(x, ...) {
 # Length methods
 #' @export
 S7::method(length, markermd_node_selection) = function(x) {
-  length(x@heading_ids)
+  length(x@node_ids)
 }
 
 #' @export  

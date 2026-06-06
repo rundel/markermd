@@ -71,6 +71,22 @@ q2r_node_kind = function(node) {
   paste0(toupper(substr(raw, 1, 1)), substr(raw, 2, nchar(raw)))
 }
 
+# Whether a node can be selected as a question target in the tree
+#
+# Headings are always selectable; divs only when they carry an explicit id (so
+# the selection can be matched by id in each student's document). The single
+# source of truth shared by the tree (build_ast_tree_structure / utils_tree) and
+# the click-observer wiring (mod_ast).
+#
+# node: A q2r pandoc node
+
+node_is_selectable = function(node) {
+  if (S7::S7_inherits(node, q2r::pandoc_header)) {
+    return(TRUE)
+  }
+  S7::S7_inherits(node, q2r::pandoc_div) && nzchar(node@attr@id)
+}
+
 # Human-readable label describing a Pandoc node for the tree view
 #
 # Builds on q2r_node_kind() so the tree's leading word always matches the rule
@@ -103,9 +119,14 @@ q2r_node_label = function(node) {
   }
 
   if (kind == "Div") {
+    id = node@attr@id
     classes = node_classes(node)
-    if (length(classes) > 0) {
-      return(paste0("Div (.", paste(classes, collapse = " ."), ")"))
+    parts = c(
+      if (nzchar(id)) paste0("#", id),
+      if (length(classes) > 0) paste0(".", classes)
+    )
+    if (length(parts) > 0) {
+      return(paste0("Div (", paste(parts, collapse = " "), ")"))
     }
     return("Div")
   }
@@ -125,20 +146,23 @@ q2r_node_detail = function(node) {
   ""
 }
 
-# Enclosing-heading id chain for each line of a markdown document
+# Enclosing-node id chain for each line of a markdown document
 #
-# Scans lines tracking ATX headings (ignoring any inside fenced code blocks so
-# R comments are not mistaken for headings). Each heading line, in document
-# order, is zipped to the next parsed header of repo_ast so it inherits that
-# header's authoritative q2r id (including dedup suffixes and explicit {#id}),
-# avoiding any re-implementation of the Pandoc slug algorithm. Every line is
-# assigned the vector of enclosing heading ids; a heading line includes its own.
-# Used to map selected sections onto line ranges in the displayed document.
+# Scans lines tracking ATX headings and fenced divs (ignoring any inside fenced
+# code blocks so R comments are not mistaken for headings or div fences). Each
+# heading line, in document order, is zipped to the next parsed header of
+# repo_ast so it inherits that header's authoritative q2r id (including dedup
+# suffixes and explicit {#id}), avoiding any re-implementation of the Pandoc
+# slug algorithm. Fenced-div ids are read directly from the opening fence's
+# {#id} attribute (class-only divs push ""). Every line is assigned the vector
+# of enclosing heading and div ids; a heading or div fence line includes its
+# own. Used to map a question's selected nodes onto line ranges in the displayed
+# document.
 #
 # lines: Character vector of document lines
 # repo_ast: q2r pandoc AST parsed from the same document
 
-line_section_id_chains = function(lines, repo_ast) {
+line_node_id_chains = function(lines, repo_ast) {
   header_records = Filter(
     function(record) S7::S7_inherits(record$node, q2r::pandoc_header),
     q2r_flatten(repo_ast)
@@ -148,26 +172,50 @@ line_section_id_chains = function(lines, repo_ast) {
   fence_open = "^\\s*(`{3,}|~{3,})"
   fence_close = "^\\s*(`{3,}|~{3,})\\s*$"
   heading_re = "^(#{1,6})\\s+(.*?)\\s*#*\\s*$"
+  div_close_re = "^\\s*:::+\\s*$"
+  div_open_re = "^\\s*:::+\\s*\\S.*$"
+  div_id_re = "#([^[:space:].}]+)"
 
   stack = list()
+  div_stack = list()
   next_header = 1L
   in_block = FALSE
   chains = vector("list", length(lines))
 
-  stack_ids = function() vapply(stack, function(s) s$id, character(1))
+  combined_ids = function() {
+    c(
+      vapply(stack, function(s) s$id, character(1)),
+      vapply(div_stack, function(d) d, character(1))
+    )
+  }
 
   for (i in seq_along(lines)) {
     line = lines[i]
 
     if (in_block) {
       if (grepl(fence_close, line)) in_block = FALSE
-      chains[[i]] = stack_ids()
+      chains[[i]] = combined_ids()
       next
     }
 
     if (grepl(fence_open, line)) {
       in_block = TRUE
-      chains[[i]] = stack_ids()
+      chains[[i]] = combined_ids()
+      next
+    }
+
+    # Fenced-div close: the line still belongs to the div, then pop it.
+    if (length(div_stack) > 0 && grepl(div_close_re, line)) {
+      chains[[i]] = combined_ids()
+      div_stack[[length(div_stack)]] = NULL
+      next
+    }
+
+    # Fenced-div open: push its id (or "" when class-only); line includes it.
+    if (grepl(div_open_re, line)) {
+      m = regmatches(line, regexec(div_id_re, line))[[1]]
+      div_stack[[length(div_stack) + 1]] = if (length(m) == 2L) m[2] else ""
+      chains[[i]] = combined_ids()
       next
     }
 
@@ -182,7 +230,7 @@ line_section_id_chains = function(lines, repo_ast) {
       stack[[length(stack) + 1]] = list(level = level, id = id)
     }
 
-    chains[[i]] = stack_ids()
+    chains[[i]] = combined_ids()
   }
 
   chains

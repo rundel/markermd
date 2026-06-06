@@ -21,6 +21,14 @@ test_that("q2r_node_label leading word matches q2r_node_kind", {
   }
 })
 
+test_that("q2r_node_label surfaces a div's id and classes", {
+  ast = q2r::parse_qmd("::: {#q1-answer .answer}\nbody\n:::\n\n::: {.note}\nx\n:::\n")
+  divs = Filter(function(n) S7::S7_inherits(n, q2r::pandoc_div), ast@blocks@content)
+
+  expect_equal(q2r_node_label(divs[[1]]), "Div (#q1-answer .answer)")
+  expect_equal(q2r_node_label(divs[[2]]), "Div (.note)")
+})
+
 test_that("rule node types are the friendly kinds, not raw q2r classes", {
   types = get_allowed_node_types()
 

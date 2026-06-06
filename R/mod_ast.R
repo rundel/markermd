@@ -182,8 +182,10 @@ ast_base_server = function(id, ast, selected_nodes = shiny::reactive(integer(0))
               shiny::bindEvent(input[[preview_id]])
           }
 
-          # Handle node selection functionality for interactive mode
-          if (selection_mode == "interactive" && node_type == "pandoc_header") {
+          # Handle node selection functionality for interactive mode. Headings
+          # and id'd divs are selectable (kept in lockstep with the tree's
+          # is_selectable_node predicate via node_is_selectable()).
+          if (selection_mode == "interactive" && node_is_selectable(node)) {
             # Handle node selection (both text and circle button)
             select_id = paste0("select_", node_index)
             select_children_id = paste0("select_children_", node_index)

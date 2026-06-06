@@ -563,7 +563,7 @@ template_app = function(ast, template_obj = NULL) {
         modules = question_modules()
         purrr::map(modules, function(m) {
           if (!is.null(m$server) && !is.null(m$server$question)) {
-            m$server$question()@selected_nodes@heading_ids
+            m$server$question()@selected_nodes@node_ids
           } else {
             character(0)
           }

@@ -104,16 +104,16 @@ question_server = function(id, ast, initial_question = NULL) {
       }
     })
     
-    # Render selected nodes display: each header-id selector followed by the
-    # number of nodes it covers (the selected heading and its descendants).
+    # Render selected nodes display: each node-id selector followed by the
+    # number of nodes it covers (the selected heading/div and its descendants).
     output$selected_nodes_display = shiny::renderUI({
-      ids = state()@selected_nodes@heading_ids
+      ids = state()@selected_nodes@node_ids
       if (length(ids) == 0) {
         shiny::span("None", class = "text-muted")
       } else {
         tree_items = build_ast_tree_structure(ast())
         labels = vapply(ids, function(id) {
-          n = length(compute_all_selected_nodes(tree_items, heading_ids_to_indices(ast(), id)))
+          n = length(compute_all_selected_nodes(tree_items, node_ids_to_indices(ast(), id)))
           paste0("#", id, " (", n, " node", if (n != 1) "s" else "", ")")
         }, character(1))
 
@@ -497,37 +497,37 @@ question_server = function(id, ast, initial_question = NULL) {
       
       # Node management methods. The public interface stays index-based (the tree
       # interaction works in index space), but selections are stored as the
-      # headings' q2r ids, converted at this boundary.
+      # nodes' q2r ids (heading or div ids), converted at this boundary.
       add_node = function(node_index) {
-        id = heading_id_for_index(ast(), node_index)
+        id = node_id_for_index(ast(), node_index)
         if (nchar(id) == 0) {
           return(invisible(NULL))
         }
         cur_state = state()
-        cur_ids = cur_state@selected_nodes@heading_ids
+        cur_ids = cur_state@selected_nodes@node_ids
         if (!id %in% cur_ids) {
-          cur_state@selected_nodes = markermd_node_selection(heading_ids = c(cur_ids, id))
+          cur_state@selected_nodes = markermd_node_selection(node_ids = c(cur_ids, id))
           state(cur_state)
         }
       },
 
       remove_node = function(node_index) {
-        id = heading_id_for_index(ast(), node_index)
+        id = node_id_for_index(ast(), node_index)
         cur_state = state()
         cur_state@selected_nodes = markermd_node_selection(
-          heading_ids = setdiff(cur_state@selected_nodes@heading_ids, id)
+          node_ids = setdiff(cur_state@selected_nodes@node_ids, id)
         )
         state(cur_state)
       },
 
       clear_nodes = function() {
         cur_state = state()
-        cur_state@selected_nodes = markermd_node_selection(heading_ids = character(0))
+        cur_state@selected_nodes = markermd_node_selection(node_ids = character(0))
         state(cur_state)
       },
 
       get_selected_nodes = shiny::reactive({
-        heading_ids_to_indices(ast(), state()@selected_nodes@heading_ids)
+        node_ids_to_indices(ast(), state()@selected_nodes@node_ids)
       }),
       
       delete_clicked = shiny::reactive({
