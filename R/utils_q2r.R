@@ -47,20 +47,27 @@ truncate_text = function(x, n) {
 
 q2r_node_label = function(node) {
   if (S7::S7_inherits(node, q2r::pandoc_header)) {
-    return(sprintf("Heading [h%d] - %s", node@level, q2r::ast_text(node)))
+    level = node@level
+    title = q2r::ast_text(node)
+    return(as.character(glue::glue("Heading [h{level}] - {title}")))
   }
 
   if (S7::S7_inherits(node, q2r::pandoc_code_block)) {
     if (q2r::is_code_cell(node)) {
+      engine = q2r::cell_engine(node)
       label = q2r::cell_label(node)
       n_lines = length(unlist(strsplit(q2r::cell_code(node), "\n", fixed = TRUE)))
-      label_txt = if (is.na(label)) "" else paste0(" ", label)
-      return(sprintf(
-        "Chunk [%s%s, %d line%s]",
-        q2r::cell_engine(node), label_txt, n_lines, if (n_lines == 1) "" else "s"
-      ))
+      lines_txt = glue::glue("({n_lines} line{if (n_lines == 1) '' else 's'})")
+      if (is.na(label)) {
+        return(as.character(glue::glue("Chunk [{engine}] {lines_txt}")))
+      }
+      return(as.character(glue::glue("Chunk [{engine}] - {label} {lines_txt}")))
     }
     return("Code block")
+  }
+
+  if (S7::S7_inherits(node, q2r::pandoc_raw_block)) {
+    return(if (nzchar(node@format)) as.character(glue::glue("Raw Block [{node@format}]")) else "Raw Block")
   }
 
   if (S7::S7_inherits(node, q2r::pandoc_div)) {
@@ -72,10 +79,22 @@ q2r_node_label = function(node) {
   }
 
   if (S7::S7_inherits(node, q2r::pandoc_paragraph) || S7::S7_inherits(node, q2r::pandoc_plain)) {
-    return(paste0("Markdown: ", truncate_text(q2r::ast_text(node), 60)))
+    return("Markdown")
   }
 
   gsub("_", " ", sub("^q2r::pandoc_", "", class(node)[1]))
+}
+
+# A node's content preview, shown as a smaller second line under its label in
+# the tree, or "" when the node has no useful text preview
+#
+# node: A q2r pandoc node
+
+q2r_node_detail = function(node) {
+  if (S7::S7_inherits(node, q2r::pandoc_paragraph) || S7::S7_inherits(node, q2r::pandoc_plain)) {
+    return(truncate_text(q2r::ast_text(node), 120))
+  }
+  ""
 }
 
 # Heading-section chain for each line of a markdown document
@@ -190,7 +209,8 @@ q2r_flatten = function(doc) {
       depth = depth,
       parent = parent,
       section = section,
-      label = q2r_node_label(node)
+      label = q2r_node_label(node),
+      detail = q2r_node_detail(node)
     )
 
     if (S7::S7_inherits(node, q2r::pandoc_div)) {

@@ -27,6 +27,7 @@ build_ast_tree_structure = function(ast) {
     depth = 0,
     parent_index = NULL,
     description = "Document",
+    detail = "",
     prefix = ""
   )
 
@@ -37,6 +38,7 @@ build_ast_tree_structure = function(ast) {
       depth = record$depth,
       parent_index = record$parent,
       description = record$label,
+      detail = record$detail,
       prefix = "\\u251c\\u2500\\u2500 "
     )
   }
@@ -432,22 +434,23 @@ build_simple_tree_level_readonly = function(tree_items, target_depth, parent_ind
         paste0("preview_", item$index)
       }
       
-      preview_btn = shiny::actionButton(
-        ns(button_id),
-        shiny::icon("search"),
-        class = "btn-outline-info",
-        style = "font-size: 8px; padding: 1px 4px; min-width: 18px; height: 18px; border-width: 1px; margin-left: 8px;",
-        title = "Preview content"
-      )
-      
+      preview_btn = if (item$type == "pandoc_header") {
+        NULL
+      } else {
+        shiny::actionButton(
+          ns(button_id),
+          shiny::icon("search"),
+          class = "btn-outline-info",
+          style = "font-size: 8px; padding: 1px 4px; min-width: 18px; height: 18px; border-width: 1px; margin-left: 8px;",
+          title = "Preview content"
+        )
+      }
+
       node_content = shiny::div(
         class = "tree-node-content",
         shiny::div(
           class = "tree-node-info",
-          shiny::span(
-            item$description, 
-            class = "tree-node-description"
-          ),
+          tree_node_label_ui(item$description, item$detail, "tree-node-description"),
           preview_btn
         )
       )
@@ -691,6 +694,24 @@ create_unified_tree_css = function(css_class, selection_mode) {
 # selection_mode: Character. Selection mode
 # id_prefix: Character. Optional prefix for button IDs
 
+# Node label UI: the description, with an optional smaller content line beneath
+#
+# description: Character. The node's primary label
+# detail: Character. Optional content preview ("" or NULL for none)
+# text_class: Character. CSS class(es) for the primary label
+
+tree_node_label_ui = function(description, detail, text_class) {
+  if (is.null(detail) || !nzchar(detail)) {
+    return(shiny::span(description, class = text_class, style = "line-height: 1.4;"))
+  }
+
+  shiny::div(
+    style = "margin-right: 12px;",
+    shiny::div(shiny::span(description, class = text_class)),
+    shiny::div(detail, style = "font-size: 0.8em; color: #6c757d; line-height: 1.3; margin-top: 1px;")
+  )
+}
+
 build_unified_tree_level = function(tree_items, target_depth, parent_index, all_selected_nodes, ns, directly_selected_nodes = integer(0), selection_mode = "readonly", id_prefix = NULL) {
   
   # Find items at this depth with the specified parent
@@ -762,13 +783,18 @@ build_unified_tree_level = function(tree_items, target_depth, parent_index, all_
         paste0("preview_", item$index)
       }
       
-      preview_btn = shiny::actionButton(
-        ns(preview_button_id),
-        shiny::icon("search"),
-        class = "btn-outline-info",
-        style = "font-size: 8px; padding: 1px 4px; min-width: 18px; height: 18px; border-width: 1px; margin-left: 8px;",
-        title = "Preview content"
-      )
+      # Headings are section selectors with no previewable content of their own.
+      preview_btn = if (item$type == "pandoc_header") {
+        NULL
+      } else {
+        shiny::actionButton(
+          ns(preview_button_id),
+          shiny::icon("search"),
+          class = "btn-outline-info",
+          style = "font-size: 8px; padding: 1px 4px; min-width: 18px; height: 18px; border-width: 1px; margin-left: 8px;",
+          title = "Preview content"
+        )
+      }
       
       if (selection_mode == "interactive") {
         # Interactive mode - full selection functionality
@@ -829,11 +855,7 @@ build_unified_tree_level = function(tree_items, target_depth, parent_index, all_
             selection_indicator,
             shiny::div(
               class = "tree-node-info",
-              shiny::span(
-                item$description,
-                class = text_class,
-                style = "margin-right: 12px; line-height: 1.4;"
-              ),
+              tree_node_label_ui(item$description, item$detail, text_class),
               preview_btn
             )
           )
@@ -846,10 +868,7 @@ build_unified_tree_level = function(tree_items, target_depth, parent_index, all_
           class = "tree-node-content",
           shiny::div(
             class = "tree-node-info",
-            shiny::span(
-              item$description, 
-              class = text_class
-            ),
+            tree_node_label_ui(item$description, item$detail, text_class),
             preview_btn
           )
         )
