@@ -310,6 +310,24 @@ validate_question_rules = function(repo_ast, template_ast, question) {
   )
 }
 
+# Stop with a clear message if a loaded template predates the q2r migration
+#
+# Templates created with earlier versions of markermd store a parsermd rmd_ast
+# as their original_ast; the current code needs a q2r pandoc AST.
+#
+# template: markermd_template S7 object
+
+assert_template_compatible = function(template) {
+  if (!S7::S7_inherits(template@original_ast, q2r::pandoc)) {
+    stop(
+      "This template was created with a previous version of markermd and is no longer ",
+      "compatible: its stored document AST predates the move to the q2r parser. ",
+      "Please recreate the template with template().",
+      call. = FALSE
+    )
+  }
+}
+
 # Validates a parsed repository AST against template rules using section-based matching
 #
 # ast: q2r pandoc AST object from parsing a repository document

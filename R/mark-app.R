@@ -74,8 +74,10 @@ mark_app = function(collection_path, template = NULL, use_qmd = TRUE, download_a
     } else {
       stop("Template must be a file path or markermd_template S7 object")
     }
+
+    assert_template_compatible(template_obj)
   }
-  
+
   # Initialize database for persistent storage
   database_state = NULL
   if (!is.null(template_obj)) {

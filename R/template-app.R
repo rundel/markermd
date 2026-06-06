@@ -689,6 +689,8 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", ..
   
   # Handle template mode vs assignment mode
   if (is_template_mode) {
+    assert_template_compatible(template_obj)
+
     # Template mode: use AST from template, ignore filename/local_dir
     ast = template_obj@original_ast
     
