@@ -17,39 +17,6 @@ most_recent_grade_join = "
   ) g2 ON g1.item_id = g2.item_id AND g1.timestamp = g2.max_timestamp
   WHERE g1.question_name = ? AND g1.assignment_repo = ?"
 
-# Determine whether a question/assignment has any grading data: either a
-# selected rubric item (using the most recent grade per item) or a non-empty
-# comment.
-#
-# conn: DBI connection object
-# question_name: Character string
-# assignment_repo: Character string
-# Returns: Logical indicating if grading data exists
-
-has_grading_data = function(conn, question_name, assignment_repo) {
-  grade_query = DBI::dbGetQuery(conn, glue::glue("
-    SELECT COUNT(*) as selected_count
-    <<most_recent_grade_join>> AND g1.selected = 1
-  ", .open = "<<", .close = ">>"),
-    params = list(question_name, assignment_repo, question_name, assignment_repo))
-
-  if (grade_query$selected_count > 0) {
-    return(TRUE)
-  }
-
-  comment_query = DBI::dbGetQuery(conn, "
-    SELECT comment_text
-    FROM comments
-    WHERE question_name = ? AND assignment_repo = ?
-    ORDER BY timestamp DESC
-    LIMIT 1
-  ", params = list(question_name, assignment_repo))
-
-  nrow(comment_query) > 0 &&
-    !is.na(comment_query$comment_text) &&
-    nchar(trimws(comment_query$comment_text)) > 0
-}
-
 # Convert database settings row to markermd_grade_state S7 object
 #
 # settings_row: Single row data frame from settings table
@@ -338,31 +305,71 @@ batch_save_rubric_items = function(collection_path, question_name, items_list) {
 
 # Calculate grading progress for all assignments
 #
+# Computes, for every requested repository, how many of the requested questions
+# have grading data. A question/repo is graded if it has a selected rubric item
+# (using the most recent grade per item) or a non-empty most recent comment.
+# Two grouped queries cover all repo/question pairs at once rather than running
+# a query per pair.
+#
 # collection_path: Path to collection directory
 # question_names: Character vector of question names
 # assignment_repos: Character vector of assignment repository names
-# Returns: Named list with assignment repos as names and graded question counts as values
+# Returns: Named integer vector keyed by repo with graded question counts
 
 calculate_grading_progress = function(collection_path, question_names, assignment_repos) {
-  result = with_database(collection_path, function(conn) {
-    progress_results = list()
+  if (length(question_names) == 0 || length(assignment_repos) == 0) {
+    return(stats::setNames(integer(0), character(0)))
+  }
 
-    for (repo in assignment_repos) {
-      graded_questions = 0L
+  graded_pairs = with_database(collection_path, function(conn) {
+    # Pairs with a selected rubric item among the most recent grade per item
+    selected_pairs = DBI::dbGetQuery(conn, "
+      SELECT DISTINCT g1.question_name AS question_name, g1.assignment_repo AS assignment_repo
+      FROM grades g1
+      INNER JOIN (
+        SELECT item_id, question_name, assignment_repo, MAX(timestamp) AS max_timestamp
+        FROM grades
+        GROUP BY item_id, question_name, assignment_repo
+      ) g2
+        ON g1.item_id = g2.item_id
+       AND g1.question_name = g2.question_name
+       AND g1.assignment_repo = g2.assignment_repo
+       AND g1.timestamp = g2.max_timestamp
+      WHERE g1.selected = 1")
 
-      for (question in question_names) {
-        if (has_grading_data(conn, question, repo)) {
-          graded_questions = graded_questions + 1L
-        }
-      }
+    # Most recent comment per pair, kept when it is non-empty
+    latest_comments = DBI::dbGetQuery(conn, "
+      SELECT c.question_name AS question_name, c.assignment_repo AS assignment_repo, c.comment_text AS comment_text
+      FROM comments c
+      INNER JOIN (
+        SELECT question_name, assignment_repo, MAX(timestamp) AS max_timestamp
+        FROM comments
+        GROUP BY question_name, assignment_repo
+      ) latest
+        ON c.question_name = latest.question_name
+       AND c.assignment_repo = latest.assignment_repo
+       AND c.timestamp = latest.max_timestamp")
+    comment_pairs = latest_comments[
+      !is.na(latest_comments$comment_text) & nchar(trimws(latest_comments$comment_text)) > 0,
+      c("question_name", "assignment_repo"),
+      drop = FALSE
+    ]
 
-      progress_results[[repo]] = graded_questions
-    }
-
-    return(progress_results)
+    unique(rbind(
+      selected_pairs[, c("question_name", "assignment_repo"), drop = FALSE],
+      comment_pairs
+    ))
   })
 
-  unlist(result)
+  graded_pairs = graded_pairs[
+    graded_pairs$question_name %in% question_names &
+      graded_pairs$assignment_repo %in% assignment_repos,
+    ,
+    drop = FALSE
+  ]
+
+  counts = table(factor(graded_pairs$assignment_repo, levels = assignment_repos))
+  stats::setNames(as.integer(counts), assignment_repos)
 }
 
 # Calculate grading progress for a single question across all assignments
