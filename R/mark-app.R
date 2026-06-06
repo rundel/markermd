@@ -313,7 +313,7 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
           bslib::card(
             bslib::card_header("Assignments", class = "bg-light"),
             bslib::card_body(
-              gt::gt_output("repo_table"),
+              shiny::uiOutput("repo_table"),
               shiny::div(
                 class = "mt-3 text-center",
                 shiny::uiOutput("sync_button_ui")
@@ -378,8 +378,10 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
     # Create reactive trigger for progress updates (initialized here to ensure it exists)
     progress_update_trigger = shiny::reactiveVal(0)
     
-    # Create repository table with gt
-    output$repo_table = gt::render_gt({
+    # Create repository table with gt. Rendered as static HTML (rather than
+    # gt::render_gt) so the gt_shiny input binding is not registered on the same
+    # id as the output, which would trigger a shared input/output id warning.
+    output$repo_table = shiny::renderUI({
       # Include the progress update trigger as a dependency to force refresh when needed
       trigger_value = progress_update_trigger()
       
@@ -522,7 +524,7 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
         ) |>
         gt::cols_align(align = "center", columns = .data$Validation)
       
-      gt_table |>
+      styled_table = gt_table |>
         gt::tab_options(
           table.font.size = "12px",  # Smaller font size
           data_row.padding = "2px",
@@ -544,6 +546,8 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
           }
           "
         )
+
+      shiny::HTML(gt::as_raw_html(styled_table, inline_css = FALSE))
     })
     
     # Handle repository button clicks
