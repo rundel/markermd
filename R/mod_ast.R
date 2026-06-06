@@ -115,17 +115,17 @@ ast_base_server = function(id, ast, selected_nodes = shiny::reactive(integer(0))
                 editor_id = paste0("monaco-editor-ast-", node_index)
                 
                 shiny::showModal(
-                  markermd_modal(
+                  shiny::modalDialog(
                     title = shiny::span(node_type, style = "font-size: 16px; font-weight: bold;"),
                     size = "l",
+                    easyClose = TRUE,
                     shiny::div(
                       style = "height: 400px;",
                       shiny::div(
                         id = editor_id,
                         style = "height: 100%; width: 100%; border: 1px solid #e1e5e9;"
                       )
-                    ),
-                    footer = NULL
+                    )
                   )
                 )
                 

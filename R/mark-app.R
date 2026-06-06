@@ -605,11 +605,10 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
                 
                 # Show artifact in modal with HTML content
                 shiny::showModal(
-                  markermd_modal(
+                  shiny::modalDialog(
                     title = repo,
                     size = "xl",
                     easyClose = TRUE,
-                    footer = NULL,
                     shiny::div(
                       style = "height: 70vh; width: 100%; overflow: auto; border: 1px solid #dee2e6; background: white; font-size: 12px; padding: 8px;",
                       shiny::HTML(html_content)
@@ -619,10 +618,9 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
               } else {
                 # Show error modal - file should exist if download_archives was TRUE
                 shiny::showModal(
-                  markermd_modal(
+                  shiny::modalDialog(
                     title = "Archive Not Available",
                     easyClose = TRUE,
-                    footer = NULL,
                     shiny::div(
                       class = "p-4 text-center",
                       shiny::tags$i(class = "fas fa-exclamation-triangle fs-3 text-warning me-2"),
@@ -669,11 +667,10 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
                 
                 # Show source in modal with Monaco Editor
                 shiny::showModal(
-                  markermd_modal(
+                  shiny::modalDialog(
                     title = paste("Source Code:", file_name),
                     size = "xl",
                     easyClose = TRUE,
-                    footer = NULL,
                     shiny::div(
                       style = "height: 70vh;",
                       shiny::div(
@@ -734,9 +731,9 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
               } else {
                 # Show error modal - file not found
                 shiny::showModal(
-                  markermd_modal(
+                  shiny::modalDialog(
                     title = "Source File Not Available",
-                    footer = NULL,
+                    easyClose = TRUE,
                     shiny::div(
                       class = "p-4 text-center",
                       shiny::tags$i(class = "fas fa-exclamation-triangle fs-3 text-warning me-2"),
@@ -771,10 +768,9 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
             if (!success) {
               # Show error modal if folder couldn't be opened
               shiny::showModal(
-                markermd_modal(
+                shiny::modalDialog(
                   title = "Error Opening Folder",
                   easyClose = TRUE,
-                  footer = NULL,
                   shiny::div(
                     class = "p-4 text-center",
                     shiny::tags$i(class = "fas fa-exclamation-triangle fs-3 text-danger me-2"),
