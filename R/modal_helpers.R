@@ -1,37 +1,34 @@
-# A modified version of Shiny's modalDialog that adds a properly positioned
-# close button in the header when easyClose is TRUE.
+# A modified version of Shiny's modalDialog with a properly positioned close
+# button in the header.
 #
 # ...: UI elements to include within the modal
 # title: Character string. Modal title
 # footer: UI elements for the modal footer (default: modalButton("Dismiss"))
 # size: Character. Modal size: "m", "s", "l", or "xl"
-# easyClose: Logical. If TRUE, adds close button to header and allows closing by clicking outside
+# easyClose: Logical. If TRUE, also allows closing by clicking outside or pressing Escape
 # fade: Logical. If TRUE, modal fades in/out
 
 markermd_modal = function(..., title = NULL, footer = shiny::modalButton("Dismiss"),
-                        size = c("m", "s", "l", "xl"), easyClose = FALSE, fade = TRUE) {
-  
+                        size = c("m", "s", "l", "xl"), easyClose = TRUE, fade = TRUE) {
+
   size = match.arg(size)
   backdrop = if (!easyClose) "static"
   keyboard = if (!easyClose) "false"
-  
-  # Create modal header with optional close button
+
+  # Always provide a header close button so the modal can be dismissed (the
+  # data-dismiss pair covers both Bootstrap 4 and 5).
   modal_header = if (!is.null(title)) {
-    header_content = list(shiny::tags$h5(class = "modal-title", title))
-    
-    # Add close button if easyClose is TRUE
-    if (easyClose) {
-      header_content = append(header_content, list(
-        shiny::tags$button(
-          type = "button",
-          class = "btn-close",
-          `data-bs-dismiss` = "modal",
-          `aria-label` = "Close"
-        )
-      ))
-    }
-    
-    shiny::div(class = "modal-header", header_content)
+    shiny::div(
+      class = "modal-header",
+      shiny::tags$h5(class = "modal-title", title),
+      shiny::tags$button(
+        type = "button",
+        class = "btn-close",
+        `data-bs-dismiss` = "modal",
+        `data-dismiss` = "modal",
+        `aria-label` = "Close"
+      )
+    )
   }
   
   # Build complete modal structure
@@ -59,13 +56,19 @@ markermd_modal = function(..., title = NULL, footer = shiny::modalButton("Dismis
         if (!is.null(footer)) shiny::div(class = "modal-footer", footer)
       )
     ),
-    shiny::tags$script(shiny::HTML("
-      if (window.bootstrap && !window.bootstrap.Modal.VERSION.match(/^4\\./)) {
-        var modal = new bootstrap.Modal(document.getElementById('shiny-modal'));
-        modal.show();
-      } else {
-        $('#shiny-modal').modal().focus();
-      }
-    "))
+    # Under bslib (Bootstrap 5) shiny::showModal() inserts this modal but does
+    # not display it, so trigger the show explicitly. getOrCreateInstance reuses
+    # any existing instance, so the dismiss buttons (data-bs-dismiss) and Escape
+    # / backdrop close act on the same instance.
+    shiny::tags$script(shiny::HTML(
+      "(function() {
+         var el = document.getElementById('shiny-modal');
+         if (window.bootstrap && bootstrap.Modal.VERSION.charAt(0) !== '4') {
+           bootstrap.Modal.getOrCreateInstance(el).show();
+         } else {
+           $(el).modal().focus();
+         }
+       })();"
+    ))
   )
 }
