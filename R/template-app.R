@@ -78,7 +78,7 @@ template_app = function(ast, template_obj = NULL) {
     bslib::layout_columns(
       col_widths = c(6, 6),
       class = "h-100",
-      ast_selectable_ui("ast_panel"),
+      ast_module_ui("ast_panel", show_clear_button = TRUE),
       bslib::card(
         class = "h-100",
         bslib::card_header("Questions", class = "bg-light"),
@@ -214,7 +214,7 @@ template_app = function(ast, template_obj = NULL) {
     })
     
     # Initialize AST selectable module
-    ast_result = ast_selectable_server("ast_panel", ast, selected_nodes)
+    ast_result = ast_module_server("ast_panel", ast, selected_nodes, interactive = TRUE)
     
     # Handle pending node clicks when question modules change
     shiny::observe({

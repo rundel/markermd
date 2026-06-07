@@ -10,30 +10,21 @@ get_question_content = function(repo_ast, question, session) {
 
   question_ast = get_question_ast(repo_ast, question)
   tree_items = build_ast_tree_structure(question_ast)
-  
-  # Filter out document root (index 0) and adjust depths for question display
-  content_items = tree_items[sapply(tree_items, function(x) x$index != 0)]
-  
-  
-  # Adjust depths to start from 1 for content nodes
-  min_depth = min(sapply(content_items, function(x) x$depth))
-  content_items = lapply(content_items, function(x) {
-    x$depth = x$depth - min_depth + 1
-    # Update parent indices: if parent was document root (0), set to NULL
-    if (!is.null(x$parent_index) && x$parent_index == 0) {
-      x$parent_index = NULL
-    }
-    x
-  })
-  
-  # Create non-interactive tree display for this question
   question_id = paste0("q_", gsub("[^A-Za-z0-9]", "", question@name))
-  simple_tree = create_simple_tree_readonly_at_depth(content_items, session$ns, question_id, start_depth = 1)
-  
+
   shiny::div(
     class = "mb-1 p-2 bg-light border rounded overflow-auto small",
     style = "max-height: 120px;",
-    simple_tree
+    render_ast_tree(
+      tree_items,
+      session$ns,
+      ast_render_opts(
+        mode = "readonly",
+        id_prefix = question_id,
+        start_depth = 1,
+        drop_root = TRUE
+      )
+    )
   )
 }
 
@@ -182,91 +173,26 @@ mark_validate_server = function(id, ast, current_repo_name = shiny::reactiveVal(
       }
     })
     
-    # Store created observers to avoid duplicates
+    # Wire preview-modal observers once per question, guarded against duplicates.
+    # The button ids (preview_<question_id>_<index>) match those drawn by
+    # render_ast_tree() / node_preview_button() in get_question_content().
     created_observers = shiny::reactiveValues()
-    
-    # Create preview button observers once when template and AST are available
+
     shiny::observe({
-      # Use req() for cleaner validation 
       shiny::req(template(), ast())
-      
-      current_template = template()
-      current_ast = ast()
-      
-      # Create observers for all questions and their nodes
-      for (question in current_template@questions) {
+
+      for (question in template()@questions) {
         question_id = paste0("q_", gsub("[^A-Za-z0-9]", "", question@name))
-        
-        # Skip if observers already created for this question
         if (!is.null(created_observers[[question_id]])) {
           next
         }
-        
-        # Get the question AST using the shared function from utils_template.R
-        question_ast = get_question_ast(current_ast, question)
+
+        question_ast = get_question_ast(ast(), question)
         question_nodes = if (is.null(question_ast)) list() else lapply(q2r_flatten(question_ast), function(record) record$node)
 
         if (length(question_nodes) > 0) {
-          # Build tree structure and create observers for each node
-          tree_items = build_ast_tree_structure(question_ast)
-
-          if (length(tree_items) > 1) {  # Has more than just document root
-            content_items = tree_items[sapply(tree_items, function(x) x$index != 0)]
-
-            if (length(content_items) > 0) {
-              # Create preview observers for each content node
-              for (item in content_items) {
-                local({
-                  local_node_index = item$index
-                  local_question_nodes = question_nodes
-                  button_id = paste0("preview_", question_id, "_", local_node_index)
-
-                  shiny::observe({
-                    # Get the actual node from the question AST
-                    if (local_node_index >= 1 && local_node_index <= length(local_question_nodes)) {
-                      node = local_question_nodes[[local_node_index]]
-
-                      # Get node content for preview
-                      content = node_to_qmd(node) |>
-                        as.character() |>
-                        paste(collapse = "\n")
-
-                      # Get node type for title
-                      node_type = sub("^q2r::", "", class(node)[1])
-
-                      # Determine Monaco Editor language based on node type
-                      monaco_language = monaco_language_for_node(node)
-
-                      # Create unique editor ID
-                      editor_id = paste0("monaco-editor-validate-", local_node_index)
-
-                      shiny::showModal(
-                        shiny::modalDialog(
-                          title = shiny::span(node_type, style = "font-size: 16px; font-weight: bold;"),
-                          size = "l",
-                          shiny::div(
-                            style = "height: 400px;",
-                            shiny::div(
-                              id = editor_id,
-                              style = "height: 100%; width: 100%; border: 1px solid #e1e5e9;"
-                            )
-                          ),
-                          footer = NULL,
-                          easyClose = TRUE
-                        )
-                      )
-
-                      render_monaco_editor(editor_id, content, monaco_language)
-                    }
-                  }) |>
-                    shiny::bindEvent(input[[button_id]], ignoreInit = TRUE)
-                })
-              }
-              
-              # Mark observers as created for this question
-              created_observers[[question_id]] = TRUE
-            }
-          }
+          ast_preview_observers(input, question_nodes, id_prefix = question_id)
+          created_observers[[question_id]] = TRUE
         }
       }
     })
