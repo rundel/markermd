@@ -2,9 +2,8 @@
 #'
 #' @param collection_path Character string. Path to directory containing subdirectories with assignment repositories
 #' @param template Optional template for validation. Can be:
-#'   - Character path to .rds file containing template data
-#'   - List with raw template data (from readRDS)
-#'   - List with transformed templates (from create_question_templates)
+#'   - Character path to a saved template (`.yaml`/`.yml`)
+#'   - A `markermd_template` S7 object
 #'   - NULL (no template validation)
 #' @param use_qmd Logical. Whether to parse .qmd files (TRUE) or .Rmd files (FALSE). Default is TRUE.
 #' @param download_archives Logical. Whether to download all archives at app launch (TRUE) or on-demand (FALSE). Default is TRUE.
@@ -22,7 +21,7 @@
 #' mark("/path/to/assignments/", use_qmd = FALSE)
 #' 
 #' # Parse with template validation
-#' mark("/path/to/assignments/", template = "template.rds")
+#' mark("/path/to/assignments/", template = "template.yaml")
 #' 
 #' # Disable upfront archive downloading
 #' mark("/path/to/assignments/", download_archives = FALSE)
@@ -38,7 +37,7 @@ mark = function(collection_path, template = NULL, use_qmd = TRUE, download_archi
 # init) and returns the app object without running it, so it can be tested.
 #
 # collection_path: Path to the directory of assignment repositories
-# template: markermd_template object, path to a template .rds, or NULL
+# template: markermd_template object, path to a template .yaml, or NULL
 # use_qmd: Whether to match .qmd files (TRUE) or .Rmd files (FALSE)
 # download_archives: Whether to download all archives at launch
 
@@ -68,7 +67,7 @@ mark_app = function(collection_path, template = NULL, use_qmd = TRUE, download_a
       if (!file.exists(template)) {
         stop("Template file does not exist: ", template, call. = FALSE)
       }
-      template_obj = readRDS(template)
+      template_obj = read_template_yaml(template, require_ast = FALSE)
       if (!S7::S7_inherits(template_obj, markermd_template)) {
         stop("Template file must contain a markermd_template S7 object")
       }

@@ -17,9 +17,8 @@ mark(
 
 \item{template}{Optional template for validation. Can be:
 \itemize{
-\item Character path to .rds file containing template data
-\item List with raw template data (from readRDS)
-\item List with transformed templates (from create_question_templates)
+\item Character path to a saved template (\code{.yaml}/\code{.yml})
+\item A \code{markermd_template} S7 object
 \item NULL (no template validation)
 }}
 
@@ -44,7 +43,7 @@ mark("/path/to/assignments/")
 mark("/path/to/assignments/", use_qmd = FALSE)
 
 # Parse with template validation
-mark("/path/to/assignments/", template = "template.rds")
+mark("/path/to/assignments/", template = "template.yaml")
 
 # Disable upfront archive downloading
 mark("/path/to/assignments/", download_archives = FALSE)

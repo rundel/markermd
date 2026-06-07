@@ -2,8 +2,10 @@
 #
 # ast: Reactive. The parsed AST object
 # template_obj: markermd_template S7 object. Optional template to load on startup
+# source_path: Character. Path to the assignment document, recorded in saved
+#   templates so they can be re-opened and re-validated later
 
-template_app = function(ast, template_obj = NULL) {
+template_app = function(ast, template_obj = NULL, source_path = NULL) {
   
   # UI
   ui = shiny::div(
@@ -495,7 +497,7 @@ template_app = function(ast, template_obj = NULL) {
     output$save_template = shiny::downloadHandler(
       filename = function() {
         timestamp = format(Sys.time(), "%Y%m%d_%H%M%S")
-        paste0("template_", timestamp, ".rds")
+        paste0("template_", timestamp, ".yaml")
       },
       content = function(file) {
         # Build template object from current questions
@@ -528,10 +530,11 @@ template_app = function(ast, template_obj = NULL) {
           metadata = markermd_metadata(version = markermd_template_version())
         )
 
-        # Save to file
-        saveRDS(template_obj, file)
+        # Save as YAML, recording the assignment source so the template can be
+        # re-opened and re-validated later.
+        write_template_yaml(template_obj, file, source_path = source_path)
       },
-      contentType = "application/rds"
+      contentType = "text/yaml"
     )
 
     # Export values for testing
@@ -580,11 +583,12 @@ template_app = function(ast, template_obj = NULL) {
 # ast: Reactive. The parsed AST object
 # template_obj: markermd_template S7 object. Optional template to load on startup
 # assignment_path: Character. Path to display in footer
+# source_path: Character. Path to the assignment document, recorded in saved templates
 
-template_app_standalone = function(ast, template_obj = NULL, assignment_path = NULL) {
-  
+template_app_standalone = function(ast, template_obj = NULL, assignment_path = NULL, source_path = NULL) {
+
   # Get the base template app components
-  app_components = template_app(ast, template_obj)
+  app_components = template_app(ast, template_obj, source_path = source_path)
   
   # Wrap in navbar
   ui = bslib::page_navbar(
@@ -617,11 +621,13 @@ template_app_standalone = function(ast, template_obj = NULL, assignment_path = N
 #'
 #' @param assignment_path Assignment source or existing template. Can be:
 #'   - Character path to local directory containing assignment
-#'   - Character GitHub repo in format "owner/repo"  
-#'   - Character path to .rds file containing markermd_template
+#'   - Character GitHub repo in format "owner/repo"
+#'   - Character path to a saved template (`.yaml`/`.yml`)
 #'   - markermd_template S7 object
 #' @param local_dir Character string. Local directory for cloning (required for remote GitHub repos, ignored for templates)
 #' @param filename Character string. Glob pattern to match Rmd/qmd file to grade (ignored for templates). Default glob matches any .Rmd or .qmd file.
+#' @param assignment Character string. Optional path to the assignment document,
+#'   used when loading a template whose stored `source.path` cannot be located.
 #' @param ... Additional arguments passed to shiny::runApp()
 #'
 #' @return Launches Shiny application for template creation
@@ -639,13 +645,13 @@ template_app_standalone = function(ast, template_obj = NULL, assignment_path = N
 #' template("username/repo-name", local_dir = "/tmp/grading", filename = "assignment.qmd")
 #' 
 #' # Load existing template from file
-#' template("/path/to/saved_template.rds")
-#' 
+#' template("/path/to/saved_template.yaml")
+#'
 #' # Load existing template from S7 object
-#' my_template = readRDS("/path/to/template.rds")
+#' my_template = read_template_yaml("/path/to/template.yaml")
 #' template(my_template)
 #' }
-template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", ...) {
+template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", assignment = NULL, ...) {
   
   # Validate inputs
   if (missing(assignment_path)) {
@@ -663,31 +669,24 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", ..
     
   } else if (is.character(assignment_path) && length(assignment_path) == 1) {
     # Input is a character string - could be assignment path or template file
-    
-    if (grepl("\\.rds$", assignment_path, ignore.case = TRUE) && file.exists(assignment_path)) {
-      # Input appears to be a template RDS file
-      template_obj = tryCatch({
-        readRDS(assignment_path)
-      }, error = function(e) {
-        stop("Failed to load template file: ", e$message)
-      })
-      
-      # Validate it's a template object
-      if (!S7::S7_inherits(template_obj, markermd_template)) {
-        stop("RDS file must contain a markermd_template S7 object")
+
+    if (grepl("\\.ya?ml$", assignment_path, ignore.case = TRUE)) {
+      # Input is a saved template YAML file
+      if (!file.exists(assignment_path)) {
+        stop("Template file does not exist: ", assignment_path, call. = FALSE)
       }
-      
+      template_obj = read_template_yaml(assignment_path, assignment = assignment, require_ast = TRUE)
       is_template_mode = TRUE
-      
+
     } else {
       # Input is an assignment path (local directory or GitHub repo)
       is_template_mode = FALSE
     }
-    
+
   } else {
     stop(
       "assignment_path must be a single character string (an assignment file, a ",
-      "directory containing one, a saved template .rds, or a GitHub '<owner>/<repo>') ",
+      "directory containing one, a saved template .yaml, or a GitHub '<owner>/<repo>') ",
       "or a markermd_template object, not ",
       if (is.character(assignment_path)) paste0("a length-", length(assignment_path), " character vector") else paste0("an object of class ", class(assignment_path)[1]),
       ".",
@@ -701,17 +700,20 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", ..
 
     # Template mode: use AST from template, ignore filename/local_dir
     ast = template_obj@original_ast
-    
+
+    # Source path resolved when loading a YAML template, preserved on re-save
+    source_path = attr(template_obj, "markermd_source_path")
+
     # Create footer path - show original input for template objects, full path for files
     footer_path = if (S7::S7_inherits(assignment_path, markermd_template)) {
       "Template Object"
     } else {
-      as.character(assignment_path)  # Show full path for RDS files
+      as.character(assignment_path)  # Show full path for template files
     }
-    
+
     # Create app with template data
-    app = template_app_standalone(shiny::reactiveVal(ast), template_obj, footer_path)
-    
+    app = template_app_standalone(shiny::reactiveVal(ast), template_obj, footer_path, source_path = source_path)
+
   } else {
     # Assignment mode: a single assignment file, a directory containing one, or
     # a GitHub "<owner>/<repo>" to clone.
@@ -738,13 +740,13 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", ..
       stop(
         "assignment_path not found: '", assignment_path, "'.\n",
         "Pass a path to an assignment file (.qmd/.Rmd), a directory containing one, ",
-        "a saved template (.rds), or a GitHub repository as '<owner>/<repo>'.",
+        "a saved template (.yaml), or a GitHub repository as '<owner>/<repo>'.",
         call. = FALSE
       )
     }
 
     ast = parse_assignment_document(file_path)
-    app = template_app_standalone(shiny::reactiveVal(ast), NULL, assignment_path)
+    app = template_app_standalone(shiny::reactiveVal(ast), NULL, assignment_path, source_path = file_path)
   }
   
   shiny::shinyApp(ui=app$ui, server=app$server, ...)

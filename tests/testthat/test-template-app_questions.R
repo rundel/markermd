@@ -86,3 +86,22 @@ test_that("Add 2 questions, delete 1, add 1", {
 
   app$expect_values(export = TRUE)
 })
+
+
+test_that("Save Template downloads a readable YAML template", {
+  app = shinytest2::AppDriver$new(
+    template(file),
+    name = "save_yaml"
+  )
+
+  app$click("add_question")
+  expect_equal(get_n_questions(app), 1)
+
+  path = app$get_download("save_template")
+  expect_match(path, "\\.yaml$")
+
+  back = markermd::read_template_yaml(path, require_ast = TRUE)
+  expect_s3_class(back, "markermd::markermd_template")
+  expect_length(back@questions, 1)
+  expect_gt(back@metadata@total_nodes, 0L)
+})

@@ -25,8 +25,8 @@ make_mark_fixture = function() {
     ),
     metadata = markermd::markermd_metadata()
   )
-  template_path = tempfile(fileext = ".rds")
-  saveRDS(template, template_path)
+  template_path = tempfile(fileext = ".yaml")
+  markermd::write_template_yaml(template, template_path, source_path = qmd)
 
   list(collection = collection, template = template_path)
 }

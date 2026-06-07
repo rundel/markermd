@@ -11,7 +11,7 @@ NULL
 # changes incompatibly (e.g. node-selection representation, rule vocabulary).
 # assert_template_compatible() rejects templates older than this.
 
-markermd_template_version = function() "2.2"
+markermd_template_version = function() "3.0"
 
 #' @title Node Selection for Questions
 #' @description S7 class representing the headings and id'd divs a template

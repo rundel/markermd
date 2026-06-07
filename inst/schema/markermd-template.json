@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rundel.github.io/markermd/schema/markermd-template.json",
+  "title": "markermd grading template",
+  "description": "A markermd grading template: the questions and validation rules used to grade student assignments. The assignment document itself is referenced by source.path and re-parsed on load.",
+  "type": "object",
+  "required": ["format_version", "questions"],
+  "additionalProperties": false,
+  "properties": {
+    "format_version": {
+      "type": "string",
+      "description": "Template format version (e.g. \"3.0\")."
+    },
+    "source": {
+      "type": "object",
+      "description": "Reference to the assignment document the template was built from.",
+      "required": ["path"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Path to the assignment .qmd/.Rmd, absolute or relative to this template file."
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "type": "string",
+          "description": "ISO-8601 creation timestamp."
+        },
+        "created_by": {
+          "type": "string"
+        }
+      }
+    },
+    "questions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/question" }
+    }
+  },
+  "$defs": {
+    "node_type": {
+      "type": "string",
+      "enum": [
+        "Any node",
+        "Heading",
+        "Markdown",
+        "Chunk",
+        "Code block",
+        "Raw Block",
+        "Div",
+        "Bullet list",
+        "Ordered list",
+        "Block quote",
+        "Table"
+      ]
+    },
+    "question": {
+      "type": "object",
+      "required": ["id", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Unique question identifier."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Unique question display name."
+        },
+        "node_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Pandoc heading/div ids of the document sections this question targets."
+        },
+        "rules": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/rule" }
+        }
+      }
+    },
+    "rule": {
+      "type": "object",
+      "required": ["node_type", "verb"],
+      "additionalProperties": false,
+      "properties": {
+        "node_type": { "$ref": "#/$defs/node_type" },
+        "verb": {
+          "type": "string",
+          "enum": [
+            "has at least",
+            "has at most",
+            "has between",
+            "has content",
+            "lacks content",
+            "has name"
+          ]
+        },
+        "min": { "type": "number", "minimum": 0 },
+        "max": { "type": "number", "minimum": 0 },
+        "count": { "type": "integer", "minimum": 0 },
+        "pattern": { "type": "string" }
+      },
+      "oneOf": [
+        {
+          "properties": { "verb": { "const": "has between" } },
+          "required": ["min", "max"]
+        },
+        {
+          "properties": { "verb": { "enum": ["has at least", "has at most"] } },
+          "required": ["count"]
+        },
+        {
+          "properties": { "verb": { "enum": ["has content", "lacks content", "has name"] } },
+          "required": ["pattern"]
+        }
+      ]
+    }
+  }
+}
