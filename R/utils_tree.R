@@ -206,10 +206,10 @@ ast_tree_css = function(css_class, opts) {
       display: flex;
       align-items: center;
       justify-content: flex-start;
-      padding: 4px 8px;
+      padding: 2px 8px;
       border-radius: 3px;
       margin-bottom: 2px;
-      min-height: calc(2 * var(--radius));
+      min-height: var(--spacing);
     }
 
     .<<css_class>> .tree-node-info {

@@ -44,7 +44,7 @@ monaco_editor_config = function(editor_id, content, language) {
           theme: 'vs',
           readOnly: true,
           wordWrap: 'on',
-          wrappingIndent: 'indent',
+          wrappingIndent: 'same',
           fontSize: 12,
           lineNumbers: 'on',
           minimap: { enabled: false },
