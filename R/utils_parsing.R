@@ -3,6 +3,10 @@
 #' Reads a qmd document, normalises any knitr-style chunk headers so the
 #' Quarto parser accepts them, and parses it into a q2r `pandoc` AST.
 #'
+#' Parse diagnostics are surfaced rather than stripped: error-kind
+#' diagnostics from q2r are raised as R errors and warnings as R warnings.
+#' If parsing yields an empty AST (no blocks) an error is reported.
+#'
 #' @param file_path Character. Path to the assignment file
 #' @export
 parse_assignment_document = function(file_path) {
@@ -12,7 +16,13 @@ parse_assignment_document = function(file_path) {
 
   lines = readLines(file_path, warn = FALSE)
   text = paste(normalize_knitr_chunks(lines), collapse = "\n")
-  q2r::parse_qmd(text, quiet = TRUE)
+  ast = q2r::parse_qmd(text, quiet = FALSE)
+
+  if (length(ast@blocks@content) == 0) {
+    stop("Failed to parse assignment file (empty AST): ", file_path)
+  }
+
+  ast
 }
 
 # Rewrite knitr-style chunk headers into Quarto #| form
