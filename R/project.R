@@ -14,6 +14,14 @@ project_config_path = function(path) {
   fs::path(path, ".markermd", "config.yml")
 }
 
+# Whether a path is an initialized markermd project (has .markermd/config.yml).
+#
+# path: directory to test
+
+is_markermd_project = function(path) {
+  is.character(path) && length(path) == 1 && fs::file_exists(project_config_path(path))
+}
+
 # Top-level directory names that are never treated as artifact directories.
 
 project_reserved_names = function() {

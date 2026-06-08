@@ -1,12 +1,17 @@
-#' Launch the markermd Shiny Application
+#' Launch the markermd Marking Application
 #'
-#' @param collection_path Character string. Path to directory containing subdirectories with assignment repositories
-#' @param template Optional template for validation. Can be:
+#' Points the marking app at an initialized markermd project (a directory
+#' containing a `.markermd/` folder; see [init_project()]). The project's
+#' configuration determines where the student repositories, grading template,
+#' grading database, and rendered HTML reports ("artifacts") are located.
+#'
+#' @param path Character string. Path to a markermd project directory.
+#' @param template Optional template override for validation, taking precedence
+#'   over the project's configured template. Can be:
 #'   - Character path to a saved template (`.yaml`/`.yml`)
 #'   - A `markermd_template` S7 object
-#'   - NULL (no template validation)
+#'   - NULL (use the project's configured template)
 #' @param use_qmd Logical. Whether to parse .qmd files (TRUE) or .Rmd files (FALSE). Default is TRUE.
-#' @param download_archives Logical. Whether to download all archives at app launch (TRUE) or on-demand (FALSE). Default is TRUE.
 #' @param ... Additional arguments passed to shiny::runApp()
 #'
 #' @return Launches Shiny application
@@ -14,104 +19,81 @@
 #'
 #' @examples
 #' \dontrun{
-#' # Parse qmd files from collection of repositories
-#' mark("/path/to/assignments/")
-#' 
-#' # Parse Rmd files from collection of repositories
-#' mark("/path/to/assignments/", use_qmd = FALSE)
-#' 
-#' # Parse with template validation
-#' mark("/path/to/assignments/", template = "template.yaml")
-#' 
-#' # Disable upfront archive downloading
-#' mark("/path/to/assignments/", download_archives = FALSE)
+#' # Mark an initialized project
+#' mark("/path/to/project/")
+#'
+#' # Mark .Rmd assignments
+#' mark("/path/to/project/", use_qmd = FALSE)
+#'
+#' # Override the project's configured template
+#' mark("/path/to/project/", template = "template.yaml")
 #' }
-mark = function(collection_path, template = NULL, use_qmd = TRUE, download_archives = TRUE, ...) {
-  app = mark_app(collection_path, template = template, use_qmd = use_qmd, download_archives = download_archives)
+mark = function(path, template = NULL, use_qmd = TRUE, ...) {
+  app = mark_app(path, template = template, use_qmd = use_qmd)
   shiny::runApp(app, ...)
 }
 
 # Build the Shiny application object for the marking interface
 #
-# Performs all setup (template load, collection parse, validation, database
-# init) and returns the app object without running it, so it can be tested.
+# Loads the project configuration, then performs all setup (template load,
+# collection parse, validation, database init, artifact resolution) and returns
+# the app object without running it, so it can be tested.
 #
-# collection_path: Path to the directory of assignment repositories
-# template: markermd_template object, path to a template .yaml, or NULL
+# path: Path to a markermd project directory (containing .markermd/)
+# template: markermd_template object or path overriding the project's template
 # use_qmd: Whether to match .qmd files (TRUE) or .Rmd files (FALSE)
-# download_archives: Whether to download all archives at launch
 
-mark_app = function(collection_path, template = NULL, use_qmd = TRUE, download_archives = TRUE) {
+mark_app = function(path, template = NULL, use_qmd = TRUE) {
 
-  # Validate inputs
-  if (missing(collection_path)) {
-    stop("collection_path is required")
-  }
-  
-  # Validate collection directory exists
-  if (!dir.exists(collection_path)) {
-    stop("Collection directory does not exist: ", collection_path)
-  }
-  
-  # Get subdirectories (each representing a repository)
-  repo_dirs = list.dirs(collection_path, recursive = FALSE, full.names = TRUE)
-  
-  if (length(repo_dirs) == 0) {
-    stop("No subdirectories found in collection path: ", collection_path)
-  }
-  
-  template_obj = NULL
-  
-  if (!is.null(template)) {
-    if (is.character(template) && length(template) == 1) {
-      if (!file.exists(template)) {
-        stop("Template file does not exist: ", template, call. = FALSE)
-      }
-      template_obj = read_template_yaml(template, require_ast = FALSE)
-      if (!S7::S7_inherits(template_obj, markermd_template)) {
-        stop("Template file must contain a markermd_template S7 object")
-      }
-    } else if (S7::S7_inherits(template, markermd_template)) {
-      template_obj = template
-    } else {
-      stop("Template must be a file path or markermd_template S7 object")
-    }
-
-    assert_template_compatible(template_obj)
+  if (missing(path)) {
+    stop("path is required")
   }
 
-  # Initialize database for persistent storage
+  # Load and resolve the project configuration (errors if not a project)
+  project = project_config(path)
+  root = project@root
+
+  if (is.na(project@repos)) {
+    cli::cli_abort(c(
+      "No repos directory is configured for this project.",
+      "i" = "Record one with {.code markermd::project_set(\"{root}\", repos = \"repos\")}."
+    ))
+  }
+  repos_dir = fs::path(root, project@repos)
+  if (!fs::dir_exists(repos_dir)) {
+    cli::cli_abort("Configured repos directory does not exist: {.path {repos_dir}}")
+  }
+
+  template_obj = resolve_mark_template(project, template)
+
+  # Initialize database for persistent storage (lives at <root>/.markermd/)
   database_state = NULL
   if (!is.null(template_obj)) {
-    # Initialize database and load existing state
     tryCatch({
-      database_state = initialize_database_state(collection_path, template_obj)
+      database_state = initialize_database_state(root, template_obj)
     }, error = function(e) {
       warning("Database initialization failed: ", e$message)
       database_state = NULL
     })
   }
-  
-  # Parse the collection (knitr-style chunk headers are normalised per file)
-  collection = parse_assignment_collection(collection_path, use_qmd)
 
-  # Get repository names from collection tibble
-  repo_list = character(0)
+  # Parse the collection (knitr-style chunk headers are normalised per file)
+  collection = parse_assignment_collection(repos_dir, use_qmd)
+
   validation_results = list()
   initial_repo_ast = NULL
   initial_repo_name = NULL
-  
+
   if (is.null(collection) || nrow(collection) == 0) {
-    stop("No valid documents found in collection path: ", collection_path)
+    stop("No valid documents found in repos directory: ", repos_dir)
   }
-  
-  # Extract repo names from path column
+
   repo_list = collection$path |> dirname() |> basename() |> unique()
-  
+
   if (length(repo_list) == 0) {
     stop("No repositories found in collection")
   }
-  
+
   # Validate all repositories if template is available
   if (!is.null(template_obj)) {
     for (repo in repo_list) {
@@ -123,29 +105,22 @@ mark_app = function(collection_path, template = NULL, use_qmd = TRUE, download_a
       }
     }
   }
-  
-  # Collect GitHub repository information
-  artifact_status = list()
-  github_repos = character(0)
+
+  # Detect GitHub remotes so the table can link each repo to its GitHub page
   repo_to_github = list()
-  
-  # First pass: collect all GitHub repo names
   for (repo in repo_list) {
-    repo_path = file.path(collection_path, repo)
-    
+    repo_path = file.path(repos_dir, repo)
+
     tryCatch({
       git_root = gert::git_find(repo_path)
       if (!is.null(git_root)) {
         remotes = gert::git_remote_list(repo = repo_path)
         if (nrow(remotes) > 0 && any(grepl("github\\.com", remotes$url, ignore.case = TRUE))) {
-          # Extract repo name from GitHub URL
           github_url = remotes$url[grepl("github\\.com", remotes$url)][1]
           if (grepl("github\\.com[:/]([^/]+)/([^/\\.]+)", github_url)) {
             repo_match = regmatches(github_url, regexec("github\\.com[:/]([^/]+)/([^/\\.]+)", github_url))[[1]]
             if (length(repo_match) >= 3) {
-              github_repo = paste0(repo_match[2], "/", repo_match[3])
-              github_repos = c(github_repos, github_repo)
-              repo_to_github[[repo]] = github_repo
+              repo_to_github[[repo]] = paste0(repo_match[2], "/", repo_match[3])
             }
           }
         }
@@ -154,19 +129,10 @@ mark_app = function(collection_path, template = NULL, use_qmd = TRUE, download_a
       # Skip this repo
     })
   }
-  
-  # Initialize artifact status - checking what's locally available
-  # Archive downloading will happen asynchronously in the app if needed
-  for (repo in repo_list) {
-    if (repo %in% names(repo_to_github)) {
-      # Check if archive file exists locally
-      cached_path = get_cached_artifact_path(collection_path, repo)
-      artifact_status[[repo]] = file.exists(cached_path)
-    } else {
-      artifact_status[[repo]] = NA  # Not a GitHub repo
-    }
-  }
-  
+
+  # Resolve each repo's rendered HTML report from the project's artifacts dirs
+  artifact_paths = resolve_repo_artifacts(project, repo_list)
+
   # Set initial current repo AST (first repository)
   first_repo_rows = collection$path |> dirname() |> basename() == repo_list[1]
   if (any(first_repo_rows)) {
@@ -175,28 +141,68 @@ mark_app = function(collection_path, template = NULL, use_qmd = TRUE, download_a
   } else {
     stop("Could not load initial repository data")
   }
-  
+
   app = create_markermd_app(
-    collection_path, 
-    template_obj, 
+    root,
+    repos_dir,
+    template_obj,
     use_qmd,
     collection,
     repo_list,
     validation_results,
     initial_repo_ast,
     initial_repo_name,
-    artifact_status,
+    artifact_paths,
     repo_to_github,
-    template_path = if(is.character(template)) template else NULL,
-    download_archives = download_archives,
+    template_path = if (is.character(template)) template else project@template,
     database_state = database_state
   )
+}
+
+# Resolve the template to use for marking.
+#
+# An explicit `template` override (path or markermd_template object) takes
+# precedence over the project's configured template. Returns a validated
+# markermd_template object, or errors if neither is available.
+#
+# project: markermd_project object
+# template: override template (path, markermd_template, or NULL)
+
+resolve_mark_template = function(project, template) {
+  if (S7::S7_inherits(template, markermd_template)) {
+    assert_template_compatible(template)
+    return(template)
+  }
+
+  template_path = if (is.character(template) && length(template) == 1) {
+    template
+  } else if (!is.null(template)) {
+    stop("Template must be a file path or markermd_template S7 object")
+  } else if (!is.na(project@template)) {
+    if (fs::is_absolute_path(project@template)) project@template else fs::path(project@root, project@template)
+  } else {
+    cli::cli_abort(c(
+      "No grading template is configured for this project.",
+      "i" = "Record one with {.code markermd::project_set(\"{project@root}\", template = \"template.yaml\")} or pass {.arg template}."
+    ))
+  }
+
+  if (!file.exists(template_path)) {
+    stop("Template file does not exist: ", template_path, call. = FALSE)
+  }
+  template_obj = read_template_yaml(template_path, require_ast = FALSE)
+  if (!S7::S7_inherits(template_obj, markermd_template)) {
+    stop("Template file must contain a markermd_template S7 object")
+  }
+  assert_template_compatible(template_obj)
+  template_obj
 }
 
 
 # Create the Shiny application object for the marking interface
 #
-# collection_path: Path to directory containing assignment repositories
+# root: Project root directory (base for the grading database, under .markermd/)
+# repos_dir: Directory containing the student repository subdirectories
 # template_obj: markermd_template S7 object with node selections, or NULL
 # use_qmd: Whether to parse .qmd files (TRUE) or .Rmd files (FALSE)
 # collection: Parsed collection data (data frame with path and ast columns)
@@ -204,13 +210,13 @@ mark_app = function(collection_path, template = NULL, use_qmd = TRUE, download_a
 # validation_results: List of validation results for each repository
 # initial_repo_ast: Initial repository AST to display
 # initial_repo_name: Name of initial repository
-# artifact_status: List of artifact availability status for each repository
+# artifact_paths: Named character vector mapping each repo to its local HTML
+#   report path, or NA when none was found
 # repo_to_github: Named list mapping repository names to GitHub repos
 # template_path: Path to template file (optional)
-# download_archives: Whether archives were downloaded at launch
 # database_state: Database state loaded from SQLite (optional)
 
-create_markermd_app = function(collection_path, template_obj, use_qmd, collection, repo_list, validation_results, initial_repo_ast, initial_repo_name, artifact_status, repo_to_github, template_path = NULL, download_archives = TRUE, database_state = NULL) {
+create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collection, repo_list, validation_results, initial_repo_ast, initial_repo_name, artifact_paths, repo_to_github, template_path = NULL, database_state = NULL) {
   
   # Define UI  
   ui = bslib::page_navbar(
@@ -317,11 +323,7 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
           bslib::card(
             bslib::card_header("Assignments", class = "bg-light"),
             bslib::card_body(
-              shiny::uiOutput("repo_table"),
-              shiny::div(
-                class = "mt-3 text-center",
-                shiny::uiOutput("sync_button_ui")
-              )
+              shiny::uiOutput("repo_table")
             )
           ),
           # Validation results card (right)  
@@ -343,10 +345,10 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
     ),
     
     
-    # Footer with collection and template info
+    # Footer with project and template info
     footer = shiny::div(
       class = "bg-light border-top text-center text-muted p-2 mt-3 fs-6",
-      shiny::span(shiny::strong("Collection path:"), " ", shiny::code(collection_path, class = "bg-light px-1 py-1 rounded small"), class = "me-3"),
+      shiny::span(shiny::strong("Project:"), " ", shiny::code(root, class = "bg-light px-1 py-1 rounded small"), class = "me-3"),
       if (!is.null(template_path)) {
         shiny::span(shiny::strong("Template:"), " ", shiny::code(template_path, class = "bg-light px-1 py-1 rounded small"), class = "me-3")
       },
@@ -372,12 +374,6 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
     
     # Track selected repository for highlighting
     selected_repo_index = shiny::reactiveVal(1)
-    
-    # Make artifact status reactive so table updates when it changes
-    artifact_status_reactive = shiny::reactiveVal(artifact_status)
-    
-    # Reactive trigger for auto-sync on app launch
-    auto_sync_trigger = shiny::reactiveVal(0)
 
     # Create reactive trigger for progress updates (initialized here to ensure it exists)
     progress_update_trigger = shiny::reactiveVal(0)
@@ -396,25 +392,6 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
         stringsAsFactors = FALSE
       )
       
-      # Add GitHub detection for each repository
-      repo_df$IsGitHub = sapply(repo_list, function(repo) {
-        repo_path = file.path(collection_path, repo)
-        
-        tryCatch({
-          # Check if directory is a git repository
-          git_root = gert::git_find(repo_path)
-          if (!is.null(git_root)) {
-            remotes = gert::git_remote_list(repo = repo_path)
-            if (nrow(remotes) > 0 && any(grepl("github\\.com", remotes$url, ignore.case = TRUE))) {
-              return(TRUE)
-            }
-          }
-          return(FALSE)
-        }, error = function(e) {
-          return(FALSE)
-        })
-      })
-      
       # Add Folder column
       repo_df$Folder = sapply(seq_along(repo_list), function(i) {
         folder_button_id = paste0("folder_", i)
@@ -432,20 +409,15 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
         }
       })
       
-      # Add artifact status column with clickable icons
+      # Add artifact column with clickable icons for repos with a local report
       repo_df$Artifacts = sapply(seq_along(repo_list), function(i) {
         repo = repo_list[i]
-        artifact_status_val = artifact_status_reactive()[[repo]]
-        
-        if (is.na(artifact_status_val)) {
-          # Not a GitHub repo - no icon
-          return("")
-        } else if (artifact_status_val) {
-          # Has artifacts - clickable archive icon
+        if (!is.na(artifact_paths[[repo]])) {
+          # Has a resolved local report - clickable file icon
           button_id = paste0("artifact_", i)
           return(paste0('<button onclick="Shiny.setInputValue(\'', button_id, '\', Math.random())" class="btn btn-link p-0 border-0 text-reset" title="View artifact"><i class="far fa-file fs-6"></i></button>'))
         } else {
-          # GitHub repo but no artifacts - show greyed out unclickable icon
+          # No report found - greyed out unclickable icon
           return('<i class="far fa-file fs-6" style="opacity: 0.3;" title="No artifact available"></i>')
         }
       })
@@ -468,14 +440,14 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
       question_names = NULL
       if (!is.null(template_obj) && length(template_obj@questions) > 0) {
         question_names = sapply(template_obj@questions, function(q) q@name)
-        all_progress = calculate_grading_progress(collection_path, question_names, repo_list)
+        all_progress = calculate_grading_progress(root, question_names, repo_list)
       }
-      
+
       # Add grading progress column with sparkline bars
       repo_df$Grading = sapply(
         repo_list, grading_progress_cell,
         template_obj = template_obj, all_progress = all_progress,
-        collection_path = collection_path, question_names = question_names
+        collection_path = root, question_names = question_names
       )
       
       # Add row numbers for button IDs
@@ -588,12 +560,10 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
           
           shiny::observe({
             repo = repo_list[row_index]
+            cached_path = artifact_paths[[repo]]
 
-            # Only process if this repo has artifacts
-            if (!is.na(artifact_status[[repo]]) && artifact_status[[repo]]) {
-              # Get cached path and check if file exists
-              cached_path = get_cached_artifact_path(collection_path, repo)
-              
+            # Only process if this repo has a resolved local report
+            if (!is.na(cached_path)) {
               if (file.exists(cached_path)) {
                 # Read the HTML content and display it directly
                 html_content = tryCatch({
@@ -601,7 +571,7 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
                 }, error = function(e) {
                   paste("Error reading file:", e$message)
                 })
-                
+
                 # Show artifact in modal with HTML content
                 shiny::showModal(
                   shiny::modalDialog(
@@ -616,15 +586,15 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
                   )
                 )
               } else {
-                # Show error modal - file should exist if download_archives was TRUE
+                # Show error modal - resolved file went missing
                 shiny::showModal(
                   shiny::modalDialog(
-                    title = "Archive Not Available",
+                    title = "Artifact Not Available",
                     easyClose = TRUE,
                     shiny::div(
                       class = "p-4 text-center",
                       shiny::tags$i(class = "fas fa-exclamation-triangle fs-3 text-warning me-2"),
-                      "Archive file not found. Try using 'Sync Archives' to download it."
+                      "Artifact file not found."
                     )
                   )
                 )
@@ -758,10 +728,7 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
           
           shiny::observe({
             repo = repo_list[row_index]
-            # Expand tilde in collection path and normalize the full path
-            expanded_collection_path = path.expand(collection_path)
-            repo_path = file.path(expanded_collection_path, repo)
-            repo_path = normalizePath(repo_path, mustWork = FALSE)
+            repo_path = normalizePath(file.path(repos_dir, repo), mustWork = FALSE)
 
             # Attempt to open the folder
             success = open_folder(repo_path)
@@ -800,144 +767,8 @@ create_markermd_app = function(collection_path, template_obj, use_qmd, collectio
     
     
     # Initialize rubric module with callback
-    rubric_result = mark_rubric_server("rubric_module", template_obj, artifact_status_reactive, collection_path, use_qmd, collection, database_state)
-    
-    
-    
-    # Render sync button (only show if there are GitHub repos)
-    output$sync_button_ui = shiny::renderUI({
-      if (length(repo_to_github) > 0) {
-        shiny::actionButton(
-          "sync_archives",
-          "Sync Artifacts",
-          icon = shiny::icon("sync-alt"),
-          class = "btn-outline-primary btn-sm"
-        )
-      }
-    })
-    
-    # Shared sync logic function
-    perform_sync = function() {
-      # First check if any archives need downloading
-      github_repos_vec = unique(unlist(repo_to_github))
-      
-      # If no GitHub repos are configured, don't show any modal
-      if (length(github_repos_vec) == 0) {
-        return()
-      }
-      
-      # Quick check to see if any downloads are needed
-      archives_to_download = 0
-      archives_available = 0  # Track how many repos have archives available
-      
-      # Get metadata to determine what's available
-      metadata = get_archive_metadata(github_repos_vec)
-      use_metadata = is.data.frame(metadata) && nrow(metadata) > 0
-      
-      for (github_repo in github_repos_vec) {
-        local_repo = names(repo_to_github)[repo_to_github == github_repo][1]
-        if (is.na(local_repo)) next
-        
-        # Check if archive exists in metadata
-        if (use_metadata) {
-          repo_metadata = metadata[metadata$repo == github_repo, ]
-          if (nrow(repo_metadata) == 0) next  # No archive available
-        }
-        
-        archives_available = archives_available + 1
-        cached_path = get_cached_artifact_path(collection_path, local_repo)
-        
-        # Check if download is needed
-        needs_download = if (use_metadata) {
-          !check_archive_freshness(cached_path, github_repo, metadata)
-        } else {
-          !file.exists(cached_path)
-        }
-        
-        if (needs_download) {
-          archives_to_download = archives_to_download + 1
-        }
-      }
-      
-      # Only proceed with progress if there are archives to download
-      if (archives_to_download == 0) {
-        # Show notification that everything is up to date
-        shiny::showNotification(
-          "Sync complete! 0 archives updated",
-          type = "default",
-          duration = 5
-        )
-        return()
-      }
-      
-      # Use Shiny's built-in Progress class for actual downloads
-      progress = shiny::Progress$new()
-      progress$set(message = "Syncing archives", value = 0)
-      
-      # Ensure progress is closed when done
-      on.exit(progress$close())
-      
-      # Perform sync
-      github_repos_vec = unique(unlist(repo_to_github))
-      
-      # Track total across callback calls
-      total_archives = NULL
-      
-      # Create progress callback using Shiny's Progress  
-      progress_callback = function(message, completed = NULL, total = NULL) {
-        # Store total when provided
-        if (!is.null(total) && total > 0) {
-          total_archives <<- total
-        }
-        
-        # Use stored total for progress calculations
-        if (!is.null(total_archives) && total_archives > 0 && !is.null(completed)) {
-          progress$set(
-            #message = "Downloading archives\n",
-            value = completed / total_archives,
-            message = paste("Downloaded", completed, "of", total_archives, "archives")
-          )
-        } else {
-          progress$set(message = message)
-        }
-        
-        # Add small delay to make progress visible
-        Sys.sleep(0.1)
-      }
-      
-      sync_result = sync_archives(github_repos_vec, repo_to_github, collection_path, progress_callback)
-      downloaded_count = sync_result$downloaded_count
-      
-      # Update artifact status for any newly downloaded files
-      updated_status = artifact_status_reactive()
-      for (repo in repo_list) {
-        if (repo %in% names(repo_to_github)) {
-          cached_path = get_cached_artifact_path(collection_path, repo)
-          updated_status[[repo]] = file.exists(cached_path)
-        }
-      }
-      artifact_status_reactive(updated_status)
-      
-      # Show completion notification regardless of download count
-      shiny::showNotification(
-        paste("Sync complete!", downloaded_count, "archives updated"),
-        type = "default",
-        duration = 5
-      )
-    }
-    
-    # Handle sync archives button click
-    shiny::observe({
-      perform_sync()
-    }) |> bindEvent(input$sync_archives)
+    rubric_result = mark_rubric_server("rubric_module", template_obj, artifact_paths, root, use_qmd, collection, database_state)
 
-    # Handle auto-sync trigger
-    shiny::observe({
-      if (auto_sync_trigger() > 0) {
-        perform_sync()
-      }
-    }) |> bindEvent(auto_sync_trigger())
-    
     # Handle navbar tab switching to update grading progress
     shiny::observe({
       if (!is.null(input$main_navbar) && input$main_navbar == "validation") {

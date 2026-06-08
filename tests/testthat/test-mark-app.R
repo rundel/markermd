@@ -1,14 +1,23 @@
 library(shinytest2)
 
-# Build a temporary collection (copy of the bundled fixtures) plus a template
-# that grades Question 2 on "quantile" content and Question 3 on "ggplot".
+# Build a temporary markermd project (repos/ populated from the bundled
+# fixtures, a rendered report under html/, and a configured template that
+# grades Question 2 on "quantile" content and Question 3 on "ggplot").
 make_mark_fixture = function() {
   src = system.file("examples/test_assignment", package = "markermd")
-  collection = tempfile("markcoll_")
-  dir.create(collection)
-  file.copy(list.files(src, full.names = TRUE), collection, recursive = TRUE)
+  root = tempfile("markproj_")
+  repos = file.path(root, "repos")
+  dir.create(repos, recursive = TRUE)
+  file.copy(list.files(src, full.names = TRUE), repos, recursive = TRUE)
 
-  qmd = file.path(collection, "student1-excellent", "assignment.qmd")
+  html_dir = file.path(root, "html")
+  dir.create(html_dir)
+  writeLines(
+    "<html><body>student1 report</body></html>",
+    file.path(html_dir, "student1-excellent.html")
+  )
+
+  qmd = file.path(repos, "student1-excellent", "assignment.qmd")
   ast = markermd:::parse_assignment_document(qmd)
 
   template = markermd::markermd_template(
@@ -25,10 +34,12 @@ make_mark_fixture = function() {
     ),
     metadata = markermd::markermd_metadata()
   )
-  template_path = tempfile(fileext = ".yaml")
-  markermd::write_template_yaml(template, template_path, source_path = qmd)
+  markermd::write_template_yaml(template, file.path(root, "template.yaml"), source_path = qmd)
 
-  list(collection = collection, template = template_path)
+  suppressMessages(markermd::init_project(root))
+  suppressMessages(markermd::project_set(root, template = "template.yaml"))
+
+  list(project = root)
 }
 
 
@@ -36,7 +47,7 @@ test_that("mark app launches and validates repositories by section", {
   fixture = make_mark_fixture()
 
   app = shinytest2::AppDriver$new(
-    markermd:::mark_app(fixture$collection, template = fixture$template, download_archives = FALSE),
+    markermd:::mark_app(fixture$project),
     name = "mark_validate"
   )
 

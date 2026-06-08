@@ -15,6 +15,11 @@ template(
 \arguments{
 \item{assignment_path}{Assignment source or existing template. Can be:
 \itemize{
+\item Character path to an initialized markermd project directory (one
+containing \code{.markermd/config.yml}; see \code{\link[=init_project]{init_project()}}). The template is
+authored against the project's key (solution) repository, any configured
+template is preloaded for editing, and saving writes the template into the
+project and records it in the config.
 \item Character path to local directory containing assignment
 \item Character GitHub repo in format "owner/repo"
 \item Character path to a saved template (\code{.yaml}/\code{.yml})
@@ -38,6 +43,9 @@ Launch the markermd Template Creation Application
 }
 \examples{
 \dontrun{
+# Author a template for an initialized project (uses the key repo)
+template("/path/to/project")
+
 # Local assignment with default pattern
 template("/path/to/assignment")
 

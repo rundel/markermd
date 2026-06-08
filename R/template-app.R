@@ -4,8 +4,11 @@
 # template_obj: markermd_template S7 object. Optional template to load on startup
 # source_path: Character. Path to the assignment document, recorded in saved
 #   templates so they can be re-opened and re-validated later
+# project: markermd_project S7 object. When set, "Save Template" writes the
+#   template into the project and records it in the config (via project_set())
+#   rather than offering a browser download
 
-template_app = function(ast, template_obj = NULL, source_path = NULL) {
+template_app = function(ast, template_obj = NULL, source_path = NULL, project = NULL) {
   
   # UI
   ui = shiny::div(
@@ -475,67 +478,89 @@ template_app = function(ast, template_obj = NULL, source_path = NULL) {
       }
     })
     
+    # Build a markermd_template from the current question modules, stamped with
+    # the current format version.
+    build_current_template = function() {
+      questions_list = list()
+
+      modules = question_modules()
+      for (i in seq_along(modules)) {
+        module_data = modules[[i]]
+
+        if (!is.null(module_data) && !is.null(module_data$server) && is.list(module_data$server)) {
+          if (!is.null(module_data$server$question) && is.function(module_data$server$question)) {
+            question_obj = module_data$server$question()
+
+            if (!is.null(question_obj)) {
+              # Ensure question ID matches the module ID for uniqueness
+              if (question_obj@id != module_data$id) {
+                question_obj@id = as.integer(module_data$id)
+              }
+
+              questions_list[[length(questions_list) + 1]] = question_obj
+            }
+          }
+        }
+      }
+
+      markermd_template(
+        original_ast = ast(),
+        questions = questions_list,
+        metadata = markermd_metadata(version = markermd_template_version())
+      )
+    }
+
     # Dynamic save button UI
     output$save_button_ui = shiny::renderUI({
       if (length(question_modules()) == 0) {
         shiny::actionButton(
-          "save_disabled", 
-          "Save Template", 
+          "save_disabled",
+          "Save Template",
           class = "btn-secondary btn-sm",
           disabled = TRUE
         )
+      } else if (!is.null(project)) {
+        shiny::actionButton(
+          "save_to_project",
+          "Save to Project",
+          class = "btn-success btn-sm"
+        )
       } else {
         shiny::downloadButton(
-          "save_template", 
-          "Save Template", 
+          "save_template",
+          "Save Template",
           class = "btn-success btn-sm"
         )
       }
     })
-    
-    # Save template functionality
+
+    # Save template functionality (file download for non-project sessions)
     output$save_template = shiny::downloadHandler(
       filename = function() {
         timestamp = format(Sys.time(), "%Y%m%d_%H%M%S")
         paste0("template_", timestamp, ".yaml")
       },
       content = function(file) {
-        # Build template object from current questions
-        questions_list = list()
-
-        modules = question_modules()
-        for (i in seq_along(modules)) {
-          module_data = modules[[i]]
-
-          if (!is.null(module_data) && !is.null(module_data$server) && is.list(module_data$server)) {
-            if (!is.null(module_data$server$question) && is.function(module_data$server$question)) {
-              question_obj = module_data$server$question()
-
-              if (!is.null(question_obj)) {
-                # Ensure question ID matches the module ID for uniqueness
-                if (question_obj@id != module_data$id) {
-                  question_obj@id = as.integer(module_data$id)
-                }
-
-                questions_list[[length(questions_list) + 1]] = question_obj
-              }
-            }
-          }
-        }
-
-        # Create template object stamped with the current format version
-        template_obj = markermd_template(
-          original_ast = ast(),
-          questions = questions_list,
-          metadata = markermd_metadata(version = markermd_template_version())
-        )
-
         # Save as YAML, recording the assignment source so the template can be
         # re-opened and re-validated later.
-        write_template_yaml(template_obj, file, source_path = source_path)
+        write_template_yaml(build_current_template(), file, source_path = source_path)
       },
       contentType = "text/yaml"
     )
+
+    # Save into the project and record it in the config (project sessions)
+    shiny::observe({
+      template_rel = if (!is.na(project@template)) project@template else "template.yaml"
+      template_path = if (fs::is_absolute_path(template_rel)) template_rel else fs::path(project@root, template_rel)
+
+      write_template_yaml(build_current_template(), template_path, source_path = source_path)
+      project_set(project@root, template = as.character(fs::path_rel(template_path, project@root)))
+
+      shiny::showNotification(
+        glue::glue("Saved template to {template_rel} and recorded it in the project config."),
+        type = "message"
+      )
+    }) |> shiny::bindEvent(input$save_to_project)
 
     # Export values for testing
     shiny::exportTestValues(
@@ -584,11 +609,13 @@ template_app = function(ast, template_obj = NULL, source_path = NULL) {
 # template_obj: markermd_template S7 object. Optional template to load on startup
 # assignment_path: Character. Path to display in footer
 # source_path: Character. Path to the assignment document, recorded in saved templates
+# project: markermd_project S7 object. When set, the app saves into the project
+#   and records the template in its config instead of offering a file download
 
-template_app_standalone = function(ast, template_obj = NULL, assignment_path = NULL, source_path = NULL) {
+template_app_standalone = function(ast, template_obj = NULL, assignment_path = NULL, source_path = NULL, project = NULL) {
 
   # Get the base template app components
-  app_components = template_app(ast, template_obj, source_path = source_path)
+  app_components = template_app(ast, template_obj, source_path = source_path, project = project)
   
   # Wrap in navbar
   ui = bslib::page_navbar(
@@ -620,6 +647,11 @@ template_app_standalone = function(ast, template_obj = NULL, assignment_path = N
 #' Launch the markermd Template Creation Application
 #'
 #' @param assignment_path Assignment source or existing template. Can be:
+#'   - Character path to an initialized markermd project directory (one
+#'     containing `.markermd/config.yml`; see [init_project()]). The template is
+#'     authored against the project's key (solution) repository, any configured
+#'     template is preloaded for editing, and saving writes the template into the
+#'     project and records it in the config.
 #'   - Character path to local directory containing assignment
 #'   - Character GitHub repo in format "owner/repo"
 #'   - Character path to a saved template (`.yaml`/`.yml`)
@@ -635,9 +667,12 @@ template_app_standalone = function(ast, template_obj = NULL, assignment_path = N
 #'
 #' @examples
 #' \dontrun{
+#' # Author a template for an initialized project (uses the key repo)
+#' template("/path/to/project")
+#'
 #' # Local assignment with default pattern
 #' template("/path/to/assignment")
-#' 
+#'
 #' # Local assignment with specific filename
 #' template("/path/to/assignment", filename = "homework.Rmd")
 #' 
@@ -661,12 +696,19 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", as
   # Determine what type of input we have
   template_obj = NULL
   is_template_mode = FALSE
-  
+  project = NULL
+  app = NULL
+
   if (S7::S7_inherits(assignment_path, markermd_template)) {
     # Input is an S7 template object
     template_obj = assignment_path
     is_template_mode = TRUE
-    
+
+  } else if (is_markermd_project(assignment_path)) {
+    # Input is an initialized markermd project: author the template against the
+    # project's key (solution) repo and preload any configured template.
+    app = template_app_from_project(assignment_path, filename, assignment)
+
   } else if (is.character(assignment_path) && length(assignment_path) == 1) {
     # Input is a character string - could be assignment path or template file
 
@@ -694,8 +736,8 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", as
     )
   }
   
-  # Handle template mode vs assignment mode
-  if (is_template_mode) {
+  # Handle template mode vs assignment mode (project mode already built `app`)
+  if (is.null(app) && is_template_mode) {
     assert_template_compatible(template_obj)
 
     # Template mode: use AST from template, ignore filename/local_dir
@@ -714,7 +756,7 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", as
     # Create app with template data
     app = template_app_standalone(shiny::reactiveVal(ast), template_obj, footer_path, source_path = source_path)
 
-  } else {
+  } else if (is.null(app)) {
     # Assignment mode: a single assignment file, a directory containing one, or
     # a GitHub "<owner>/<repo>" to clone.
     is_github_repo = grepl("^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$", assignment_path) &&
@@ -740,7 +782,7 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", as
       stop(
         "assignment_path not found: '", assignment_path, "'.\n",
         "Pass a path to an assignment file (.qmd/.Rmd), a directory containing one, ",
-        "a saved template (.yaml), or a GitHub repository as '<owner>/<repo>'.",
+        "a saved template (.yaml), a markermd project directory, or a GitHub repository as '<owner>/<repo>'.",
         call. = FALSE
       )
     }
@@ -748,6 +790,58 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", as
     ast = parse_assignment_document(file_path)
     app = template_app_standalone(shiny::reactiveVal(ast), NULL, assignment_path, source_path = file_path)
   }
-  
+
   shiny::shinyApp(ui=app$ui, server=app$server, ...)
+}
+
+# Build the standalone template app for an initialized markermd project.
+#
+# Authors the template against the project's key (solution) repository and
+# preloads a configured template (if any) for editing. The app saves directly
+# into the project and records the template in its config (see template_app()).
+#
+# path: project root directory
+# filename: glob used to locate the assignment document within the key repo
+# assignment: optional assignment-document override passed to read_template_yaml()
+
+template_app_from_project = function(path, filename, assignment) {
+  project = project_config(path)
+  root = project@root
+
+  if (is.na(project@key)) {
+    cli::cli_abort(c(
+      "No key (solution) repository is configured for this project.",
+      "i" = "Record one with {.code markermd::project_set(\"{root}\", key = \"<key-dir>\")}."
+    ))
+  }
+  key_dir = fs::path(root, project@key)
+  if (!fs::dir_exists(key_dir)) {
+    cli::cli_abort("Configured key repository does not exist: {.path {key_dir}}")
+  }
+  key_doc = resolve_assignment_file(key_dir, filename)
+
+  template_obj = NULL
+  if (!is.na(project@template)) {
+    template_path = if (fs::is_absolute_path(project@template)) project@template else fs::path(root, project@template)
+    if (file.exists(template_path)) {
+      template_obj = read_template_yaml(template_path, assignment = key_doc, require_ast = TRUE)
+      assert_template_compatible(template_obj)
+    } else {
+      cli::cli_warn("Configured template {.path {project@template}} not found; starting from a blank template.")
+    }
+  }
+
+  if (!is.null(template_obj)) {
+    ast = template_obj@original_ast
+    source_path = attr(template_obj, "markermd_source_path")
+    if (is.null(source_path)) source_path = key_doc
+  } else {
+    ast = parse_assignment_document(key_doc)
+    source_path = key_doc
+  }
+
+  template_app_standalone(
+    shiny::reactiveVal(ast), template_obj, key_doc,
+    source_path = source_path, project = project
+  )
 }

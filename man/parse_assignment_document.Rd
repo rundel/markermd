@@ -13,3 +13,8 @@ parse_assignment_document(file_path)
 Reads a qmd document, normalises any knitr-style chunk headers so the
 Quarto parser accepts them, and parses it into a q2r \code{pandoc} AST.
 }
+\details{
+Parse diagnostics are surfaced rather than stripped: error-kind
+diagnostics from q2r are raised as R errors and warnings as R warnings.
+If parsing yields an empty AST (no blocks) an error is reported.
+}

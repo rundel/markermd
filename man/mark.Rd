@@ -2,29 +2,22 @@
 % Please edit documentation in R/mark-app.R
 \name{mark}
 \alias{mark}
-\title{Launch the markermd Shiny Application}
+\title{Launch the markermd Marking Application}
 \usage{
-mark(
-  collection_path,
-  template = NULL,
-  use_qmd = TRUE,
-  download_archives = TRUE,
-  ...
-)
+mark(path, template = NULL, use_qmd = TRUE, ...)
 }
 \arguments{
-\item{collection_path}{Character string. Path to directory containing subdirectories with assignment repositories}
+\item{path}{Character string. Path to a markermd project directory.}
 
-\item{template}{Optional template for validation. Can be:
+\item{template}{Optional template override for validation, taking precedence
+over the project's configured template. Can be:
 \itemize{
 \item Character path to a saved template (\code{.yaml}/\code{.yml})
 \item A \code{markermd_template} S7 object
-\item NULL (no template validation)
+\item NULL (use the project's configured template)
 }}
 
 \item{use_qmd}{Logical. Whether to parse .qmd files (TRUE) or .Rmd files (FALSE). Default is TRUE.}
-
-\item{download_archives}{Logical. Whether to download all archives at app launch (TRUE) or on-demand (FALSE). Default is TRUE.}
 
 \item{...}{Additional arguments passed to shiny::runApp()}
 }
@@ -32,20 +25,20 @@ mark(
 Launches Shiny application
 }
 \description{
-Launch the markermd Shiny Application
+Points the marking app at an initialized markermd project (a directory
+containing a \verb{.markermd/} folder; see \code{\link[=init_project]{init_project()}}). The project's
+configuration determines where the student repositories, grading template,
+grading database, and rendered HTML reports ("artifacts") are located.
 }
 \examples{
 \dontrun{
-# Parse qmd files from collection of repositories
-mark("/path/to/assignments/")
+# Mark an initialized project
+mark("/path/to/project/")
 
-# Parse Rmd files from collection of repositories
-mark("/path/to/assignments/", use_qmd = FALSE)
+# Mark .Rmd assignments
+mark("/path/to/project/", use_qmd = FALSE)
 
-# Parse with template validation
-mark("/path/to/assignments/", template = "template.yaml")
-
-# Disable upfront archive downloading
-mark("/path/to/assignments/", download_archives = FALSE)
+# Override the project's configured template
+mark("/path/to/project/", template = "template.yaml")
 }
 }

@@ -209,27 +209,22 @@ mark_rubric_ui = function(id) {
 #
 # id: Character. Module namespace ID
 # template: markermd_template. Static template object containing questions
-# artifact_status_reactive: Reactive value. Artifact status for repositories
-# collection_path: Character string. Path to collection directory
+# artifact_paths: Named character vector mapping each repo to its local HTML
+#   report path, or NA when none was found
+# root: Character string. Project root directory (base for the grading database)
 # use_qmd: Logical. Whether to parse .qmd files (TRUE) or .Rmd files (FALSE)
 # collection: Parsed collection data (data frame with path and ast columns)
 # database_state: List. Database state loaded from SQLite (optional)
 # on_question_change: Reactive function. Callback when question selection changes
 
-mark_rubric_server = function(id, template, artifact_status_reactive, collection_path, use_qmd, collection, database_state = NULL, on_question_change = NULL) {
+mark_rubric_server = function(id, template, artifact_paths, root, use_qmd, collection, database_state = NULL, on_question_change = NULL) {
   shiny::moduleServer(id, function(input, output, session) {
-    
+
     # Global id index
     id_idx = 0
 
     question_names = purrr::map_chr(template@questions, "name")
-    
-    # Helper function to get cached artifact path
-    get_cached_artifact_path = function(collection_path, repo_name) {
-      cache_dir = file.path(path.expand(collection_path), ".markermd")
-      normalizePath(file.path(cache_dir, paste0(repo_name, ".html")), mustWork = FALSE)
-    }
-    
+
     # Group consecutive line numbers into start/end ranges
     #
     # line_numbers: Sorted integer vector of line numbers
@@ -446,7 +441,7 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
           paste0("grade_", question_name),
           initial_grade_state,
           ui_ns = session$ns,
-          collection_path = collection_path,
+          collection_path = root,
           question_name = question_name
         )
       })
@@ -467,7 +462,7 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
               server = mark_rubric_item_server(
                 server_id,
                 saved_items[[item_id]],
-                collection_path = collection_path,
+                collection_path = root,
                 question_name = question_name,
                 item_id = item_id
               )
@@ -539,14 +534,14 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
       server = mark_rubric_item_server(
           server_id,
           new_item,
-          collection_path = collection_path,
+          collection_path = root,
           question_name = input$question_select,
           item_id = server_id
       )
       question_item_servers[[input$question_select]][[server_id]] = server
       
       # Save new item to database
-      save_rubric_item(collection_path, input$question_select, server_id, new_item)
+      save_rubric_item(root, input$question_select, server_id, new_item)
 
       # Handle move up signal
       shiny::observe({
@@ -677,68 +672,41 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
     
     # Content tab functionality - populate select input with all repos
     shiny::observe({
-      artifact_status_data = artifact_status_reactive()
-      
-      # Include all repos regardless of artifact status
-      all_repos = names(artifact_status_data)
+      all_repos = names(artifact_paths)
       choices = stats::setNames(all_repos, all_repos)
       shiny::updateSelectInput(session, "content_repo_select", choices = choices)
     })
-    
+
     # HTML content reactive (only depends on repo and toggle, not question)
     html_content_reactive = shiny::reactive({
       shiny::req(input$content_repo_select)
       selected_repo = input$content_repo_select
-      
-      # HTML mode - show artifact HTML
-      artifact_status_data = artifact_status_reactive()
-      status_val = artifact_status_data[[selected_repo]]
-      
-      # Determine HTML path based on status structure
-      html_path = NULL
-      if (is.logical(status_val) && !is.na(status_val) && status_val) {
-        # Boolean structure - get path using the helper function
-        html_path = get_cached_artifact_path(collection_path, selected_repo)
-      } else if (is.list(status_val) && !is.null(status_val$path)) {
-        # List structure with path
-        html_path = status_val$path
-      }
-      
-      if (!is.null(html_path) && file.exists(html_path)) {
+
+      html_path = artifact_paths[[selected_repo]]
+
+      if (!is.na(html_path) && file.exists(html_path)) {
         html_content = readLines(html_path, warn = FALSE)
         html_content = paste(html_content, collapse = "\n")
-        
-        # Note: Using existing Quarto anchor IDs for highlighting
-        
+
         # Wrap in a div with a specific ID for scrolling context
         html_content = paste0('<div id="html-content-container">', html_content, '</div>')
-        
+
         shiny::HTML(html_content)
-      } else {
-        # Check if repo has no artifact or artifact is not available
-        has_artifact = FALSE
-        if (is.logical(status_val) && !is.na(status_val) && status_val) {
-          has_artifact = TRUE
-        } else if (is.list(status_val) && !is.null(status_val$status) && status_val$status == "available") {
-          has_artifact = TRUE
-        }
-        
-        if (!has_artifact) {
+      } else if (is.na(html_path)) {
+        shiny::div(
+          class = "text-center p-4",
           shiny::div(
-            class = "text-center p-4",
-            shiny::div(
-              class = "d-flex align-items-center justify-content-center mb-3",
-              shiny::icon("exclamation-triangle", class = "fa-2x text-warning me-2"),
-              shiny::h5("No Artifact Available", class = "text-muted mb-0")
-            ),
-            shiny::p(glue::glue("Repository '{selected_repo}' does not have an associated artifact."), class = "text-muted"),
-            shiny::p("Use the sync button to download artifacts for GitHub repositories.", class = "small text-muted")
-          )
-        } else {
-          shiny::p("Artifact file not found for selected repository.", class = "text-muted") 
-        }
+            class = "d-flex align-items-center justify-content-center mb-3",
+            shiny::icon("exclamation-triangle", class = "fa-2x text-warning me-2"),
+            shiny::h5("No Artifact Available", class = "text-muted mb-0")
+          ),
+          shiny::p(glue::glue("Repository '{selected_repo}' does not have an associated artifact."), class = "text-muted"),
+          shiny::p("Add a rendered report to the project's artifacts directory to view it here.", class = "small text-muted")
+        )
+      } else {
+        shiny::p("Artifact file not found for selected repository.", class = "text-muted")
       }
-    }) |> 
+    }) |>
       shiny::bindEvent(input$content_repo_select, ignoreNULL = FALSE)
     
     # Raw content reactive (only depends on repo, no highlighting)
@@ -1208,7 +1176,7 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
     shiny::observe({
       new_selection = navigate_select(
         shiny::isolate(input$content_repo_select),
-        names(shiny::isolate(artifact_status_reactive())),
+        names(artifact_paths),
         direction = -1
       )
       if (!is.null(new_selection)) {
@@ -1220,7 +1188,7 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
     shiny::observe({
       new_selection = navigate_select(
         shiny::isolate(input$content_repo_select),
-        names(shiny::isolate(artifact_status_reactive())),
+        names(artifact_paths),
         direction = 1
       )
       if (!is.null(new_selection)) {
@@ -1322,7 +1290,7 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
           
           # Log to database if selection state changed
           if (is.null(prev_selected) || current_selected != prev_selected) {
-            save_grade_selection(collection_path, current_question, current_repo, item_id, current_selected)
+            save_grade_selection(root, current_question, current_repo, item_id, current_selected)
           }
         }
       }
@@ -1354,7 +1322,7 @@ mark_rubric_server = function(id, template, artifact_status_reactive, collection
       }
       
       # Load saved selections from database
-      saved_selections = load_grade_selections(collection_path, current_question, current_repo)
+      saved_selections = load_grade_selections(root, current_question, current_repo)
       
       # Apply saved selections to current servers (or reset to defaults)
       for (item_id in names(current_servers)) {
