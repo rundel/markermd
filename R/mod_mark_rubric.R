@@ -658,17 +658,30 @@ mark_rubric_server = function(id, template, artifact_paths, root, use_qmd, colle
               selected = current_item@selected
             )
             
-            # Update the server's internal state
+            # Update the server's internal state. The item's hotkey button
+            # self-renders from this state, so remaining labels renumber without
+            # a parent re-render.
             remaining_servers[[srv_id]]$update_item(updated_item)
           }
         }
-        
-        redraw_ui(redraw_ui()+1)
+
+        # Remove only the deleted item; existing items keep their DOM (and any
+        # in-progress edit) instead of being rebuilt by a full re-render.
+        shiny::removeUI(selector = paste0("#", session$ns(server$id), "-container"))
       }) |>
         shiny::bindEvent(server$delete_signal(), ignoreInit = TRUE)
 
       id_idx <<- id_idx + 1
-      redraw_ui(redraw_ui()+1)
+
+      # Insert only the new item rather than re-rendering the whole list, so
+      # in-progress edits (e.g. a description being typed) on existing items are
+      # preserved. The list still re-renders from question_item_servers on a
+      # move/reorder or question switch, so the source of truth stays consistent.
+      shiny::insertUI(
+        selector = paste0("#", session$ns("rubric_items_ui")),
+        where = "beforeEnd",
+        ui = mark_rubric_item_ui(session$ns(server$id), new_item)
+      )
     }) |>
       shiny::bindEvent(input$add_item, ignoreInit = TRUE)
     

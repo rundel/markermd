@@ -35,6 +35,7 @@ mark_rubric_item_ui = function(id, rubric_item) {
   ns = shiny::NS(id)
   
   shiny::div(
+    id = ns("container"),
     class = "p-2 m-0 rounded position-relative",
     style = "transition: background-color 0.2s ease;",
     onmouseover = "this.style.backgroundColor='#e9ecef'; this.querySelector('.rubric-action-btns').style.opacity='1';",
