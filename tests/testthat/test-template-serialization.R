@@ -25,7 +25,8 @@ build_serialization_fixture = function() {
         list(
           markermd::markermd_rule("Markdown", "lacks content", "*TODO*"),
           markermd::markermd_rule("Chunk", "has name", "*plot*"),
-          markermd::markermd_rule("Heading", "has at most", 2L)
+          markermd::markermd_rule("Heading", "has at most", 2L),
+          markermd::markermd_rule(c("Markdown", "Raw Block"), "has at least", 1L)
         )
       )
     ),
@@ -86,6 +87,32 @@ test_that("polymorphic rule values keep their shape and type through a round-tri
   expect_equal(pattern@verb, "has content")
   expect_true(is.character(pattern@values))
   expect_equal(pattern@values, "*quantile*")
+})
+
+test_that("a rule accepts a vector of node types and rejects bad ones", {
+  rule = markermd::markermd_rule(c("Markdown", "Raw Block"), "has at least", 1L)
+  expect_equal(rule@node_type, c("Markdown", "Raw Block"))
+
+  expect_error(markermd::markermd_rule(c("Markdown", "Markdown"), "has at least", 1L), "unique")
+  expect_error(markermd::markermd_rule("Bogus", "has at least", 1L), "must be one of")
+  expect_error(markermd::markermd_rule(character(0), "has at least", 1L), "at least one")
+})
+
+test_that("a multi-type rule round-trips and loads from a hand-authored sequence", {
+  fix = build_serialization_fixture()
+  path = write_yaml_lines(c(
+    'format_version: "3.0"',
+    sprintf('source: {path: "%s"}', fix$qmd),
+    "questions:",
+    "- id: 1",
+    "  name: Q2",
+    "  node_ids: [question-2-basic-programming]",
+    "  rules:",
+    "  - {node_type: [Markdown, Raw Block], verb: has at least, count: 1}"
+  ))
+
+  tmpl = markermd::read_template_yaml(path, require_ast = TRUE)
+  expect_equal(tmpl@questions[[1]]@rules[[1]]@node_type, c("Markdown", "Raw Block"))
 })
 
 test_that("a hand-authored template file deserializes to the expected objects", {
@@ -194,4 +221,28 @@ test_that("validate_template_file checks files against the JSON Schema", {
     "- {id: 1, name: Q2, rules: [{node_type: Any node}]}"  # rule missing verb
   ))
   expect_false(isTRUE(markermd::validate_template_file(bad)))
+
+  good_multi = write_yaml_lines(c(
+    'format_version: "3.0"',
+    sprintf('source: {path: "%s"}', fix$qmd),
+    "questions:",
+    "- {id: 1, name: Q2, node_ids: [question-2-basic-programming], rules: [{node_type: [Markdown, Raw Block], verb: has at least, count: 1}]}"
+  ))
+  expect_true(isTRUE(markermd::validate_template_file(good_multi)))
+
+  bad_member = write_yaml_lines(c(
+    'format_version: "3.0"',
+    sprintf('source: {path: "%s"}', fix$qmd),
+    "questions:",
+    "- {id: 1, name: Q2, node_ids: [question-2-basic-programming], rules: [{node_type: [Markdown, Bogus], verb: has at least, count: 1}]}"
+  ))
+  expect_false(isTRUE(markermd::validate_template_file(bad_member)))
+
+  empty_types = write_yaml_lines(c(
+    'format_version: "3.0"',
+    sprintf('source: {path: "%s"}', fix$qmd),
+    "questions:",
+    "- {id: 1, name: Q2, node_ids: [question-2-basic-programming], rules: [{node_type: [], verb: has at least, count: 1}]}"
+  ))
+  expect_false(isTRUE(markermd::validate_template_file(empty_types)))
 })

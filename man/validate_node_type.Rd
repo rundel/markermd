@@ -7,11 +7,13 @@
 validate_node_type(node_type)
 }
 \arguments{
-\item{node_type}{Character. The node type to validate}
+\item{node_type}{Character vector. The node type(s) to validate}
 }
 \value{
 Character error message if invalid, NULL if valid
 }
 \description{
-Checks if a node type is valid according to the allowed types.
+Checks if a rule's node types are valid. A rule targets one or
+more node types combined as a logical OR, so this accepts a non-empty
+character vector of unique allowed types.
 }

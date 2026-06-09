@@ -133,6 +133,16 @@ question_server = function(id, ast, initial_question = NULL) {
     rules_list = shiny::reactiveVal(list())
     next_rule_id = shiny::reactiveVal(1L)
 
+    # Bumped only when the set of rules changes (load/add/delete) so the rules UI
+    # re-renders on structural changes but not on every value edit. Re-rendering on
+    # a value edit would rebuild the node-type picker mid-interaction; its menu
+    # lives on <body> (container = "body"), so the rebuild orphans the open menu
+    # and subsequent clicks are lost.
+    rules_render_trigger = shiny::reactiveVal(0L)
+    trigger_rules_render = function() {
+      rules_render_trigger(shiny::isolate(rules_render_trigger()) + 1L)
+    }
+
     # Live evaluation of every rule against the template's own document. Keyed by
     # rule_id ("1".."k", matching the rules_list ordering) so per-rule status
     # outputs can look up their result. Empty when no document/rules yet. When no
@@ -174,6 +184,7 @@ question_server = function(id, ast, initial_question = NULL) {
         }
         rules_list(loaded_rules)
         next_rule_id(length(loaded_rules) + 1L)
+        trigger_rules_render()
       }
     }, priority = 1000)  # High priority to run before other observers
     
@@ -191,7 +202,17 @@ question_server = function(id, ast, initial_question = NULL) {
       verb_input = paste0("rule_", rule_id, "-verb")
       values_input = paste0("rule_", rule_id, "-values")
 
-      final_node_type = if (!is.null(input[[node_types_input]])) input[[node_types_input]] else rule@node_type
+      # The picker reports character(0) when the user clears it (which means the
+      # catch-all "Any node") and NULL before it has initialised (keep the stored
+      # value so a loaded rule is not clobbered before the widget reports).
+      picked_node_types = input[[node_types_input]]
+      final_node_type = if (is.null(picked_node_types)) {
+        rule@node_type
+      } else if (length(picked_node_types) == 0) {
+        "Any node"
+      } else {
+        picked_node_types
+      }
       final_verb = if (!is.null(input[[verb_input]])) input[[verb_input]] else rule@verb
       final_values = if (!is.null(input[[values_input]])) {
         values_value = input[[values_input]]
@@ -232,7 +253,7 @@ question_server = function(id, ast, initial_question = NULL) {
           )
 
           # Update the rule if anything changed
-          if (rule@node_type != updated_rule@node_type || rule@verb != updated_rule@verb || !identical(rule@values, updated_rule@values)) {
+          if (!setequal(rule@node_type, updated_rule@node_type) || rule@verb != updated_rule@verb || !identical(rule@values, updated_rule@values)) {
             current_rules[[existing_rule_id]] = updated_rule
           }
         }
@@ -252,6 +273,7 @@ question_server = function(id, ast, initial_question = NULL) {
       
       # Increment rule ID for next rule
       next_rule_id(rule_id + 1L)
+      trigger_rules_render()
     }) |>
       shiny::bindEvent(input$add_rule)
     
@@ -319,6 +341,7 @@ question_server = function(id, ast, initial_question = NULL) {
 
         # Reset next rule ID for sequential numbering
         next_rule_id(length(current_rules) + 1L)
+        trigger_rules_render()
 
         # The monitor observer will handle creating new observers for the updated rules_list
         # No need for manual cleanup here since re-indexing changes rule IDs anyway
@@ -368,13 +391,15 @@ question_server = function(id, ast, initial_question = NULL) {
     shiny::observe({
       current_rules = rules_list()
       rules_changed = FALSE
+      verb_changed = FALSE
 
       for (rule_id in names(current_rules)) {
         node_types_input = paste0("rule_", rule_id, "-node_types")
         verb_input = paste0("rule_", rule_id, "-verb")
 
-        # Update rule if inputs have changed
-        shiny::req(input[[node_types_input]], input[[verb_input]])
+        # Only require the verb; a cleared node-type picker is character(0) (which
+        # req() treats as falsy) and is handled as "Any node" in capture_rule_inputs.
+        shiny::req(input[[verb_input]])
 
         rule = current_rules[[rule_id]]
         new_rule = capture_rule_inputs(
@@ -385,7 +410,8 @@ question_server = function(id, ast, initial_question = NULL) {
         # Check if anything changed (including values)
         values_changed = !identical(rule@values, new_rule@values)
 
-        if (rule@node_type != new_rule@node_type || rule@verb != new_rule@verb || values_changed) {
+        if (!setequal(rule@node_type, new_rule@node_type) || rule@verb != new_rule@verb || values_changed) {
+          if (rule@verb != new_rule@verb) verb_changed = TRUE
           current_rules[[rule_id]] = new_rule
           rules_changed = TRUE
         }
@@ -394,18 +420,24 @@ question_server = function(id, ast, initial_question = NULL) {
       # Update reactive values if there were changes
       if (rules_changed) {
         rules_list(current_rules)
-        
+
         # Update question state
         cur_state = state()
         cur_state@rules = current_rules
         state(cur_state)
+
+        # A verb change swaps the values control, which is part of the statically
+        # rendered rule UI, so it must re-render. Node-type and value edits do not.
+        if (verb_changed) trigger_rules_render()
       }
     })
     
-    # Render rules UI
+    # Render rules UI. Depends only on the structural trigger; rule values are read
+    # via isolate() so editing a rule's inputs does not rebuild the rule controls.
     output$rules_ui = shiny::renderUI({
-      current_rules = rules_list()
-      
+      rules_render_trigger()
+      current_rules = shiny::isolate(rules_list())
+
       if (length(current_rules) == 0) {
         # Don't show any text when no rules are present
         NULL
@@ -480,14 +512,17 @@ question_server = function(id, ast, initial_question = NULL) {
       
       if (rules_changed) {
         rules_list(current_rules)
-        
+
         # Update question state
         cur_state = state()
         cur_state@rules = current_rules
         state(cur_state)
+
+        # Verb change swaps the values control, so the rule UI must re-render.
+        trigger_rules_render()
       }
     })
-    
+
     # Return reactive question data and methods
     return(list(
       # Reactive data

@@ -38,6 +38,36 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       .rule-item .form-group { margin-bottom: 0 !important; }
       .rule-item .input-group-addon { line-height: 1.2 !important; }
       .rule-item select:focus { z-index: 1000; }
+
+      /* Multi-select node-type picker (bootstrap-select) matched to the native
+         rule selects: strip the wrapper padding the rule above forces on it and
+         style the toggle button like a .form-select */
+      .rule-item .bootstrap-select.form-control {
+        height: 32px !important;
+        padding: 0 !important;
+        border: 0 !important;
+        font-size: 12px !important;
+      }
+      .rule-item .bootstrap-select > .dropdown-toggle {
+        height: 32px !important;
+        padding: 4px 8px !important;
+        font-size: 12px !important;
+        font-weight: 400 !important;
+        background-color: #fff !important;
+        border: 1px solid var(--bs-border-color, #dee2e6) !important;
+        border-radius: var(--bs-border-radius, 0.375rem) !important;
+        color: var(--bs-body-color, #212529) !important;
+      }
+      /* container='body' moves the menu onto <body> inside .bs-container */
+      .rule-item .bootstrap-select .dropdown-menu,
+      .bs-container .dropdown-menu { font-size: 12px !important; }
+
+      /* Select all / Deselect all buttons in the picker's actions box */
+      .rule-item .bs-actionsbox .btn,
+      .bs-container .bs-actionsbox .btn {
+        font-size: 12px !important;
+        padding: 2px 6px !important;
+      }
       
       /* Modal styling */
       .modal-header { padding: 8px 15px !important; }
@@ -325,7 +355,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     output$questions_ui = shiny::renderUI({
       shiny::div(
         id = "questions_container_content",
-        shiny::uiOutput("question_items"),
+        shiny::div(id = "dynamic_questions_container"),
         shiny::uiOutput("add_question_button")
       )
     })
@@ -367,63 +397,52 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       question_modules(modules_list)
     })
 
-    output$question_items = shiny::renderUI({
-      modules_list = question_modules()
-      current_q_id = current_question_id()
-
-      if (length(modules_list) == 0) {
-        shiny::div(id = "dynamic_questions_container")
-      } else {
-        shiny::div(
-          id = "dynamic_questions_container",
-          lapply(names(modules_list), function(q_id_str) {
-            q_id = as.numeric(q_id_str)
-            question_module = modules_list[[q_id_str]]
-
-            card_class = if (q_id == current_q_id) "border border-primary border-2" else "border"
-
-            # Create question wrapper
-            shiny::div(
-              id = paste0("question_wrapper_", q_id),
-              style = "margin-bottom: 15px; width: 100%; max-width: 100%; box-sizing: border-box;",
-              onclick = paste0("Shiny.setInputValue('select_question', ", q_id, ");"),
-
-              # Question module UI
-              shiny::div(
-                id = paste0("question_card_", q_id),
-                class = card_class,
-                style = "border-radius: 0.375rem;",
-                question_ui(question_module$module_id, q_id)
-              )
-            )
-          })
-        )
-      }
-    })
-    
-    # Track which questions have been inserted
+    # Track which question cards have been inserted into the DOM
     inserted_questions = shiny::reactiveVal(character(0))
 
-    # Remove questions when they are deleted
+    # Sync the question cards to the modules list with insertUI/removeUI so that
+    # existing cards are never rebuilt. The previous full re-render rebuilt the
+    # rule controls and dropped in-progress picker edits whenever a question was
+    # added/removed or the active card changed. Servers are created lazily above,
+    # so an inserted card's outputs wire up immediately. The active-border
+    # highlight is toggled separately via shinyjs.
     shiny::observe({
       modules_list = question_modules()
-      current_inserted = inserted_questions()
-      
-      # Find questions that need to be removed
-      removed_questions = setdiff(current_inserted, names(modules_list))
-      
-      for (q_id_str in removed_questions) {
+      already = inserted_questions()
+      module_ids = names(modules_list)
+
+      for (q_id_str in setdiff(already, module_ids)) {
+        shiny::removeUI(selector = paste0("#question_wrapper_", q_id_str))
+      }
+
+      for (q_id_str in setdiff(module_ids, already)) {
         q_id = as.numeric(q_id_str)
-        # Remove the question UI
-        shiny::removeUI(
-          selector = paste0("#question_wrapper_", q_id)
+        question_module = modules_list[[q_id_str]]
+        card_class = if (q_id == shiny::isolate(current_question_id())) {
+          "border border-primary border-2"
+        } else {
+          "border"
+        }
+
+        shiny::insertUI(
+          selector = "#dynamic_questions_container",
+          where = "beforeEnd",
+          ui = shiny::div(
+            id = paste0("question_wrapper_", q_id),
+            style = "margin-bottom: 15px; width: 100%; max-width: 100%; box-sizing: border-box;",
+            onclick = paste0("Shiny.setInputValue('select_question', ", q_id, ");"),
+            shiny::div(
+              id = paste0("question_card_", q_id),
+              class = card_class,
+              style = "border-radius: 0.375rem;",
+              question_ui(question_module$module_id, q_id)
+            )
+          )
         )
       }
-      
-      # Only update inserted_questions if we actually removed something
-      if (length(removed_questions) > 0) {
-        new_inserted = setdiff(current_inserted, removed_questions)
-        inserted_questions(new_inserted)
+
+      if (!identical(already, module_ids)) {
+        inserted_questions(module_ids)
       }
     })
     
@@ -438,6 +457,22 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       current_question_id(input$select_question)
     }) |>
       shiny::bindEvent(input$select_question)
+
+    # Move the active-card border highlight without re-rendering question_items
+    # (see the isolate() above). Toggling the class in place leaves the rule
+    # controls untouched so picker edits survive switching cards.
+    shiny::observe({
+      cur = current_question_id()
+      for (q_id_str in names(shiny::isolate(question_modules()))) {
+        selector = paste0("#question_card_", q_id_str)
+        if (as.numeric(q_id_str) == cur) {
+          shinyjs::addClass(selector = selector, class = "border-primary border-2")
+        } else {
+          shinyjs::removeClass(selector = selector, class = "border-primary border-2")
+        }
+      }
+    }) |>
+      shiny::bindEvent(current_question_id())
     
     
     # Handle question deletion

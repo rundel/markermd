@@ -50,29 +50,35 @@ get_allowed_rule_verbs = function() {
 
 #' Validate node type value
 #'
-#' @description Checks if a node type is valid according to the allowed types.
+#' @description Checks if a rule's node types are valid. A rule targets one or
+#' more node types combined as a logical OR, so this accepts a non-empty
+#' character vector of unique allowed types.
 #'
-#' @param node_type Character. The node type to validate
+#' @param node_type Character vector. The node type(s) to validate
 #' @return Character error message if invalid, NULL if valid
 #' @export
 validate_node_type = function(node_type) {
-  if (length(node_type) != 1) {
-    return("Node type must be a single character string")
-  }
-  
   if (!is.character(node_type)) {
-    return("Node type must be a character string")
+    return("Node type must be a character vector")
   }
-  
-  if (is.na(node_type) || nchar(node_type) == 0) {
-    return("Node type cannot be empty or NA")
+
+  if (length(node_type) < 1) {
+    return("Node type must include at least one type")
   }
-  
+
+  if (any(is.na(node_type)) || any(nchar(node_type) == 0)) {
+    return("Node type cannot contain empty or NA values")
+  }
+
+  if (anyDuplicated(node_type) > 0) {
+    return("Node type values must be unique")
+  }
+
   allowed_types = get_allowed_node_types()
-  if (!node_type %in% allowed_types) {
+  if (!all(node_type %in% allowed_types)) {
     return(paste0("Node type must be one of: ", paste(allowed_types, collapse = ", ")))
   }
-  
+
   NULL
 }
 

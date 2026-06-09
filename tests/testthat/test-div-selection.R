@@ -99,6 +99,21 @@ test_that("an id'd but empty div yields zero blocks and fails a count rule clean
   expect_equal(res$status, "fail")
 })
 
+test_that("multi-type rules count node kinds as a logical OR", {
+  ast = parse_qmd_lines(
+    "# H", "", "Some markdown paragraph.", "", "```{=html}", "<p>raw html</p>", "```"
+  )
+  kinds = vapply(ast@blocks@content, q2r_node_kind, character(1))
+  expect_equal(kinds, c("Heading", "Markdown", "Raw Block"))
+
+  # union of Markdown + Raw Block is 2 nodes
+  expect_true(evaluate_rule(ast, markermd_rule(c("Markdown", "Raw Block"), "has at least", 2L))$passed)
+  # Raw Block alone is only 1 node
+  expect_false(evaluate_rule(ast, markermd_rule("Raw Block", "has at least", 2L))$passed)
+  # "Any node" anywhere in the selection disables type filtering
+  expect_true(evaluate_rule(ast, markermd_rule(c("Any node", "Heading"), "has at least", 3L))$passed)
+})
+
 test_that("q2r_node_label surfaces an id'd div's id", {
   ast = div_fixture_ast()
   label = q2r_node_label(q2r_flatten(ast)[[3]]$node)

@@ -289,9 +289,10 @@ evaluate_rule = function(ast, rule) {
 
   stopifnot(is.list(nodes))
 
-  # Apply node type filtering if not "Any node" (kinds match the tree labels)
-  if (rule@node_type != "Any node") {
-    nodes = nodes[vapply(nodes, function(n) q2r_node_kind(n) == rule@node_type, logical(1))]
+  # Apply node type filtering unless "Any node" is among the selected types.
+  # The selected types are combined as a logical OR (kinds match the tree labels).
+  if (!("Any node" %in% rule@node_type)) {
+    nodes = nodes[vapply(nodes, function(n) q2r_node_kind(n) %in% rule@node_type, logical(1))]
   }
 
   # Delegate to specific rule evaluation functions

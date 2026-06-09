@@ -14,11 +14,14 @@
 #   server; for the direct variant it is the statically rendered inputs.
 
 rule_item_ui = function(rule = NULL, input_id, verb_inputs) {
+  # "Any node" is the catch-all: it is not an explicit picker choice, it is
+  # represented by an empty selection (the "Any node" placeholder). So a rule
+  # that matches any node shows nothing selected.
   if (!is.null(rule) && S7::S7_inherits(rule, markermd_rule)) {
-    selected_node_type = rule@node_type
+    selected_node_type = setdiff(rule@node_type, "Any node")
     selected_verb = rule@verb
   } else {
-    selected_node_type = get_allowed_node_types()[1]
+    selected_node_type = character(0)
     selected_verb = get_allowed_rule_verbs()[1]
   }
 
@@ -36,17 +39,27 @@ rule_item_ui = function(rule = NULL, input_id, verb_inputs) {
         shiny::uiOutput(input_id("status"), inline = TRUE)
       ),
 
-      # Node types selection
+      # Node types selection (multi-select, combined as a logical OR)
       shiny::div(
         style = "flex: 0 0 35%; position: relative;",
-        shiny::selectInput(
+        shinyWidgets::pickerInput(
           input_id("node_types"),
           NULL,
-          choices = get_allowed_node_types(),
+          choices = setdiff(get_allowed_node_types(), "Any node"),
           selected = selected_node_type,
-          multiple = FALSE,
+          multiple = TRUE,
           width = "100%",
-          selectize = FALSE
+          options = shinyWidgets::pickerOptions(
+            actionsBox = TRUE,
+            # List the selected node types joined by " or " (they combine as a
+            # logical OR), e.g. "Markdown or Raw Block", rather than a count.
+            selectedTextFormat = "values",
+            multipleSeparator = " or ",
+            noneSelectedText = "Any node",
+            # Render the menu on <body> so it floats above the question card
+            # instead of being clipped by the scrolling questions container.
+            container = "body"
+          )
         )
       ),
 

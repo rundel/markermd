@@ -47,7 +47,7 @@ rule_from_list = function(x) {
     "has name" = as.character(x$pattern),
     as.character(x$pattern)
   )
-  markermd_rule(node_type = x$node_type, verb = x$verb, values = values)
+  markermd_rule(node_type = as.character(unlist(x$node_type)), verb = x$verb, values = values)
 }
 
 # markermd_question -> plain list. node_ids is emitted as a list so a single
@@ -279,6 +279,18 @@ validate_template_file = function(path) {
 
   schema = system.file("schema/markermd-template.json", package = "markermd")
   x = yaml::read_yaml(path)
+
+  # yaml::read_yaml collapses single-element sequences to length-1 vectors, which
+  # jsonlite::toJSON(auto_unbox = TRUE) would then emit as JSON scalars. Keep
+  # node_ids as an array so a question targeting a single section still validates
+  # against the schema's array requirement.
+  if (!is.null(x$questions)) {
+    x$questions = lapply(x$questions, function(q) {
+      if (!is.null(q$node_ids)) q$node_ids = as.list(q$node_ids)
+      q
+    })
+  }
+
   json = jsonlite::toJSON(x, auto_unbox = TRUE)
 
   jsonvalidate::json_validate(json, schema, engine = "ajv", verbose = TRUE, error = FALSE)

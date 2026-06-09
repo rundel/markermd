@@ -51,11 +51,13 @@ create_rule_details = function(question, question_result) {
         style = "display: flex; align-items: center;",
         shiny::icon(rule_icon, style = paste0("color: ", rule_color, "; margin-right: 6px; font-size: 14px;")),
         if (!is.null(rule)) {
-          shiny::span(
-            rule@node_type,
-            class = "text-muted fw-medium me-2",
-            style = "font-size: 11px; padding: 2px 6px; border: 1px solid #dee2e6; border-radius: 6px;"
-          )
+          lapply(rule@node_type, function(nt) {
+            shiny::span(
+              nt,
+              class = "text-muted fw-medium me-2",
+              style = "font-size: 11px; padding: 2px 6px; border: 1px solid #dee2e6; border-radius: 6px;"
+            )
+          })
         },
         shiny::span(
           message,
