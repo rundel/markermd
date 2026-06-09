@@ -488,31 +488,13 @@ question_server = function(id, ast, initial_question = NULL) {
       }
     })
     
-    # Render rules status: rule count plus an aggregate pass/fail badge from the
-    # live evaluation against the current document.
+    # Render rules status: "None" when the question has no rules, otherwise
+    # nothing (the rules are listed below, each with its own live pass/fail icon).
     output$rules_status = shiny::renderUI({
-      current_rules = rules_list()
-      rule_count = length(current_rules)
-
-      if (rule_count == 0) {
+      if (length(rules_list()) == 0) {
         shiny::span("None", class = "text-muted")
       } else {
-        statuses = rule_status()
-        badge = if (length(statuses) > 0) {
-          if (all(vapply(statuses, function(s) isTRUE(s$passed), logical(1)))) {
-            shiny::icon("check", style = "color: #28a745; margin-left: 4px;", title = "All rules pass on the current document")
-          } else {
-            shiny::icon("times", style = "color: #dc3545; margin-left: 4px;", title = "Some rules fail on the current document")
-          }
-        } else {
-          NULL
-        }
-
-        shiny::span(
-          paste0("(", rule_count, " rule", if (rule_count != 1) "s" else "", ")"),
-          badge,
-          class = "text-success"
-        )
+        NULL
       }
     })
     
