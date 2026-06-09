@@ -39,45 +39,49 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       .rule-item .input-group-addon { line-height: 1.2 !important; }
       .rule-item select:focus { z-index: 1000; }
 
-      /* Multi-select node-type picker (bootstrap-select) matched to the native
-         rule selects: strip the wrapper padding the rule above forces on it and
-         style the toggle button like a .form-select */
-      .rule-item .bootstrap-select.form-control {
-        height: 32px !important;
+      /* Multi-select node-type control (selectize). Shiny copies .form-control
+         onto the selectize wrapper, so the fixed-height/border/padding rule above
+         lands on it and clips its items (causing the box to overflow onto the
+         rule below). Neutralise the wrapper and treat the inner .selectize-input
+         as the form-control-like box so the control grows with its items. */
+      .rule-item .selectize-control { margin: 0 !important; }
+      .rule-item .selectize-control.form-control {
+        height: auto !important;
+        min-height: 0 !important;
         padding: 0 !important;
         border: 0 !important;
-        font-size: 12px !important;
+        background: transparent !important;
       }
-      .rule-item .bootstrap-select > .dropdown-toggle {
-        height: 32px !important;
-        padding: 4px 8px !important;
-        font-size: 12px !important;
-        font-weight: 400 !important;
-        background-color: #fff !important;
-        border: 1px solid var(--bs-border-color, #dee2e6) !important;
-        border-radius: var(--bs-border-radius, 0.375rem) !important;
-        color: var(--bs-body-color, #212529) !important;
-      }
-      /* container='body' moves the menu onto <body> inside .bs-container */
-      .rule-item .bootstrap-select .dropdown-menu,
-      .bs-container .dropdown-menu { font-size: 12px !important; }
-
-      /* Select all / Deselect all buttons in the picker's actions box */
-      .rule-item .bs-actionsbox .btn,
-      .bs-container .bs-actionsbox .btn {
-        font-size: 12px !important;
+      .rule-item .selectize-control.multi .selectize-input {
+        min-height: 32px !important;
         padding: 2px 6px !important;
+        font-size: 12px !important;
+        line-height: 1.5 !important;
+        /* match the native rule selects, whose border is $input-border-color
+           ($gray-500) in this Bootstrap 5 theme */
+        border: 1px solid var(--bs-gray-500, #8d959e) !important;
+        border-radius: var(--bs-border-radius, 0.375rem) !important;
+        box-shadow: none !important;
       }
-      
+      .rule-item .selectize-control.multi .selectize-input > .item {
+        font-size: 12px !important;
+        line-height: 1.4 !important;
+        padding: 0 4px !important;
+        margin: 0 3px 0 0 !important;
+      }
+      /* dropdownParent='body' renders the menu on <body> */
+      .selectize-dropdown { font-size: 12px !important; }
+
       /* Modal styling */
       .modal-header { padding: 8px 15px !important; }
       .modal-title { margin: 0 !important; padding: 0 !important; line-height: 1.2 !important; }
       
-      /* Questions container layout */
+      /* Questions container layout. It fills the flex card body (.h-100) and
+         scrolls; the height comes from the flex layout, not a fixed vh formula,
+         so it never leaves a gap below or overflows the card footer. */
       #questions_container {
         overflow-y: auto !important;
         overflow-x: hidden !important;
-        max-height: calc(100vh - 300px) !important;
       }
       
       #dynamic_questions_container,
@@ -109,7 +113,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       }
     ")),
     
-      style = "height: calc(100vh - 150px); min-height: 600px; max-height: calc(100vh - 150px);",
+      style = "height: calc(100vh - 150px); min-height: 300px; max-height: calc(100vh - 150px);",
     bslib::layout_columns(
       col_widths = c(6, 6),
       class = "h-100",

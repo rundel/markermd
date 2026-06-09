@@ -335,7 +335,21 @@ validate_question_rules = function(repo_ast, question) {
       details = paste0("Selected node(s): ", paste(formatted_hierarchies, collapse = ", "))
     ))
   }
-  
+
+  # A question with rules but no selected nodes targets nothing; its rules cannot
+  # pass. Fail them rather than letting get_question_ast()'s empty-selection
+  # fallback evaluate the rules against the whole document.
+  if (length(node_ids) == 0) {
+    messages = rep("No nodes selected", length(question@rules))
+    return(list(
+      question_name = question@name,
+      status = "fail",
+      messages = messages,
+      passed = rep(FALSE, length(question@rules)),
+      details = paste(c("Selected section(s): (none)", messages), collapse = "\n")
+    ))
+  }
+
   # Evaluate each rule - any errors will propagate up
   rule_results = list()
   all_passed = TRUE

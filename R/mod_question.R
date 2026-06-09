@@ -140,11 +140,25 @@ question_server = function(id, ast, initial_question = NULL) {
     rules_list = shiny::reactiveVal(list())
     next_rule_id = shiny::reactiveVal(1L)
 
+    # rule_ids whose node-type multiselect has reported a (non-NULL) value at
+    # least once. An empty selectize multiselect reports NULL, which is also the
+    # not-yet-initialised state, so this lets capture_rule_inputs() tell a
+    # deliberate clear (the catch-all "Any node") apart from a loaded rule whose
+    # widget has not reported yet (keep its stored value). Bookkeeping only, so
+    # reads/writes are isolated from reactivity.
+    node_types_seen = shiny::reactiveVal(character(0))
+    note_node_types_seen = function(rule_id) {
+      seen = shiny::isolate(node_types_seen())
+      if (!(rule_id %in% seen)) {
+        node_types_seen(c(seen, rule_id))
+      }
+    }
+
     # Bumped only when the set of rules changes (load/add/delete) so the rules UI
     # re-renders on structural changes but not on every value edit. Re-rendering on
-    # a value edit would rebuild the node-type picker mid-interaction; its menu
-    # lives on <body> (container = "body"), so the rebuild orphans the open menu
-    # and subsequent clicks are lost.
+    # a value edit would rebuild the node-type multiselect mid-interaction; its
+    # menu lives on <body> (dropdownParent = "body"), so the rebuild orphans the
+    # open menu and subsequent clicks are lost.
     rules_render_trigger = shiny::reactiveVal(0L)
     trigger_rules_render = function() {
       rules_render_trigger(shiny::isolate(rules_render_trigger()) + 1L)
@@ -159,6 +173,15 @@ question_server = function(id, ast, initial_question = NULL) {
       rules = q@rules
       if (is.null(ast()) || length(rules) == 0) {
         return(list())
+      }
+      # A question with rules but no selected nodes targets nothing, so its rules
+      # cannot pass. Report them as failing rather than evaluating against the
+      # whole document (get_question_ast()'s empty-selection fallback).
+      if (length(q@selected_nodes@node_ids) == 0) {
+        return(stats::setNames(
+          lapply(rules, function(rule) list(passed = FALSE, message = "No nodes selected")),
+          as.character(seq_along(rules))
+        ))
       }
       question_ast = get_question_ast(ast(), q)
       stats::setNames(
@@ -203,20 +226,21 @@ question_server = function(id, ast, initial_question = NULL) {
     # rule: markermd_rule. The currently stored rule, used for fallbacks
     # invalid_values_fallback: Function(verb, rule). Produces the values to use
     #   when the values input is missing or fails validation
+    # node_type_seen: Logical. Whether the node-type multiselect has reported a
+    #   value before, which disambiguates an empty (NULL) selection.
 
-    capture_rule_inputs = function(rule_id, rule, invalid_values_fallback) {
+    capture_rule_inputs = function(rule_id, rule, invalid_values_fallback, node_type_seen = FALSE) {
       node_types_input = paste0("rule_", rule_id, "-node_types")
       verb_input = paste0("rule_", rule_id, "-verb")
       values_input = paste0("rule_", rule_id, "-values")
 
-      # The picker reports character(0) when the user clears it (which means the
-      # catch-all "Any node") and NULL before it has initialised (keep the stored
-      # value so a loaded rule is not clobbered before the widget reports).
+      # An empty selectize multiselect reports NULL. If it has reported before,
+      # an empty box is a deliberate clear meaning the catch-all "Any node";
+      # otherwise it has not initialised yet, so keep the stored value rather than
+      # clobbering a loaded rule before its widget reports.
       picked_node_types = input[[node_types_input]]
       final_node_type = if (is.null(picked_node_types)) {
-        rule@node_type
-      } else if (length(picked_node_types) == 0) {
-        "Any node"
+        if (node_type_seen) "Any node" else rule@node_type
       } else {
         picked_node_types
       }
@@ -254,9 +278,11 @@ question_server = function(id, ast, initial_question = NULL) {
 
         # Update rule with current input values if available
         if (!is.null(input[[node_types_input]]) && !is.null(input[[verb_input]])) {
+          note_node_types_seen(existing_rule_id)
           updated_rule = capture_rule_inputs(
             existing_rule_id, rule,
-            function(verb, rule) get_default_rule_values(verb)
+            function(verb, rule) get_default_rule_values(verb),
+            node_type_seen = TRUE
           )
 
           # Update the rule if anything changed
@@ -322,7 +348,8 @@ question_server = function(id, ast, initial_question = NULL) {
             # values when the values input is absent or invalid
             preserved_rules[[preserve_rule_id]] = capture_rule_inputs(
               preserve_rule_id, rule,
-              function(verb, rule) rule@values
+              function(verb, rule) rule@values,
+              node_type_seen = preserve_rule_id %in% shiny::isolate(node_types_seen())
             )
           }
         }
@@ -404,14 +431,17 @@ question_server = function(id, ast, initial_question = NULL) {
         node_types_input = paste0("rule_", rule_id, "-node_types")
         verb_input = paste0("rule_", rule_id, "-verb")
 
-        # Only require the verb; a cleared node-type picker is character(0) (which
-        # req() treats as falsy) and is handled as "Any node" in capture_rule_inputs.
+        # Only require the verb; an empty node-type multiselect reports NULL and
+        # is handled (clear -> "Any node") in capture_rule_inputs.
         shiny::req(input[[verb_input]])
+
+        if (!is.null(input[[node_types_input]])) note_node_types_seen(rule_id)
 
         rule = current_rules[[rule_id]]
         new_rule = capture_rule_inputs(
           rule_id, rule,
-          function(verb, rule) get_default_rule_values(verb)
+          function(verb, rule) get_default_rule_values(verb),
+          node_type_seen = rule_id %in% shiny::isolate(node_types_seen())
         )
 
         # Check if anything changed (including values)

@@ -42,23 +42,20 @@ rule_item_ui = function(rule = NULL, input_id, verb_inputs) {
       # Node types selection (multi-select, combined as a logical OR)
       shiny::div(
         style = "flex: 0 0 35%; position: relative;",
-        shinyWidgets::pickerInput(
+        shiny::selectizeInput(
           input_id("node_types"),
           NULL,
           choices = setdiff(get_allowed_node_types(), "Any node"),
           selected = selected_node_type,
           multiple = TRUE,
           width = "100%",
-          options = shinyWidgets::pickerOptions(
-            actionsBox = TRUE,
-            # List the selected node types joined by " or " (they combine as a
-            # logical OR), e.g. "Markdown or Raw Block", rather than a count.
-            selectedTextFormat = "values",
-            multipleSeparator = " or ",
-            noneSelectedText = "Any node",
+          options = list(
+            # An empty selection is the catch-all "Any node" (see rule_item_ui).
+            placeholder = "Any node",
             # Render the menu on <body> so it floats above the question card
             # instead of being clipped by the scrolling questions container.
-            container = "body"
+            dropdownParent = "body",
+            plugins = list("remove_button")
           )
         )
       ),
