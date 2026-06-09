@@ -59,6 +59,7 @@ question_to_list = function(question) {
   list(
     id = as.integer(question@id),
     name = question@name,
+    points = clean_number(question@points),
     node_ids = as.list(question@selected_nodes@node_ids),
     rules = lapply(question@rules, rule_to_list)
   )
@@ -72,12 +73,17 @@ question_from_list = function(x) {
   node_ids = if (is.null(x$node_ids)) character(0) else as.character(unlist(x$node_ids))
   rules = if (is.null(x$rules)) list() else lapply(x$rules, rule_from_list)
 
-  markermd_question(
+  args = list(
     id = as.integer(x$id),
     name = as.character(x$name),
     selected_nodes = markermd_node_selection(node_ids = node_ids),
     rules = rules
   )
+  # points is optional for backward compatibility; the class default applies when
+  # an older template omits it.
+  if (!is.null(x$points)) args$points = as.numeric(x$points)
+
+  do.call(markermd_question, args)
 }
 
 # markermd_metadata -> plain list. version is carried at the top level of the

@@ -8,7 +8,8 @@ markermd_question(
   id = integer(0),
   name = character(0),
   selected_nodes = markermd_node_selection(),
-  rules = list()
+  rules = list(),
+  points = 10
 )
 }
 \arguments{
@@ -19,6 +20,8 @@ markermd_question(
 \item{selected_nodes}{node_selection. Selected AST nodes for this question}
 
 \item{rules}{List. Validation rules for this question as markermd_rule objects}
+
+\item{points}{Numeric. Point value for this question (default 10)}
 }
 \description{
 S7 class representing a single template question with selected nodes and validation rules

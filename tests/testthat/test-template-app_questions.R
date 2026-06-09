@@ -54,6 +54,8 @@ test_that("Add 2 questions, delete 1", {
 
   Sys.sleep(1)
   app$click("question_2-delete_question")
+  # Deleting now requires confirming the modal
+  app$click("question_2-confirm_delete_question")
 
   expect_equal(get_n_questions(app), 1)
 
@@ -76,6 +78,8 @@ test_that("Add 2 questions, delete 1, add 1", {
 
   Sys.sleep(1)
   app$click("question_2-delete_question")
+  # Deleting now requires confirming the modal
+  app$click("question_2-confirm_delete_question")
 
   expect_equal(get_n_questions(app), 1)
 

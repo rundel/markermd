@@ -48,6 +48,7 @@ markermd_node_selection = S7::new_class(
 #' @param name Character. Question display name
 #' @param selected_nodes node_selection. Selected AST nodes for this question
 #' @param rules List. Validation rules for this question as markermd_rule objects
+#' @param points Numeric. Point value for this question (default 10)
 #' @export
 markermd_question = S7::new_class(
   "markermd_question",
@@ -91,6 +92,19 @@ markermd_question = S7::new_class(
           }
         }
         NULL
+      }
+    ),
+    points = S7::new_property(
+      S7::class_numeric,
+      default = quote(10),
+      validator = function(value) {
+        if (length(value) != 1) {
+          return("@points must be a single numeric value")
+        }
+        if (is.na(value) || value < 0) {
+          return("@points must be a non-negative number")
+        }
+        return(NULL)
       }
     )
   ),

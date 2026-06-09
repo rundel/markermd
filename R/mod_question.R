@@ -5,39 +5,58 @@
 # Question UI
 #
 # id: Character. Module namespace ID
-# name_id: Integer. The question ID used for default naming
+# name_id: Integer. The question ID used to build the fallback default name
+# points: Numeric. Initial point value for the question
+# name: Character. The question's name to show; defaults to "Question <name_id>"
+#   so a freshly added question keeps its positional default, while a loaded or
+#   imported question shows its own saved name
 
-question_ui = function(id, name_id) {
+question_ui = function(id, name_id, points = 10, name = paste("Question", name_id)) {
   ns = shiny::NS(id)
-  
+
   bslib::card(
     style = "margin: 0; width: 100%; max-width: 100%; box-sizing: border-box;",
+    # The bslib card-header is itself a horizontal flex row, so these controls are
+    # added directly as its flex children. space-between spreads the title, points
+    # and delete button evenly, keeping the delete button hard-right; the title has
+    # a modest, shrinkable width so it does not stretch across the whole header.
     bslib::card_header(
       class = "bg-light",
+      style = "gap: 0.75rem; justify-content: space-between;",
+
+      # Question name input
       shiny::div(
-        style = "display: flex; justify-content: space-between; align-items: center;",
-        
-        # Question name input
-        shiny::div(
-          style = "flex-grow: 1; margin-right: 10px;",
-          shiny::textInput(
-            ns("question_name"),
-            NULL,
-            value = paste("Question", name_id),
-            width = "100%"
-          )
+        style = "flex: 0 1 14rem; min-width: 0;",
+        shiny::textInput(
+          ns("question_name"),
+          NULL,
+          value = name,
+          width = "100%"
+        )
+      ),
+
+      # Points input
+      shiny::div(
+        style = "flex: 0 0 auto; display: flex; align-items: center;",
+        shiny::numericInput(
+          ns("question_points"),
+          NULL,
+          value = points,
+          min = 0,
+          width = "72px"
         ),
-        
-        # Delete question button
-        shiny::div(
-          style = "flex-shrink: 0;",
-          shiny::actionButton(
-            ns("delete_question"),
-            shiny::icon("times"),
-            class = "btn-danger btn-sm",
-            style = "font-size: 12px; padding: 2px 6px; border-radius: 20%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; line-height: 1;",
-            title = "Delete Question"
-          )
+        shiny::span("pts", class = "ms-1 text-muted small")
+      ),
+
+      # Delete question button (right aligned)
+      shiny::div(
+        style = "flex: 0 0 auto;",
+        shiny::actionButton(
+          ns("delete_question"),
+          shiny::icon("times"),
+          class = "btn-danger btn-sm",
+          style = "font-size: 12px; padding: 2px 6px; border-radius: 20%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; line-height: 1;",
+          title = "Delete Question"
         )
       )
     ),
@@ -135,6 +154,39 @@ question_server = function(id, ast, initial_question = NULL) {
       state(cur_state)
     }) |>
       shiny::bindEvent(input$question_name)
+
+    # Update the question's point value. numericInput reports NA when cleared and
+    # the S7 validator rejects negatives, so ignore those rather than crash.
+    shiny::observe({
+      pts = input$question_points
+      if (is.na(pts) || pts < 0) {
+        return()
+      }
+      cur_state = state()
+      cur_state@points = pts
+      state(cur_state)
+    }) |>
+      shiny::bindEvent(input$question_points, ignoreInit = TRUE)
+
+    # Confirm before deleting a question so a stray click does not lose its rules.
+    # The actual removal is driven off the confirm button via delete_clicked().
+    shiny::observe({
+      shiny::showModal(shiny::modalDialog(
+        title = "Delete question?",
+        glue::glue("Delete \"{state()@name}\" and its validation rules? This cannot be undone."),
+        easyClose = TRUE,
+        footer = shiny::tagList(
+          shiny::modalButton("Cancel"),
+          shiny::actionButton(session$ns("confirm_delete_question"), "Delete", class = "btn-danger")
+        )
+      ))
+    }) |>
+      shiny::bindEvent(input$delete_question)
+
+    shiny::observe({
+      shiny::removeModal()
+    }) |>
+      shiny::bindEvent(input$confirm_delete_question)
     
     # Rule management - simplified working approach
     rules_list = shiny::reactiveVal(list())
@@ -548,7 +600,7 @@ question_server = function(id, ast, initial_question = NULL) {
       }),
       
       delete_clicked = shiny::reactive({
-        input$delete_question
+        input$confirm_delete_question
       })
     ))
     })

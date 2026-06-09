@@ -82,7 +82,7 @@ ast_module_ui = function(id, title = "Document Structure", show_clear_button = F
     if (show_clear_button) {
       bslib::card_footer(
         class = "text-center",
-        shiny::actionButton(ns("clear_selections"), "Clear Current Question", class = "btn-secondary btn-sm")
+        shiny::actionButton(ns("clear_selections"), "Clear Question", class = "btn-secondary btn-sm")
       )
     }
   )

@@ -84,6 +84,11 @@
           "minLength": 1,
           "description": "Unique question display name."
         },
+        "points": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Point value for this question (default 10)."
+        },
         "node_ids": {
           "type": "array",
           "uniqueItems": true,
