@@ -30,17 +30,16 @@ This class provides built-in validation for all rule properties and ensures
 consistency across the application.
 }
 \examples{
-\dontrun{
 # Create a count rule
 count_rule = markermd_rule(
-  node_type = "pandoc_header",
+  node_type = "Heading",
   verb = "has between",
   values = c(1, 5)
 )
 
 # Create a content rule
 content_rule = markermd_rule(
-  node_type = "pandoc_code_block",
+  node_type = "Chunk",
   verb = "has content",
   values = "*plot*"
 )
@@ -49,6 +48,5 @@ content_rule = markermd_rule(
 validation = validate_markermd_rule(count_rule)
 if (!validation$valid) {
   print(validation$errors)
-}
 }
 }

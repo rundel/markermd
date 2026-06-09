@@ -24,17 +24,16 @@ NULL
 #'   - "has name": character string (pattern)
 #' @export
 #' @examples
-#' \dontrun{
 #' # Create a count rule
 #' count_rule = markermd_rule(
-#'   node_type = "pandoc_header",
+#'   node_type = "Heading",
 #'   verb = "has between",
 #'   values = c(1, 5)
 #' )
 #'
 #' # Create a content rule
 #' content_rule = markermd_rule(
-#'   node_type = "pandoc_code_block",
+#'   node_type = "Chunk",
 #'   verb = "has content",
 #'   values = "*plot*"
 #' )
@@ -43,7 +42,6 @@ NULL
 #' validation = validate_markermd_rule(count_rule)
 #' if (!validation$valid) {
 #'   print(validation$errors)
-#' }
 #' }
 markermd_rule = S7::new_class(
   "markermd_rule",
