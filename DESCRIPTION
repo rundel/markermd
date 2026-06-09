@@ -25,6 +25,7 @@ Imports:
     jsonlite,
     yaml,
     shiny,
+    htmltools,
     bslib,
     fs,
     gt,

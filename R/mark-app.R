@@ -117,10 +117,14 @@ mark_app = function(path, template = NULL, use_qmd = TRUE) {
         remotes = gert::git_remote_list(repo = repo_path)
         if (nrow(remotes) > 0 && any(grepl("github\\.com", remotes$url, ignore.case = TRUE))) {
           github_url = remotes$url[grepl("github\\.com", remotes$url)][1]
-          if (grepl("github\\.com[:/]([^/]+)/([^/\\.]+)", github_url)) {
-            repo_match = regmatches(github_url, regexec("github\\.com[:/]([^/]+)/([^/\\.]+)", github_url))[[1]]
+          # Restrict owner/repo to GitHub-legal characters so a hostile remote
+          # URL cannot smuggle markup into the table's href; keep dots in repo
+          # names (only a trailing .git is dropped)
+          github_re = "github\\.com[:/]([A-Za-z0-9-]+)/([A-Za-z0-9_.-]+)"
+          if (grepl(github_re, github_url)) {
+            repo_match = regmatches(github_url, regexec(github_re, github_url))[[1]]
             if (length(repo_match) >= 3) {
-              repo_to_github[[repo]] = paste0(repo_match[2], "/", repo_match[3])
+              repo_to_github[[repo]] = paste0(repo_match[2], "/", sub("\\.git$", "", repo_match[3]))
             }
           }
         }
@@ -416,7 +420,7 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
         if (repo %in% names(repo_to_github)) {
           github_repo = repo_to_github[[repo]]
           github_url = paste0("https://github.com/", github_repo)
-          return(paste0('<a href="', github_url, '" target="_blank" class="text-reset text-decoration-none"><i class="fab fa-github fs-6" title="Open on GitHub"></i></a>'))
+          return(paste0('<a href="', htmltools::htmlEscape(github_url, attribute = TRUE), '" target="_blank" class="text-reset text-decoration-none"><i class="fab fa-github fs-6" title="Open on GitHub"></i></a>'))
         } else {
           return("")
         }
@@ -473,8 +477,9 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       repo_df$Repository = purrr::map_chr(seq_len(nrow(repo_df)), function(i) {
         active_class = if (i == active_row) " active" else ""
 
-        # Just show repo name - no GitHub icon here
-        content = repo_df$OriginalName[i]
+        # Just show repo name - no GitHub icon here. Escaped so a directory
+        # name cannot inject markup into the raw-HTML table.
+        content = htmltools::htmlEscape(repo_df$OriginalName[i])
 
         paste0(
           '<button onclick="Shiny.setInputValue(\'repo_select_', i, '\', Math.random())"',
