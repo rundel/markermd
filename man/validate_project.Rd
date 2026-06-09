@@ -9,8 +9,10 @@ validate_project(path = ".", template = NULL, use_qmd = TRUE)
 \arguments{
 \item{path}{Path to the project directory. Defaults to the working directory.}
 
-\item{template}{Optional path to a template \code{.yaml} overriding the one recorded
-in the project config.}
+\item{template}{Optional override for the template stored in the project
+database: a path to a template \code{.yaml} file or a \code{markermd_template} object.
+When omitted, the database-stored template is used (and an error is raised
+if none has been stored).}
 
 \item{use_qmd}{Logical. Match \code{.qmd} files (TRUE) or \code{.Rmd} files (FALSE).}
 }

@@ -2,6 +2,27 @@
 #
 # collection_path: Path to collection directory
 
+# Current grading-database schema version. Bumped whenever the SQLite schema
+# changes incompatibly. assert_db_compatible() rejects a database written by a
+# newer markermd than this.
+
+markermd_db_version = function() "1"
+
+# Reject a database written by a newer markermd than this one.
+#
+# conn: DBI connection object
+
+assert_db_compatible = function(conn) {
+  stored = get_metadata(conn, "schema_version")
+  if (!is.null(stored) && utils::compareVersion(stored, markermd_db_version()) > 0) {
+    cli::cli_abort(c(
+      "This grading database requires a newer version of markermd.",
+      "x" = "Database schema_version is {stored}; this markermd supports up to {markermd_db_version()}.",
+      "i" = "Please upgrade the markermd package."
+    ))
+  }
+}
+
 get_database_path = function(collection_path) {
   cache_dir = file.path(path.expand(collection_path), ".markermd")
   if (!dir.exists(cache_dir)) {
@@ -25,7 +46,9 @@ initialize_database = function(collection_path) {
   
   # Create tables if they don't exist
   create_tables_if_needed(conn)
-  
+
+  assert_db_compatible(conn)
+
   return(conn)
 }
 
@@ -104,6 +127,21 @@ create_tables_if_needed = function(conn) {
     DBI::dbExecute(conn, "
       CREATE INDEX idx_comments_lookup ON comments (question_name, assignment_repo, timestamp)
     ")
+  }
+
+  # Metadata table - key/value store for project-level singletons (the grading
+  # template, the schema version, ...). The database is the canonical store for
+  # these; YAML is an optional import/export format.
+  if (!DBI::dbExistsTable(conn, "metadata")) {
+    DBI::dbExecute(conn, "
+      CREATE TABLE metadata (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ")
+
+    set_metadata(conn, "schema_version", markermd_db_version())
   }
 }
 
@@ -339,8 +377,49 @@ load_most_recent_comments = function(conn) {
       SELECT question_name, assignment_repo, MAX(timestamp) as max_timestamp
       FROM comments
       GROUP BY question_name, assignment_repo
-    ) c2 ON c1.question_name = c2.question_name 
+    ) c2 ON c1.question_name = c2.question_name
         AND c1.assignment_repo = c2.assignment_repo
         AND c1.timestamp = c2.max_timestamp
   ")
+}
+
+# Get a metadata value by key
+#
+# conn: DBI connection object
+# key: Character string
+# Returns: Character scalar, or NULL when the key is absent
+
+get_metadata = function(conn, key) {
+  res = DBI::dbGetQuery(conn, "SELECT value FROM metadata WHERE key = ?", params = list(key))
+  if (nrow(res) == 0) NULL else res$value[1]
+}
+
+# Upsert a metadata key/value pair
+#
+# conn: DBI connection object
+# key: Character string
+# value: Character string
+
+set_metadata = function(conn, key, value) {
+  timestamp = get_current_timestamp()
+  existing = DBI::dbGetQuery(conn, "SELECT key FROM metadata WHERE key = ?", params = list(key))
+
+  if (nrow(existing) > 0) {
+    DBI::dbExecute(conn, "
+      UPDATE metadata SET value = ?, updated_at = ? WHERE key = ?
+    ", params = list(value, timestamp, key))
+  } else {
+    DBI::dbExecute(conn, "
+      INSERT INTO metadata (key, value, updated_at) VALUES (?, ?, ?)
+    ", params = list(key, value, timestamp))
+  }
+}
+
+# Delete a metadata key
+#
+# conn: DBI connection object
+# key: Character string
+
+delete_metadata = function(conn, key) {
+  DBI::dbExecute(conn, "DELETE FROM metadata WHERE key = ?", params = list(key))
 }

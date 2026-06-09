@@ -171,7 +171,9 @@ empty_pandoc_ast = function() {
 
 # plain list -> markermd_template, re-parsing the source document to rebuild
 # original_ast. The resolved source path is attached as the
-# "markermd_source_path" attribute so callers can preserve it on re-save.
+# "markermd_source_path" attribute, and the raw (unresolved) source.path string
+# as "markermd_source_raw", so callers can preserve the source on re-save and
+# locate the assignment by name even when the document is absent.
 #
 # x: List parsed from a template YAML file
 # base_dir: Directory used to resolve a relative source.path
@@ -214,6 +216,7 @@ template_from_list = function(x, base_dir = ".", assignment = NULL, require_ast 
     metadata = metadata
   )
   attr(template, "markermd_source_path") = source_path
+  attr(template, "markermd_source_raw") = x$source$path
   template
 }
 

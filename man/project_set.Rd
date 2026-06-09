@@ -19,8 +19,10 @@ project_set(
 
 \item{comments}{Root-relative comments directory to record. Warns if it does not exist.}
 
-\item{template}{Root-relative path to a grading template to record (the file
-must exist), or \code{NA} to clear a previously configured template.}
+\item{template}{A grading template to store in the project database: a
+\code{markermd_template} object or a path to a template YAML file (which is
+parsed and imported, so an invalid file errors immediately). Pass \code{NA} to
+clear the stored template. See also \code{\link[=template_import]{template_import()}}.}
 
 \item{key}{Root-relative key (solution) repository directory to record. Warns
 if it does not exist. Pass \code{NA} to clear a previously configured key.}

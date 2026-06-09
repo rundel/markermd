@@ -154,7 +154,7 @@ mark_app = function(path, template = NULL, use_qmd = TRUE) {
     initial_repo_name,
     artifact_paths,
     repo_to_github,
-    template_path = if (is.character(template)) template else project@template,
+    template_path = if (is.character(template)) template else "project database",
     database_state = database_state
   )
 }
@@ -162,8 +162,8 @@ mark_app = function(path, template = NULL, use_qmd = TRUE) {
 # Resolve the template to use for marking.
 #
 # An explicit `template` override (path or markermd_template object) takes
-# precedence over the project's configured template. Returns a validated
-# markermd_template object, or errors if neither is available.
+# precedence over the template stored in the project database. Returns a
+# validated markermd_template object, or errors if neither is available.
 #
 # project: markermd_project object
 # template: override template (path, markermd_template, or NULL)
@@ -174,23 +174,23 @@ resolve_mark_template = function(project, template) {
     return(template)
   }
 
-  template_path = if (is.character(template) && length(template) == 1) {
-    template
+  if (is.character(template) && length(template) == 1) {
+    if (!file.exists(template)) {
+      stop("Template file does not exist: ", template, call. = FALSE)
+    }
+    template_obj = read_template_yaml(template, require_ast = FALSE)
   } else if (!is.null(template)) {
     stop("Template must be a file path or markermd_template S7 object")
-  } else if (!is.na(project@template)) {
-    if (fs::is_absolute_path(project@template)) project@template else fs::path(project@root, project@template)
   } else {
-    cli::cli_abort(c(
-      "No grading template is configured for this project.",
-      "i" = "Record one with {.code markermd::project_set(\"{project@root}\", template = \"template.yaml\")} or pass {.arg template}."
-    ))
+    template_obj = load_template_from_db(project@root, base_dir = project@root)
+    if (is.null(template_obj)) {
+      cli::cli_abort(c(
+        "No grading template is configured for this project.",
+        "i" = "Author one with {.code markermd::template(\"{project@root}\")}, import one with {.code markermd::template_import()}, or pass {.arg template}."
+      ))
+    }
   }
 
-  if (!file.exists(template_path)) {
-    stop("Template file does not exist: ", template_path, call. = FALSE)
-  }
-  template_obj = read_template_yaml(template_path, require_ast = FALSE)
   if (!S7::S7_inherits(template_obj, markermd_template)) {
     stop("Template file must contain a markermd_template S7 object")
   }

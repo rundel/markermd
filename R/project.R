@@ -159,8 +159,7 @@ project_to_list = function(project) {
       repos = na_to_null(project@repos),
       comments = na_to_null(project@comments),
       key = na_to_null(project@key),
-      database = project@database,
-      template = na_to_null(project@template)
+      database = project@database
     ),
     artifacts = as.list(project@artifacts)
   )
@@ -185,7 +184,6 @@ project_from_list = function(x, root) {
     repos = chr_or_na(paths$repos),
     comments = chr_or_na(paths$comments),
     database = if (is.null(paths$database)) ".markermd/markermd.sqlite" else as.character(paths$database),
-    template = chr_or_na(paths$template),
     key = chr_or_na(paths$key),
     artifacts = if (is.null(x$artifacts)) character(0) else as.character(unlist(x$artifacts)),
     created_at = as.character(if (is.null(x$created_at)) get_current_timestamp() else x$created_at),
@@ -225,10 +223,10 @@ write_project_config = function(project) {
 #' directories.
 #'
 #' Re-running `init_project()` on an already-initialized directory updates it in
-#' place: the existing grading database is preserved, the skills are refreshed to
-#' the packaged version, the key and artifact directories are re-scanned, and a
-#' previously configured template or key is kept (or cleared with a warning if it
-#' no longer exists).
+#' place: the existing grading database (including any stored grading template)
+#' is preserved, the skills are refreshed to the packaged version, the key and
+#' artifact directories are re-scanned, and a previously configured key is kept
+#' (or cleared if it no longer exists).
 #'
 #' @param path Path to the project directory.
 #'
@@ -260,15 +258,6 @@ init_project = function(path) {
   prior = if (fs::file_exists(cfg_path)) project_from_list(yaml::read_yaml(cfg_path), root) else NULL
   created_at = if (!is.null(prior)) prior@created_at else get_current_timestamp()
 
-  template = NA_character_
-  if (!is.null(prior) && !is.na(prior@template)) {
-    if (fs::file_exists(fs::path(root, prior@template))) {
-      template = prior@template
-    } else {
-      cli::cli_warn("Previously configured template {.path {prior@template}} no longer exists; clearing it.")
-    }
-  }
-
   key = if (!is.null(prior) && !is.na(prior@key) && fs::dir_exists(fs::path(root, prior@key))) {
     prior@key
   } else {
@@ -290,7 +279,6 @@ init_project = function(path) {
     repos = if (has_repos) "repos" else NA_character_,
     comments = if (has_comments) "comments" else NA_character_,
     database = ".markermd/markermd.sqlite",
-    template = template,
     key = key,
     artifacts = artifacts,
     created_at = created_at,
@@ -363,8 +351,10 @@ project_sitrep = function(path = ".") {
 #' @param path Path to the project directory. Defaults to the working directory.
 #' @param repos Root-relative repos directory to record. Warns if it does not exist.
 #' @param comments Root-relative comments directory to record. Warns if it does not exist.
-#' @param template Root-relative path to a grading template to record (the file
-#'   must exist), or `NA` to clear a previously configured template.
+#' @param template A grading template to store in the project database: a
+#'   `markermd_template` object or a path to a template YAML file (which is
+#'   parsed and imported, so an invalid file errors immediately). Pass `NA` to
+#'   clear the stored template. See also [template_import()].
 #' @param key Root-relative key (solution) repository directory to record. Warns
 #'   if it does not exist. Pass `NA` to clear a previously configured key.
 #'
@@ -388,14 +378,15 @@ project_set = function(path = ".", repos = NULL, comments = NULL, template = NUL
     project@comments = rel
   }
   if (!is.null(template)) {
-    if (is_clear_sentinel(template)) {
-      project@template = NA_character_
+    if (S7::S7_inherits(template, markermd_template)) {
+      assert_template_compatible(template)
+      source_path = attr(template, "markermd_source_raw")
+      if (is.null(source_path)) source_path = attr(template, "markermd_source_path")
+      save_template_to_db(project@root, template, source_path = source_path)
+    } else if (is_clear_sentinel(template)) {
+      with_database(project@root, function(conn) delete_metadata(conn, "template"))
     } else {
-      rel = as.character(template)
-      if (!fs::file_exists(fs::path(project@root, rel))) {
-        cli::cli_abort("template file {.path {rel}} does not exist under the project root {.path {project@root}}.")
-      }
-      project@template = rel
+      import_template_yaml_to_db(project@root, as.character(template))
     }
   }
   if (!is.null(key)) {
@@ -412,6 +403,69 @@ project_set = function(path = ".", repos = NULL, comments = NULL, template = NUL
 
   project = write_project_config(project)
   invisible(project)
+}
+
+# Read a template YAML file and store it in the project database. The path is
+# used as-is when absolute or already resolvable, otherwise relative to the
+# project root. Returns the parsed template invisibly.
+#
+# root: absolute project root
+# path: path to a template YAML file
+
+import_template_yaml_to_db = function(root, path) {
+  template_path = if (fs::is_absolute_path(path) || fs::file_exists(path)) {
+    path
+  } else {
+    fs::path(root, path)
+  }
+  if (!fs::file_exists(template_path)) {
+    cli::cli_abort("Template file does not exist: {.path {template_path}}")
+  }
+  template_obj = read_template_yaml(template_path, require_ast = FALSE)
+  assert_template_compatible(template_obj)
+  save_template_to_db(root, template_obj, source_path = attr(template_obj, "markermd_source_raw"))
+  invisible(template_obj)
+}
+
+#' Import a grading template from YAML into a project's database
+#'
+#' Reads a template YAML file and stores it in the project's grading database,
+#' which is the canonical store for templates. This is the inverse of
+#' [template_export()]. Equivalent to `project_set(project, template = path)`.
+#'
+#' @param path Path to a template `.yaml`/`.yml` file. Absolute or relative to
+#'   the current directory; a bare relative path is also resolved against the
+#'   project root.
+#' @param project Path to the project directory. Defaults to the working directory.
+#'
+#' @return The imported `markermd_template` object, invisibly.
+#' @export
+template_import = function(path, project = ".") {
+  proj = project_config(project)
+  import_template_yaml_to_db(proj@root, path)
+}
+
+#' Export a project's grading template to YAML
+#'
+#' Writes the template stored in the project's grading database to a YAML file
+#' (the optional import/export format). This is the inverse of [template_import()].
+#'
+#' @param path Output path for the template `.yaml` file.
+#' @param project Path to the project directory. Defaults to the working directory.
+#'
+#' @return The output `path`, invisibly.
+#' @export
+template_export = function(path, project = ".") {
+  proj = project_config(project)
+  template_obj = load_template_from_db(proj@root, base_dir = proj@root)
+  if (is.null(template_obj)) {
+    cli::cli_abort(c(
+      "No template is stored in this project's database.",
+      "i" = "Author one with {.code template(\"{proj@root}\")} or import one with {.code template_import()}."
+    ))
+  }
+  write_template_yaml(template_obj, path, source_path = attr(template_obj, "markermd_source_raw"))
+  invisible(path)
 }
 
 # Basename of a path string, or NULL for a NULL/empty input.
@@ -458,8 +512,10 @@ find_repo_assignment = function(repo_dir, assignment_file, ext) {
 #' template's heading/div anchors line up with the student documents.
 #'
 #' @param path Path to the project directory. Defaults to the working directory.
-#' @param template Optional path to a template `.yaml` overriding the one recorded
-#'   in the project config.
+#' @param template Optional override for the template stored in the project
+#'   database: a path to a template `.yaml` file or a `markermd_template` object.
+#'   When omitted, the database-stored template is used (and an error is raised
+#'   if none has been stored).
 #' @param use_qmd Logical. Match `.qmd` files (TRUE) or `.Rmd` files (FALSE).
 #'
 #' @return A data frame with one row per repository/question: columns `repo`,
@@ -469,18 +525,24 @@ find_repo_assignment = function(repo_dir, assignment_file, ext) {
 validate_project = function(path = ".", template = NULL, use_qmd = TRUE) {
   project = project_config(path)
 
-  template_rel = if (!is.null(template)) template else project@template
-  if (length(template_rel) != 1 || is.na(template_rel)) {
+  template_obj = if (S7::S7_inherits(template, markermd_template)) {
+    template
+  } else if (is.character(template) && length(template) == 1) {
+    if (!fs::file_exists(template)) {
+      cli::cli_abort("Template file does not exist: {.path {template}}")
+    }
+    read_template_yaml(template, require_ast = FALSE)
+  } else if (!is.null(template)) {
+    cli::cli_abort("{.arg template} must be a template file path or a markermd_template object.")
+  } else {
+    load_template_from_db(project@root, base_dir = project@root)
+  }
+  if (is.null(template_obj)) {
     cli::cli_abort(c(
       "No template is configured for this project.",
-      "i" = "Scaffold one and record it with {.code project_set(template = ...)}, or pass {.arg template}."
+      "i" = "Author one with {.code template(\"{project@root}\")}, import one with {.code template_import()}, or pass {.arg template}."
     ))
   }
-  template_path = if (fs::is_absolute_path(template_rel)) template_rel else fs::path(project@root, template_rel)
-  if (!fs::file_exists(template_path)) {
-    cli::cli_abort("Template file does not exist: {.path {template_path}}")
-  }
-  template_obj = read_template_yaml(template_path, require_ast = FALSE)
   assert_template_compatible(template_obj)
 
   if (is.na(project@repos)) {
@@ -494,7 +556,7 @@ validate_project = function(path = ".", template = NULL, use_qmd = TRUE) {
     cli::cli_abort("Configured repos directory does not exist: {.path {repos_dir}}")
   }
 
-  assignment_file = basename_or_null(yaml::read_yaml(template_path)$source$path)
+  assignment_file = basename_or_null(attr(template_obj, "markermd_source_raw"))
   ext = if (use_qmd) "\\.qmd$" else "\\.Rmd$"
 
   repo_dirs = fs::dir_ls(repos_dir, type = "directory")

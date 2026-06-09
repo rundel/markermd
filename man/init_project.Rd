@@ -30,10 +30,10 @@ directories that are not git repositories are recorded as artifact
 directories.
 
 Re-running \code{init_project()} on an already-initialized directory updates it in
-place: the existing grading database is preserved, the skills are refreshed to
-the packaged version, the key and artifact directories are re-scanned, and a
-previously configured template or key is kept (or cleared with a warning if it
-no longer exists).
+place: the existing grading database (including any stored grading template)
+is preserved, the skills are refreshed to the packaged version, the key and
+artifact directories are re-scanned, and a previously configured key is kept
+(or cleared if it no longer exists).
 }
 \examples{
 \dontrun{

@@ -246,3 +246,79 @@ test_that("validate_template_file checks files against the JSON Schema", {
   ))
   expect_false(isTRUE(markermd::validate_template_file(empty_types)))
 })
+
+
+test_that("save_template_to_db -> load_template_from_db round-trips questions and rules", {
+  fix = build_serialization_fixture()
+  d = tempfile("tmpldb_"); dir.create(d)
+
+  expect_null(markermd:::load_template_from_db(d))
+
+  markermd:::save_template_to_db(d, fix$template, source_path = fix$qmd)
+  back = markermd:::load_template_from_db(d, base_dir = d, assignment = fix$qmd, require_ast = TRUE)
+
+  expect_length(back@questions, 2)
+  expect_equal(vapply(back@questions, function(q) q@id, integer(1)), c(1L, 2L))
+  expect_equal(vapply(back@questions, function(q) q@name, character(1)), c("Q2", "Q3"))
+  expect_equal(back@questions[[1]]@selected_nodes@node_ids, "question-2-basic-programming")
+  expect_equal(back@questions[[2]]@selected_nodes@node_ids, "question-3-data-visualization")
+
+  orig_rules = unlist(lapply(fix$template@questions, function(q) q@rules), recursive = FALSE)
+  back_rules = unlist(lapply(back@questions, function(q) q@rules), recursive = FALSE)
+  expect_equal(length(orig_rules), length(back_rules))
+  for (i in seq_along(orig_rules)) {
+    expect_equal(back_rules[[i]]@node_type, orig_rules[[i]]@node_type)
+    expect_equal(back_rules[[i]]@verb, orig_rules[[i]]@verb)
+    expect_equal(back_rules[[i]]@values, orig_rules[[i]]@values)
+  }
+})
+
+
+test_that("database round-trip preserves polymorphic value shapes and array-valued node_ids", {
+  fix = build_serialization_fixture()
+  d = tempfile("tmpldb_"); dir.create(d)
+  markermd:::save_template_to_db(d, fix$template, source_path = fix$qmd)
+  back = markermd:::load_template_from_db(d, base_dir = d, assignment = fix$qmd, require_ast = TRUE)
+
+  between = back@questions[[1]]@rules[[3]]
+  expect_equal(between@verb, "has between")
+  expect_length(between@values, 2)
+  expect_equal(between@values, c(1, 3))
+
+  count = back@questions[[1]]@rules[[2]]
+  expect_true(is.integer(count@values))
+  expect_equal(count@values, 1L)
+
+  pattern = back@questions[[1]]@rules[[1]]
+  expect_true(is.character(pattern@values))
+  expect_equal(pattern@values, "*quantile*")
+
+  multi = back@questions[[2]]@rules[[4]]
+  expect_equal(multi@node_type, c("Markdown", "Raw Block"))
+
+  # a single node_id survives as a length-1 character vector (JSON array, not a
+  # collapsed scalar) -- the fromJSON(simplifyVector = FALSE) shape assumption.
+  expect_equal(back@questions[[1]]@selected_nodes@node_ids, "question-2-basic-programming")
+
+  # the recorded source path round-trips so the assignment can be relocated
+  expect_equal(attr(back, "markermd_source_raw"), fix$qmd)
+})
+
+
+test_that("load_template_from_db errors on missing format_version and honours require_ast", {
+  d = tempfile("tmpldb_"); dir.create(d)
+  markermd:::with_database(d, function(conn) markermd:::set_metadata(conn, "template", "{}"))
+  expect_error(markermd:::load_template_from_db(d), "format_version")
+
+  fix = build_serialization_fixture()
+  d2 = tempfile("tmpldb_"); dir.create(d2)
+  markermd:::save_template_to_db(d2, fix$template, source_path = "does-not-exist.qmd")
+
+  back = markermd:::load_template_from_db(d2)
+  expect_length(back@questions, 2)
+
+  expect_error(
+    markermd:::load_template_from_db(d2, require_ast = TRUE),
+    "assignment document"
+  )
+})

@@ -147,7 +147,7 @@ test_that("project_config round-trips the project config", {
   expect_equal(q@artifacts, p@artifacts)
   expect_equal(q@database, p@database)
   expect_equal(q@created_at, p@created_at)
-  expect_true(is.na(q@template))
+  expect_null(markermd:::load_template_from_db(d))
 })
 
 
@@ -191,18 +191,15 @@ test_that("re-init preserves the grading database", {
 })
 
 
-test_that("re-init keeps a valid template and clears a dangling one", {
+test_that("re-init preserves the template stored in the database", {
   d = make_fake_project()
   init_project(d)
-  tmpl = fs::path(d, "template.yml")
-  writeLines("format_version: '3.0'", tmpl)
-  project_set(d, template = "template.yml")
+  write_chunk_template(fs::path(d, "markermd-template.yaml"))
+  project_set(d, template = "markermd-template.yaml")
+  expect_false(is.null(markermd:::load_template_from_db(d)))
 
-  expect_equal(init_project(d)@template, "template.yml")
-
-  fs::file_delete(tmpl)
-  expect_warning(init_project(d), "no longer exists")
-  expect_true(is.na(project_config(d)@template))
+  init_project(d)
+  expect_false(is.null(markermd:::load_template_from_db(d)))
 })
 
 
@@ -225,22 +222,48 @@ test_that("project_config rejects a config from a newer markermd", {
 })
 
 
-test_that("project_set updates, clears, and validates", {
+test_that("project_set imports, clears, and validates a template", {
   d = make_fake_project()
   init_project(d)
-  writeLines("x", fs::path(d, "t.yml"))
+  write_chunk_template(fs::path(d, "t.yml"))
 
   project_set(d, template = "t.yml")
   project_set(d, repos = "repos")
-  expect_equal(project_config(d)@template, "t.yml")
+  expect_false(is.null(markermd:::load_template_from_db(d)))
 
   project_set(d, template = NA)
-  expect_true(is.na(project_config(d)@template))
+  expect_null(markermd:::load_template_from_db(d))
 
   expect_error(project_set(d, template = "nope.yml"), "does not exist")
 
   expect_warning(project_set(d, repos = "nope"), "does not exist")
   expect_equal(project_config(d)@repos, "nope")
+})
+
+
+test_that("template_import and template_export round-trip via the database", {
+  d = make_fake_project()
+  init_project(d)
+  write_chunk_template(fs::path(d, "src.yaml"))
+
+  template_import("src.yaml", project = d)
+  expect_false(is.null(markermd:::load_template_from_db(d)))
+
+  out = fs::path(d, "exported.yaml")
+  template_export(out, project = d)
+  expect_true(fs::file_exists(out))
+
+  raw = yaml::read_yaml(out)
+  expect_equal(raw$format_version, markermd:::markermd_template_version())
+  expect_equal(raw$source$path, "hw1.qmd")
+  expect_equal(length(raw$questions), 1)
+})
+
+
+test_that("template_export errors when no template is stored", {
+  d = make_fake_project()
+  init_project(d)
+  expect_error(template_export(fs::path(d, "x.yaml"), project = d), "No template is stored")
 })
 
 

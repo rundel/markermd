@@ -424,3 +424,43 @@ calculate_question_progress = function(collection_path, question_name, assignmen
 
   return(result)
 }
+
+# Save a grading template into the project database (its canonical store).
+#
+# Serializes the template with the format-agnostic template_to_list() converter
+# and stores it as a JSON blob under the "template" metadata key.
+#
+# collection_path: Path to the project root
+# template: markermd_template S7 object
+# source_path: Assignment-document path recorded under source.path (optional;
+#   prefer a root-relative path so it resolves on reload)
+
+save_template_to_db = function(collection_path, template, source_path = NULL) {
+  lst = template_to_list(template, source_path = source_path)
+  json = as.character(jsonlite::toJSON(lst, auto_unbox = TRUE, null = "null"))
+  with_database(collection_path, function(conn) {
+    set_metadata(conn, "template", json)
+    TRUE
+  })
+}
+
+# Load the grading template from the project database.
+#
+# Returns the stored markermd_template S7 object, or NULL when the database has
+# no template. base_dir / assignment / require_ast mirror read_template_yaml():
+# the source document named in the stored template is re-parsed to rebuild the
+# AST (never stored), resolved relative to base_dir (the project root) or an
+# explicit assignment override.
+#
+# collection_path: Path to the project root
+# base_dir: Directory used to resolve a relative source.path (defaults to root)
+# assignment: Explicit assignment-document override (optional)
+# require_ast: When TRUE an unresolvable source is an error; FALSE yields an empty AST
+
+load_template_from_db = function(collection_path, base_dir = collection_path,
+                                 assignment = NULL, require_ast = FALSE) {
+  json = with_database(collection_path, function(conn) get_metadata(conn, "template"))
+  if (is.null(json)) return(NULL)
+  x = jsonlite::fromJSON(json, simplifyVector = FALSE)
+  template_from_list(x, base_dir = base_dir, assignment = assignment, require_ast = require_ast)
+}

@@ -2,7 +2,8 @@ library(shinytest2)
 
 # Build a temporary markermd project whose key (solution) repo holds the bundled
 # example assignment. When with_template = TRUE a two-question template is
-# written and recorded in the config so it can be preloaded for editing.
+# written and imported into the project database so it can be preloaded for
+# editing.
 make_template_project = function(with_template = TRUE) {
   src = system.file("examples/test_assignment/student1-excellent", package = "markermd")
   root = tempfile("tmplproj_")
@@ -42,7 +43,7 @@ make_template_project = function(with_template = TRUE) {
 }
 
 
-test_that("template() preloads a project's configured template", {
+test_that("template() preloads a project's stored template", {
   proj = make_template_project(with_template = TRUE)
 
   app = shinytest2::AppDriver$new(
@@ -57,10 +58,10 @@ test_that("template() preloads a project's configured template", {
 })
 
 
-test_that("template() saves into the project and records it in the config", {
+test_that("template() saves into the project database", {
   proj = make_template_project(with_template = FALSE)
 
-  expect_true(is.na(markermd::project_config(proj$root)@template))
+  expect_null(markermd:::load_template_from_db(proj$root))
 
   app = shinytest2::AppDriver$new(
     template(proj$root),
@@ -71,6 +72,58 @@ test_that("template() saves into the project and records it in the config", {
   app$click("save_to_project")
   Sys.sleep(1)
 
-  expect_true(file.exists(file.path(proj$root, "template.yaml")))
-  expect_equal(markermd::project_config(proj$root)@template, "template.yaml")
+  expect_false(is.null(markermd:::load_template_from_db(proj$root)))
+})
+
+
+test_that("template() imports a YAML file into the editor", {
+  proj = make_template_project(with_template = FALSE)
+  qmd = file.path(proj$root, "key", "assignment.qmd")
+
+  import_yaml = tempfile(fileext = ".yaml")
+  writeLines(c(
+    'format_version: "3.0"',
+    sprintf('source: {path: "%s"}', qmd),
+    "questions:",
+    "- {id: 1, name: Q2, node_ids: [question-2-basic-programming], rules: [{node_type: Chunk, verb: has at least, count: 1}]}",
+    "- {id: 2, name: Q3, node_ids: [question-3-data-visualization], rules: []}"
+  ), import_yaml)
+
+  app = shinytest2::AppDriver$new(
+    template(proj$root),
+    name = "template_project_import"
+  )
+
+  expect_equal(app$get_values(export = "n_questions") |> unlist(use.names = FALSE), 0)
+
+  # The Import button triggers the hidden #import_file picker via onclick;
+  # shinytest2 sets that file input directly.
+  app$upload_file(import_file = import_yaml)
+  Sys.sleep(1)
+
+  expect_equal(app$get_values(export = "n_questions") |> unlist(use.names = FALSE), 2)
+  # Imported names are shown verbatim, not renumbered to "Question <id>".
+  expect_setequal(
+    app$get_values(export = "question_names") |> unlist(use.names = FALSE),
+    c("Q2", "Q3")
+  )
+})
+
+
+test_that("template() exports the current template to YAML", {
+  proj = make_template_project(with_template = TRUE)
+
+  app = shinytest2::AppDriver$new(
+    template(proj$root),
+    name = "template_project_export"
+  )
+
+  # Export lives in a popover; open it so the download link is in the live DOM.
+  app$run_js("document.getElementById('io_menu').click();")
+  app$wait_for_idle()
+  Sys.sleep(0.5)
+
+  out = app$get_download("export_template")
+  tmpl = markermd::read_template_yaml(out, require_ast = FALSE)
+  expect_length(tmpl@questions, 2)
 })

@@ -25,7 +25,7 @@ markermd_project_version = function() "1.0"
 #' @param repos Character. Root-relative repos directory, or `NA` if absent.
 #' @param comments Character. Root-relative comments directory, or `NA` if absent.
 #' @param database Character. Root-relative path to the SQLite grading database.
-#' @param template Character. Root-relative path to a grading template, or `NA` if unset.
+#'   The grading template is stored inside this database, not in the config.
 #' @param key Character. Root-relative key (solution) repository directory, or `NA` if unset.
 #' @param artifacts Character vector. Root-relative artifact directory names.
 #' @param created_at Character. Project creation timestamp.
@@ -39,7 +39,6 @@ markermd_project = S7::new_class(
     repos = S7::new_property(S7::class_character, default = quote(NA_character_)),
     comments = S7::new_property(S7::class_character, default = quote(NA_character_)),
     database = S7::new_property(S7::class_character, default = quote(".markermd/markermd.sqlite")),
-    template = S7::new_property(S7::class_character, default = quote(NA_character_)),
     key = S7::new_property(S7::class_character, default = quote(NA_character_)),
     artifacts = S7::new_property(S7::class_character, default = quote(character(0))),
     created_at = S7::new_property(S7::class_character, default = quote(get_current_timestamp())),
@@ -49,7 +48,7 @@ markermd_project = S7::new_class(
   validator = function(self) {
     scalars = list(
       root = self@root, repos = self@repos, comments = self@comments,
-      database = self@database, template = self@template, key = self@key,
+      database = self@database, key = self@key,
       created_at = self@created_at, updated_at = self@updated_at,
       version = self@version
     )
@@ -98,7 +97,8 @@ S7::method(print, markermd_project) = function(x, ...) {
   }
   db_path = resolve(x@database)
   db_exists = !is.na(db_path) && fs::file_exists(db_path)
-  template_path = resolve(x@template)
+  template_in_db = db_exists &&
+    !is.null(with_database(x@root, function(conn) get_metadata(conn, "template")))
 
   cli::cli_h2("Locations")
   cli::cli_ul()
@@ -124,11 +124,10 @@ S7::method(print, markermd_project) = function(x, ...) {
     cli::cli_li("artifacts: {paste(x@artifacts, collapse = ', ')}")
   }
   cli::cli_li("database: {.path {x@database}} ({if (db_exists) 'present' else 'missing'})")
-  if (is.na(x@template)) {
-    cli::cli_li("template: {.emph not set}")
+  if (template_in_db) {
+    cli::cli_li("template: {.emph stored in database}")
   } else {
-    template_state = if (fs::file_exists(template_path)) "present" else "missing"
-    cli::cli_li("template: {.path {x@template}} ({template_state})")
+    cli::cli_li("template: {.emph not set}")
   }
   cli::cli_end()
 

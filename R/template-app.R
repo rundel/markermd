@@ -7,8 +7,9 @@
 # project: markermd_project S7 object. When set, "Save Template" writes the
 #   template into the project and records it in the config (via project_set())
 #   rather than offering a browser download
+# default_points: Numeric. Point value assigned to newly added questions
 
-template_app = function(ast, template_obj = NULL, source_path = NULL, project = NULL) {
+template_app = function(ast, template_obj = NULL, source_path = NULL, project = NULL, default_points = 10) {
   
   # UI
   ui = shiny::div(
@@ -131,7 +132,13 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
         ),
         bslib::card_footer(
           class = "text-center",
-          shiny::uiOutput("save_button_ui")
+          shiny::uiOutput("save_button_ui"),
+          # Hidden file input the Import button triggers directly (see
+          # save_button_ui). Bound once here so the upload survives re-renders.
+          if (!is.null(project)) shiny::div(
+            class = "visually-hidden",
+            shiny::fileInput("import_file", NULL, accept = c(".yaml", ".yml", "text/yaml"))
+          )
         )
       )
     )
@@ -204,7 +211,8 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
         id = as.integer(next_id),
         name = paste("Question", next_id),
         selected_nodes = markermd_node_selection(),
-        rules = list()
+        rules = list(),
+        points = default_points
       )
 
       # Create question module
@@ -444,7 +452,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
               id = paste0("question_card_", q_id),
               class = card_class,
               style = "border-radius: 0.375rem;",
-              question_ui(question_module$module_id, q_id)
+              question_ui(question_module$module_id, q_id, points = question_module$initial_question@points, name = question_module$initial_question@name)
             )
           )
         )
@@ -556,18 +564,51 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
 
     # Dynamic save button UI
     output$save_button_ui = shiny::renderUI({
-      if (length(question_modules()) == 0) {
+      has_questions = length(question_modules()) > 0
+      if (!is.null(project)) {
+        # Project sessions: save to the project database, plus YAML
+        # export/import. Import is available even with no questions; saving and
+        # exporting an empty template is not.
+        shiny::div(
+          class = "d-flex gap-2 justify-content-center",
+          shiny::actionButton(
+            "save_to_project",
+            "Save to Project",
+            class = "btn-success btn-sm",
+            disabled = !has_questions
+          ),
+          # Import/Export tucked into a popover off an exchange-arrows icon
+          bslib::popover(
+            shiny::tags$button(
+              shiny::icon("right-left"),
+              id = "io_menu",
+              type = "button",
+              class = "btn btn-outline-secondary btn-sm",
+              title = "Import / Export"
+            ),
+            shiny::div(
+              class = "d-grid gap-2",
+              shiny::downloadButton(
+                "export_template",
+                "Export",
+                class = paste("btn-outline-secondary btn-sm", if (!has_questions) "disabled")
+              ),
+              shiny::tags$button(
+                "Import",
+                type = "button",
+                class = "btn btn-outline-secondary btn-sm",
+                onclick = "document.getElementById('import_file').click();"
+              )
+            ),
+            title = "Template YAML"
+          )
+        )
+      } else if (!has_questions) {
         shiny::actionButton(
           "save_disabled",
           "Save Template",
           class = "btn-secondary btn-sm",
           disabled = TRUE
-        )
-      } else if (!is.null(project)) {
-        shiny::actionButton(
-          "save_to_project",
-          "Save to Project",
-          class = "btn-success btn-sm"
         )
       } else {
         shiny::downloadButton(
@@ -592,19 +633,76 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       contentType = "text/yaml"
     )
 
-    # Save into the project and record it in the config (project sessions)
+    # Save into the project database, the canonical template store (project
+    # sessions). The assignment source is recorded root-relative so it resolves
+    # on reload; YAML remains available via the Export button.
     shiny::observe({
-      template_rel = if (!is.na(project@template)) project@template else "template.yaml"
-      template_path = if (fs::is_absolute_path(template_rel)) template_rel else fs::path(project@root, template_rel)
-
-      write_template_yaml(build_current_template(), template_path, source_path = source_path)
-      project_set(project@root, template = as.character(fs::path_rel(template_path, project@root)))
+      src_rel = if (!is.null(source_path)) as.character(fs::path_rel(source_path, project@root)) else NULL
+      save_template_to_db(project@root, build_current_template(), source_path = src_rel)
 
       shiny::showNotification(
-        glue::glue("Saved template to {template_rel} and recorded it in the project config."),
+        "Saved template to the project database.",
         type = "message"
       )
     }) |> shiny::bindEvent(input$save_to_project)
+
+    # Export the current template to a YAML file (project sessions). The source
+    # is recorded root-relative so the exported file re-opens against the key.
+    output$export_template = shiny::downloadHandler(
+      filename = function() "markermd_template.yaml",
+      content = function(file) {
+        src = if (!is.null(project) && !is.null(source_path)) {
+          as.character(fs::path_rel(source_path, project@root))
+        } else {
+          source_path
+        }
+        write_template_yaml(build_current_template(), file, source_path = src)
+      },
+      contentType = "text/yaml"
+    )
+
+    # Replace the editor's questions with those from an imported template,
+    # renumbering ids so the question cards fully refresh.
+    load_questions_into_editor = function(questions) {
+      modules = list()
+      start = last_question_id()
+      for (k in seq_along(questions)) {
+        q = questions[[k]]
+        new_id = start + k
+        q@id = as.integer(new_id)
+        modules[[as.character(new_id)]] = list(
+          id = new_id,
+          module_id = paste0("question_", new_id),
+          initial_question = q,
+          server = NULL
+        )
+      }
+      last_question_id(start + length(questions))
+      question_modules(modules)
+      if (length(questions) > 0) current_question_id(start + 1)
+    }
+
+    # Import: the Import button triggers the hidden #import_file picker; parse
+    # the uploaded file and load it into the editor (replacing its questions).
+    shiny::observe({
+      file = input$import_file
+      parsed = purrr::safely(read_template_yaml)(file$datapath, require_ast = FALSE)
+
+      if (!is.null(parsed$error)) {
+        shiny::showNotification(
+          paste0("Could not import template: ", conditionMessage(parsed$error)),
+          type = "error"
+        )
+        return()
+      }
+
+      questions = parsed$result@questions
+      load_questions_into_editor(questions)
+      shiny::showNotification(
+        glue::glue("Imported {length(questions)} question{if (length(questions) == 1) '' else 's'} from {file$name}."),
+        type = "message"
+      )
+    }) |> shiny::bindEvent(input$import_file)
 
     # Export values for testing
     shiny::exportTestValues(
@@ -655,11 +753,12 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
 # source_path: Character. Path to the assignment document, recorded in saved templates
 # project: markermd_project S7 object. When set, the app saves into the project
 #   and records the template in its config instead of offering a file download
+# default_points: Numeric. Point value assigned to newly added questions
 
-template_app_standalone = function(ast, template_obj = NULL, assignment_path = NULL, source_path = NULL, project = NULL) {
+template_app_standalone = function(ast, template_obj = NULL, assignment_path = NULL, source_path = NULL, project = NULL, default_points = 10) {
 
   # Get the base template app components
-  app_components = template_app(ast, template_obj, source_path = source_path, project = project)
+  app_components = template_app(ast, template_obj, source_path = source_path, project = project, default_points = default_points)
   
   # Wrap in navbar
   ui = bslib::page_navbar(
@@ -704,6 +803,9 @@ template_app_standalone = function(ast, template_obj = NULL, assignment_path = N
 #' @param filename Character string. Glob pattern to match Rmd/qmd file to grade (ignored for templates). Default glob matches any .Rmd or .qmd file.
 #' @param assignment Character string. Optional path to the assignment document,
 #'   used when loading a template whose stored `source.path` cannot be located.
+#' @param default_points Numeric. Point value assigned to newly added questions.
+#'   Defaults to 10. Questions loaded from an existing template keep their own
+#'   stored point values.
 #' @param ... Additional arguments passed to shiny::runApp()
 #'
 #' @return Launches Shiny application for template creation
@@ -730,7 +832,7 @@ template_app_standalone = function(ast, template_obj = NULL, assignment_path = N
 #' my_template = read_template_yaml("/path/to/template.yaml")
 #' template(my_template)
 #' }
-template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", assignment = NULL, ...) {
+template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", assignment = NULL, default_points = 10, ...) {
   
   # Validate inputs
   if (missing(assignment_path)) {
@@ -751,7 +853,7 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", as
   } else if (is_markermd_project(assignment_path)) {
     # Input is an initialized markermd project: author the template against the
     # project's key (solution) repo and preload any configured template.
-    app = template_app_from_project(assignment_path, filename, assignment)
+    app = template_app_from_project(assignment_path, filename, assignment, default_points = default_points)
 
   } else if (is.character(assignment_path) && length(assignment_path) == 1) {
     # Input is a character string - could be assignment path or template file
@@ -798,7 +900,7 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", as
     }
 
     # Create app with template data
-    app = template_app_standalone(shiny::reactiveVal(ast), template_obj, footer_path, source_path = source_path)
+    app = template_app_standalone(shiny::reactiveVal(ast), template_obj, footer_path, source_path = source_path, default_points = default_points)
 
   } else if (is.null(app)) {
     # Assignment mode: a single assignment file, a directory containing one, or
@@ -832,7 +934,7 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", as
     }
 
     ast = parse_assignment_document(file_path)
-    app = template_app_standalone(shiny::reactiveVal(ast), NULL, assignment_path, source_path = file_path)
+    app = template_app_standalone(shiny::reactiveVal(ast), NULL, assignment_path, source_path = file_path, default_points = default_points)
   }
 
   shiny::shinyApp(ui=app$ui, server=app$server, ...)
@@ -841,14 +943,16 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", as
 # Build the standalone template app for an initialized markermd project.
 #
 # Authors the template against the project's key (solution) repository and
-# preloads a configured template (if any) for editing. The app saves directly
-# into the project and records the template in its config (see template_app()).
+# preloads the template stored in the project database (if any) for editing. The
+# app saves directly back into the project database (see template_app()).
 #
 # path: project root directory
 # filename: glob used to locate the assignment document within the key repo
-# assignment: optional assignment-document override passed to read_template_yaml()
+# assignment: optional assignment-document override (unused for the DB preload,
+#   which resolves the source against the key repo)
+# default_points: point value assigned to newly added questions
 
-template_app_from_project = function(path, filename, assignment) {
+template_app_from_project = function(path, filename, assignment, default_points = 10) {
   project = project_config(path)
   root = project@root
 
@@ -864,15 +968,9 @@ template_app_from_project = function(path, filename, assignment) {
   }
   key_doc = resolve_assignment_file(key_dir, filename)
 
-  template_obj = NULL
-  if (!is.na(project@template)) {
-    template_path = if (fs::is_absolute_path(project@template)) project@template else fs::path(root, project@template)
-    if (file.exists(template_path)) {
-      template_obj = read_template_yaml(template_path, assignment = key_doc, require_ast = TRUE)
-      assert_template_compatible(template_obj)
-    } else {
-      cli::cli_warn("Configured template {.path {project@template}} not found; starting from a blank template.")
-    }
+  template_obj = load_template_from_db(root, base_dir = root, assignment = key_doc, require_ast = TRUE)
+  if (!is.null(template_obj)) {
+    assert_template_compatible(template_obj)
   }
 
   if (!is.null(template_obj)) {
@@ -886,6 +984,6 @@ template_app_from_project = function(path, filename, assignment) {
 
   template_app_standalone(
     shiny::reactiveVal(ast), template_obj, key_doc,
-    source_path = source_path, project = project
+    source_path = source_path, project = project, default_points = default_points
   )
 }

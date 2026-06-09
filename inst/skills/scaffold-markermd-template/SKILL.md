@@ -1,16 +1,18 @@
 ---
 name: scaffold-markermd-template
-description: Scaffold a markermd grading template (YAML) for an initialized markermd project, using the project's key (solution) repository as the basis, then validate it against every student repository. Reads the project config (.markermd/config.yml) to locate the key and the student repos, writes a starter template with a few basic validation rules, records it in the config, and reports how the rules hold up across submissions. Use when a user wants to bootstrap, scaffold, or generate a markermd template for an assignment project created with markermd::init_project() / ghclass::org_grade_assignment().
+description: Scaffold a markermd grading template (YAML) for an initialized markermd project, using the project's key (solution) repository as the basis, then validate it against every student repository. Reads the project config (.markermd/config.yml) to locate the key and the student repos, writes a starter template with a few basic validation rules, imports it into the project's grading database, and reports how the rules hold up across submissions. Use when a user wants to bootstrap, scaffold, or generate a markermd template for an assignment project created with markermd::init_project() / ghclass::org_grade_assignment().
 ---
 
 # Scaffold a markermd grading template
 
 ## Overview
 
-markermd grades student assignments against a template: a YAML file listing
-questions, where each question targets one or more document sections by their
-Pandoc heading (or div) anchors and carries validation rules. This skill builds
-that scaffolding so the user does not have to do it by hand.
+markermd grades student assignments against a template: a set of questions,
+where each question targets one or more document sections by their Pandoc
+heading (or div) anchors and carries validation rules. The canonical store for
+the template is the project's grading database (`.markermd/markermd.sqlite`);
+YAML is the human-authorable import/export format. This skill builds that
+scaffolding so the user does not have to do it by hand.
 
 It works on an **initialized markermd project** (`markermd::init_project()`,
 which sets up a `ghclass::org_grade_assignment()` layout). The project records
@@ -20,11 +22,11 @@ its file locations in `<root>/.markermd/config.yml`:
   **basis for the template**.
 - `paths.repos` -- the directory of student repositories the template is
   **validated against**.
-- `paths.template` -- where the generated template is recorded.
 
-The flow is: read the config -> build the template from the key -> record it ->
-validate it across all student repos -> report. The scaffold is intentionally
-basic; the user refines the specifics in the `template()` app.
+The flow is: read the config -> build the template YAML from the key -> import
+it into the project database -> validate it across all student repos -> report.
+The scaffold is intentionally basic; the user refines the specifics in the
+`template()` app.
 
 The default assumption is that **every question expects both a code chunk and a
 markdown write-up**. The key's content counts and the assignment's question text
@@ -53,8 +55,8 @@ stop. For a human-readable overview you can also run:
 Rscript -e 'markermd::project_sitrep("<root>")'
 ```
 
-Note the `paths.key`, `paths.repos`, and `paths.template` values; you will use or
-fill in each below.
+Note the `paths.key` and `paths.repos` values; you will use or fill in each
+below. The template itself lives in the grading database, not in the config.
 
 ### 2. Locate the key (the template basis)
 
@@ -154,14 +156,15 @@ ambiguous and the key's content does not settle whether code or a write-up is
 required -- **ask the user before generating that question's rules** rather than
 guessing.
 
-### 6. Write the template YAML and record it in the config
+### 6. Write the template YAML and import it into the project
 
 Write the file to `<root>/markermd-template.yaml` (ask if the user wants a
-different location). Set `source.path` to the key's assignment **relative to the
-project root** (the `source_file` from step 3, e.g. `hw1-key/hw1.qmd`) so the
-template can be re-opened against the key in the `template()` app and so the
-student documents are matched by the same filename. Use the exact `id`s from
-step 3. Shape:
+different location). This YAML is the import source; the template is stored in
+the project database once imported. Set `source.path` to the key's assignment
+**relative to the project root** (the `source_file` from step 3, e.g.
+`hw1-key/hw1.qmd`) so the template can be re-opened against the key in the
+`template()` app and so the student documents are matched by the same filename.
+Use the exact `id`s from step 3. Shape:
 
 ```yaml
 format_version: "3.0"
@@ -194,16 +197,8 @@ Rules and constraints:
   `system.file("schema/markermd-template.json", package = "markermd")` if you
   need to check the exact structure.
 
-Then record the template in the project config:
-
-```
-Rscript -e 'markermd::project_set("<root>", template = "markermd-template.yaml")'
-```
-
-If `paths.template` was already set, ask the user whether to regenerate it or
-just refine the existing one before overwriting.
-
-Confirm the file loads and every anchor resolves against the re-parsed key:
+Before importing, confirm the file loads and every anchor resolves against the
+re-parsed key:
 
 ```
 Rscript -e 'invisible(markermd::read_template_yaml("<root>/markermd-template.yaml", require_ast = TRUE)); cat("OK\n")'
@@ -219,6 +214,15 @@ Rscript -e 'print(markermd::validate_template_file("<root>/markermd-template.yam
 a missing value key for a verb, or duplicate names) and re-validate until it
 loads cleanly.
 
+Then import the template into the project database (its canonical store):
+
+```
+Rscript -e 'markermd::template_import("markermd-template.yaml", project = "<root>")'
+```
+
+If a template is already stored in the project, ask the user whether to
+regenerate it or just refine the existing one before overwriting.
+
 ### 7. Validate the template against every student repository
 
 The template and its rules are now used to check all student submissions.
@@ -230,8 +234,9 @@ The template and its rules are now used to check all student submissions.
   Rscript -e 'markermd::project_set("<root>", repos = "<repos-dir>")'
   ```
 
-Then run the headless validator, which loads the configured template, discovers
-the repositories under `paths.repos`, and validates each:
+Then run the headless validator, which loads the stored template from the
+project database, discovers the repositories under `paths.repos`, and validates
+each:
 
 ```
 Rscript -e 'res <- markermd::validate_project("<root>"); print(res, row.names = FALSE)'
@@ -252,11 +257,12 @@ how many repos pass each question, and which rules fail widely. Interpretation:
 
 Summarize for the user: which sections became questions, the anchors used, the
 starter rules added, that the template was written to
-`<root>/markermd-template.yaml` and recorded in the project config, and the
-validation summary from step 7. Then tell them to open and refine it:
+`<root>/markermd-template.yaml` and imported into the project database, and the
+validation summary from step 7. Then tell them to open and refine it (passing
+the project root loads the stored template and saves edits back to the database):
 
 ```
-markermd::template("<root>/markermd-template.yaml")
+markermd::template("<root>")
 ```
 
 Remind them the scaffold is deliberately minimal and that the point of the app

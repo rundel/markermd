@@ -9,7 +9,6 @@ markermd_project(
   repos = NA_character_,
   comments = NA_character_,
   database = ".markermd/markermd.sqlite",
-  template = NA_character_,
   key = NA_character_,
   artifacts = character(0),
   created_at = get_current_timestamp(),
@@ -24,9 +23,8 @@ markermd_project(
 
 \item{comments}{Character. Root-relative comments directory, or \code{NA} if absent.}
 
-\item{database}{Character. Root-relative path to the SQLite grading database.}
-
-\item{template}{Character. Root-relative path to a grading template, or \code{NA} if unset.}
+\item{database}{Character. Root-relative path to the SQLite grading database.
+The grading template is stored inside this database, not in the config.}
 
 \item{key}{Character. Root-relative key (solution) repository directory, or \code{NA} if unset.}
 
