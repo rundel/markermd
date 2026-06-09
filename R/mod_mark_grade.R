@@ -87,6 +87,21 @@ mark_grade_ui = function(id, grade_state) {
     # Simple, clean JavaScript for score editing
     shiny::tags$script(shiny::HTML(paste0("
       $(document).ready(function() {
+        // Patch the score display in place. The grade widget is deliberately
+        // not re-rendered on score changes (see output$grade_ui in
+        // mod_mark_rubric.R), so the server updates it via this message.
+        // jQuery .data() caches after first read, so update both the cache and
+        // the attributes.
+        Shiny.addCustomMessageHandler('markermd_update_score', function(msg) {
+          var el = document.getElementById(msg.id);
+          if (!el) return;
+          var $el = $(el);
+          $el.data('current', msg.current).data('total', msg.total);
+          $el.attr('data-current', msg.current).attr('data-total', msg.total);
+          var suffix = msg.total === 1 ? 'pt' : 'pts';
+          $el.html(msg.current + ' / ' + msg.total + ' ' + suffix);
+        });
+
         // Click handler for score editing
         $(document).on('click', '#", ns("score_display"), "', function() {
           var $el = $(this);
@@ -154,8 +169,19 @@ mark_grade_server = function(id, initial_grade, ui_ns = NULL, collection_path = 
   
     # Internal state using S7 class
     grade_state = shiny::reactiveVal(initial_grade)
-    
-    
+
+    # Patch the score display's text and data attributes in place (the widget
+    # is not re-rendered on score changes; see output$grade_ui in
+    # mod_mark_rubric.R)
+    update_score_display = function(current, total) {
+      session$sendCustomMessage("markermd_update_score", list(
+        id = target_ns("score_display"),
+        current = current,
+        total = total
+      ))
+    }
+
+
     # Handle total score changes
     shiny::observe({
       current_grade = grade_state()
@@ -197,15 +223,7 @@ mark_grade_server = function(id, initial_grade, ui_ns = NULL, collection_path = 
         }
         
         # Update display with new total and potentially adjusted current score
-        shinyjs::runjs(glue::glue("
-          var scoreDiv = document.getElementById('{target_ns('score_display')}');
-          if (scoreDiv) {{
-            scoreDiv.setAttribute('data-current', {new_current});
-            scoreDiv.setAttribute('data-total', {new_total});
-            var suffix = {new_total} === 1 ? 'pt' : 'pts';
-            scoreDiv.innerHTML = {new_current} + ' / ' + {new_total} + ' ' + suffix;
-          }}
-        ", .open = "{", .close = "}"))
+        update_score_display(new_current, new_total)
       }
     }) |> shiny::bindEvent(input$total_score_input, ignoreInit = TRUE)
 
@@ -237,15 +255,7 @@ mark_grade_server = function(id, initial_grade, ui_ns = NULL, collection_path = 
         }
         
         # Update the display
-        shinyjs::runjs(glue::glue("
-          var scoreDiv = document.getElementById('{target_ns('score_display')}');
-          if (scoreDiv) {{
-            scoreDiv.setAttribute('data-current', {new_current_score});
-            var total = parseFloat(scoreDiv.getAttribute('data-total'));
-            var suffix = total === 1 ? 'pt' : 'pts';
-            scoreDiv.innerHTML = {new_current_score} + ' / ' + total + ' ' + suffix;
-          }}
-        ", .open = "{", .close = "}"))
+        update_score_display(new_current_score, current_grade@total_score)
 
       }
     }) |> shiny::bindEvent(input$grading_mode, ignoreInit = TRUE)
@@ -290,15 +300,7 @@ mark_grade_server = function(id, initial_grade, ui_ns = NULL, collection_path = 
         }
         
         # Update the display
-        shinyjs::runjs(glue::glue("
-          var scoreDiv = document.getElementById('{target_ns('score_display')}');
-          if (scoreDiv) {{
-            scoreDiv.setAttribute('data-current', {new_grade@current_score});
-            scoreDiv.setAttribute('data-total', {new_grade@total_score});
-            var suffix = {new_grade@total_score} === 1 ? 'pt' : 'pts';
-            scoreDiv.innerHTML = {new_grade@current_score} + ' / ' + {new_grade@total_score} + ' ' + suffix;
-          }}
-        ", .open = "{", .close = "}"))
+        update_score_display(new_grade@current_score, new_grade@total_score)
       }
     ))
   })
