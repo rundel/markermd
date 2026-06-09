@@ -256,8 +256,21 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
             font-weight: normal !important;
             padding: 4px 8px !important;
           }
-          
-          
+
+          /* Repository select buttons. Selection highlight is toggled via the
+             .active class (shinyjs) so selecting a repo does not re-render the
+             whole table. */
+          .repo-select-btn {
+            background-color: white; color: #333; border: 1px solid #ddd;
+            padding: 8px 12px; border-radius: 4px; text-align: left; width: 100%;
+            cursor: pointer; font-size: 12px; white-space: nowrap;
+            overflow: hidden; text-overflow: ellipsis;
+          }
+          .repo-select-btn.active {
+            background-color: #007bff; color: white; border-color: #007bff;
+          }
+
+
           /* Section highlighting for scrolling - single wrapper container approach */
           .section-highlight-wrapper {
             background-color: rgba(255, 235, 59, 0.15) !important;
@@ -453,21 +466,19 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       # Add row numbers for button IDs
       repo_df$row_id = seq_len(nrow(repo_df))
       
-      # Create clickable repository names with action buttons and GitHub icons
+      # Create clickable repository names. The active-selection highlight is read
+      # once via isolate() (so the table is not re-rendered on every repo click)
+      # and baked into the class; subsequent selections toggle .active via shinyjs.
+      active_row = shiny::isolate(selected_repo_index())
       repo_df$Repository = purrr::map_chr(seq_len(nrow(repo_df)), function(i) {
-        button_style = if (i == selected_repo_index()) {
-          "background-color: #007bff; color: white; border: 1px solid #007bff; padding: 8px 12px; border-radius: 4px; text-align: left; width: 100%; cursor: pointer; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
-        } else {
-          "background-color: white; color: #333; border: 1px solid #ddd; padding: 8px 12px; border-radius: 4px; text-align: left; width: 100%; cursor: pointer; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
-        }
-        
+        active_class = if (i == active_row) " active" else ""
+
         # Just show repo name - no GitHub icon here
         content = repo_df$OriginalName[i]
-        
+
         paste0(
-          '<button onclick="Shiny.setInputValue(\'repo_select_', i, '\', Math.random())" style="', 
-          button_style, 
-          '">',
+          '<button onclick="Shiny.setInputValue(\'repo_select_', i, '\', Math.random())"',
+          ' class="repo-select-btn', active_class, '" data-row="', i, '">',
           content,
           '</button>'
         )
@@ -550,7 +561,20 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
           })
         }
     })
-    
+
+    # Move the selected-repo highlight in place instead of re-rendering the table.
+    # Fires on init too, so the initial selection is highlighted once the table
+    # is present.
+    shiny::observe({
+      idx = selected_repo_index()
+      shinyjs::removeClass(selector = ".repo-select-btn", class = "active")
+      shinyjs::addClass(
+        selector = paste0(".repo-select-btn[data-row='", idx, "']"),
+        class = "active"
+      )
+    }) |>
+      shiny::bindEvent(selected_repo_index())
+
     # Handle artifact button clicks
     shiny::observe({
       for (i in seq_along(repo_list)) {
