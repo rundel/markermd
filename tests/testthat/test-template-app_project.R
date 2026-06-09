@@ -110,6 +110,42 @@ test_that("template() imports a YAML file into the editor", {
 })
 
 
+test_that("template() confirms before an import replaces existing questions", {
+  proj = make_template_project(with_template = TRUE)
+  qmd = file.path(proj$root, "key", "assignment.qmd")
+
+  import_yaml = tempfile(fileext = ".yaml")
+  writeLines(c(
+    'format_version: "3.0"',
+    sprintf('source: {path: "%s"}', qmd),
+    "questions:",
+    "- {id: 1, name: Imported, node_ids: [question-2-basic-programming], rules: []}"
+  ), import_yaml)
+
+  app = shinytest2::AppDriver$new(
+    template(proj$root),
+    name = "template_project_import_confirm"
+  )
+
+  expect_equal(app$get_values(export = "n_questions") |> unlist(use.names = FALSE), 2)
+
+  app$upload_file(import_file = import_yaml)
+  Sys.sleep(1)
+
+  # The editor's questions survive until the replace modal is confirmed
+  expect_equal(app$get_values(export = "n_questions") |> unlist(use.names = FALSE), 2)
+
+  app$click("confirm_import")
+  Sys.sleep(1)
+
+  expect_equal(app$get_values(export = "n_questions") |> unlist(use.names = FALSE), 1)
+  expect_setequal(
+    app$get_values(export = "question_names") |> unlist(use.names = FALSE),
+    "Imported"
+  )
+})
+
+
 test_that("template() exports the current template to YAML", {
   proj = make_template_project(with_template = TRUE)
 

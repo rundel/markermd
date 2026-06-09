@@ -682,8 +682,21 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       if (length(questions) > 0) current_question_id(start + 1)
     }
 
+    apply_import = function(questions, file_name) {
+      load_questions_into_editor(questions)
+      shiny::showNotification(
+        glue::glue("Imported {length(questions)} question{if (length(questions) == 1) '' else 's'} from {file_name}."),
+        type = "message"
+      )
+    }
+
+    # A parsed import awaiting confirmation while the replace modal is open
+    pending_import = shiny::reactiveVal(NULL)
+
     # Import: the Import button triggers the hidden #import_file picker; parse
     # the uploaded file and load it into the editor (replacing its questions).
+    # When the editor already has questions, confirm before replacing them so a
+    # stray import does not silently lose authoring work.
     shiny::observe({
       file = input$import_file
       parsed = purrr::safely(read_template_yaml)(file$datapath, require_ast = FALSE)
@@ -697,12 +710,33 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       }
 
       questions = parsed$result@questions
-      load_questions_into_editor(questions)
-      shiny::showNotification(
-        glue::glue("Imported {length(questions)} question{if (length(questions) == 1) '' else 's'} from {file$name}."),
-        type = "message"
-      )
+      n_existing = length(question_modules())
+      if (n_existing > 0) {
+        pending_import(list(questions = questions, name = file$name))
+        shiny::showModal(shiny::modalDialog(
+          title = "Replace existing questions?",
+          glue::glue(
+            "Importing \"{file$name}\" replaces the {n_existing} ",
+            "question{if (n_existing == 1) '' else 's'} currently in the editor. ",
+            "This cannot be undone."
+          ),
+          easyClose = TRUE,
+          footer = shiny::tagList(
+            shiny::modalButton("Cancel"),
+            shiny::actionButton("confirm_import", "Replace", class = "btn-danger")
+          )
+        ))
+      } else {
+        apply_import(questions, file$name)
+      }
     }) |> shiny::bindEvent(input$import_file)
+
+    shiny::observe({
+      shiny::removeModal()
+      pending = pending_import()
+      pending_import(NULL)
+      apply_import(pending$questions, pending$name)
+    }) |> shiny::bindEvent(input$confirm_import)
 
     # Export values for testing
     shiny::exportTestValues(
