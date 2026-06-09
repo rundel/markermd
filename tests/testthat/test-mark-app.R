@@ -68,3 +68,46 @@ test_that("mark app launches and validates repositories by section", {
   # The weak answer lacks the quantile content in its Question 2 section
   expect_equal(unname(status[["student3-poor"]][["Q2"]]), "fail")
 })
+
+
+test_that("grading interactions patch the score display in place", {
+  fixture = make_mark_fixture()
+
+  app = shinytest2::AppDriver$new(
+    markermd:::mark_app(fixture$project),
+    name = "mark_grading"
+  )
+
+  score_display = function() {
+    trimws(app$get_js(
+      "document.getElementById('rubric_module-grade_Q2-score_display').innerHTML"
+    ))
+  }
+
+  # The grading pane's outputs are suspended until its tab is shown
+  app$set_inputs(main_navbar = "rubric")
+  app$wait_for_idle()
+
+  expect_equal(score_display(), "0 / 10 pts")
+
+  # Editing the total goes total_score_input -> server observer ->
+  # update_score_display() custom message -> DOM patch
+  app$run_js("Shiny.setInputValue('rubric_module-grade_Q2-total_score_input', 25)")
+  app$wait_for_idle()
+  expect_equal(score_display(), "0 / 25 pts")
+
+  # Selecting a rubric item recomputes the score through the same path
+  app$click("rubric_module-add_item")
+  app$wait_for_idle()
+  app$run_js("Shiny.setInputValue('rubric_module-item_0-points_text', 4)")
+  app$wait_for_idle()
+
+  app$click("rubric_module-item_0-hotkey_btn")
+  app$wait_for_idle()
+  expect_equal(score_display(), "4 / 25 pts")
+
+  # Deselecting returns the score to zero
+  app$click("rubric_module-item_0-hotkey_btn")
+  app$wait_for_idle()
+  expect_equal(score_display(), "0 / 25 pts")
+})
