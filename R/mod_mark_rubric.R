@@ -455,8 +455,10 @@ mark_rubric_server = function(id, template, artifact_paths, root, use_qmd, colle
     # items recreated from the database, so loaded items respond to their
     # buttons too.
     wire_item_signals = function(server) {
+      handles = list()
+
       # Handle move up signal
-      shiny::observe({
+      handles$move_up = shiny::observe({
         server_list = question_item_servers[[input$question_select]]
         server_names = names(server_list)
         current_index = which(server_names == server$id)
@@ -501,7 +503,7 @@ mark_rubric_server = function(id, template, artifact_paths, root, use_qmd, colle
         shiny::bindEvent(server$move_up_signal(), ignoreInit = TRUE)
 
       # Handle move down signal
-      shiny::observe({
+      handles$move_down = shiny::observe({
         server_list = question_item_servers[[input$question_select]]
         server_names = names(server_list)
         current_index = which(server_names == server$id)
@@ -546,7 +548,7 @@ mark_rubric_server = function(id, template, artifact_paths, root, use_qmd, colle
         shiny::bindEvent(server$move_down_signal(), ignoreInit = TRUE)
 
       # Handle delete signal
-      shiny::observe({
+      handles$delete = shiny::observe({
         question_item_servers[[input$question_select]][[server$id]] = NULL
 
         # Remove the item's row and its grade-selection events; otherwise it
@@ -583,6 +585,12 @@ mark_rubric_server = function(id, template, artifact_paths, root, use_qmd, colle
         # Remove only the deleted item; existing items keep their DOM (and any
         # in-progress edit) instead of being rebuilt by a full re-render.
         shiny::removeUI(selector = paste0("#", session$ns(server$id), "-container"))
+
+        # The item is gone, so destroy its handlers; repeated add/delete cycles
+        # would otherwise accumulate dead observers for the session's lifetime.
+        handles$move_up$destroy()
+        handles$move_down$destroy()
+        handles$delete$destroy()
       }) |>
         shiny::bindEvent(server$delete_signal(), ignoreInit = TRUE)
     }
