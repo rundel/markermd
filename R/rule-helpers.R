@@ -26,7 +26,11 @@ get_allowed_node_types = function() {
     "Bullet list",
     "Ordered list",
     "Block quote",
-    "Table"
+    "Table",
+    "Figure",
+    "Horizontal rule",
+    "Definition list",
+    "Line block"
   )
 }
 

@@ -191,7 +191,8 @@ Rules and constraints:
   `has name` use `pattern`.
 - Allowed `node_type` values: `Any node`, `Heading`, `Markdown`, `Chunk`,
   `Code block`, `Raw Block`, `Div`, `Bullet list`, `Ordered list`,
-  `Block quote`, `Table`.
+  `Block quote`, `Table`, `Figure`, `Horizontal rule`, `Definition list`,
+  `Line block`.
 - Question `id`s and `name`s must each be unique.
 - The full JSON Schema is bundled at
   `system.file("schema/markermd-template.json", package = "markermd")` if you
