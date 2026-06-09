@@ -496,6 +496,9 @@ mark_rubric_server = function(id, template, artifact_paths, root, use_qmd, colle
             )
 
             srv$update_item(updated_item)
+            # Persist the renumbered hotkey; load_rubric_items() orders by
+            # hotkey, so the new arrangement survives an app restart
+            save_rubric_item(root, input$question_select, names(new_server_list)[i], updated_item)
           }
 
           redraw_ui(redraw_ui()+1)
@@ -541,6 +544,9 @@ mark_rubric_server = function(id, template, artifact_paths, root, use_qmd, colle
             )
 
             srv$update_item(updated_item)
+            # Persist the renumbered hotkey; load_rubric_items() orders by
+            # hotkey, so the new arrangement survives an app restart
+            save_rubric_item(root, input$question_select, names(new_server_list)[i], updated_item)
           }
 
           redraw_ui(redraw_ui()+1)
@@ -669,7 +675,7 @@ mark_rubric_server = function(id, template, artifact_paths, root, use_qmd, colle
       # Find a unique server_id by checking existing items
       current_servers = question_item_servers[[input$question_select]]
       existing_ids = names(current_servers)
-      
+
       # Generate unique server_id
       server_id = paste0("item_", id_idx)
       while (server_id %in% existing_ids) {

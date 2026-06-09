@@ -148,8 +148,12 @@ load_grade_state = function(collection_path, question_name) {
 
 load_rubric_items = function(collection_path, question_name) {
   with_database(collection_path, function(conn) {
+    # The move/delete handlers keep hotkey == display position (1-10, NA
+    # beyond), so ordering by hotkey reproduces the arrangement the grader
+    # left; un-hotkeyed items keep insertion order at the tail
     items_data = DBI::dbGetQuery(conn, "
-      SELECT * FROM items WHERE question_name = ? ORDER BY id
+      SELECT * FROM items WHERE question_name = ?
+      ORDER BY (hotkey IS NULL), hotkey, id
     ", params = list(question_name))
     
     if (nrow(items_data) == 0) {

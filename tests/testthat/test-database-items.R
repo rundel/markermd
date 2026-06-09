@@ -28,3 +28,17 @@ test_that("delete_rubric_item removes the item row and its grade events", {
   # the deleted item's grade events no longer count the repo as graded
   expect_equal(unname(markermd:::calculate_grading_progress(dir, "Q1", "repoA")), 0L)
 })
+
+
+test_that("load_rubric_items orders by hotkey so reorders survive a restart", {
+  dir = tempfile("itemorder")
+  dir.create(dir)
+
+  # saved out of display order: item_b holds hotkey 1, item_a hotkey 2, and
+  # item_c has no hotkey so it stays at the tail
+  markermd:::save_rubric_item(dir, "Q1", "item_a", markermd::markermd_rubric_item(hotkey = 2L, points = 1, description = "second"))
+  markermd:::save_rubric_item(dir, "Q1", "item_b", markermd::markermd_rubric_item(hotkey = 1L, points = 1, description = "first"))
+  markermd:::save_rubric_item(dir, "Q1", "item_c", markermd::markermd_rubric_item(hotkey = NA_integer_, points = 1, description = "tail"))
+
+  expect_named(markermd:::load_rubric_items(dir, "Q1"), c("item_b", "item_a", "item_c"))
+})
