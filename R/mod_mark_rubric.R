@@ -370,7 +370,7 @@ mark_rubric_server = function(id, template, artifact_paths, root, use_qmd, colle
                   theme: "vs",
                   readOnly: true,
                   wordWrap: "on",
-                  wrappingIndent: "indent",
+                  wrappingIndent: "none",
                   fontSize: 11,
                   lineNumbers: "on",
                   minimap: { enabled: false },

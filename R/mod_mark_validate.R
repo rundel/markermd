@@ -49,7 +49,7 @@ create_rule_details = function(question, question_result) {
       style = paste0("margin: 6px 0; padding: 8px; border-left: 3px solid ", rule_color, "; background-color: #f8f9fa; border-radius: 3px;"),
       shiny::div(
         style = "display: flex; align-items: center;",
-        shiny::icon(rule_icon, style = paste0("color: ", rule_color, "; margin-right: 6px; font-size: 14px;")),
+        shiny::icon(rule_icon, class = "fa-fw", style = paste0("color: ", rule_color, "; margin-right: 8px; font-size: 14px;")),
         if (!is.null(rule)) {
           lapply(rule@node_type, function(nt) {
             shiny::span(
