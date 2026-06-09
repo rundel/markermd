@@ -82,6 +82,19 @@ save_rubric_item = function(collection_path, question_name, item_id, rubric_item
   })
 }
 
+# Delete rubric item from database, along with its grade-selection events
+#
+# collection_path: Path to collection directory
+# question_name: Character string
+# item_id: Character string (unique identifier for this item)
+
+delete_rubric_item = function(collection_path, question_name, item_id) {
+  with_database(collection_path, function(conn) {
+    delete_item_records(conn, question_name, item_id)
+    return(TRUE)
+  })
+}
+
 # Save grade selection event to database
 #
 # collection_path: Path to collection directory

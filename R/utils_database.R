@@ -284,6 +284,22 @@ upsert_items = function(conn, question_name, item_id, rubric_item) {
   }
 }
 
+# Delete an items record along with its grade-selection events, so a repo no
+# longer counts as graded via an item that no longer exists
+#
+# conn: DBI connection object
+# question_name: Character string
+# item_id: Character string
+
+delete_item_records = function(conn, question_name, item_id) {
+  DBI::dbExecute(conn, "
+    DELETE FROM items WHERE question_name = ? AND item_id = ?
+  ", params = list(question_name, item_id))
+  DBI::dbExecute(conn, "
+    DELETE FROM grades WHERE question_name = ? AND item_id = ?
+  ", params = list(question_name, item_id))
+}
+
 # Insert grade record
 #
 # conn: DBI connection object

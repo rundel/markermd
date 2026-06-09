@@ -449,7 +449,144 @@ mark_rubric_server = function(id, template, artifact_paths, root, use_qmd, colle
     
 
     redraw_ui = shiny::reactiveVal(0)
-    
+
+    # Wire the parent-side handlers for one rubric item server: move up/down
+    # reordering and deletion. Called for items added in this session and for
+    # items recreated from the database, so loaded items respond to their
+    # buttons too.
+    wire_item_signals = function(server) {
+      # Handle move up signal
+      shiny::observe({
+        server_list = question_item_servers[[input$question_select]]
+        server_names = names(server_list)
+        current_index = which(server_names == server$id)
+
+        if (length(current_index) > 0 && length(server_names) > 1) {
+          if (current_index == 1) {
+            # Moving up from top - move item to end of list
+            new_order = c(2:length(server_list), 1)
+          } else {
+            # Normal move up - swap with previous item
+            new_index = current_index - 1
+            new_order = seq_along(server_list)
+            new_order[c(current_index, new_index)] = new_order[c(new_index, current_index)]
+          }
+
+          # Reorder the server list
+          new_server_list = server_list[new_order]
+          names(new_server_list) = server_names[new_order]
+
+          # Update the list with new order
+          question_item_servers[[input$question_select]] = new_server_list
+
+          # Update all hotkeys to maintain sequence
+          for (i in seq_along(new_server_list)) {
+            srv = new_server_list[[i]]
+            current_item = srv$item()
+            new_hotkey = if (i <= 10) as.integer(i) else NA_integer_
+
+            updated_item = markermd_rubric_item(
+              hotkey = new_hotkey,
+              points = current_item@points,
+              description = current_item@description,
+              selected = current_item@selected
+            )
+
+            srv$update_item(updated_item)
+          }
+
+          redraw_ui(redraw_ui()+1)
+        }
+      }) |>
+        shiny::bindEvent(server$move_up_signal(), ignoreInit = TRUE)
+
+      # Handle move down signal
+      shiny::observe({
+        server_list = question_item_servers[[input$question_select]]
+        server_names = names(server_list)
+        current_index = which(server_names == server$id)
+
+        if (length(current_index) > 0 && length(server_names) > 1) {
+          if (current_index == length(server_names)) {
+            # Moving down from bottom - move item to beginning of list
+            new_order = c(length(server_list), 1:(length(server_list)-1))
+          } else {
+            # Normal move down - swap with next item
+            new_index = current_index + 1
+            new_order = seq_along(server_list)
+            new_order[c(current_index, new_index)] = new_order[c(new_index, current_index)]
+          }
+
+          # Reorder the server list
+          new_server_list = server_list[new_order]
+          names(new_server_list) = server_names[new_order]
+
+          # Update the list with new order
+          question_item_servers[[input$question_select]] = new_server_list
+
+          # Update all hotkeys to maintain sequence
+          for (i in seq_along(new_server_list)) {
+            srv = new_server_list[[i]]
+            current_item = srv$item()
+            new_hotkey = if (i <= 10) as.integer(i) else NA_integer_
+
+            updated_item = markermd_rubric_item(
+              hotkey = new_hotkey,
+              points = current_item@points,
+              description = current_item@description,
+              selected = current_item@selected
+            )
+
+            srv$update_item(updated_item)
+          }
+
+          redraw_ui(redraw_ui()+1)
+        }
+      }) |>
+        shiny::bindEvent(server$move_down_signal(), ignoreInit = TRUE)
+
+      # Handle delete signal
+      shiny::observe({
+        question_item_servers[[input$question_select]][[server$id]] = NULL
+
+        # Remove the item's row and its grade-selection events; otherwise it
+        # reappears on the next app start via load_rubric_items()
+        delete_rubric_item(root, input$question_select, server$id)
+
+        # Reorder hotkeys for remaining items to ensure continuity
+        remaining_servers = question_item_servers[[input$question_select]]
+        if (length(remaining_servers) > 0) {
+          server_list = names(remaining_servers)
+
+          # Reassign continuous hotkeys starting from 1
+          for (i in seq_along(server_list)) {
+            srv_id = server_list[i]
+            current_item = remaining_servers[[srv_id]]$item()
+
+            new_hotkey = if (i <= 10) as.integer(i) else NA_integer_
+            updated_item = markermd_rubric_item(
+              hotkey = new_hotkey,
+              points = current_item@points,
+              description = current_item@description,
+              selected = current_item@selected
+            )
+
+            # Update the server's internal state. The item's hotkey button
+            # self-renders from this state, so remaining labels renumber without
+            # a parent re-render. Persist the renumbered hotkey so the database
+            # stays in sync with what is shown.
+            remaining_servers[[srv_id]]$update_item(updated_item)
+            save_rubric_item(root, input$question_select, srv_id, updated_item)
+          }
+        }
+
+        # Remove only the deleted item; existing items keep their DOM (and any
+        # in-progress edit) instead of being rebuilt by a full re-render.
+        shiny::removeUI(selector = paste0("#", session$ns(server$id), "-container"))
+      }) |>
+        shiny::bindEvent(server$delete_signal(), ignoreInit = TRUE)
+    }
+
     # Initialize rubric items from database state inside an observer
     shiny::observe({
       if (!is.null(database_state) && !is.null(database_state$rubric_items)) {
@@ -467,6 +604,7 @@ mark_rubric_server = function(id, template, artifact_paths, root, use_qmd, colle
                 item_id = item_id
               )
               question_item_servers[[question_name]][[server_id]] = server
+              wire_item_signals(server)
             }
           }
         }
@@ -546,130 +684,7 @@ mark_rubric_server = function(id, template, artifact_paths, root, use_qmd, colle
       # Save new item to database
       save_rubric_item(root, input$question_select, server_id, new_item)
 
-      # Handle move up signal
-      shiny::observe({
-        server_list = question_item_servers[[input$question_select]]
-        server_names = names(server_list)
-        current_index = which(server_names == server$id)
-        
-        if (length(current_index) > 0 && length(server_names) > 1) {
-          if (current_index == 1) {
-            # Moving up from top - move item to end of list
-            new_order = c(2:length(server_list), 1)
-          } else {
-            # Normal move up - swap with previous item
-            new_index = current_index - 1
-            new_order = seq_along(server_list)
-            new_order[c(current_index, new_index)] = new_order[c(new_index, current_index)]
-          }
-          
-          # Reorder the server list
-          new_server_list = server_list[new_order]
-          names(new_server_list) = server_names[new_order]
-          
-          # Update the list with new order
-          question_item_servers[[input$question_select]] = new_server_list
-          
-          # Update all hotkeys to maintain sequence
-          for (i in seq_along(new_server_list)) {
-            srv = new_server_list[[i]]
-            current_item = srv$item()
-            new_hotkey = if (i <= 10) as.integer(i) else NA_integer_
-            
-            updated_item = markermd_rubric_item(
-              hotkey = new_hotkey,
-              points = current_item@points,
-              description = current_item@description,
-              selected = current_item@selected
-            )
-            
-            srv$update_item(updated_item)
-          }
-          
-          redraw_ui(redraw_ui()+1)
-        }
-      }) |>
-        shiny::bindEvent(server$move_up_signal(), ignoreInit = TRUE)
-
-      # Handle move down signal
-      shiny::observe({
-        server_list = question_item_servers[[input$question_select]]
-        server_names = names(server_list)
-        current_index = which(server_names == server$id)
-        
-        if (length(current_index) > 0 && length(server_names) > 1) {
-          if (current_index == length(server_names)) {
-            # Moving down from bottom - move item to beginning of list
-            new_order = c(length(server_list), 1:(length(server_list)-1))
-          } else {
-            # Normal move down - swap with next item
-            new_index = current_index + 1
-            new_order = seq_along(server_list)
-            new_order[c(current_index, new_index)] = new_order[c(new_index, current_index)]
-          }
-          
-          # Reorder the server list
-          new_server_list = server_list[new_order]
-          names(new_server_list) = server_names[new_order]
-          
-          # Update the list with new order
-          question_item_servers[[input$question_select]] = new_server_list
-          
-          # Update all hotkeys to maintain sequence
-          for (i in seq_along(new_server_list)) {
-            srv = new_server_list[[i]]
-            current_item = srv$item()
-            new_hotkey = if (i <= 10) as.integer(i) else NA_integer_
-            
-            updated_item = markermd_rubric_item(
-              hotkey = new_hotkey,
-              points = current_item@points,
-              description = current_item@description,
-              selected = current_item@selected
-            )
-            
-            srv$update_item(updated_item)
-          }
-          
-          redraw_ui(redraw_ui()+1)
-        }
-      }) |>
-        shiny::bindEvent(server$move_down_signal(), ignoreInit = TRUE)
-
-      # Handle delete signal
-      shiny::observe({
-        question_item_servers[[input$question_select]][[server$id]] = NULL
-        
-        # Reorder hotkeys for remaining items to ensure continuity
-        remaining_servers = question_item_servers[[input$question_select]]
-        if (length(remaining_servers) > 0) {
-          server_list = names(remaining_servers)
-          
-          # Reassign continuous hotkeys starting from 1
-          for (i in seq_along(server_list)) {
-            srv_id = server_list[i]
-            current_item = remaining_servers[[srv_id]]$item()
-            
-            new_hotkey = if (i <= 10) as.integer(i) else NA_integer_
-            updated_item = markermd_rubric_item(
-              hotkey = new_hotkey,
-              points = current_item@points,
-              description = current_item@description,
-              selected = current_item@selected
-            )
-            
-            # Update the server's internal state. The item's hotkey button
-            # self-renders from this state, so remaining labels renumber without
-            # a parent re-render.
-            remaining_servers[[srv_id]]$update_item(updated_item)
-          }
-        }
-
-        # Remove only the deleted item; existing items keep their DOM (and any
-        # in-progress edit) instead of being rebuilt by a full re-render.
-        shiny::removeUI(selector = paste0("#", session$ns(server$id), "-container"))
-      }) |>
-        shiny::bindEvent(server$delete_signal(), ignoreInit = TRUE)
+      wire_item_signals(server)
 
       id_idx <<- id_idx + 1
 
