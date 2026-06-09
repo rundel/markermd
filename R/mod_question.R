@@ -418,6 +418,13 @@ question_server = function(id, ast, initial_question = NULL) {
           current_rules = list()
         }
 
+        # Remap the seen-widget bookkeeping through the same re-indexing: the
+        # k-th preserved rule takes id k. Stale ids would otherwise mark
+        # whichever rule now holds an old id as already seen, turning its
+        # not-yet-rendered widget's NULL into a deliberate clear ("Any node").
+        seen = shiny::isolate(node_types_seen())
+        node_types_seen(as.character(which(names(preserved_rules) %in% seen)))
+
         rules_list(current_rules)
 
         # Update question state
