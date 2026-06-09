@@ -327,7 +327,7 @@ mark_rubric_server = function(id, template, artifact_paths, root, use_qmd, colle
           highlight_decorations = jsonlite::toJSON(decorations, auto_unbox = TRUE)
         }
         
-        formatted_content = paste0(
+        formatted_content = glue::glue(
           '<style>
             .highlight-line {
               background-color: rgba(255, 235, 59, 0.15) !important;
@@ -337,9 +337,9 @@ mark_rubric_server = function(id, template, artifact_paths, root, use_qmd, colle
               border-left: 3px solid rgba(255, 193, 7, 0.8) !important;
               width: 100% !important;
             }
-          </style>',
-          '<div style="margin-top: 35px; height: calc(100vh - 255px);"><div id="', editor_id, '" style="height: 100%; width: 100%; border: 1px solid #e1e5e9;"></div></div>',
-          '<script>
+          </style>
+          <div style="margin-top: 35px; height: calc(100vh - 255px);"><div id="<<editor_id>>" style="height: 100%; width: 100%; border: 1px solid #e1e5e9;"></div></div>
+          <script>
             (function() {
               // Load Monaco Editor if not already loaded
               if (typeof monaco === "undefined") {
@@ -355,18 +355,18 @@ mark_rubric_server = function(id, template, artifact_paths, root, use_qmd, colle
               } else {
                 createEditor();
               }
-              
+
               function createEditor() {
                 // Clean up any existing editor
-                var existingContainer = document.getElementById("', editor_id, '");
+                var existingContainer = document.getElementById("<<editor_id>>");
                 if (existingContainer && existingContainer.editor) {
                   existingContainer.editor.dispose();
                 }
-                
+
                 // Create the editor
-                var editor = monaco.editor.create(document.getElementById("', editor_id, '"), {
-                  value: ', jsonlite::toJSON(raw_content, auto_unbox = TRUE), ',
-                  language: "', monaco_language, '",
+                var editor = monaco.editor.create(document.getElementById("<<editor_id>>"), {
+                  value: <<jsonlite::toJSON(raw_content, auto_unbox = TRUE)>>,
+                  language: "<<monaco_language>>",
                   theme: "vs",
                   readOnly: true,
                   wordWrap: "on",
@@ -379,13 +379,13 @@ mark_rubric_server = function(id, template, artifact_paths, root, use_qmd, colle
                   contextmenu: false,
                   selectOnLineNumbers: false
                 });
-                
+
                 // Apply highlighting decorations
-                var decorations = ', highlight_decorations, ';
+                var decorations = <<highlight_decorations>>;
                 if (decorations.length > 0) {
                   editor.deltaDecorations([], decorations);
-                  
-                  
+
+
                   // Scroll to first highlighted line near top using Monaco built-in method
                   setTimeout(function() {
                     var firstLine = decorations[0].range.startLineNumber;
@@ -398,19 +398,20 @@ mark_rubric_server = function(id, template, artifact_paths, root, use_qmd, colle
                     editor.revealLine(1);
                   }, 100);
                 }
-                
+
                 // Store reference for cleanup and global access
-                document.getElementById("', editor_id, '").editor = editor;
-                document.getElementById("', editor_id, '").decorations = decorations;
-                
+                document.getElementById("<<editor_id>>").editor = editor;
+                document.getElementById("<<editor_id>>").decorations = decorations;
+
                 // Store globally for dynamic highlighting
                 if (!window.monacoEditors) {
                   window.monacoEditors = {};
                 }
-                window.monacoEditors["', editor_id, '"] = editor;
+                window.monacoEditors["<<editor_id>>"] = editor;
               }
             })();
-          </script>'
+          </script>',
+          .open = "<<", .close = ">>"
         )
         
         return(list(
@@ -847,40 +848,40 @@ mark_rubric_server = function(id, template, artifact_paths, root, use_qmd, colle
         # Send decorations to Monaco Editor
         shinyjs::runjs(glue::glue("
           // Update Monaco Editor decorations with retry mechanism
-          function updateHighlights(retries) {{
+          function updateHighlights(retries) {
             retries = retries || 0;
             var editorElements = document.querySelectorAll('[id^=\"monaco-editor-\"]');
             var updated = false;
-            
-            editorElements.forEach(function(editorEl) {{
-              if (window.monacoEditors && window.monacoEditors[editorEl.id]) {{
+
+            editorElements.forEach(function(editorEl) {
+              if (window.monacoEditors && window.monacoEditors[editorEl.id]) {
                 var editor = window.monacoEditors[editorEl.id];
-                var newDecorations = {highlight_decorations_json};
-                
+                var newDecorations = <<highlight_decorations_json>>;
+
                 // Use deltaDecorations to replace all existing decorations
                 var oldDecorations = editor._currentDecorationIds || [];
                 editor._currentDecorationIds = editor.deltaDecorations(oldDecorations, newDecorations);
-                
+
                 // Scroll to first highlighted line if there are decorations
-                if (newDecorations.length > 0) {{
-                  setTimeout(function() {{
+                if (newDecorations.length > 0) {
+                  setTimeout(function() {
                     var firstLine = newDecorations[0].range.startLineNumber;
                     editor.revealLineNearTop(firstLine, monaco.editor.ScrollType.Smooth);
-                  }}, 100);
-                }}
-                
+                  }, 100);
+                }
+
                 updated = true;
-              }}
-            }});
-            
+              }
+            });
+
             // Retry if no editor found and we haven't exceeded max retries
-            if (!updated && retries < 10) {{
-              setTimeout(function() {{ updateHighlights(retries + 1); }}, 200);
-            }}
-          }}
-          
+            if (!updated && retries < 10) {
+              setTimeout(function() { updateHighlights(retries + 1); }, 200);
+            }
+          }
+
           updateHighlights();
-        ", .open = "{", .close = "}"))
+        ", .open = "<<", .close = ">>"))
       } else {
         # Clear all highlights
         shinyjs::runjs("
@@ -940,40 +941,40 @@ mark_rubric_server = function(id, template, artifact_paths, root, use_qmd, colle
             
             # Apply initial highlighting
             shinyjs::runjs(glue::glue("
-              function applyInitialHighlights(retries) {{
+              function applyInitialHighlights(retries) {
                 retries = retries || 0;
                 var editorElements = document.querySelectorAll('[id^=\"monaco-editor-\"]');
                 var updated = false;
-                
-                editorElements.forEach(function(editorEl) {{
-                  if (window.monacoEditors && window.monacoEditors[editorEl.id]) {{
+
+                editorElements.forEach(function(editorEl) {
+                  if (window.monacoEditors && window.monacoEditors[editorEl.id]) {
                     var editor = window.monacoEditors[editorEl.id];
-                    var newDecorations = {highlight_decorations_json};
-                    
+                    var newDecorations = <<highlight_decorations_json>>;
+
                     // Apply initial decorations
                     var oldDecorations = editor._currentDecorationIds || [];
                     editor._currentDecorationIds = editor.deltaDecorations(oldDecorations, newDecorations);
-                    
+
                     // Scroll to first highlighted line if there are decorations
-                    if (newDecorations.length > 0) {{
-                      setTimeout(function() {{
+                    if (newDecorations.length > 0) {
+                      setTimeout(function() {
                         var firstLine = newDecorations[0].range.startLineNumber;
                         editor.revealLineNearTop(firstLine, monaco.editor.ScrollType.Smooth);
-                      }}, 100);
-                    }}
-                    
+                      }, 100);
+                    }
+
                     updated = true;
-                  }}
-                }});
-                
+                  }
+                });
+
                 // Retry if no editor found and we haven't exceeded max retries
-                if (!updated && retries < 15) {{
-                  setTimeout(function() {{ applyInitialHighlights(retries + 1); }}, 300);
-                }}
-              }}
-              
+                if (!updated && retries < 15) {
+                  setTimeout(function() { applyInitialHighlights(retries + 1); }, 300);
+                }
+              }
+
               applyInitialHighlights();
-            ", .open = "{", .close = "}"))
+            ", .open = "<<", .close = ">>"))
           }
         })
       }

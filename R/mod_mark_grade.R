@@ -85,7 +85,7 @@ mark_grade_ui = function(id, grade_state) {
       )
     ),
     # Simple, clean JavaScript for score editing
-    shiny::tags$script(shiny::HTML(paste0("
+    shiny::tags$script(shiny::HTML(glue::glue("
       $(document).ready(function() {
         // Patch the score display in place. The grade widget is deliberately
         // not re-rendered on score changes (see output$grade_ui in
@@ -103,7 +103,7 @@ mark_grade_ui = function(id, grade_state) {
         });
 
         // Click handler for score editing
-        $(document).on('click', '#", ns("score_display"), "', function() {
+        $(document).on('click', '#<<ns('score_display')>>', function() {
           var $el = $(this);
           var current = parseFloat($el.data('current'));
           var total = parseFloat($el.data('total'));
@@ -135,12 +135,12 @@ mark_grade_ui = function(id, grade_state) {
             
             // Send to Shiny if changed
             if (newTotal !== total) {
-              Shiny.setInputValue('", ns("total_score_input"), "', newTotal);
+              Shiny.setInputValue('<<ns('total_score_input')>>', newTotal);
             }
           });
         });
       });
-    "))),
+    ", .open = "<<", .close = ">>"))),
     shiny::hr(class="my-0")
   )
 }
