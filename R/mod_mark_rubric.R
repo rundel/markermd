@@ -672,9 +672,14 @@ mark_rubric_server = function(id, template, artifact_paths, root, use_qmd, colle
 
     # Handle add item button
     shiny::observe({
-      # Find a unique server_id by checking existing items
       current_servers = question_item_servers[[input$question_select]]
-      existing_ids = names(current_servers)
+
+      # The unique server_id must not collide across ANY question: module ids
+      # share one namespace, and items recreated from the database keep their
+      # original ids, so the fresh per-session counter could otherwise mint an
+      # id already used by a loaded item elsewhere (two servers bound to the
+      # same inputs, each saving to its own question)
+      existing_ids = unlist(lapply(shiny::reactiveValuesToList(question_item_servers), names))
 
       # Generate unique server_id
       server_id = paste0("item_", id_idx)
