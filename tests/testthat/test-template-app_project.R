@@ -70,7 +70,7 @@ test_that("template() saves into the project database", {
 
   app$click("add_question")
   app$click("save_to_project")
-  Sys.sleep(1)
+  app$wait_for_idle()
 
   expect_false(is.null(markermd:::load_template_from_db(proj$root)))
 })
@@ -99,7 +99,7 @@ test_that("template() imports a YAML file into the editor", {
   # The Import button triggers the hidden #import_file picker via onclick;
   # shinytest2 sets that file input directly.
   app$upload_file(import_file = import_yaml)
-  Sys.sleep(1)
+  app$wait_for_idle()
 
   expect_equal(app$get_values(export = "n_questions") |> unlist(use.names = FALSE), 2)
   # Imported names are shown verbatim, not renumbered to "Question <id>".
@@ -130,13 +130,13 @@ test_that("template() confirms before an import replaces existing questions", {
   expect_equal(app$get_values(export = "n_questions") |> unlist(use.names = FALSE), 2)
 
   app$upload_file(import_file = import_yaml)
-  Sys.sleep(1)
+  app$wait_for_idle()
 
   # The editor's questions survive until the replace modal is confirmed
   expect_equal(app$get_values(export = "n_questions") |> unlist(use.names = FALSE), 2)
 
   app$click("confirm_import")
-  Sys.sleep(1)
+  app$wait_for_idle()
 
   expect_equal(app$get_values(export = "n_questions") |> unlist(use.names = FALSE), 1)
   expect_setequal(
@@ -157,7 +157,6 @@ test_that("template() exports the current template to YAML", {
   # Export lives in a popover; open it so the download link is in the live DOM.
   app$run_js("document.getElementById('io_menu').click();")
   app$wait_for_idle()
-  Sys.sleep(0.5)
 
   out = app$get_download("export_template")
   tmpl = markermd::read_template_yaml(out, require_ast = FALSE)

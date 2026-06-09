@@ -14,7 +14,7 @@ test_that("A rule shows a live pass/fail status against the document", {
   app$click("ast_panel-select_children_3")
   app$click("question_1-add_rule")
 
-  Sys.sleep(1)
+  app$wait_for_idle()
 
   app$expect_values(export = TRUE)
 })
