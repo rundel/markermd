@@ -104,6 +104,13 @@ question_server = function(id, ast, initial_question = NULL) {
       }
     })
     
+    # Memoised flattened tree. ast() is write-once, so this is built once and
+    # reused instead of re-flattening the whole document on every selection change.
+    question_tree_items = shiny::reactive({
+      if (is.null(ast())) return(list())
+      build_ast_tree_structure(ast())
+    })
+
     # Render selected nodes display: each node-id selector followed by the
     # number of nodes it covers (the selected heading/div and its descendants).
     output$selected_nodes_display = shiny::renderUI({
@@ -111,7 +118,7 @@ question_server = function(id, ast, initial_question = NULL) {
       if (length(ids) == 0) {
         shiny::span("None", class = "text-muted")
       } else {
-        tree_items = build_ast_tree_structure(ast())
+        tree_items = question_tree_items()
         labels = vapply(ids, function(id) {
           n = length(compute_all_selected_nodes(tree_items, node_ids_to_indices(ast(), id)))
           paste0("#", id, " (", n, " node", if (n != 1) "s" else "", ")")
@@ -479,49 +486,12 @@ question_server = function(id, ast, initial_question = NULL) {
       }
     })
     
-    # Handle verb changes - monitor verb inputs and update rules
-    shiny::observe({
-      current_rules = rules_list()
-      rules_changed = FALSE
-      
-      # Get all current input values
-      all_inputs = shiny::reactiveValuesToList(input)
-      
-      for (rule_id in names(current_rules)) {
-        verb_input_id = paste0("rule_", rule_id, "-verb")
-        current_verb_value = all_inputs[[verb_input_id]]
-        
-        
-        shiny::req(current_verb_value)
-        
-        rule = current_rules[[rule_id]]
-        if (rule@verb != current_verb_value) {
-          # Verb changed - create new rule with updated values
-          
-          # Create completely new rule to avoid S7 validation issues
-          new_rule = new_markermd_rule(
-            node_type = rule@node_type,
-            verb = current_verb_value,
-            values = get_default_rule_values(current_verb_value)
-          )
-          
-          current_rules[[rule_id]] = new_rule
-          rules_changed = TRUE
-        }
-      }
-      
-      if (rules_changed) {
-        rules_list(current_rules)
-
-        # Update question state
-        cur_state = state()
-        cur_state@rules = current_rules
-        state(cur_state)
-
-        # Verb change swaps the values control, so the rule UI must re-render.
-        trigger_rules_render()
-      }
-    })
+    # Verb changes are handled by the "Handle rule input updates" observer above
+    # (capture_rule_inputs resets incompatible values and bumps the render
+    # trigger). A separate verb observer depending on reactiveValuesToList(input)
+    # used to live here; it re-ran on every input change and only ever no-opped
+    # because the observer above had already applied the verb change, so it was
+    # removed.
 
     # Return reactive question data and methods
     return(list(

@@ -105,12 +105,20 @@ ast_module_server = function(id, ast, selected_nodes = shiny::reactive(integer(0
       lapply(q2r_flatten(ast()), function(record) record$node)
     })
 
+    # Memoised flattened tree. ast() is write-once, so the structure is built once
+    # and reused across re-renders (which fire on every selection change) instead
+    # of re-flattening the whole document each time.
+    ast_tree_items = shiny::reactive({
+      if (is.null(ast())) return(list())
+      build_ast_tree_structure(ast())
+    })
+
     output$ast_tree_ui = shiny::renderUI({
       if (is.null(ast())) {
         return(shiny::p("No document loaded"))
       }
 
-      tree_items = build_ast_tree_structure(ast())
+      tree_items = ast_tree_items()
       if (length(tree_items) == 0) {
         return(shiny::p("No document structure available"))
       }

@@ -146,6 +146,11 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     # Reactive value for pending node clicks
     pending_node_click = shiny::reactiveVal(NULL)
 
+    # Memoised flattened document tree. ast() is write-once, so this computes the
+    # structure (q2r_flatten over the whole document) once and is reused by the
+    # node-click handlers instead of re-flattening on every interaction.
+    tree_items_memo = shiny::reactive(build_ast_tree_structure(ast()))
+
     # Load template on startup if provided
     template_loaded = shiny::reactiveVal(FALSE)
     
@@ -268,7 +273,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
         # Apply the node selection
         node_index = click_data$node_index
         current_selected = current_module$server$get_selected_nodes()
-        tree_items = build_ast_tree_structure(ast())
+        tree_items = tree_items_memo()
 
         # Check if node has selected ancestors
         if (has_selected_ancestor(tree_items, node_index, current_selected)) {
@@ -318,7 +323,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       # Process the click immediately
       node_index = click_data$node_index
       current_selected = current_module$server$get_selected_nodes()
-      tree_items = build_ast_tree_structure(ast())
+      tree_items = tree_items_memo()
 
       # Check if node has selected ancestors
       if (has_selected_ancestor(tree_items, node_index, current_selected)) {

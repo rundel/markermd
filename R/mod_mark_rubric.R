@@ -493,7 +493,10 @@ mark_rubric_server = function(id, template, artifact_paths, root, use_qmd, colle
         mark_grade_ui(session$ns(current_grade_server$id), current_grade_state)
       }
     }) |>
-      shiny::bindEvent(input$question_select, redraw_ui())
+      # Only re-render when the question changes. Within a question the score is
+      # updated imperatively via update_grade() -> shinyjs::runjs, so rubric-item
+      # add/move/delete (which bump redraw_ui) must not rebuild this widget.
+      shiny::bindEvent(input$question_select)
     
     output$rubric_items_ui = shiny::renderUI({
       shiny::req(input$question_select)
