@@ -423,6 +423,133 @@ validate_repo_against_rules = function(ast, template) {
   return(results)
 }
 
+# All flatten-record indices nested (at any depth) beneath the given record,
+# following real AST containment (the records' container field)
+#
+# container_of: Integer vector of immediate-container record indices (0 = none)
+# index: Record index whose nested descendants to collect
+
+record_descendant_indices = function(container_of, index) {
+  out = integer(0)
+  frontier = which(container_of == index)
+  while (length(frontier) > 0) {
+    out = c(out, frontier)
+    frontier = which(container_of %in% frontier)
+  }
+  out
+}
+
+# Tree indices (q2r_flatten index space) of the nodes a question's filters
+# exclude, for drawing them red in the template tree
+#
+# Pairs each countable block of the question's node set (the same blocks
+# get_question_ast() collects: section blocks for selected headings, child
+# blocks for selected divs) with its flatten index via the records' block_pos
+# and container fields, applies the filter expression once via
+# select_children, and returns the indices of the dropped blocks. A dropped
+# block also drops its real nested children (they leave the question AST with
+# it); a dropped heading does not color its section's content, which is
+# tested independently (containment never crosses sections). Returns
+# integer(0) when the question has no effective filters or no selection.
+#
+# current_ast: q2r pandoc AST object from the document to analyze
+# question: markermd_question S7 object containing selected nodes and filters
+
+question_filtered_indices = function(current_ast, question) {
+
+  expr = filters_expr(question@filters)
+  ids = question@selected_nodes@node_ids
+  if (is.null(current_ast) || is.null(expr) || length(ids) == 0) {
+    return(integer(0))
+  }
+
+  records = q2r_flatten(current_ast)
+  container_of = vapply(records, function(r) as.integer(r$container), integer(1))
+
+  # Flatten index of each top-level block, by its position in blocks
+  blocks = current_ast@blocks@content
+  index_by_block_pos = integer(length(blocks))
+  for (r in records) {
+    if (!is.na(r$block_pos)) index_by_block_pos[r$block_pos] = r$index
+  }
+
+  split = classify_selected_ids(current_ast, ids)
+
+  nodes = list()
+  node_indices = integer(0)
+
+  if (length(split$heading_ids) > 0) {
+    chains = block_id_chains(current_ast)
+    matched = vapply(chains, function(chain) any(split$heading_ids %in% chain), logical(1))
+    nodes = c(nodes, blocks[matched])
+    node_indices = c(node_indices, index_by_block_pos[matched])
+  }
+
+  for (did in split$div_ids) {
+    div_index = which(vapply(records, function(r) {
+      S7::S7_inherits(r$node, q2r::pandoc_div) && identical(r$node@attr@id, did)
+    }, logical(1)))[1]
+    if (is.na(div_index)) next
+    child_indices = which(container_of == div_index)
+    nodes = c(nodes, lapply(child_indices, function(i) records[[i]]$node))
+    node_indices = c(node_indices, child_indices)
+  }
+
+  if (length(nodes) == 0) {
+    return(integer(0))
+  }
+
+  kept = rlang::inject(q2r::select_children(
+    q2r::pandoc(blocks = q2r::pandoc_blocks(nodes)), !!expr
+  ))
+
+  # kept is an ordered subsequence of nodes, and the predicate is a pure
+  # function of node content (identical nodes share a result), so greedy
+  # matching recovers the per-block keep flags
+  keep = logical(length(nodes))
+  j = 1L
+  for (i in seq_along(nodes)) {
+    if (j <= length(kept) && identical(nodes[[i]], kept[[j]])) {
+      keep[i] = TRUE
+      j = j + 1L
+    }
+  }
+
+  out = integer(0)
+  for (i in which(!keep)) {
+    out = c(out, node_indices[i], record_descendant_indices(container_of, node_indices[i]))
+  }
+
+  # A node countable through two routes (e.g. a div child also in a selected
+  # section) stays green when its own keep flag says so
+  out = setdiff(out, node_indices[keep])
+
+  sort(unique(out))
+}
+
+# Narrow a question's node set by its filters
+#
+# Applies the question's filter expression (see filters_expr) to the top-level
+# blocks only, via q2r::select_children - the same node set rules count - so
+# filtering never surfaces nested or inline nodes as countable. Returns the
+# AST unchanged when the question has no effective filters. Invalid predicate
+# values (e.g. a bad regex) surface as q2r_predicate_error warnings from q2r
+# and the condition evaluates as no-match; they are deliberately not caught.
+#
+# question_ast: q2r pandoc AST object holding the question's node set
+# question: markermd_question S7 object containing filter groups
+
+apply_question_filters = function(question_ast, question) {
+
+  expr = filters_expr(question@filters)
+  if (is.null(expr)) {
+    return(question_ast)
+  }
+
+  kept = rlang::inject(q2r::select_children(question_ast, !!expr))
+  q2r::pandoc(blocks = q2r::pandoc_blocks(kept))
+}
+
 # Extracts the AST subset for a specific question by node-id matching
 #
 # Heading ids match by section: a top-level block is kept when a selected
@@ -430,10 +557,12 @@ validate_repo_against_rules = function(ast, template) {
 # block in its section, nested subsections included). Div ids drill in: the
 # selected div's own child blocks are contributed, making nested content visible
 # to rule evaluation. The two are unioned. An empty selection keeps the whole
-# document.
+# document. The question's filters (if any) then narrow the resulting node set,
+# so every consumer - live rule badges, headless validation, and the mark-side
+# question content display - sees the filtered set.
 #
 # current_ast: q2r pandoc AST object from the document to analyze
-# question: markermd_question S7 object containing selected nodes
+# question: markermd_question S7 object containing selected nodes and filters
 
 get_question_ast = function(current_ast, question) {
 
@@ -442,7 +571,7 @@ get_question_ast = function(current_ast, question) {
   ids = question@selected_nodes@node_ids
 
   if (length(ids) == 0) {
-    return(current_ast)
+    return(apply_question_filters(current_ast, question))
   }
 
   blocks = current_ast@blocks@content
@@ -463,5 +592,5 @@ get_question_ast = function(current_ast, question) {
     }
   }
 
-  q2r::pandoc(blocks = q2r::pandoc_blocks(result_blocks))
+  apply_question_filters(q2r::pandoc(blocks = q2r::pandoc_blocks(result_blocks)), question)
 }

@@ -37,6 +37,39 @@ test_that("node_is_selectable: headings and id'd divs only", {
   expect_false(node_is_selectable(recs[[6]]$node))  # class-only div
 })
 
+test_that("q2r_flatten records separate display parent, real container, and block position", {
+  ast = div_fixture_ast()
+  recs = q2r_flatten(ast)
+
+  container = vapply(recs, function(r) r$container, integer(1))
+  block_pos = vapply(recs, function(r) r$block_pos, integer(1))
+
+  # container tracks real AST nesting only: div children point at their div,
+  # everything else (including section members under headings) is top-level
+  expect_equal(container, c(0L, 0L, 0L, 3L, 3L, 0L, 6L, 0L, 0L))
+
+  # block_pos bridges top-level records to ast@blocks@content positions, in
+  # document order, and is NA for nested records
+  expect_equal(block_pos, c(1L, 2L, 3L, NA, NA, 4L, NA, 5L, 6L))
+  top = which(!is.na(block_pos))
+  for (i in top) {
+    expect_identical(recs[[i]]$node, ast@blocks@content[[block_pos[i]]])
+  }
+
+  # a section member's display parent is its heading even though it is a
+  # top-level block (synthetic vs real nesting)
+  expect_equal(recs[[9]]$parent, 8)
+  expect_equal(recs[[9]]$container, 0L)
+
+  # nested divs: the inner div's children point at the inner div
+  nested = parse_qmd_lines(
+    "::: {.outer}", "::: {#inner}", "inside", ":::", ":::"
+  )
+  nrecs = q2r_flatten(nested)
+  expect_equal(vapply(nrecs, function(r) r$container, integer(1)), c(0L, 1L, 2L))
+  expect_equal(vapply(nrecs, function(r) r$block_pos, integer(1)), c(1L, NA, NA))
+})
+
 test_that("classify_selected_ids splits heading vs div ids", {
   ast = div_fixture_ast()
 

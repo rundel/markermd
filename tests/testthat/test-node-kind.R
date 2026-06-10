@@ -25,8 +25,17 @@ test_that("q2r_node_label surfaces a div's id and classes", {
   ast = q2r::parse_qmd("::: {#q1-answer .answer}\nbody\n:::\n\n::: {.note}\nx\n:::\n")
   divs = Filter(function(n) S7::S7_inherits(n, q2r::pandoc_div), ast@blocks@content)
 
-  expect_equal(q2r_node_label(divs[[1]]), "Div (#q1-answer .answer)")
+  expect_equal(q2r_node_label(divs[[1]]), "Div (.answer) (#q1-answer)")
   expect_equal(q2r_node_label(divs[[2]]), "Div (.note)")
+})
+
+test_that("q2r_node_label appends (#id) to any node with a standard attr id", {
+  ast = q2r::parse_qmd("# Question 1 {#q1}\n\nplain text\n\n## Auto Heading\n")
+  nodes = ast@blocks@content
+
+  expect_equal(q2r_node_label(nodes[[1]]), "Heading [h1] - Question 1 (#q1)")
+  expect_equal(q2r_node_label(nodes[[2]]), "Markdown")
+  expect_equal(q2r_node_label(nodes[[3]]), "Heading [h2] - Auto Heading (#auto-heading)")
 })
 
 test_that("rule node types are the friendly kinds, not raw q2r classes", {

@@ -49,6 +49,9 @@ markermd_node_selection = S7::new_class(
 #' @param selected_nodes node_selection. Selected AST nodes for this question
 #' @param rules List. Validation rules for this question as markermd_rule objects
 #' @param points Numeric. Point value for this question (default 10)
+#' @param filters List. Filter groups for this question as markermd_filter_group
+#'   objects. Conditions within a group are ANDed, groups are ORed; filters
+#'   narrow the question's node set before rules evaluate.
 #' @export
 markermd_question = S7::new_class(
   "markermd_question",
@@ -105,6 +108,19 @@ markermd_question = S7::new_class(
           return("@points must be a non-negative number")
         }
         return(NULL)
+      }
+    ),
+    filters = S7::new_property(
+      S7::class_list,
+      default = quote(list()),
+      validator = function(value) {
+        # Check all elements are markermd_filter_group objects
+        for (i in seq_along(value)) {
+          if (!S7::S7_inherits(value[[i]], markermd_filter_group)) {
+            return(paste0("filters[[", i, "]] must be a markermd_filter_group object"))
+          }
+        }
+        NULL
       }
     )
   ),

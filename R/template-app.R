@@ -36,7 +36,28 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
         overflow: visible !important;
       }
       
-      .rule-item .form-group { margin-bottom: 0 !important; }
+      .rule-item .form-group,
+      .filter-condition .form-group,
+      .filter-group .form-group { margin-bottom: 0 !important; }
+      .filter-condition .checkbox,
+      .filter-group .checkbox { margin: 0 !important; min-height: 0 !important; }
+
+      /* Per-condition negate toggle: stack the not label under the checkbox
+         so the toggle stays no taller than the adjacent select inputs */
+      .filter-not-toggle .checkbox label {
+        display: flex !important;
+        flex-direction: column;
+        align-items: center;
+        margin: 0 !important;
+        padding: 0 !important;
+        font-size: 10px;
+        line-height: 1.2;
+        color: var(--bs-secondary-color, #6c757d);
+      }
+      .filter-not-toggle .checkbox input[type='checkbox'] {
+        position: static !important;
+        margin: 0 !important;
+      }
       .rule-item .input-group-addon { line-height: 1.2 !important; }
       .rule-item select:focus { z-index: 1000; }
 
@@ -265,8 +286,21 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       return(selected_nodes)
     })
     
+    # Tree indices excluded by the current question's filters, drawn in red
+    filtered_nodes = shiny::reactive({
+      current_q_id = current_question_id()
+      modules_list = question_modules()
+      current_module = modules_list[[as.character(current_q_id)]]
+
+      if (is.null(current_module) || is.null(current_module$server)) {
+        return(integer(0))
+      }
+
+      question_filtered_indices(ast(), current_module$server$question())
+    })
+
     # Initialize AST selectable module
-    ast_result = ast_module_server("ast_panel", ast, selected_nodes, interactive = TRUE)
+    ast_result = ast_module_server("ast_panel", ast, selected_nodes, filtered_nodes, interactive = TRUE)
     
     # Handle pending node clicks when question modules change
     shiny::observe({
@@ -770,6 +804,16 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
             m$server$question()@selected_nodes@node_ids
           } else {
             character(0)
+          }
+        })
+      },
+      filter_exprs_per_question = {
+        modules = question_modules()
+        purrr::map(modules, function(m) {
+          if (!is.null(m$server) && !is.null(m$server$question)) {
+            filters_expr_text(m$server$question()@filters)
+          } else {
+            NULL
           }
         })
       }

@@ -93,10 +93,12 @@ ast_module_ui = function(id, title = "Document Structure", show_clear_button = F
 # id: Character. Module namespace ID
 # ast: Reactive. The parsed AST object
 # selected_nodes: Reactive. Currently selected node indices (optional)
+# filtered_nodes: Reactive. Node indices excluded by the current question's
+#   filters, drawn in red (optional; see question_filtered_indices())
 # interactive: Logical. TRUE for a selectable tree, FALSE for read-only
 # enable_preview: Logical. Whether to wire the preview-modal observers
 
-ast_module_server = function(id, ast, selected_nodes = shiny::reactive(integer(0)), interactive = TRUE, enable_preview = TRUE) {
+ast_module_server = function(id, ast, selected_nodes = shiny::reactive(integer(0)), filtered_nodes = shiny::reactive(integer(0)), interactive = TRUE, enable_preview = TRUE) {
   shiny::moduleServer(id, function(input, output, session) {
 
     # Flattened AST nodes in tree order (index i aligns with the tree's node i)
@@ -128,7 +130,8 @@ ast_module_server = function(id, ast, selected_nodes = shiny::reactive(integer(0
         session$ns,
         ast_render_opts(
           mode = if (interactive) "interactive" else "readonly",
-          selected = selected_nodes()
+          selected = selected_nodes(),
+          filtered = filtered_nodes()
         )
       )
     })

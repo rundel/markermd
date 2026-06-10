@@ -248,6 +248,170 @@ test_that("validate_template_file checks files against the JSON Schema", {
 })
 
 
+test_that("question filters round-trip through YAML and only appear when present", {
+  fix = build_serialization_fixture()
+
+  q = fix$template@questions[[1]]
+  q@filters = list(
+    markermd::markermd_filter_group(conditions = list(
+      markermd::markermd_filter_condition(type = "node type", value = "Div"),
+      markermd::markermd_filter_condition(type = "has class", value = "hint")
+    )),
+    markermd::markermd_filter_group(conditions = list(
+      markermd::markermd_filter_condition(type = "has text", value = "Q[0-9]+")
+    ))
+  )
+  fix$template@questions[[1]] = q
+
+  path = tempfile(fileext = ".yaml")
+  markermd::write_template_yaml(fix$template, path, source_path = fix$qmd)
+
+  # the filter-less question emits no filters key at all
+  raw = yaml::read_yaml(path)
+  expect_true("filters" %in% names(raw$questions[[1]]))
+  expect_false("filters" %in% names(raw$questions[[2]]))
+
+  back = markermd::read_template_yaml(path, require_ast = TRUE)
+  filters = back@questions[[1]]@filters
+  expect_length(filters, 2)
+  expect_length(filters[[1]]@conditions, 2)
+  expect_equal(filters[[1]]@conditions[[1]]@type, "node type")
+  expect_equal(filters[[1]]@conditions[[1]]@value, "Div")
+  expect_equal(filters[[1]]@conditions[[2]]@type, "has class")
+  expect_equal(filters[[1]]@conditions[[2]]@value, "hint")
+  expect_equal(filters[[2]]@conditions[[1]]@type, "has text")
+  expect_equal(filters[[2]]@conditions[[1]]@value, "Q[0-9]+")
+
+  expect_equal(back@questions[[2]]@filters, list())
+
+  # empty groups are dropped on write
+  q@filters = list(markermd::markermd_filter_group())
+  fix$template@questions[[1]] = q
+  markermd::write_template_yaml(fix$template, path, source_path = fix$qmd)
+  expect_false("filters" %in% names(yaml::read_yaml(path)$questions[[1]]))
+})
+
+test_that("filter negation round-trips and is omitted when FALSE", {
+  fix = build_serialization_fixture()
+
+  q = fix$template@questions[[1]]
+  q@filters = list(
+    markermd::markermd_filter_group(
+      conditions = list(
+        markermd::markermd_filter_condition(type = "node type", value = "Div"),
+        markermd::markermd_filter_condition(type = "has class", value = "hint", negate = TRUE)
+      ),
+      negate = TRUE
+    )
+  )
+  fix$template@questions[[1]] = q
+
+  path = tempfile(fileext = ".yaml")
+  markermd::write_template_yaml(fix$template, path, source_path = fix$qmd)
+
+  raw = yaml::read_yaml(path)$questions[[1]]$filters[[1]]
+  expect_true(isTRUE(raw$negate))
+  expect_null(raw$conditions[[1]]$negate)
+  expect_true(isTRUE(raw$conditions[[2]]$negate))
+
+  back = markermd::read_template_yaml(path, require_ast = TRUE)
+  group = back@questions[[1]]@filters[[1]]
+  expect_true(group@negate)
+  expect_false(group@conditions[[1]]@negate)
+  expect_true(group@conditions[[2]]@negate)
+
+  skip_if_not_installed("jsonvalidate")
+  expect_true(isTRUE(markermd::validate_template_file(path)))
+})
+
+test_that("hand-authored filters load and bad condition types are rejected", {
+  fix = build_serialization_fixture()
+  src = sprintf('source: {path: "%s"}', fix$qmd)
+
+  path = write_yaml_lines(c(
+    'format_version: "3.0"', src, "questions:",
+    "- id: 1",
+    "  name: Q2",
+    "  node_ids: [question-2-basic-programming]",
+    "  rules: []",
+    "  filters:",
+    "  - conditions:",
+    "    - {type: has class, value: hint}"
+  ))
+  tmpl = markermd::read_template_yaml(path, require_ast = TRUE)
+  expect_length(tmpl@questions[[1]]@filters, 1)
+  expect_equal(tmpl@questions[[1]]@filters[[1]]@conditions[[1]]@value, "hint")
+
+  bad = write_yaml_lines(c(
+    'format_version: "3.0"', src, "questions:",
+    "- id: 1",
+    "  name: Q2",
+    "  node_ids: [question-2-basic-programming]",
+    "  rules: []",
+    "  filters:",
+    "  - conditions:",
+    "    - {type: has bananas, value: x}"
+  ))
+  expect_error(markermd::read_template_yaml(bad), "Filter condition type must be one of")
+})
+
+test_that("validate_template_file accepts filters and rejects malformed ones", {
+  skip_if_not_installed("jsonvalidate")
+  fix = build_serialization_fixture()
+  src = sprintf('source: {path: "%s"}', fix$qmd)
+
+  good = write_yaml_lines(c(
+    'format_version: "3.0"', src, "questions:",
+    "- id: 1",
+    "  name: Q2",
+    "  node_ids: [question-2-basic-programming]",
+    "  rules: []",
+    "  filters:",
+    "  - conditions:",
+    "    - {type: node type, value: Div}",
+    "    - {type: has class, value: hint}",
+    "    - {type: has option, value: 'eval: false'}"
+  ))
+  expect_true(isTRUE(markermd::validate_template_file(good)))
+
+  bad_type = write_yaml_lines(c(
+    'format_version: "3.0"', src, "questions:",
+    "- id: 1",
+    "  name: Q2",
+    "  node_ids: [question-2-basic-programming]",
+    "  rules: []",
+    "  filters:",
+    "  - conditions:",
+    "    - {type: has bananas, value: x}"
+  ))
+  expect_false(isTRUE(markermd::validate_template_file(bad_type)))
+
+  # 'node type' conditions must use a real node kind ('Any node' excluded)
+  bad_kind = write_yaml_lines(c(
+    'format_version: "3.0"', src, "questions:",
+    "- id: 1",
+    "  name: Q2",
+    "  node_ids: [question-2-basic-programming]",
+    "  rules: []",
+    "  filters:",
+    "  - conditions:",
+    "    - {type: node type, value: Any node}"
+  ))
+  expect_false(isTRUE(markermd::validate_template_file(bad_kind)))
+
+  empty_conditions = write_yaml_lines(c(
+    'format_version: "3.0"', src, "questions:",
+    "- id: 1",
+    "  name: Q2",
+    "  node_ids: [question-2-basic-programming]",
+    "  rules: []",
+    "  filters:",
+    "  - conditions: []"
+  ))
+  expect_false(isTRUE(markermd::validate_template_file(empty_conditions)))
+})
+
+
 test_that("save_template_to_db -> load_template_from_db round-trips questions and rules", {
   fix = build_serialization_fixture()
   d = tempfile("tmpldb_"); dir.create(d)

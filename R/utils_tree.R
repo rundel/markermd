@@ -68,6 +68,8 @@ build_ast_tree_structure = function(ast) {
 #   (used by the mark validation display). Highlighting is data, not a mode:
 #   passing a non-empty `selected` in readonly mode marks those nodes.
 # selected: Integer vector of directly selected node indices
+# filtered: Integer vector of node indices excluded by the current question's
+#   filters (see question_filtered_indices()), drawn in red instead of green
 # id_prefix: Optional prefix for preview-button ids, to namespace multiple trees
 #   that share a module (e.g. one per question on the mark side)
 # start_depth: Depth level to start rendering from (0 = document root)
@@ -79,6 +81,7 @@ build_ast_tree_structure = function(ast) {
 
 ast_render_opts = function(mode = c("interactive", "readonly"),
                            selected = integer(0),
+                           filtered = integer(0),
                            id_prefix = NULL,
                            start_depth = 0L,
                            drop_root = FALSE,
@@ -96,6 +99,7 @@ ast_render_opts = function(mode = c("interactive", "readonly"),
   list(
     mode = mode,
     selected = selected,
+    filtered = filtered,
     id_prefix = id_prefix,
     start_depth = start_depth,
     drop_root = drop_root,
@@ -340,6 +344,25 @@ ast_tree_css = function(css_class, opts) {
         padding-right: 4px;
         border-radius: 3px;
       }
+
+      /* Nodes excluded by the current question's filters: red overrides the
+         selection green */
+      .<<css_class>> .tree-toggle-btn.selected.filtered {
+        background: #dc3545;
+        border-color: #b02a37;
+      }
+
+      .<<css_class>> .tree-marker-square.selected.filtered {
+        background: #dc3545;
+      }
+
+      .<<css_class>> .tree-node-description.selected.filtered {
+        background-color: #dc3545;
+      }
+
+      .<<css_class>> .tree-node-description-btn.selected.filtered {
+        background-color: #dc3545 !important;
+      }
       ",
       .open = "<<",
       .close = ">>"
@@ -373,6 +396,10 @@ ast_tree_css = function(css_class, opts) {
         padding-left: 4px;
         padding-right: 4px;
         border-radius: 3px;
+      }
+
+      .<<css_class>> .tree-node-description.selected.filtered {
+        background-color: #dc3545;
       }
       ",
       .open = "<<",
@@ -433,9 +460,23 @@ tree_item_selectable = function(item) {
 # is_selected: Whether the item is selected (directly or via an ancestor)
 # is_directly_selected: Whether the item itself was selected
 # is_indirectly_selected: Whether the item is selected only via an ancestor
+# is_filtered: Whether the item is excluded by the current question's filters
+#   (drawn red instead of green; only meaningful for selected items)
 
 ast_tree_node_content = function(item, opts, tree_items, ns,
-                                 is_selected, is_directly_selected, is_indirectly_selected) {
+                                 is_selected, is_directly_selected, is_indirectly_selected,
+                                 is_filtered = FALSE) {
+
+  # Selected nodes are green; those excluded by the question's filters are red
+  highlight_class = function(base) {
+    if (is_selected && is_filtered) {
+      paste(base, "selected filtered")
+    } else if (is_selected) {
+      paste(base, "selected")
+    } else {
+      base
+    }
+  }
 
   if (item$type == "document_root") {
     label = shiny::span(
@@ -481,7 +522,7 @@ ast_tree_node_content = function(item, opts, tree_items, ns,
       toggle_button = shiny::actionButton(
         ns(paste0("select_children_", item$index)),
         button_icon,
-        class = if (is_selected) "tree-toggle-btn selected" else "tree-toggle-btn",
+        class = highlight_class("tree-toggle-btn"),
         title = "Toggle this node and its children"
       )
 
@@ -493,7 +534,7 @@ ast_tree_node_content = function(item, opts, tree_items, ns,
           shiny::actionButton(
             ns(paste0("select_", item$index)),
             item$description,
-            class = if (is_selected) "tree-node-description-btn selected" else "tree-node-description-btn",
+            class = highlight_class("tree-node-description-btn"),
             style = "background: none; border: none; padding: 0; margin: 0; font: inherit; cursor: pointer; text-align: left; color: inherit;"
           ),
           preview_btn
@@ -510,13 +551,19 @@ ast_tree_node_content = function(item, opts, tree_items, ns,
     }
 
     selection_indicator = shiny::div(
-      class = if (is_selected) "tree-toggle-btn tree-marker-square selected" else "tree-toggle-btn tree-marker-square",
+      class = highlight_class("tree-toggle-btn tree-marker-square"),
       style = "cursor: default; pointer-events: none;",
       indicator_icon,
-      title = if (is_selected) "Selected via parent selection" else "Non-selectable node"
+      title = if (is_selected && is_filtered) {
+        "Excluded by question filters"
+      } else if (is_selected) {
+        "Selected via parent selection"
+      } else {
+        "Non-selectable node"
+      }
     )
 
-    text_class = if (is_selected) "tree-node-description selected" else "tree-node-description"
+    text_class = highlight_class("tree-node-description")
 
     return(shiny::div(
       class = "tree-node-content",
@@ -530,7 +577,7 @@ ast_tree_node_content = function(item, opts, tree_items, ns,
   }
 
   # Read-only mode - no interactive elements except preview
-  text_class = if (is_selected) "tree-node-description selected" else "tree-node-description"
+  text_class = highlight_class("tree-node-description")
 
   shiny::div(
     class = "tree-node-content",
@@ -568,6 +615,7 @@ build_ast_tree_level = function(tree_items, target_depth, parent_index, opts, al
     is_selected = item$index %in% all_selected_nodes
     is_directly_selected = item$index %in% opts$selected
     is_indirectly_selected = is_selected && !is_directly_selected
+    is_filtered = item$index %in% opts$filtered
 
     children = tree_items[sapply(tree_items, function(x) {
       !is.null(x$parent_index) && x$parent_index == item$index
@@ -576,7 +624,8 @@ build_ast_tree_level = function(tree_items, target_depth, parent_index, opts, al
 
     node_content = ast_tree_node_content(
       item, opts, tree_items, ns,
-      is_selected, is_directly_selected, is_indirectly_selected
+      is_selected, is_directly_selected, is_indirectly_selected,
+      is_filtered
     )
 
     li_class = if (item$type == "document_root") "document-root" else NULL

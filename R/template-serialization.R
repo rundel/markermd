@@ -50,34 +50,88 @@ rule_from_list = function(x) {
   markermd_rule(node_type = as.character(unlist(x$node_type)), verb = x$verb, values = values)
 }
 
+# markermd_filter_condition -> plain list. negate is only emitted when set so
+# files without negation are unchanged.
+#
+# condition: markermd_filter_condition S7 object
+
+filter_condition_to_list = function(condition) {
+  out = list(type = condition@type, value = condition@value)
+  if (condition@negate) out$negate = TRUE
+  out
+}
+
+# plain list -> markermd_filter_condition. The S7 constructor runs
+# validate_filter_condition_value, so malformed type/value pairs raise here.
+#
+# x: List with type, value and optionally negate
+
+filter_condition_from_list = function(x) {
+  markermd_filter_condition(
+    type = as.character(x$type),
+    value = as.character(x$value),
+    negate = isTRUE(x$negate)
+  )
+}
+
+# markermd_filter_group -> plain list. negate is only emitted when set.
+#
+# group: markermd_filter_group S7 object
+
+filter_group_to_list = function(group) {
+  out = list(conditions = lapply(group@conditions, filter_condition_to_list))
+  if (group@negate) out$negate = TRUE
+  out
+}
+
+# plain list -> markermd_filter_group
+#
+# x: List with a conditions list and optionally negate
+
+filter_group_from_list = function(x) {
+  conditions = if (is.null(x$conditions)) list() else lapply(x$conditions, filter_condition_from_list)
+  markermd_filter_group(conditions = conditions, negate = isTRUE(x$negate))
+}
+
 # markermd_question -> plain list. node_ids is emitted as a list so a single
-# id still serializes as a YAML sequence rather than a scalar.
+# id still serializes as a YAML sequence rather than a scalar. filters is only
+# emitted when at least one group has conditions, so filter-less templates
+# serialize exactly as before.
 #
 # question: markermd_question S7 object
 
 question_to_list = function(question) {
-  list(
+  out = list(
     id = as.integer(question@id),
     name = question@name,
     points = clean_number(question@points),
     node_ids = as.list(question@selected_nodes@node_ids),
     rules = lapply(question@rules, rule_to_list)
   )
+
+  groups = Filter(function(g) length(g@conditions) > 0, question@filters)
+  if (length(groups) > 0) {
+    out$filters = lapply(groups, filter_group_to_list)
+  }
+
+  out
 }
 
 # plain list -> markermd_question
 #
-# x: List with id, name, node_ids and rules
+# x: List with id, name, node_ids, rules and optionally filters
 
 question_from_list = function(x) {
   node_ids = if (is.null(x$node_ids)) character(0) else as.character(unlist(x$node_ids))
   rules = if (is.null(x$rules)) list() else lapply(x$rules, rule_from_list)
+  filters = if (is.null(x$filters)) list() else lapply(x$filters, filter_group_from_list)
 
   args = list(
     id = as.integer(x$id),
     name = as.character(x$name),
     selected_nodes = markermd_node_selection(node_ids = node_ids),
-    rules = rules
+    rules = rules,
+    filters = filters
   )
   # points is optional for backward compatibility; the class default applies when
   # an older template omits it.
@@ -291,11 +345,17 @@ validate_template_file = function(path) {
 
   # yaml::read_yaml collapses single-element sequences to length-1 vectors, which
   # jsonlite::toJSON(auto_unbox = TRUE) would then emit as JSON scalars. Keep
-  # node_ids as an array so a question targeting a single section still validates
-  # against the schema's array requirement.
+  # node_ids (and filter group/condition sequences) as arrays so single-element
+  # cases still validate against the schema's array requirements.
   if (!is.null(x$questions)) {
     x$questions = lapply(x$questions, function(q) {
       if (!is.null(q$node_ids)) q$node_ids = as.list(q$node_ids)
+      if (!is.null(q$filters)) {
+        q$filters = lapply(as.list(q$filters), function(g) {
+          if (!is.null(g$conditions)) g$conditions = as.list(g$conditions)
+          g
+        })
+      }
       q
     })
   }

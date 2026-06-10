@@ -1,5 +1,8 @@
 {
   "export": {
+    "filter_exprs_per_question": {
+      "1": null
+    },
     "n_questions": 1,
     "n_rules_per_question": {
       "1": 1

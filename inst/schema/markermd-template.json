@@ -102,6 +102,11 @@
         "rules": {
           "type": "array",
           "items": { "$ref": "#/$defs/rule" }
+        },
+        "filters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/filter_group" },
+          "description": "Filter groups narrowing the question's node set before rules evaluate. Conditions within a group are ANDed; groups are ORed."
         }
       }
     },
@@ -141,6 +146,68 @@
           "required": ["pattern"]
         }
       ]
+    },
+    "filter_node_type_enum": {
+      "type": "string",
+      "enum": [
+        "Heading",
+        "Markdown",
+        "Chunk",
+        "Code block",
+        "Raw Block",
+        "Div",
+        "Bullet list",
+        "Ordered list",
+        "Block quote",
+        "Table",
+        "Figure",
+        "Horizontal rule",
+        "Definition list",
+        "Line block"
+      ]
+    },
+    "filter_condition": {
+      "type": "object",
+      "required": ["type", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["node type", "has class", "has id", "has text", "has label", "has option", "has engine"],
+          "description": "q2r predicate this condition maps to: 'node type' becomes is(<pandoc class>); the others map onto has_class()/has_id()/has_text()/has_label()/has_option()/has_engine()."
+        },
+        "value": {
+          "type": "string",
+          "description": "Node kind for 'node type'; a Quarto cell option ('eval' or 'eval: false') for 'has option'; a cell engine name (e.g. 'r') for 'has engine'; class name, id, regex pattern, or glob pattern otherwise."
+        },
+        "negate": {
+          "type": "boolean",
+          "description": "When true the predicate is negated (logical NOT)."
+        }
+      },
+      "if": {
+        "properties": { "type": { "const": "node type" } }
+      },
+      "then": {
+        "properties": { "value": { "$ref": "#/$defs/filter_node_type_enum" } }
+      }
+    },
+    "filter_group": {
+      "type": "object",
+      "required": ["conditions"],
+      "additionalProperties": false,
+      "properties": {
+        "conditions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/filter_condition" },
+          "minItems": 1,
+          "description": "Conditions combined with logical AND."
+        },
+        "negate": {
+          "type": "boolean",
+          "description": "When true the whole group's predicate is negated (logical NOT around the ANDed conditions)."
+        }
+      }
     }
   }
 }
