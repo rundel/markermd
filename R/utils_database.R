@@ -110,7 +110,8 @@ create_tables_if_needed = function(conn) {
     ")
   }
   
-  # Comments table - stores question comments (future functionality)
+  # Comments table - stores per-question/repo comments (event log; the most
+  # recent row per pair is the current comment)
   if (!DBI::dbExistsTable(conn, "comments")) {
     DBI::dbExecute(conn, "
       CREATE TABLE comments (
@@ -366,17 +367,15 @@ load_all_items = function(conn) {
 # Returns: Data frame with most recent grade data
 
 load_most_recent_grades = function(conn) {
+  # Most recent by autoincrement id; 1-second timestamps can tie
   DBI::dbGetQuery(conn, "
     SELECT g1.*
     FROM grades g1
     INNER JOIN (
-      SELECT question_name, assignment_repo, item_id, MAX(timestamp) as max_timestamp
+      SELECT MAX(id) as max_id
       FROM grades
       GROUP BY question_name, assignment_repo, item_id
-    ) g2 ON g1.question_name = g2.question_name 
-        AND g1.assignment_repo = g2.assignment_repo
-        AND g1.item_id = g2.item_id
-        AND g1.timestamp = g2.max_timestamp
+    ) g2 ON g1.id = g2.max_id
   ")
 }
 
@@ -386,16 +385,15 @@ load_most_recent_grades = function(conn) {
 # Returns: Data frame with most recent comment data
 
 load_most_recent_comments = function(conn) {
+  # Most recent by autoincrement id; 1-second timestamps can tie
   DBI::dbGetQuery(conn, "
     SELECT c1.*
     FROM comments c1
     INNER JOIN (
-      SELECT question_name, assignment_repo, MAX(timestamp) as max_timestamp
+      SELECT MAX(id) as max_id
       FROM comments
       GROUP BY question_name, assignment_repo
-    ) c2 ON c1.question_name = c2.question_name
-        AND c1.assignment_repo = c2.assignment_repo
-        AND c1.timestamp = c2.max_timestamp
+    ) c2 ON c1.id = c2.max_id
   ")
 }
 

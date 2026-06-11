@@ -10,13 +10,14 @@
 # default_points: Numeric. Point value assigned to newly added questions
 
 template_app = function(ast, template_obj = NULL, source_path = NULL, project = NULL, default_points = 10) {
-  
-  # UI
-  ui = shiny::div(
+
+  # UI. A tagList (not a wrapper div) so the layout_columns is a direct fill
+  # item of the enclosing fillable page and sizes itself to the remaining
+  # viewport instead of a hard-coded vh formula.
+  ui = shiny::tagList(
     # Initialize shinyjs
     shinyjs::useShinyjs(),
-    
-      
+
       shiny::tags$style(shiny::HTML("
       /* Rule form controls */
       .rule-item select,
@@ -61,20 +62,24 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       .rule-item .input-group-addon { line-height: 1.2 !important; }
       .rule-item select:focus { z-index: 1000; }
 
-      /* Multi-select node-type control (selectize). Shiny copies .form-control
-         onto the selectize wrapper, so the fixed-height/border/padding rule above
-         lands on it and clips its items (causing the box to overflow onto the
-         rule below). Neutralise the wrapper and treat the inner .selectize-input
+      /* Multi-select node-type control (selectize), used by both rule rows
+         and filter conditions. Shiny copies .form-control onto the selectize
+         wrapper, so the fixed-height/border/padding rule above lands on it
+         and clips its items (causing the box to overflow onto the rule
+         below). Neutralise the wrapper and treat the inner .selectize-input
          as the form-control-like box so the control grows with its items. */
-      .rule-item .selectize-control { margin: 0 !important; }
-      .rule-item .selectize-control.form-control {
+      .rule-item .selectize-control,
+      .filter-condition .selectize-control { margin: 0 !important; }
+      .rule-item .selectize-control.form-control,
+      .filter-condition .selectize-control.form-control {
         height: auto !important;
         min-height: 0 !important;
         padding: 0 !important;
         border: 0 !important;
         background: transparent !important;
       }
-      .rule-item .selectize-control.multi .selectize-input {
+      .rule-item .selectize-control.multi .selectize-input,
+      .filter-condition .selectize-control.multi .selectize-input {
         min-height: 32px !important;
         padding: 2px 6px !important;
         font-size: 12px !important;
@@ -85,7 +90,8 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
         border-radius: var(--bs-border-radius, 0.375rem) !important;
         box-shadow: none !important;
       }
-      .rule-item .selectize-control.multi .selectize-input > .item {
+      .rule-item .selectize-control.multi .selectize-input > .item,
+      .filter-condition .selectize-control.multi .selectize-input > .item {
         font-size: 12px !important;
         line-height: 1.4 !important;
         padding: 0 4px !important;
@@ -98,14 +104,19 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       .modal-header { padding: 8px 15px !important; }
       .modal-title { margin: 0 !important; padding: 0 !important; line-height: 1.2 !important; }
       
-      /* Questions container layout. It fills the flex card body (.h-100) and
-         scrolls; the height comes from the flex layout, not a fixed vh formula,
-         so it never leaves a gap below or overflows the card footer. */
-      #questions_container {
-        overflow-y: auto !important;
-        overflow-x: hidden !important;
+      /* Question cards: inactive cards collapse to their header plus a
+         one-line summary; the active card shows its full body. Toggled via
+         the question-active class on the card wrapper. */
+      #dynamic_questions_container .question-card:not(.question-active) .question-body {
+        display: none;
       }
-      
+      #dynamic_questions_container .question-card.question-active .question-summary {
+        display: none;
+      }
+      #dynamic_questions_container .question-card:not(.question-active) {
+        cursor: pointer;
+      }
+
       #dynamic_questions_container,
       #questions_container .card {
         width: 100% !important;
@@ -134,12 +145,14 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
         box-sizing: border-box !important;
       }
     ")),
-    
-      style = "height: calc(100vh - 150px); min-height: 300px; max-height: calc(100vh - 150px);",
+
     bslib::layout_columns(
       col_widths = c(6, 6),
       class = "h-100",
-      ast_module_ui("ast_panel", show_clear_button = TRUE),
+      ast_module_ui(
+        "ast_panel",
+        header_extra = shiny::uiOutput("active_question_badge", inline = TRUE)
+      ),
       bslib::card(
         class = "h-100",
         bslib::card_header("Questions", class = "bg-light"),
@@ -147,12 +160,13 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
           class = "flex-fill overflow-auto p-0",
           shiny::div(
             id = "questions_container",
-            class = "p-3 h-100 overflow-auto w-100",
+            class = "p-3 w-100",
             shiny::uiOutput("questions_ui")
           )
         ),
         bslib::card_footer(
           class = "text-center",
+          shiny::uiOutput("template_status_ui"),
           shiny::uiOutput("save_button_ui"),
           # Hidden file input the Import button triggers directly (see
           # save_button_ui). Bound once here so the upload survives re-renders.
@@ -390,18 +404,26 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     }) |>
       shiny::bindEvent(ast_result$node_clicked(), ignoreNULL = TRUE, ignoreInit = TRUE)
     
-    # Handle clear selections from AST module
-    shiny::observe({
+    # Show which question tree selections will land on, since the tree's
+    # highlights always reflect the active question
+    output$active_question_badge = shiny::renderUI({
       current_q_id = current_question_id()
       modules_list = question_modules()
       current_module = modules_list[[as.character(current_q_id)]]
 
-      if (!is.null(current_module$server)) {
-        current_module$server$clear_nodes()
+      if (is.null(current_module) || is.null(current_module$server)) {
+        return(shiny::span(
+          "Click a heading to start a question",
+          class = "badge text-bg-secondary fw-normal"
+        ))
       }
-    }) |>
-      shiny::bindEvent(ast_result$clear_clicked())
-    
+
+      shiny::span(
+        glue::glue("Editing: {current_module$server$question()@name}"),
+        class = "badge text-bg-primary fw-normal"
+      )
+    })
+
     # Create persistent question container
     output$questions_ui = shiny::renderUI({
       shiny::div(
@@ -411,18 +433,33 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       )
     })
     
-    # Render add question button
+    # Render add question button, with first-run guidance while no questions
+    # exist (the primary gesture, clicking a heading in the tree, is otherwise
+    # undiscoverable)
     output$add_question_button = shiny::renderUI({
-      shiny::div(
-        class = "text-center mb-3",
-        shiny::actionButton(
-          "add_question", 
-          shiny::icon("plus"),
-          class = "btn-primary btn-sm rounded-circle",
-          style = "width: 30px; height: 30px;",
-          title = "Add Question"
-        ),
-        shiny::span("Add Question", class = "ms-2 text-dark")
+      shiny::tagList(
+        if (length(question_modules()) == 0) {
+          shiny::div(
+            class = "text-center text-muted py-4 px-3",
+            shiny::p(
+              shiny::icon("arrow-left", class = "me-2"),
+              "Click a heading in the Document Structure to start your first question; the heading and the section beneath it become the question's nodes."
+            ),
+            shiny::p(
+              "You can also add an empty question below and select headings afterwards.",
+              class = "small mb-0"
+            )
+          )
+        },
+        shiny::div(
+          class = "text-center mb-3",
+          shiny::actionButton(
+            "add_question",
+            "Add Question",
+            icon = shiny::icon("plus"),
+            class = "btn-outline-primary btn-sm"
+          )
+        )
       )
     })
     
@@ -470,9 +507,9 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
         q_id = as.numeric(q_id_str)
         question_module = modules_list[[q_id_str]]
         card_class = if (q_id == shiny::isolate(current_question_id())) {
-          "border border-primary border-2"
+          "question-card question-active border border-primary border-2"
         } else {
-          "border"
+          "question-card border"
         }
 
         shiny::insertUI(
@@ -481,7 +518,11 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
           ui = shiny::div(
             id = paste0("question_wrapper_", q_id),
             style = "margin-bottom: 15px; width: 100%; max-width: 100%; box-sizing: border-box;",
-            onclick = paste0("Shiny.setInputValue('select_question', ", q_id, ");"),
+            # priority: 'event' so re-clicking a card whose value is already
+            # stored still fires (the active question can move programmatically
+            # via add/delete/import, and a deduped click would silently leave
+            # tree selections landing on the wrong question)
+            onclick = paste0("Shiny.setInputValue('select_question', ", q_id, ", {priority: 'event'});"),
             shiny::div(
               id = paste0("question_card_", q_id),
               class = card_class,
@@ -503,9 +544,65 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     }) |>
       shiny::bindEvent(input$add_question)
 
-    # Handle question selection
+    # Reorder a question one position up or down. The modules list order is
+    # the saved template order; the DOM wrapper is moved in place because
+    # re-inserting the UI would rebuild the inputs and drop in-progress edits.
+    move_question = function(q_id_str, direction) {
+      modules_list = question_modules()
+      ids = names(modules_list)
+      pos = match(q_id_str, ids)
+      new_pos = pos + direction
+      if (is.na(pos) || new_pos < 1 || new_pos > length(ids)) {
+        return()
+      }
+
+      other_id = ids[new_pos]
+      new_order = seq_along(ids)
+      new_order[c(pos, new_pos)] = new_order[c(new_pos, pos)]
+      question_modules(modules_list[new_order])
+
+      verb = if (direction < 0) "insertBefore" else "insertAfter"
+      shinyjs::runjs(glue::glue(
+        "$('#question_wrapper_<<q_id_str>>').<<verb>>('#question_wrapper_<<other_id>>');",
+        .open = "<<", .close = ">>"
+      ))
+    }
+
+    # Wire each question's move up/down signals once its server exists
+    wired_move_handlers = shiny::reactiveVal(character(0))
+
     shiny::observe({
-      current_question_id(input$select_question)
+      modules_list = question_modules()
+      done = wired_move_handlers()
+      for (q_id_str in setdiff(names(modules_list), done)) {
+        m = modules_list[[q_id_str]]
+        if (is.null(m$server)) next
+        local({
+          qid = q_id_str
+          srv = m$server
+          shiny::observe({
+            move_question(qid, -1L)
+          }) |>
+            shiny::bindEvent(srv$move_up_clicked(), ignoreInit = TRUE)
+          shiny::observe({
+            move_question(qid, 1L)
+          }) |>
+            shiny::bindEvent(srv$move_down_clicked(), ignoreInit = TRUE)
+        })
+        done = c(done, q_id_str)
+      }
+      if (!identical(done, wired_move_handlers())) {
+        wired_move_handlers(done)
+      }
+    })
+
+    # Handle question selection. The click fires as an event on every click
+    # (see the insertUI onclick), so dedupe here against the authoritative
+    # current id, which also reflects programmatic moves (add/delete/import).
+    shiny::observe({
+      if (!identical(as.numeric(input$select_question), as.numeric(current_question_id()))) {
+        current_question_id(input$select_question)
+      }
     }) |>
       shiny::bindEvent(input$select_question)
 
@@ -517,9 +614,9 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       for (q_id_str in names(shiny::isolate(question_modules()))) {
         selector = paste0("#question_card_", q_id_str)
         if (as.numeric(q_id_str) == cur) {
-          shinyjs::addClass(selector = selector, class = "border-primary border-2")
+          shinyjs::addClass(selector = selector, class = "border-primary border-2 question-active")
         } else {
-          shinyjs::removeClass(selector = selector, class = "border-primary border-2")
+          shinyjs::removeClass(selector = selector, class = "border-primary border-2 question-active")
         }
       }
     }) |>
@@ -596,9 +693,78 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       )
     }
 
-    # Dynamic save button UI
+    # Serialized form of the current template, used for unsaved-change
+    # detection. Metadata is dropped (created_at is stamped fresh on every
+    # build); NULL until every question module has a live server so a loaded
+    # template is not compared against a half-built editor.
+    current_template_serialized = shiny::reactive({
+      modules = question_modules()
+      if (length(modules) > 0 && any(vapply(modules, function(m) is.null(m$server), logical(1)))) {
+        return(NULL)
+      }
+      lst = template_to_list(build_current_template())
+      lst$metadata = NULL
+      lst
+    })
+
+    # Snapshot as of the last save, baselined once the initial state is built
+    saved_template_snapshot = shiny::reactiveVal(NULL)
+
+    shiny::observe({
+      cur = current_template_serialized()
+      if (is.null(saved_template_snapshot()) && !is.null(cur)) {
+        saved_template_snapshot(cur)
+      }
+    })
+
+    # Debounced so the serialization does not run per keystroke, and held in a
+    # reactiveVal so the save controls (and their popover DOM) only re-render
+    # when the dirty flag actually flips
+    current_template_serialized_debounced = shiny::debounce(current_template_serialized, 500)
+    template_dirty = shiny::reactiveVal(FALSE)
+
+    shiny::observe({
+      snap = saved_template_snapshot()
+      cur = current_template_serialized_debounced()
+      dirty = !is.null(snap) && !is.null(cur) && !identical(cur, snap)
+      if (!identical(dirty, template_dirty())) {
+        template_dirty(dirty)
+      }
+    })
+
+    # Question count, points total, and unsaved-changes indicator shown above
+    # the save controls
+    output$template_status_ui = shiny::renderUI({
+      modules = question_modules()
+      if (length(modules) == 0) {
+        return(NULL)
+      }
+      total = 0
+      n = 0
+      for (m in modules) {
+        if (!is.null(m$server)) {
+          total = total + m$server$question()@points
+          n = n + 1
+        }
+      }
+      shiny::div(
+        class = "small text-muted mb-1",
+        glue::glue("{n} question{if (n == 1) '' else 's'} · {total} pts total"),
+        if (template_dirty()) {
+          shiny::span(
+            class = "text-warning-emphasis ms-2",
+            shiny::icon("circle-exclamation"),
+            " unsaved changes"
+          )
+        }
+      )
+    })
+
+    # Dynamic save button UI; the save button turns warning-colored while the
+    # editor has diverged from the last saved state
     output$save_button_ui = shiny::renderUI({
       has_questions = length(question_modules()) > 0
+      save_class = if (template_dirty()) "btn-warning" else "btn-success"
       if (!is.null(project)) {
         # Project sessions: save to the project database, plus YAML
         # export/import. Import is available even with no questions; saving and
@@ -608,7 +774,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
           shiny::actionButton(
             "save_to_project",
             "Save to Project",
-            class = "btn-success btn-sm",
+            class = paste(save_class, "btn-sm"),
             disabled = !has_questions
           ),
           # Import/Export tucked into a popover off an exchange-arrows icon
@@ -648,7 +814,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
         shiny::downloadButton(
           "save_template",
           "Save Template",
-          class = "btn-success btn-sm"
+          class = paste(save_class, "btn-sm")
         )
       }
     })
@@ -663,6 +829,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
         # Save as YAML, recording the assignment source so the template can be
         # re-opened and re-validated later.
         write_template_yaml(build_current_template(), file, source_path = source_path)
+        saved_template_snapshot(current_template_serialized())
       },
       contentType = "text/yaml"
     )
@@ -673,6 +840,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     shiny::observe({
       src_rel = if (!is.null(source_path)) as.character(fs::path_rel(source_path, project@root)) else NULL
       save_template_to_db(project@root, build_current_template(), source_path = src_rel)
+      saved_template_snapshot(current_template_serialized())
 
       shiny::showNotification(
         "Saved template to the project database.",
@@ -837,31 +1005,33 @@ template_app_standalone = function(ast, template_obj = NULL, assignment_path = N
 
   # Get the base template app components
   app_components = template_app(ast, template_obj, source_path = source_path, project = project, default_points = default_points)
-  
-  # Wrap in navbar
-  ui = bslib::page_navbar(
+
+  # A simple fillable page with a plain header bar: the app has a single view,
+  # so a navbar whose only tab duplicates the page title earns nothing
+  ui = bslib::page_fillable(
     title = "markermd - Template Creation",
     theme = bslib::bs_theme(version = 5),
-    
-    # Right-align the navigation tab
-    bslib::nav_spacer(),
-    
-    # Template tab (right aligned)
-    bslib::nav_panel(
-      title = "Template Creation",
-      value = "template",
+    padding = 0,
+    gap = 0,
+    shiny::div(
+      class = "bg-light border-bottom px-3 py-2 fs-5",
+      "markermd - Template Creation"
+    ),
+    shiny::div(
+      class = "flex-grow-1 overflow-hidden p-3",
       app_components$ui
     ),
-    
-    # Footer with assignment path
-    footer = if (!is.null(assignment_path)) {
+    # Footer with assignment path (truncated rather than wrapped on narrow
+    # windows)
+    if (!is.null(assignment_path)) {
       shiny::div(
-        class = "bg-light border-top text-center text-muted p-2 mt-3 fs-6",
-        shiny::span(shiny::strong("Assignment path:"), " ", shiny::code(assignment_path, class = "bg-light px-1 rounded small"))
+        class = "bg-light border-top text-center text-muted p-2 fs-6 text-truncate flex-shrink-0",
+        shiny::strong("Assignment path:"), " ",
+        shiny::code(assignment_path, class = "bg-light px-1 rounded small")
       )
     }
   )
-  
+
   return(list(ui = ui, server = app_components$server))
 }
 

@@ -69,7 +69,8 @@ filter_condition_to_list = function(condition) {
 filter_condition_from_list = function(x) {
   markermd_filter_condition(
     type = as.character(x$type),
-    value = as.character(x$value),
+    # value may be a scalar or (for "node type") a sequence of ORed kinds
+    value = as.character(unlist(x$value)),
     negate = isTRUE(x$negate)
   )
 }

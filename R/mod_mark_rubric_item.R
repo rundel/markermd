@@ -36,14 +36,12 @@ mark_rubric_item_ui = function(id, rubric_item) {
   
   shiny::div(
     id = ns("container"),
-    class = "p-2 m-0 rounded position-relative",
-    style = "transition: background-color 0.2s ease;",
-    onmouseover = "this.style.backgroundColor='#e9ecef'; this.querySelector('.rubric-action-btns').style.opacity='1';",
-    onmouseout = "this.style.backgroundColor='transparent'; this.querySelector('.rubric-action-btns').style.opacity='0';",
-    # Action buttons row (hidden by default, shown on hover)
+    class = "rubric-item-row p-2 m-0 rounded position-relative",
+    # Action buttons row: always present at reduced emphasis, full opacity on
+    # hover or keyboard focus (styled via .rubric-action-btns in mark-app.R)
     shiny::div(
       class = "rubric-action-btns position-absolute",
-      style = "top: 0; right: 8px; opacity: 0; transition: opacity 0.2s ease; cursor: pointer;",
+      style = "top: 0; right: 8px;",
       shiny::div(
         style = "display: flex; gap: 2px;",
         shiny::actionButton(
@@ -326,12 +324,38 @@ mark_rubric_item_server = function(id, initial_item, collection_path = NULL, que
     delete_signal = shiny::reactiveVal(0)
     move_up_signal = shiny::reactiveVal(0)
     move_down_signal = shiny::reactiveVal(0)
-    
-    # Handle delete button clicks
+
+    # Confirm before deleting: the item is shared across all repos and its
+    # recorded selections are removed everywhere, so a stray click mid-grading
+    # must not destroy it (same pattern as question deletion in template())
     shiny::observe({
-      delete_signal(delete_signal() + 1)
+      desc = rubric_item_state()@description
+      label = if (nchar(trimws(desc)) > 0) {
+        glue::glue("Delete the rubric item \"{desc}\"?")
+      } else {
+        "Delete this rubric item?"
+      }
+      shiny::showModal(shiny::modalDialog(
+        title = "Delete rubric item?",
+        paste(
+          label,
+          "This removes it, and any recorded selections of it, for every repository.",
+          "This cannot be undone."
+        ),
+        easyClose = TRUE,
+        footer = shiny::tagList(
+          shiny::modalButton("Cancel"),
+          shiny::actionButton(session$ns("confirm_delete"), "Delete", class = "btn-danger")
+        )
+      ))
     }) |>
       shiny::bindEvent(input$delete_btn)
+
+    shiny::observe({
+      shiny::removeModal()
+      delete_signal(delete_signal() + 1)
+    }) |>
+      shiny::bindEvent(input$confirm_delete)
 
     # Handle move button clicks
     shiny::observe({

@@ -33,26 +33,40 @@ ast_preview_observers = function(input, nodes, id_prefix = NULL) {
           as.character() |>
           paste(collapse = "\n")
 
-        node_type = sub("^q2r::", "", class(node)[1])
-        editor_id = paste0("monaco-editor-", if (is.null(id_prefix)) "ast" else id_prefix, "-", node_index)
+        language = monaco_language_for_node(node)
+        if (!identical(language, "markdown")) {
+          # Engine-language previews: drop the surrounding fence lines so the
+          # engine grammar is not applied to the ``` markers themselves
+          lines = strsplit(content, "\n", fixed = TRUE)[[1]]
+          fence = grepl("^\\s*(`{3,}|~{3,})", lines)
+          if (length(lines) >= 2 && fence[1] && fence[length(lines)]) {
+            content = paste(lines[-c(1, length(lines))], collapse = "\n")
+          }
+        }
+
+        # One fixed editor id: only one preview modal is open at a time, and
+        # the shared init disposes the previous editor before creating anew
+        editor_id = "markermd-preview-editor"
 
         shiny::showModal(
           shiny::modalDialog(
-            title = shiny::span(node_type, style = "font-size: 16px; font-weight: bold;"),
+            # Echo the tree row that was clicked rather than an internal class
+            # name, so the modal speaks the same vocabulary as the tree
+            title = shiny::span(q2r_node_label(node), class = "fs-6 fw-bold"),
             size = "l",
             easyClose = TRUE,
-            footer = NULL,
+            footer = shiny::modalButton("Close"),
             shiny::div(
               style = "height: 400px;",
               shiny::div(
                 id = editor_id,
-                style = "height: 100%; width: 100%; border: 1px solid #e1e5e9;"
+                class = "h-100 w-100 border rounded"
               )
             )
           )
         )
 
-        render_monaco_editor(editor_id, content, monaco_language_for_node(node))
+        render_monaco_editor(editor_id, content, language)
       }) |>
         shiny::bindEvent(input[[button_id]], ignoreInit = TRUE)
     })
@@ -63,26 +77,33 @@ ast_preview_observers = function(input, nodes, id_prefix = NULL) {
 #
 # id: Character. Module namespace ID
 # title: Character. Panel title (default: "Document Structure")
-# show_clear_button: Logical. Whether to show the clear-selections button
+# header_extra: Tag. Optional content shown on the right of the card header
+#   (the template app shows the active-question badge there)
+# show_clear_button: Logical. Whether to show the clear-selections footer
+#   button (the template app now clears from the question card instead)
 
-ast_module_ui = function(id, title = "Document Structure", show_clear_button = FALSE) {
+ast_module_ui = function(id, title = "Document Structure", header_extra = NULL, show_clear_button = FALSE) {
   ns = shiny::NS(id)
 
   bslib::card(
     class = "h-100",
-    bslib::card_header(title, class = "bg-light"),
+    bslib::card_header(
+      class = "bg-light d-flex justify-content-between align-items-center",
+      title,
+      header_extra
+    ),
     bslib::card_body(
       class = "flex-fill overflow-auto p-0",
       shiny::div(
         id = ns("ast_tree_container"),
-        class = "bg-light p-3 h-100 overflow-auto",
+        class = "bg-light p-3",
         shiny::uiOutput(ns("ast_tree_ui"))
       )
     ),
     if (show_clear_button) {
       bslib::card_footer(
         class = "text-center",
-        shiny::actionButton(ns("clear_selections"), "Clear Question", class = "btn-secondary btn-sm")
+        shiny::actionButton(ns("clear_selections"), "Clear selected nodes", class = "btn-secondary btn-sm")
       )
     }
   )

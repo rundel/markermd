@@ -48,9 +48,24 @@ question_ui = function(id, name_id, points = 10, name = paste("Question", name_i
         shiny::span("pts", class = "ms-1 text-muted small")
       ),
 
-      # Delete question button (right aligned)
+      # Reorder and delete controls (right aligned)
       shiny::div(
         style = "flex: 0 0 auto;",
+        class = "d-flex align-items-center gap-1",
+        shiny::actionButton(
+          ns("move_question_up"),
+          shiny::icon("chevron-up"),
+          class = "btn btn-sm p-1 border-0 text-secondary",
+          style = "line-height: 1;",
+          title = "Move question up"
+        ),
+        shiny::actionButton(
+          ns("move_question_down"),
+          shiny::icon("chevron-down"),
+          class = "btn btn-sm p-1 border-0 text-secondary",
+          style = "line-height: 1;",
+          title = "Move question down"
+        ),
         shiny::actionButton(
           ns("delete_question"),
           shiny::icon("times"),
@@ -61,36 +76,58 @@ question_ui = function(id, name_id, points = 10, name = paste("Question", name_i
       )
     ),
     
-    # Question content
+    # One-line summary shown while the card is collapsed (inactive); the
+    # question-summary / question-body visibility swap is CSS-driven off the
+    # wrapper's question-active class (see template-app.R)
     bslib::card_body(
+      class = "question-summary py-1 small text-muted",
+      shiny::uiOutput(ns("summary_line"))
+    ),
+
+    # Question content (full body, shown when the card is active)
+    bslib::card_body(
+      class = "question-body",
       style = "padding: 12px;",
-      
-      # Selected nodes display
+
+      # Selected nodes display with an adjacent clear control
       shiny::div(
         style = "margin-bottom: 2px;",
-        shiny::strong("Selected nodes: "),
-        shiny::uiOutput(ns("selected_nodes_display"))
+        class = "d-flex align-items-baseline justify-content-between gap-2",
+        shiny::div(
+          shiny::strong("Selected nodes: "),
+          shiny::uiOutput(ns("selected_nodes_display"), inline = TRUE)
+        ),
+        shiny::uiOutput(ns("clear_nodes_button"), inline = TRUE)
       ),
 
       # Filters section
       shiny::div(
-        # Filters header with add button
+        # Filters header with matching-semantics help and add button
         shiny::div(
           style = "display: flex; justify-content: space-between; align-items: center; margin-top: -2px; margin-bottom: 8px;",
           shiny::div(
+            class = "d-flex align-items-center gap-1",
             shiny::strong("Filters: "),
-            shiny::uiOutput(ns("filters_status"))
+            shiny::uiOutput(ns("filters_status"), inline = TRUE),
+            bslib::popover(
+              shiny::icon("circle-question", class = "text-muted"),
+              title = "Filter matching",
+              shiny::tags$ul(
+                class = "small mb-0 ps-3",
+                shiny::tags$li(shiny::strong("node type"), ": matches any of the selected kinds"),
+                shiny::tags$li(shiny::strong("has class / has id / has engine"), ": exact match"),
+                shiny::tags$li(shiny::strong("has text"), ": regular expression"),
+                shiny::tags$li(shiny::strong("has label"), ": glob pattern (e.g. fig-*)"),
+                shiny::tags$li(shiny::strong("has option"), ": \"eval\" tests key presence, \"eval: false\" tests its value")
+              )
+            )
           ),
-          shiny::div(
-            style = "display: flex; align-items: center;",
-            shiny::actionButton(
-              ns("add_filter_group"),
-              shiny::icon("plus"),
-              class = "btn-outline-primary btn-sm",
-              style = "font-size: 10px; padding: 2px 6px;",
-              title = "Add Filter Group"
-            ),
-            shiny::span("Add Filter", style = "margin-left: 6px; font-size: 12px;")
+          shiny::actionButton(
+            ns("add_filter_group"),
+            "Add Filter",
+            icon = shiny::icon("plus"),
+            class = "btn-outline-primary btn-sm",
+            style = "font-size: 11px; padding: 2px 8px;"
           )
         ),
 
@@ -101,8 +138,10 @@ question_ui = function(id, name_id, points = 10, name = paste("Question", name_i
           shiny::uiOutput(ns("filters_ui"))
         ),
 
-        # Live preview of the constructed q2r filter expression
-        shiny::uiOutput(ns("filter_preview"))
+        # Live preview of the constructed q2r filter expression, plus
+        # warnings for values that would silently misfire
+        shiny::uiOutput(ns("filter_preview")),
+        shiny::uiOutput(ns("filter_warnings"))
       ),
 
       # Rules section
@@ -114,19 +153,15 @@ question_ui = function(id, name_id, points = 10, name = paste("Question", name_i
             shiny::strong("Validation rules: "),
             shiny::uiOutput(ns("rules_status"))
           ),
-          shiny::div(
-            style = "display: flex; align-items: center;",
-            shiny::actionButton(
-              ns("add_rule"),
-              shiny::icon("plus"),
-              class = "btn-outline-primary btn-sm",
-              style = "font-size: 10px; padding: 2px 6px;",
-              title = "Add Rule"
-            ),
-            shiny::span("Add Rule", style = "margin-left: 6px; font-size: 12px;")
+          shiny::actionButton(
+            ns("add_rule"),
+            "Add Rule",
+            icon = shiny::icon("plus"),
+            class = "btn-outline-primary btn-sm",
+            style = "font-size: 11px; padding: 2px 8px;"
           )
         ),
-        
+
         # Rules container
         shiny::div(
           id = ns("rules_container"),
@@ -162,6 +197,40 @@ question_server = function(id, ast, initial_question = NULL) {
       if (is.null(ast())) return(list())
       build_ast_tree_structure(ast())
     })
+
+    # One-line summary shown while the card is collapsed
+    output$summary_line = shiny::renderUI({
+      q = state()
+      n_nodes = length(q@selected_nodes@node_ids)
+      n_filters = length(q@filters)
+      n_rules = length(q@rules)
+      shiny::span(glue::glue(
+        "{n_nodes} node{if (n_nodes == 1) '' else 's'} selected · ",
+        "{n_filters} filter{if (n_filters == 1) '' else 's'} · ",
+        "{n_rules} rule{if (n_rules == 1) '' else 's'}"
+      ))
+    })
+
+    # Clear control next to the selected-nodes display, shown only when there
+    # is a selection to clear
+    output$clear_nodes_button = shiny::renderUI({
+      if (length(state()@selected_nodes@node_ids) == 0) {
+        return(NULL)
+      }
+      shiny::actionButton(
+        session$ns("clear_nodes_btn"),
+        "Clear",
+        class = "btn-link btn-sm p-0 text-decoration-none",
+        title = "Clear this question's selected nodes"
+      )
+    })
+
+    shiny::observe({
+      cur_state = state()
+      cur_state@selected_nodes = markermd_node_selection(node_ids = character(0))
+      state(cur_state)
+    }) |>
+      shiny::bindEvent(input$clear_nodes_btn)
 
     # Render selected nodes display: each node-id selector followed by the
     # number of nodes it covers (the selected heading/div and its descendants).
@@ -306,21 +375,39 @@ question_server = function(id, ast, initial_question = NULL) {
       }
       question_ast = get_question_ast(ast(), q)
       stats::setNames(
-        lapply(rules, function(rule) evaluate_rule(question_ast, rule)),
+        lapply(rules, function(rule) {
+          res = evaluate_rule(question_ast, rule)
+          # An empty pattern passes trivially (see evaluate_rule_has_content
+          # and friends); surface that as a warning rather than a green check
+          # so the author notices the rule is not testing anything yet
+          if (rule@verb %in% c("has content", "lacks content", "has name") &&
+              (is.na(rule@values[1]) || nchar(rule@values[1]) == 0)) {
+            res = list(
+              passed = NA,
+              message = "Empty pattern: this rule passes trivially. Enter a pattern."
+            )
+          }
+          res
+        }),
         as.character(seq_along(rules))
       )
     })
 
-    # Small pass/fail badge from an evaluate_rule() result (or NULL)
+    # Small status badge from an evaluate_rule() result (or NULL). The message
+    # rides in a bslib tooltip so it is reachable by keyboard and touch, not
+    # just on a precise hover.
     rule_status_badge = function(status) {
       if (is.null(status)) {
         return(NULL)
       }
-      if (isTRUE(status$passed)) {
-        shiny::icon("check", style = "color: #28a745; font-size: 16px;", title = status$message)
+      icon_tag = if (is.na(status$passed)) {
+        shiny::icon("triangle-exclamation", style = "color: #ffc107; font-size: 14px;")
+      } else if (isTRUE(status$passed)) {
+        shiny::icon("check", style = "color: #28a745; font-size: 16px;")
       } else {
-        shiny::icon("times", style = "color: #dc3545; font-size: 16px;", title = status$message)
+        shiny::icon("times", style = "color: #dc3545; font-size: 16px;")
       }
+      bslib::tooltip(shiny::span(icon_tag, tabindex = "0"), status$message)
     }
     
     # Initialize rules_list and filters_list from loaded question state
@@ -651,11 +738,27 @@ question_server = function(id, ast, initial_question = NULL) {
     # because the observer above had already applied the verb change, so it was
     # removed.
 
+    # Filter node-type multiselects that have reported a (non-NULL) value at
+    # least once. The node-type value control is a selectize multiselect, so
+    # an empty selection reports NULL, which is also the not-yet-initialised
+    # state; this disambiguates the two (same scheme as node_types_seen for
+    # rule rows). Stale keys after re-indexing are harmless here: the
+    # deliberate-clear branch keeps the stored value and merely re-syncs the
+    # widget to it.
+    filter_values_seen = shiny::reactiveVal(character(0))
+    note_filter_value_seen = function(key) {
+      seen = shiny::isolate(filter_values_seen())
+      if (!(key %in% seen)) {
+        filter_values_seen(c(seen, key))
+      }
+    }
+
     # Capture the current input values for a single filter condition into a new
-    # markermd_filter_condition. Both controls always report a value (no
-    # selectize NULL ambiguity), so missing inputs just keep the stored
-    # condition. When the value is invalid for the active type (e.g. stale text
-    # after switching to "node type") the type's default is used instead.
+    # markermd_filter_condition. The type and negate controls always report a
+    # value, so missing inputs just keep the stored condition; the node-type
+    # multiselect's NULL is disambiguated via filter_values_seen. When the
+    # value is invalid for the active type (e.g. stale text after switching to
+    # "node type") the type's default is used instead.
     #
     # group_id: Character. The group ID whose condition should be read
     # cond_id: Character. The condition ID within the group
@@ -665,9 +768,14 @@ question_server = function(id, ast, initial_question = NULL) {
       type_input = paste0("filter_", group_id, "_", cond_id, "-type")
       value_input = paste0("filter_", group_id, "_", cond_id, "-value")
       negate_input = paste0("filter_", group_id, "_", cond_id, "-negate")
+      seen_key = paste0(group_id, "_", cond_id)
 
       final_type = if (!is.null(input[[type_input]])) input[[type_input]] else condition@type
       final_negate = if (!is.null(input[[negate_input]])) input[[negate_input]] else condition@negate
+
+      if (!is.null(input[[value_input]])) {
+        note_filter_value_seen(seen_key)
+      }
 
       # A type change always resets the value to the new type's default so a
       # stale value (e.g. a class name in a label field) never carries over.
@@ -679,6 +787,13 @@ question_server = function(id, ast, initial_question = NULL) {
         get_default_filter_condition_value(final_type)
       } else if (!is.null(input[[value_input]])) {
         input[[value_input]]
+      } else if (final_type == "node type" && seen_key %in% shiny::isolate(filter_values_seen())) {
+        # The multiselect was deliberately emptied. An empty kind set is not a
+        # valid condition (it would match nothing), so keep the stored kinds
+        # and snap the widget back to them rather than leaving the UI showing
+        # an empty control while a hidden filter stays active.
+        shiny::updateSelectizeInput(session, value_input, selected = condition@value)
+        condition@value
       } else {
         condition@value
       }
@@ -876,13 +991,18 @@ question_server = function(id, ast, initial_question = NULL) {
       }
     })
 
-    # Render filters status: "None" when the question has no filter groups
+    # Render filters status: "None" when the question has no filter groups,
+    # otherwise a live count of the nodes the filters exclude
     output$filters_status = shiny::renderUI({
       if (length(filters_list()) == 0) {
-        shiny::span("None", class = "text-muted")
-      } else {
-        NULL
+        return(shiny::span("None", class = "text-muted"))
       }
+      excluded = question_filtered_indices(ast(), state())
+      n = length(excluded)
+      shiny::span(
+        class = "badge text-bg-secondary fw-normal",
+        glue::glue("excludes {n} node{if (n == 1) '' else 's'}")
+      )
     })
 
     # Live preview of the q2r predicate the current filters construct. Reads
@@ -892,12 +1012,27 @@ question_server = function(id, ast, initial_question = NULL) {
       if (is.null(preview_text)) {
         NULL
       } else {
-        shiny::tags$code(
-          preview_text,
-          class = "small text-muted d-block mb-2",
-          style = "white-space: pre-wrap;"
+        shiny::div(
+          class = "small text-muted mb-2",
+          shiny::span("q2r predicate: ", class = "fst-italic"),
+          shiny::tags$code(preview_text, style = "white-space: pre-wrap;")
         )
       }
+    })
+
+    # Inline warnings for filter values that silently misfire (bad regexes,
+    # empty patterns, option tests without a key)
+    output$filter_warnings = shiny::renderUI({
+      msgs = filter_value_warnings(state()@filters)
+      if (length(msgs) == 0) {
+        return(NULL)
+      }
+      shiny::div(
+        class = "small text-danger mb-2",
+        lapply(msgs, function(msg) {
+          shiny::div(shiny::icon("triangle-exclamation"), " ", msg)
+        })
+      )
     })
 
     # Return reactive question data and methods
@@ -941,9 +1076,17 @@ question_server = function(id, ast, initial_question = NULL) {
       get_selected_nodes = shiny::reactive({
         node_ids_to_indices(ast(), state()@selected_nodes@node_ids)
       }),
-      
+
       delete_clicked = shiny::reactive({
         input$confirm_delete_question
+      }),
+
+      move_up_clicked = shiny::reactive({
+        input$move_question_up
+      }),
+
+      move_down_clicked = shiny::reactive({
+        input$move_question_down
       })
     ))
     })

@@ -47,6 +47,32 @@ resolve_repo_artifacts = function(project, repo_list) {
   stats::setNames(vapply(repo_list, find_one, character(1)), repo_list)
 }
 
+# Register each repo's artifact directory as a Shiny static resource path and
+# return the URL each report is served under.
+#
+# Serving the reports (instead of injecting their text into the page) lets a
+# non-self-contained report's sibling resources ("<name>_files/" figures, libs
+# CSS/JS) resolve, and displaying them in an iframe keeps the report's own
+# CSS/JS out of the grading app document. Same-origin on purpose: the
+# question scroll/highlight JS reaches into the report document.
+#
+# artifact_paths: Named character vector from resolve_repo_artifacts()
+#
+# Returns a named character vector mapping each repo to its served URL, or NA
+# when the repo has no artifact.
+
+register_artifact_resources = function(artifact_paths) {
+  urls = stats::setNames(rep(NA_character_, length(artifact_paths)), names(artifact_paths))
+  for (i in seq_along(artifact_paths)) {
+    path = artifact_paths[[i]]
+    if (is.na(path)) next
+    prefix = paste0("markermd_artifact_", i)
+    shiny::addResourcePath(prefix, dirname(path))
+    urls[[i]] = paste0(prefix, "/", utils::URLencode(basename(path), reserved = TRUE))
+  }
+  urls
+}
+
 # Open a folder in the system file manager (cross-platform)
 #
 # folder_path: Path to folder to open

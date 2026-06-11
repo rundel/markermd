@@ -14,7 +14,7 @@ get_question_content = function(repo_ast, question, session) {
 
   shiny::div(
     class = "mb-1 p-2 bg-light border rounded overflow-auto small",
-    style = "max-height: 120px;",
+    style = "max-height: 160px;",
     render_ast_tree(
       tree_items,
       session$ns,
@@ -87,11 +87,11 @@ create_question_card = function(question, question_result, current_ast, session)
     "#6c757d"  # Default for unknown status
   )
   
-  # Create HTML for solid circle icons with white symbols - only pass/fail states
-  status_icon_html = switch(question_result$status,
-    "pass" = '<i class="fas fa-circle text-success"></i><i class="fas fa-check text-white position-absolute top-50 start-50 translate-middle" style="font-size: 10px;"></i>',
-    "fail" = '<i class="fas fa-circle text-danger"></i><i class="fas fa-times text-white position-absolute top-50 start-50 translate-middle" style="font-size: 10px;"></i>',
-    '<i class="fas fa-question-circle text-muted"></i>'  # Default for unknown status
+  # Solid circle status icons - only pass/fail states
+  status_icon = switch(question_result$status,
+    "pass" = shiny::icon("circle-check", class = "text-success"),
+    "fail" = shiny::icon("circle-xmark", class = "text-danger"),
+    shiny::icon("circle-question", class = "text-muted")  # Default for unknown status
   )
   
   # Get the document nodes for this question using section selection
@@ -108,8 +108,8 @@ create_question_card = function(question, question_result, current_ast, session)
         style = "display: flex; justify-content: space-between; align-items: center;",
         shiny::span(question_name, class = "my-0 text-dark fw-semibold"),
         shiny::div(
-          style = "position: relative; font-size: 18px;",
-          shiny::HTML(status_icon_html)
+          style = "font-size: 18px;",
+          status_icon
         )
       )
     ),
@@ -131,9 +131,9 @@ create_question_card = function(question, question_result, current_ast, session)
 mark_validate_ui = function(id) {
   ns = shiny::NS(id)
   
+  # Scrolling is handled by the enclosing card_body, so no height math here
   shiny::div(
     id = ns("template_validation"),
-    style = "max-height: calc(100vh - 200px); overflow-y: auto;",
     shiny::uiOutput(ns("template_validation_ui"))
   )
 }

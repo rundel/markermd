@@ -162,7 +162,8 @@ create_rule_verb_inputs = function(verb, value, values_id) {
           values_id,
           NULL,
           value = value,
-          width = "100%"
+          width = "100%",
+          placeholder = "regex pattern"
         )
       )
     },
@@ -173,7 +174,8 @@ create_rule_verb_inputs = function(verb, value, values_id) {
           values_id,
           NULL,
           value = value,
-          width = "100%"
+          width = "100%",
+          placeholder = "regex pattern"
         )
       )
     },
@@ -184,7 +186,8 @@ create_rule_verb_inputs = function(verb, value, values_id) {
           values_id,
           NULL,
           value = value,
-          width = "100%"
+          width = "100%",
+          placeholder = "name (regex)"
         )
       )
     },

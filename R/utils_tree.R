@@ -160,7 +160,10 @@ render_ast_tree = function(tree_items, ns, opts = ast_render_opts()) {
 # opts: Render options from ast_render_opts()
 
 ast_tree_css = function(css_class, opts) {
-  font_size = if (opts$mode == "interactive") "13px" else "11px"
+  # Same base size in both modes: the read-only validation tree carries the
+  # content graders actually scan, so it must not render smaller than the
+  # interactive template tree
+  font_size = "13px"
 
   base_css = glue::glue(
     "
@@ -433,7 +436,7 @@ node_preview_button = function(item, ns, id_prefix = NULL) {
     ns(button_id),
     shiny::icon("search"),
     class = "btn-outline-info",
-    style = "font-size: 8px; padding: 1px 4px; min-width: 18px; height: 18px; border-width: 1px; margin-left: 8px;",
+    style = "font-size: 10px; padding: 2px 6px; min-width: 24px; height: 22px; border-width: 1px; margin-left: 8px;",
     title = "Preview content"
   )
 }
@@ -660,7 +663,7 @@ tree_node_label_ui = function(description, detail, text_class) {
   shiny::div(
     style = "margin-right: 12px;",
     shiny::div(shiny::span(description, class = text_class)),
-    shiny::div(detail, style = "font-size: 0.8em; color: #6c757d; line-height: 1.3; margin-top: 1px;")
+    shiny::div(detail, class = "text-secondary", style = "font-size: 0.85em; line-height: 1.3; margin-top: 1px;")
   )
 }
 

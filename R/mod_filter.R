@@ -31,25 +31,28 @@ filter_condition_ui = function(condition, input_id, show_and = FALSE) {
       # Negation toggle (logical NOT in front of this condition), rendered as
       # a checkbox with its "not" label stacked underneath (see the
       # .filter-not-toggle CSS) so the row stays as short as the selects
-      shiny::div(
-        class = "filter-not-toggle",
-        style = "flex: 0 0 30px;",
-        title = "Negate this condition",
-        shiny::checkboxInput(
-          input_id("negate"),
-          "not",
-          value = condition@negate,
-          width = "100%"
-        )
+      bslib::tooltip(
+        shiny::div(
+          class = "filter-not-toggle",
+          style = "flex: 0 0 30px;",
+          shiny::checkboxInput(
+            input_id("negate"),
+            "not",
+            value = condition@negate,
+            width = "100%"
+          )
+        ),
+        "Excludes nodes matching this condition (logical NOT)"
       ),
 
-      # Condition type selection
+      # Condition type selection; the labels carry each type's matching
+      # semantics (exact / regex / glob / option syntax)
       shiny::div(
         style = "flex: 0 0 30%;",
         shiny::selectInput(
           input_id("type"),
           NULL,
-          choices = get_allowed_filter_condition_types(),
+          choices = filter_condition_type_choices(),
           selected = condition@type,
           width = "100%",
           selectize = FALSE
@@ -92,14 +95,24 @@ create_filter_value_input = function(type, value, value_id) {
   }
 
   if (type == "node type") {
+    # Multi-select: the selected kinds are ORed within this one condition,
+    # mirroring the rule row's node-type control (the kinds are pairwise
+    # disjoint, so a second ANDed node-type condition could never match)
     input_wrapper(
-      shiny::selectInput(
+      shiny::selectizeInput(
         value_id,
         NULL,
         choices = setdiff(get_allowed_node_types(), "Any node"),
         selected = value,
+        multiple = TRUE,
         width = "100%",
-        selectize = FALSE
+        options = list(
+          placeholder = "node types (any of)",
+          # Render the menu on <body> so it floats above the question card
+          # instead of being clipped by the scrolling questions container.
+          dropdownParent = "body",
+          plugins = list("remove_button")
+        )
       )
     )
   } else {
@@ -150,24 +163,25 @@ filter_group_ui = function(group_id, group, ns) {
       style = "display: flex; justify-content: space-between; align-items: center; padding: 0 8px;",
 
       # Group negation toggle (logical NOT around the whole group)
-      shiny::div(
-        style = "font-size: 12px;",
-        title = "Negate the entire group",
-        shiny::checkboxInput(
-          ns(paste0("filter_group_", group_id, "-negate")),
-          "not group",
-          value = group$negate,
-          width = "100%"
-        )
+      bslib::tooltip(
+        shiny::div(
+          style = "font-size: 12px;",
+          shiny::checkboxInput(
+            ns(paste0("filter_group_", group_id, "-negate")),
+            "not group",
+            value = group$negate,
+            width = "100%"
+          )
+        ),
+        "Excludes nodes matching ALL conditions below (negates the whole group)"
       ),
 
-      # Filled X distinguishes deleting the whole group from the
-      # per-condition outline trash buttons (mirrors the question-delete
-      # button styling)
+      # Outline X distinguishes deleting the whole group from both the
+      # per-condition trash buttons and the question's filled delete button
       shiny::actionButton(
         ns(paste0("filter_group_", group_id, "-delete")),
         shiny::icon("times"),
-        class = "btn-danger btn-sm",
+        class = "btn-outline-danger btn-sm",
         style = "font-size: 12px; padding: 2px 6px; border-radius: 20%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; line-height: 1;",
         title = "Delete Filter Group"
       )
@@ -179,12 +193,12 @@ filter_group_ui = function(group_id, group, ns) {
       style = "display: flex; align-items: center; justify-content: center; padding: 0 8px;",
       shiny::actionButton(
         ns(paste0("filter_group_", group_id, "-add_condition")),
-        shiny::icon("plus"),
+        "and",
+        icon = shiny::icon("plus"),
         class = "btn-outline-primary btn-sm",
-        style = "font-size: 10px; padding: 2px 6px;",
-        title = "Add AND Condition"
-      ),
-      shiny::span("and", style = "margin-left: 6px; font-size: 12px;", class = "text-muted")
+        style = "font-size: 11px; padding: 2px 8px;",
+        title = "Add a condition that must also match (AND)"
+      )
     )
   )
 }

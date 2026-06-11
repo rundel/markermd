@@ -3,18 +3,21 @@
 # These functions bridge between S7 objects and SQLite database operations
 
 # SQL fragment selecting the most recent grade row per item_id for a given
-# question_name / assignment_repo pair. The outer query must alias the grades
-# table as g1 and supply two pairs of (question_name, assignment_repo) params:
-# one pair for this inner subquery and one for the outer WHERE clause.
+# question_name / assignment_repo pair. Recency is decided by the
+# autoincrement id, not the timestamp: timestamps have 1-second resolution, so
+# two quick toggles of the same item tie on MAX(timestamp) and the join would
+# return both rows. The outer query must alias the grades table as g1 and
+# supply two pairs of (question_name, assignment_repo) params: one pair for
+# this inner subquery and one for the outer WHERE clause.
 
 most_recent_grade_join = "
   FROM grades g1
   INNER JOIN (
-    SELECT item_id, MAX(timestamp) as max_timestamp
+    SELECT MAX(id) as max_id
     FROM grades
     WHERE question_name = ? AND assignment_repo = ?
     GROUP BY item_id
-  ) g2 ON g1.item_id = g2.item_id AND g1.timestamp = g2.max_timestamp
+  ) g2 ON g1.id = g2.max_id
   WHERE g1.question_name = ? AND g1.assignment_repo = ?"
 
 # Convert database settings row to markermd_grade_state S7 object
@@ -208,7 +211,7 @@ load_comment = function(collection_path, question_name, assignment_repo) {
       SELECT comment_text
       FROM comments
       WHERE question_name = ? AND assignment_repo = ?
-      ORDER BY timestamp DESC
+      ORDER BY id DESC
       LIMIT 1
     ", params = list(question_name, assignment_repo))
     
@@ -320,38 +323,27 @@ batch_save_rubric_items = function(collection_path, question_name, items_list) {
   })
 }
 
-# Calculate grading progress for all assignments
+# All (question, repo) pairs that currently count as graded
 #
-# Computes, for every requested repository, how many of the requested questions
-# have grading data. A question/repo is graded if it has a selected rubric item
-# (using the most recent grade per item) or a non-empty most recent comment.
-# Two grouped queries cover all repo/question pairs at once rather than running
-# a query per pair.
+# A question/repo pair is graded if it has a selected rubric item (using the
+# most recent grade per item, by autoincrement id since timestamps can tie
+# within a second) or a non-empty most recent comment. Two grouped queries
+# cover all pairs at once rather than running a query per pair.
 #
 # collection_path: Path to collection directory
-# question_names: Character vector of question names
-# assignment_repos: Character vector of assignment repository names
-# Returns: Named integer vector keyed by repo with graded question counts
+# Returns: Data frame with question_name and assignment_repo columns
 
-calculate_grading_progress = function(collection_path, question_names, assignment_repos) {
-  if (length(question_names) == 0 || length(assignment_repos) == 0) {
-    return(stats::setNames(integer(0), character(0)))
-  }
-
-  graded_pairs = with_database(collection_path, function(conn) {
+graded_question_pairs = function(collection_path) {
+  with_database(collection_path, function(conn) {
     # Pairs with a selected rubric item among the most recent grade per item
     selected_pairs = DBI::dbGetQuery(conn, "
       SELECT DISTINCT g1.question_name AS question_name, g1.assignment_repo AS assignment_repo
       FROM grades g1
       INNER JOIN (
-        SELECT item_id, question_name, assignment_repo, MAX(timestamp) AS max_timestamp
+        SELECT MAX(id) AS max_id
         FROM grades
         GROUP BY item_id, question_name, assignment_repo
-      ) g2
-        ON g1.item_id = g2.item_id
-       AND g1.question_name = g2.question_name
-       AND g1.assignment_repo = g2.assignment_repo
-       AND g1.timestamp = g2.max_timestamp
+      ) g2 ON g1.id = g2.max_id
       WHERE g1.selected = 1")
 
     # Most recent comment per pair, kept when it is non-empty
@@ -359,13 +351,10 @@ calculate_grading_progress = function(collection_path, question_names, assignmen
       SELECT c.question_name AS question_name, c.assignment_repo AS assignment_repo, c.comment_text AS comment_text
       FROM comments c
       INNER JOIN (
-        SELECT question_name, assignment_repo, MAX(timestamp) AS max_timestamp
+        SELECT MAX(id) AS max_id
         FROM comments
         GROUP BY question_name, assignment_repo
-      ) latest
-        ON c.question_name = latest.question_name
-       AND c.assignment_repo = latest.assignment_repo
-       AND c.timestamp = latest.max_timestamp")
+      ) latest ON c.id = latest.max_id")
     comment_pairs = latest_comments[
       !is.na(latest_comments$comment_text) & nchar(trimws(latest_comments$comment_text)) > 0,
       c("question_name", "assignment_repo"),
@@ -377,6 +366,28 @@ calculate_grading_progress = function(collection_path, question_names, assignmen
       comment_pairs
     ))
   })
+}
+
+# Calculate grading progress for all assignments
+#
+# Computes, for every requested repository, how many of the requested questions
+# have grading data (see graded_question_pairs() for what counts as graded).
+#
+# collection_path: Path to collection directory
+# question_names: Character vector of question names
+# assignment_repos: Character vector of assignment repository names
+# graded_pairs: Optional precomputed graded_question_pairs() result, so callers
+#   that already hold the pairs avoid a second set of queries
+# Returns: Named integer vector keyed by repo with graded question counts
+
+calculate_grading_progress = function(collection_path, question_names, assignment_repos, graded_pairs = NULL) {
+  if (length(question_names) == 0 || length(assignment_repos) == 0) {
+    return(stats::setNames(integer(0), character(0)))
+  }
+
+  if (is.null(graded_pairs)) {
+    graded_pairs = graded_question_pairs(collection_path)
+  }
 
   graded_pairs = graded_pairs[
     graded_pairs$question_name %in% question_names &

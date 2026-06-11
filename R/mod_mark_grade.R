@@ -12,10 +12,11 @@ mark_grade_ui = function(id, grade_state) {
   
   shiny::div(
     class = "border-bottom",
-    #style = "background-color: #f8f9fa; padding: 12px; border-radius: 6px;",
     bslib::layout_columns(
       col_widths = c(8, 4),
-      # Score display (left side)
+      # Score display (left side, read-only; the total is edited in the
+      # settings popover so one student's adjustment cannot silently change
+      # the question-wide denominator)
       shiny::div(
         shiny::div(
           style = "font-size: 14px;",
@@ -25,25 +26,28 @@ mark_grade_ui = function(id, grade_state) {
           id = ns("score_display"),
           `data-current` = grade_state@current_score,
           `data-total` = grade_state@total_score,
-          style = "font-size: 20px; font-weight: bold; border: 1px solid transparent; background: transparent; padding: 8px 12px; border-radius: 4px; outline: none; transition: all 0.2s ease; cursor: pointer; display: inline-block;",
-          onmouseover = "this.style.backgroundColor='#e9ecef'; this.style.border='1px solid #80bdff';",
-          onmouseout = "this.style.backgroundColor='transparent'; this.style.border='1px solid transparent';",
-          title = "Click to edit total score",
+          class = "fw-bold d-inline-block py-2",
+          style = "font-size: 20px;",
           paste0(
             grade_state@current_score, " / ", grade_state@total_score, " ",
             if (grade_state@total_score == 1) "pt" else "pts"
           )
         )
       ),
-      # Configuration popover (right side) 
+      # Configuration popover (right side)
       shiny::div(
         class = "d-flex justify-content-end align-items-center",
         bslib::popover(
-          shiny::icon("cog"),
-          title = "Settings",
+          shiny::actionButton(
+            ns("grade_settings"),
+            shiny::icon("gear"),
+            class = "btn-outline-secondary btn-sm",
+            title = "Grading settings"
+          ),
+          title = "Grading settings",
           placement = "bottom",
           shiny::div(
-            style = "min-width: 200px;",
+            style = "min-width: 220px;",
             # Fix popover styling
             shiny::tags$style(shiny::HTML("
               .popover .form-check-input[type='radio'] {
@@ -54,6 +58,14 @@ mark_grade_ui = function(id, grade_state) {
                 margin-top: 0 !important;
               }
             ")),
+            shiny::numericInput(
+              ns("total_score_input"),
+              shiny::strong("Total points:"),
+              value = grade_state@total_score,
+              min = 0,
+              step = 0.5,
+              width = "100%"
+            ),
             # Grading mode radio buttons
             shiny::radioButtons(
               ns("grading_mode"),
@@ -66,7 +78,6 @@ mark_grade_ui = function(id, grade_state) {
               inline = FALSE
             ),
             # Bounds checkboxes
-
             shiny::checkboxGroupInput(
               ns("grade_bounds"),
               shiny::strong("Grade bounds:"),
@@ -79,13 +90,11 @@ mark_grade_ui = function(id, grade_state) {
                 if (grade_state@bound_below_max) "below_max"
               )
             )
-        
           )
         )
       )
     ),
-    # Simple, clean JavaScript for score editing
-    shiny::tags$script(shiny::HTML(glue::glue("
+    shiny::tags$script(shiny::HTML("
       $(document).ready(function() {
         // Patch the score display in place. The grade widget is deliberately
         // not re-rendered on score changes (see output$grade_ui in
@@ -101,46 +110,8 @@ mark_grade_ui = function(id, grade_state) {
           var suffix = msg.total === 1 ? 'pt' : 'pts';
           $el.html(msg.current + ' / ' + msg.total + ' ' + suffix);
         });
-
-        // Click handler for score editing
-        $(document).on('click', '#<<ns('score_display')>>', function() {
-          var $el = $(this);
-          var current = parseFloat($el.data('current'));
-          var total = parseFloat($el.data('total'));
-          
-          // Create editable version
-          $el.html(current + ' / <input type=\"number\" min=\"0\" step=\"0.5\" value=\"' + total + '\" style=\"width: 60px; border: 1px solid #80bdff; padding: 2px; border-radius: 2px;\"> pts');
-          $el.css('background-color', '#f8f9fa');
-          
-          // Focus input and select text
-          var input = $el.find('input');
-          input.focus().select();
-          
-          // Handle Enter key and blur
-          input.on('keydown', function(e) {
-            if (e.key === 'Enter') {
-              $(this).blur();
-            }
-          });
-          
-          input.on('blur', function() {
-            var newTotal = parseFloat($(this).val());
-            if (isNaN(newTotal) || newTotal < 0) newTotal = total;
-            
-            // Update display
-            var suffix = newTotal === 1 ? 'pt' : 'pts';
-            $el.html(current + ' / ' + newTotal + ' ' + suffix);
-            $el.css('background-color', 'transparent');
-            $el.data('total', newTotal);
-            
-            // Send to Shiny if changed
-            if (newTotal !== total) {
-              Shiny.setInputValue('<<ns('total_score_input')>>', newTotal);
-            }
-          });
-        });
       });
-    ", .open = "<<", .close = ">>"))),
+    ")),
     shiny::hr(class="my-0")
   )
 }
@@ -182,11 +153,15 @@ mark_grade_server = function(id, initial_grade, ui_ns = NULL, collection_path = 
     }
 
 
-    # Handle total score changes
+    # Handle total score changes. numericInput reports NA while cleared, so
+    # ignore that rather than crash.
     shiny::observe({
       current_grade = grade_state()
 
       new_total = input$total_score_input
+      if (is.null(new_total) || is.na(new_total)) {
+        return()
+      }
       if (new_total < 0) new_total = 0  # Total can't be negative
       
       # Only update if the value actually changed

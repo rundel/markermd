@@ -60,9 +60,9 @@ validate_filter_condition_type = function(type) {
 #' Validate filter condition value based on condition type
 #'
 #' @description Validates a filter condition value according to the
-#' requirements of its condition type. "node type" values must be a node kind
-#' from get_allowed_node_types() (excluding "Any node"); the other types take a
-#' single character string (empty allowed).
+#' requirements of its condition type. "node type" values are one or more node
+#' kinds from get_allowed_node_types() (excluding "Any node"), combined as a
+#' logical OR; the other types take a single character string (empty allowed).
 #'
 #' @param type Character. The condition type that determines validation requirements
 #' @param value Character. The value to validate
@@ -74,26 +74,57 @@ validate_filter_condition_value = function(type, value) {
     return(type_error)
   }
 
-  if (length(value) != 1) {
-    return("Filter condition value must be a single value")
-  }
-
   if (!is.character(value)) {
     return("Filter condition value must be a character string")
+  }
+
+  if (type == "node type") {
+    # One or more kinds, ORed: the kinds are pairwise disjoint, so requiring a
+    # single kind per condition would make a second ANDed node-type condition
+    # silently unsatisfiable
+    if (length(value) < 1) {
+      return("Node type value must include at least one node kind")
+    }
+    if (any(is.na(value))) {
+      return("Filter condition value cannot be NA")
+    }
+    allowed_kinds = setdiff(get_allowed_node_types(), "Any node")
+    if (!all(value %in% allowed_kinds)) {
+      return(paste0("Node type value must be one of: ", paste(allowed_kinds, collapse = ", ")))
+    }
+    return(NULL)
+  }
+
+  if (length(value) != 1) {
+    return("Filter condition value must be a single value")
   }
 
   if (is.na(value)) {
     return("Filter condition value cannot be NA")
   }
 
-  if (type == "node type") {
-    allowed_kinds = setdiff(get_allowed_node_types(), "Any node")
-    if (!value %in% allowed_kinds) {
-      return(paste0("Node type value must be one of: ", paste(allowed_kinds, collapse = ", ")))
-    }
-  }
-
   NULL
+}
+
+#' Display choices for the filter condition-type select
+#'
+#' @description Returns the get_allowed_filter_condition_types() values with
+#' display labels annotating each type's matching semantics (exact, regex,
+#' glob, or the option mini-syntax), so the semantics stay visible after a
+#' value has been typed.
+#'
+#' @return Named character vector suitable for shiny select choices
+#' @export
+filter_condition_type_choices = function() {
+  c(
+    "node type" = "node type",
+    "has class (exact)" = "has class",
+    "has id (exact)" = "has id",
+    "has text (regex)" = "has text",
+    "has label (glob)" = "has label",
+    "has option (key: value)" = "has option",
+    "has engine (exact)" = "has engine"
+  )
 }
 
 #' Get default value for a filter condition type
@@ -220,7 +251,13 @@ negate_expr = function(expr) {
 
 filter_condition_expr = function(condition) {
   expr = switch(condition@type,
-    "node type" = filter_node_kind_expr(condition@value),
+    "node type" = {
+      # Multiple kinds within one condition are ORed (the kinds are pairwise
+      # disjoint, so AND would never match); the group-level fold
+      # parenthesizes this compound expression before ANDing
+      kind_exprs = lapply(condition@value, filter_node_kind_expr)
+      Reduce(function(acc, e) call("|", acc, e), kind_exprs)
+    },
     "has class" = call("has_class", condition@value),
     "has id" = call("has_id", condition@value),
     "has text" = call("has_text", condition@value),
@@ -288,6 +325,45 @@ filters_expr = function(filters) {
   }
 
   Reduce(function(acc, e) call("|", acc, e), group_exprs)
+}
+
+# Whether a value compiles as a regular expression. Trying the regex is the
+# only way to check it, hence the tryCatch.
+#
+# pattern: Character scalar
+
+is_valid_regex = function(pattern) {
+  probe = tryCatch(grepl(pattern, ""), error = function(e) e, warning = function(w) w)
+  !inherits(probe, "condition")
+}
+
+# Human-readable warnings for filter condition values that silently misfire:
+# uncompilable regexes, empty values (has_text("") matches every node while
+# has_class("") matches none), and option tests without a key
+#
+# filters: List of markermd_filter_group S7 objects
+# Returns: Character vector of warning messages (empty when all values are fine)
+
+filter_value_warnings = function(filters) {
+  msgs = character(0)
+  for (gi in seq_along(filters)) {
+    for (cond in filters[[gi]]@conditions) {
+      value = cond@value
+      if (cond@type == "has text") {
+        if (nchar(value) == 0) {
+          msgs = c(msgs, glue::glue("Group {gi}: an empty \"has text\" pattern matches every node."))
+        } else if (!is_valid_regex(value)) {
+          msgs = c(msgs, glue::glue("Group {gi}: \"{value}\" is not a valid regular expression."))
+        }
+      } else if (cond@type %in% c("has class", "has id", "has label", "has engine") &&
+                 nchar(value) == 0) {
+        msgs = c(msgs, glue::glue("Group {gi}: an empty \"{cond@type}\" value matches no nodes."))
+      } else if (cond@type == "has option" && nchar(parse_filter_option(value)$key) == 0) {
+        msgs = c(msgs, glue::glue("Group {gi}: \"has option\" needs an option key."))
+      }
+    }
+  }
+  msgs
 }
 
 # Deparse a question's filter expression as the q2r call shown in the UI

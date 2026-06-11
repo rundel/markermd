@@ -170,9 +170,12 @@ split_top_level = function(s, sep) {
 #
 # Finds assignment files recursively and parses each via
 # parse_assignment_document (which normalises knitr-style chunk headers),
-# returning a data frame with one row per file: a `path` (character) column
-# and an `ast` (list of pandoc objects) column, mirroring the collection
-# shape the grading app consumes.
+# returning a data frame with one row per file: a `path` (character) column,
+# an `ast` (list of pandoc objects, NULL on failure) column, and an `error`
+# column holding the parse error message verbatim (NA on success). Parse
+# failures are captured per file rather than aborting the whole collection so
+# one malformed student document cannot block grading of the others; the
+# error text itself is surfaced, never stripped.
 #
 # collection_path: Path to the directory of repositories
 # use_qmd: Logical. Match .qmd files (TRUE) or .Rmd files (FALSE)
@@ -188,7 +191,11 @@ parse_assignment_collection = function(collection_path, use_qmd = TRUE) {
   )
 
   collection = data.frame(path = files, stringsAsFactors = FALSE)
-  collection$ast = lapply(files, parse_assignment_document)
+  parsed = lapply(files, purrr::safely(parse_assignment_document))
+  collection$ast = lapply(parsed, function(p) p$result)
+  collection$error = vapply(parsed, function(p) {
+    if (is.null(p$error)) NA_character_ else conditionMessage(p$error)
+  }, character(1))
   collection
 }
 
