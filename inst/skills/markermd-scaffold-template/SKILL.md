@@ -1,5 +1,5 @@
 ---
-name: scaffold-markermd-template
+name: markermd-scaffold-template
 description: Scaffold a markermd grading template (YAML) for an initialized markermd project, using the project's key (solution) repository as the basis, then validate it against every student repository. Reads the project config (.markermd/config.yml) to locate the key and the student repos, writes a starter template with a few basic validation rules, imports it into the project's grading database, and reports how the rules hold up across submissions. Use when a user wants to bootstrap, scaffold, or generate a markermd template for an assignment project created with markermd::init_project() / ghclass::org_grade_assignment().
 ---
 

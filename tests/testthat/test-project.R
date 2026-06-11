@@ -125,8 +125,29 @@ test_that("init_project installs bundled skills without flattening", {
   d = make_fake_project()
   init_project(d)
 
-  expect_true(fs::file_exists(fs::path(d, ".claude/skills/scaffold-markermd-template/SKILL.md")))
+  expect_true(fs::file_exists(fs::path(d, ".claude/skills/markermd-scaffold-template/SKILL.md")))
+  expect_true(fs::file_exists(fs::path(d, ".claude/skills/markermd-scaffold-rubric/SKILL.md")))
+  expect_true(fs::file_exists(fs::path(d, ".claude/skills/markermd-apply-rubric/SKILL.md")))
   expect_false(fs::file_exists(fs::path(d, ".claude/skills/SKILL.md")))
+})
+
+
+test_that("each bundled skill's frontmatter name matches its directory", {
+  skip_if(!fs::dir_exists(markermd:::markermd_skills_path()), "bundled skills not found")
+
+  skill_dirs = fs::dir_ls(markermd:::markermd_skills_path(), type = "directory")
+  expect_gt(length(skill_dirs), 0)
+
+  for (skill_dir in skill_dirs) {
+    skill_md = fs::path(skill_dir, "SKILL.md")
+    expect_true(fs::file_exists(skill_md))
+
+    frontmatter_name = grep("^name:", readLines(skill_md), value = TRUE)[1]
+    expect_equal(
+      trimws(sub("^name:", "", frontmatter_name)),
+      fs::path_file(skill_dir)
+    )
+  }
 })
 
 
