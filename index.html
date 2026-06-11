@@ -7,8 +7,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <title>Interactive Shiny-Based Grading Interface for R Markdown Assignments • markermd</title>
 <script src="deps/jquery-3.6.0/jquery-3.6.0.min.js"></script><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-<link href="deps/bootstrap-5.3.1/bootstrap.min.css" rel="stylesheet">
-<script src="deps/bootstrap-5.3.1/bootstrap.bundle.min.js"></script><link href="deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
+<link href="deps/bootstrap-5.3.8/bootstrap.min.css" rel="stylesheet">
+<script src="deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
 <script src="deps/headroom-0.11.0/headroom.min.js"></script><script src="deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="deps/search-1.0.0/fuse.min.js"></script><script src="deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="pkgdown.js"></script><meta property="og:title" content="Interactive Shiny-Based Grading Interface for R Markdown Assignments">
 <meta name="description" content="Provides a comprehensive Shiny-based interface for grading assignments submitted as git repositories containing R Markdown or Quarto documents. Features include template creation with validation rules, interactive AST tree visualization, question-based grading workflows with customizable rubrics and hotkeys, automated validation and scoring systems, and support for both local directories and remote GitHub repositories.">
@@ -49,30 +49,21 @@
 </h1></div>
 <!-- badges: start -->
 
-<p><a href="https://github.com/rundel/marketed/actions/workflows/R-CMD-check.yaml" class="external-link"><img src="https://github.com/rundel/marketed/actions/workflows/R-CMD-check.yaml/badge.svg" alt="R-CMD-check"></a> <!-- badges: end --></p>
-<blockquote>
-<p><strong>Interactive Shiny-Based Grading Interface for R Markdown Assignments</strong></p>
-</blockquote>
-<p>markermd provides a comprehensive Shiny-based interface for grading assignments submitted as git repositories containing R Markdown or Quarto documents. It features template creation with validation rules, interactive AST tree visualization, question-based grading workflows, and automated validation systems.</p>
-<div class="section level2">
-<h2 id="id_️-experimental-status">⚠️ Experimental Status<a class="anchor" aria-label="anchor" href="#id_%EF%B8%8F-experimental-status"></a>
-</h2>
-<p>This package is currently in <strong>experimental</strong> development. APIs may change significantly, and some features may not be fully stable. Use with caution in production environments.</p>
-<p>This project is also an experimental exercise in “vibe” coding with claude code - not all implementation details have been thoroughly evaluated and there is a lot of wonkiness throughout the codebase.</p>
-</div>
-<div class="section level2">
-<h2 id="key-features">Key Features<a class="anchor" aria-label="anchor" href="#key-features"></a>
-</h2>
+<p><a href="https://github.com/rundel/markermd/actions/workflows/R-CMD-check.yaml" class="external-link"><img src="https://github.com/rundel/markermd/actions/workflows/R-CMD-check.yaml/badge.svg" alt="R-CMD-check"></a> <!-- badges: end --></p>
+<p>markermd is a Shiny-based grading environment for assignments submitted as git repositories containing Quarto (<code>.qmd</code>) or R Markdown (<code>.Rmd</code>) documents, such as the classroom layouts produced by <a href="https://rundel.github.io/ghclass/" class="external-link">ghclass</a>’s <code>org_grade_assignment()</code>. Each submission is parsed into a document tree (via <a href="https://github.com/rundel/q2r" class="external-link">q2r</a>), validated against the structural requirements of the assignment, and graded question by question with a fast, hotkey-driven rubric interface. Everything (the template, the rubric, and all recorded grading) lives in a per-project SQLite database.</p>
+<p>The package is built around two apps:</p>
 <ul>
-<li>📝 <strong>Template Creation</strong>: Interactive interface for creating grading templates with validation rules</li>
-<li>🌳 <strong>AST Visualization</strong>: Explore document structure through interactive abstract syntax trees</li>
-<li>✅ <strong>Automated Validation</strong>: Define and apply validation rules to check assignment requirements<br>
-</li>
-<li>📊 <strong>Question-Based Grading</strong>: Organize grading around specific questions with customizable rubrics</li>
-<li>⌨️ <strong>Hotkey Support</strong>: Fast grading workflows with keyboard shortcuts</li>
-<li>🔗 <strong>GitHub Integration</strong>: Support for both local directories and remote GitHub repositories</li>
-<li>📋 <strong>Export Options</strong>: Export grades and feedback in various formats (<em>Coming soon</em>)</li>
+<li>
+<code><a href="reference/template.html">template()</a></code> authors a grading template: which document sections are the questions, and what structural rules each answer must satisfy.</li>
+<li>
+<code><a href="reference/mark.html">mark()</a></code> grades a collection of student repositories against that template with per-question rubrics.</li>
 </ul>
+<p>Around the apps, a set of helper functions (<code><a href="reference/validate_project.html">validate_project()</a></code>, <code><a href="reference/template_import.html">template_import()</a></code> / <code><a href="reference/template_export.html">template_export()</a></code>, <code><a href="reference/rubric_import.html">rubric_import()</a></code> / <code><a href="reference/rubric_export.html">rubric_export()</a></code>, <code><a href="reference/marks_import.html">marks_import()</a></code> / <code><a href="reference/marks_export.html">marks_export()</a></code> / <code><a href="reference/marks_set.html">marks_set()</a></code>) makes the entire workflow scriptable, and bundled Claude Code skills can scaffold the template and rubric or apply the rubric across all submissions as a first pass for human review.</p>
+<div class="section level2">
+<h2 id="experimental-status">Experimental status<a class="anchor" aria-label="anchor" href="#experimental-status"></a>
+</h2>
+<p>This package is experimental: APIs may change significantly and some features are incomplete.</p>
+<p>This project is also an ongoing experiment in “vibe” coding with Claude Code. Not all implementation details have been thoroughly evaluated and there is a lot of wonkiness throughout the codebase.</p>
 </div>
 <div class="section level2">
 <h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
@@ -88,86 +79,105 @@
 <div class="section level3">
 <h3 id="dependencies">Dependencies<a class="anchor" aria-label="anchor" href="#dependencies"></a>
 </h3>
-<p>markermd relies on the development version of <a href="https://github.com/rundel/parsermd" class="external-link">parsermd</a> for parsing R Markdown and Quarto documents:</p>
+<p>markermd relies on <a href="https://github.com/rundel/q2r" class="external-link">q2r</a> for parsing Quarto documents. q2r wraps the Quarto parser via Rust, so a Rust toolchain (<code>rustc &gt;= 1.85</code>) is required to install it:</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">remotes</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">"rundel/parsermd"</span><span class="op">)</span></span></code></pre></div>
+<code class="sourceCode R"><span><span class="fu">remotes</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">"rundel/q2r"</span><span class="op">)</span></span></code></pre></div>
 </div>
 </div>
 <div class="section level2">
-<h2 id="quick-start">Quick Start<a class="anchor" aria-label="anchor" href="#quick-start"></a>
+<h2 id="quick-start">Quick start<a class="anchor" aria-label="anchor" href="#quick-start"></a>
 </h2>
-<p><em>Coming soon …</em></p>
+<p>A markermd project is a directory containing the student repositories, and optionally a solution (key) repository and rendered reports:</p>
+<pre><code>hw01/
+├── repos/
+│   ├── student1-hw01/
+│   │   └── assignment.qmd
+│   ├── student2-hw01/
+│   └── ...
+├── html/              # rendered reports, shown while grading
+└── hw01-key/          # solution repository (optional)</code></pre>
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://rundel.github.io/markermd/">markermd</a></span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># One-time setup: writes .markermd/config.yml, creates the grading</span></span>
+<span><span class="co"># database, and installs the bundled Claude Code skills</span></span>
+<span><span class="fu"><a href="reference/init_project.html">init_project</a></span><span class="op">(</span><span class="st">"hw01"</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Author the grading template (questions + validation rules)</span></span>
+<span><span class="fu"><a href="reference/template.html">template</a></span><span class="op">(</span><span class="st">"hw01"</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Grade the student repositories</span></span>
+<span><span class="fu"><a href="reference/mark.html">mark</a></span><span class="op">(</span><span class="st">"hw01"</span><span class="op">)</span></span></code></pre></div>
+<p><code><a href="reference/init_project.html">init_project()</a></code> detects the key repository and artifact directories, records everything in <code>hw01/.markermd/config.yml</code>, and creates the SQLite database that stores the template, rubric, and all grading. <code><a href="reference/project_sitrep.html">project_sitrep()</a></code> prints an overview of a project’s configuration at any point.</p>
 </div>
 <div class="section level2">
-<h2 id="core-workflows">Core Workflows<a class="anchor" aria-label="anchor" href="#core-workflows"></a>
+<h2 id="template-creation-with-template">Template creation with <code>template()</code>
+<a class="anchor" aria-label="anchor" href="#template-creation-with-template"></a>
 </h2>
+<p>The template app loads an assignment (a project’s key repository, a single <code>.qmd</code>/<code>.Rmd</code> file or directory, a saved template, or a GitHub <code>&lt;owner&gt;/&lt;repo&gt;</code>) and displays its structure as an interactive tree. Headings are the selectable units: selecting one maps the document section beneath it to a question. Each question then gets validation rules (counts of chunks, markdown blocks, or other node types; content checks; name checks) along with optional filters that narrow which nodes the rules see, plus a point value used later by the rubric.</p>
+<div class="float">
+<img src="reference/figures/template_screenshot.png" alt="The template app: document structure tree on the left, questions with their selected sections and validation rules on the right"><div class="figcaption">The template app: document structure tree on the left, questions with their selected sections and validation rules on the right</div>
+</div>
+<p>When the app is opened on an initialized project, saving writes the template directly into the project database, ready for grading.</p>
+</div>
+<div class="section level2">
+<h2 id="grading-with-mark">Grading with <code>mark()</code>
+<a class="anchor" aria-label="anchor" href="#grading-with-mark"></a>
+</h2>
+<p><code><a href="reference/mark.html">mark()</a></code> opens an initialized project and sources everything from it: the student repositories, the stored template, the grading database, and each repository’s rendered reports.</p>
 <div class="section level3">
-<h3 id="id_1-template-creation-template">1. Template Creation (<code>template()</code>)<a class="anchor" aria-label="anchor" href="#id_1-template-creation-template"></a>
+<h3 id="validation">Validation<a class="anchor" aria-label="anchor" href="#validation"></a>
 </h3>
-<p>The template creation interface allows you to:</p>
-<ul>
-<li>Load and explore an assignment through an interactive AST tree representation</li>
-<li>Map specific AST nodes (headings, code chunks, etc.) to assignment questions</li>
-<li>Define validation rules (content checks, node counts, etc.) for each question</li>
-<li>Save reusable templates for consistent grading</li>
-</ul>
+<p>The Validation tab checks every repository against the template’s rules, so structural problems (missing sections, missing chunks, absent content) are visible before any grading starts. The assignment table tracks per-repository validation status and grading progress.</p>
+<div class="float">
+<img src="reference/figures/mark_validation_screenshot.png" alt="The mark app’s Validation tab: assignment table with validation status and grading progress on the left, the selected repository’s per-question rule results on the right"><div class="figcaption">The mark app’s Validation tab: assignment table with validation status and grading progress on the left, the selected repository’s per-question rule results on the right</div>
+</div>
 </div>
 <div class="section level3">
-<h3 id="id_2-assignment-grading-mark">2. Assignment Grading (<code>mark()</code>)<a class="anchor" aria-label="anchor" href="#id_2-assignment-grading-mark"></a>
+<h3 id="rubric">Rubric<a class="anchor" aria-label="anchor" href="#rubric"></a>
 </h3>
-<p>The grading interface provides:</p>
+<p>The Rubric tab is where grading happens. The left pane shows the student’s rendered report or source; the right pane shows the current question’s rubric. Items toggle by click or number-key hotkey, and the score follows from the question’s scoring setup (additive or deduction mode, with optional clamping between zero and the question total). Below the items are two comment boxes: a public, student-facing comment (which also marks the question as graded) and private notes that are never shared with students. Every action autosaves to the project database.</p>
+<div class="float">
+<img src="reference/figures/mark_rubric_screenshot.png" alt="The mark app’s Rubric tab: rendered report on the left; rubric items with hotkeys, the computed score, and the public and private comment boxes on the right"><div class="figcaption">The mark app’s Rubric tab: rendered report on the left; rubric items with hotkeys, the computed score, and the public and private comment boxes on the right</div>
+</div>
+<p>Rubric items can be added, edited, and reordered while grading, and the rubric pane’s menu offers YAML import and export for editing the rubric outside the app.</p>
+</div>
+</div>
+<div class="section level2">
+<h2 id="scripting-the-workflow">Scripting the workflow<a class="anchor" aria-label="anchor" href="#scripting-the-workflow"></a>
+</h2>
+<p>Everything the apps do is also available headlessly:</p>
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Check every student repository against the stored template</span></span>
+<span><span class="fu"><a href="reference/validate_project.html">validate_project</a></span><span class="op">(</span><span class="st">"hw01"</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Templates, rubrics, and recorded marks round trip between the</span></span>
+<span><span class="co"># project database and editable YAML files</span></span>
+<span><span class="fu"><a href="reference/template_export.html">template_export</a></span><span class="op">(</span><span class="st">"hw01-template.yaml"</span>, project <span class="op">=</span> <span class="st">"hw01"</span><span class="op">)</span></span>
+<span><span class="fu"><a href="reference/rubric_import.html">rubric_import</a></span><span class="op">(</span><span class="st">"hw01-rubric.yaml"</span>, project <span class="op">=</span> <span class="st">"hw01"</span><span class="op">)</span></span>
+<span><span class="fu"><a href="reference/marks_export.html">marks_export</a></span><span class="op">(</span><span class="st">"hw01-marks.yaml"</span>, project <span class="op">=</span> <span class="st">"hw01"</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Record marks for a single repository/question pair</span></span>
+<span><span class="fu"><a href="reference/marks_set.html">marks_set</a></span><span class="op">(</span><span class="st">"student1-hw01"</span>, <span class="st">"Question 2"</span>,</span>
+<span>  items <span class="op">=</span> <span class="st">"Looks good"</span>,</span>
+<span>  private_comment <span class="op">=</span> <span class="st">"Quartiles and summary statistics all present."</span>,</span>
+<span>  project <span class="op">=</span> <span class="st">"hw01"</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<p>The YAML formats are validated against bundled JSON Schemas (see <code>system.file("schema", package = "markermd")</code>) and are deliberately simple enough for LLM tools to author. Marks imports are conservative by default: repository/question pairs that already have grading activity are skipped unless explicitly overwritten.</p>
+</div>
+<div class="section level2">
+<h2 id="claude-code-skills">Claude Code skills<a class="anchor" aria-label="anchor" href="#claude-code-skills"></a>
+</h2>
+<p><code><a href="reference/init_project.html">init_project()</a></code> installs three <a href="https://claude.com/claude-code" class="external-link">Claude Code</a> skills into the project’s <code>.claude/skills/</code> directory:</p>
 <ul>
 <li>
-<strong>Validation Tab</strong>: Automated checking of assignment requirements and resources</li>
+<code>markermd-scaffold-template</code>: builds a starter grading template from the key repository’s assignment document.</li>
 <li>
-<strong>Rubric Tab</strong>: Question-by-question grading with customizable point values</li>
+<code>markermd-scaffold-rubric</code>: drafts per-question rubric items and scoring from the key, optionally sampling student submissions to anticipate common mistakes.</li>
+<li>
+<code>markermd-apply-rubric</code>: applies the stored rubric to every student repository as a first-pass machine grading, recording its reasoning as private notes for human review in <code><a href="reference/mark.html">mark()</a></code>.</li>
 </ul>
-</div>
-</div>
-<div class="section level2">
-<h2 id="repository-structure">Repository Structure<a class="anchor" aria-label="anchor" href="#repository-structure"></a>
-</h2>
-<p>markermd expects assignments to be organized as:</p>
-<pre><code>assignments/
-├── student1-repo/
-│   ├── assignment.qmd  # or .Rmd
-│   └── ...
-├── student2-repo/
-│   ├── assignment.qmd
-│   └── ...
-└── ...</code></pre>
-<p>For GitHub repository integration, the package can automatically: - Clone repositories from GitHub - Sync updates from remote repositories</p>
-</div>
-<div class="section level2">
-<h2 id="examples">Examples<a class="anchor" aria-label="anchor" href="#examples"></a>
-</h2>
-<div class="section level3">
-<h3 id="template-creation-interface">Template Creation Interface<a class="anchor" aria-label="anchor" href="#template-creation-interface"></a>
-</h3>
-<div class="float">
-<img src="reference/figures/template_screenshot.png" alt="Template Creation Interface"><div class="figcaption">Template Creation Interface</div>
-</div>
-<p>The template interface shows: - Document AST tree for node selection - Question management panel<br>
-- Validation rule configuration - Template save/load functionality</p>
-</div>
-<div class="section level3">
-<h3 id="grading-interface">Grading Interface<a class="anchor" aria-label="anchor" href="#grading-interface"></a>
-</h3>
-<div class="section level4">
-<h4 id="validation">Validation<a class="anchor" aria-label="anchor" href="#validation"></a>
-</h4>
-<div class="float">
-<img src="reference/figures/mark_validation_screenshot.png" alt="Grading Validation Interface"><div class="figcaption">Grading Validation Interface</div>
-</div>
-</div>
-<div class="section level4">
-<h4 id="grading-rubric">Grading Rubric<a class="anchor" aria-label="anchor" href="#grading-rubric"></a>
-</h4>
-<div class="float">
-<img src="reference/figures/mark_rubric_screenshot.png" alt="Grading Rubric Interface"><div class="figcaption">Grading Rubric Interface</div>
-</div>
-</div>
-</div>
+<p>See <code>inst/skills/README.md</code> for details and per-user installation.</p>
 </div>
 <div class="section level2">
 <h2 id="contributing">Contributing<a class="anchor" aria-label="anchor" href="#contributing"></a>
@@ -219,7 +229,7 @@
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
 </div>
 
     </footer>
