@@ -22,10 +22,16 @@ mark_rubric_ui = function(id) {
           shiny::div(
             class = "d-flex align-items-center gap-2",
             shiny::span("Content"),
-            shiny::uiOutput(ns("repo_progress"), inline = TRUE),
-            bslib::tooltip(
+            bslib::popover(
               shiny::icon("keyboard", class = "text-muted"),
-              "Keyboard shortcuts: z / x previous or next repo; , / . previous or next question; 1-9 and 0 toggle rubric items; h toggles the html/source view"
+              title = "Keyboard shortcuts",
+              shiny::tags$ul(
+                class = "small mb-0 ps-3",
+                shiny::tags$li(shiny::tags$kbd("z"), " / ", shiny::tags$kbd("x"), ": previous / next repo"),
+                shiny::tags$li(shiny::tags$kbd(","), " / ", shiny::tags$kbd("."), ": previous / next question"),
+                shiny::tags$li(shiny::tags$kbd("0"), "-", shiny::tags$kbd("9"), ": toggle rubric items"),
+                shiny::tags$li(shiny::tags$kbd("h"), ": toggle the html / source view")
+              )
             )
           ),
           shiny::div(
@@ -84,11 +90,7 @@ mark_rubric_ui = function(id) {
         class = "bg-light",
         shiny::div(
           class = "d-flex justify-content-between align-items-center w-100",
-          shiny::div(
-            class = "d-flex align-items-center gap-2",
-            shiny::span("Rubric"),
-            shiny::uiOutput(ns("question_progress"), inline = TRUE)
-          ),
+          shiny::span("Rubric"),
           shiny::div(
             style = "min-width: 150px; display: flex; align-items: center; gap: 5px;",
             bslib::tooltip(
@@ -127,27 +129,13 @@ mark_rubric_ui = function(id) {
         id = ns("rubric_body"),
         # Grade display at top
         shiny::uiOutput(ns("grade_ui")),
-        # Per-question comment for the current repo. A non-empty comment counts
-        # the question as graded, so full-credit / zero-deduction answers can
-        # be marked as reviewed without selecting a rubric item.
-        shiny::div(
-          class = "my-2",
-          shiny::textAreaInput(
-            ns("question_comment"),
-            NULL,
-            value = "",
-            rows = 2,
-            width = "100%",
-            placeholder = "Comment for this question (also marks it as graded)"
-          )
-        ),
         shiny::div(
           id = ns("rubric_items_container"),
           # Dynamic container for items
           shiny::uiOutput(ns("rubric_items_ui"))
         ),
         shiny::div(
-          class = "text-center mb-3",
+          class = "text-center",
           shiny::actionButton(
             ns("add_item"),
             shiny::icon("plus"),
@@ -156,6 +144,25 @@ mark_rubric_ui = function(id) {
             title = "Add Item"
           ),
           shiny::span("Add Item", class = "ms-2 text-dark")
+        )
+      ),
+      # Per-question comment for the current repo, pinned in its own card body
+      # below the scrolling item list. A non-empty comment counts the question
+      # as graded, so full-credit / zero-deduction answers can be marked as
+      # reviewed without selecting a rubric item.
+      bslib::card_body(
+        fill = FALSE,
+        class = "small border-top py-2",
+        htmltools::tagAppendAttributes(
+          shiny::textAreaInput(
+            ns("question_comment"),
+            NULL,
+            value = "",
+            rows = 2,
+            width = "100%",
+            placeholder = "Additional comments (also marks the question as graded)"
+          ),
+          class = "mb-1"
         ),
         shiny::p(
           "Grading saves automatically to the project database.",
@@ -714,34 +721,6 @@ mark_rubric_server = function(id, template, artifact_paths, artifact_urls, root,
       stats::setNames(question_names %in% repo_graded, question_names)
     })
 
-    # Position badge for the repo selector
-    output$repo_progress = shiny::renderUI({
-      shiny::req(input$content_repo_select)
-      repos = names(artifact_paths)
-      idx = match(input$content_repo_select, repos)
-      bslib::tooltip(
-        shiny::span(
-          class = "badge text-bg-light fw-normal",
-          glue::glue("{idx}/{length(repos)}")
-        ),
-        glue::glue("Repository {idx} of {length(repos)}")
-      )
-    })
-
-    # Position and graded-count badge for the question selector
-    output$question_progress = shiny::renderUI({
-      shiny::req(input$question_select)
-      status = graded_questions()
-      idx = match(input$question_select, question_names)
-      bslib::tooltip(
-        shiny::span(
-          class = "badge text-bg-light fw-normal",
-          glue::glue("Q {idx}/{length(question_names)} · {sum(status)} graded")
-        ),
-        glue::glue("Question {idx} of {length(question_names)}; {sum(status)} of {length(question_names)} graded for this repository")
-      )
-    })
-
     # Prefix graded questions with a check in the selector; only push an
     # update when the labels actually change so open menus are not rebuilt
     last_question_labels = shiny::reactiveVal(NULL)
@@ -795,7 +774,10 @@ mark_rubric_server = function(id, template, artifact_paths, artifact_urls, root,
           src = artifact_urls[[selected_repo]],
           class = "w-100 h-100 border-0 bg-white",
           style = "min-height: 70vh;",
-          onload = "this.dataset.loaded = '1';"
+          onload = glue::glue(
+            "this.dataset.loaded = '1'; Shiny.setInputValue('<<session$ns(\"artifact_loaded\")>>', Date.now(), {priority: 'event'});",
+            .open = "<<", .close = ">>"
+          )
         )
       } else if (is.na(html_path)) {
         shiny::div(
@@ -1058,17 +1040,15 @@ mark_rubric_server = function(id, template, artifact_paths, artifact_urls, root,
     }) |> 
       shiny::bindEvent(input$question_select, ignoreInit = FALSE)
     
-    # Observer to trigger initial highlighting when switching repos
+    # Re-apply the current question's highlight whenever the artifact frame
+    # (re)loads. The frame first renders only once the Rubric tab is shown,
+    # which can be after the init-time scroll JS has given up retrying; it is
+    # also re-inserted on repo switches and when toggling back from the
+    # Source view, so this keeps the highlight in sync for all three cases.
     shiny::observe({
-      shiny::req(input$content_repo_select, input$question_select)
-      # Only trigger on repo changes, not question changes
-      shiny::invalidateLater(500, session)
-      shiny::isolate({
-        selected_question = input$question_select
-        scroll_to_question(selected_question)
-      })
-    }) |> 
-      shiny::bindEvent(input$content_repo_select, ignoreInit = TRUE)
+      scroll_to_question(input$question_select)
+    }) |>
+      shiny::bindEvent(input$artifact_loaded)
     
     # Navigation button observers
 

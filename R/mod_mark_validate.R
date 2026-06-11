@@ -89,9 +89,9 @@ create_question_card = function(question, question_result, current_ast, session)
   
   # Solid circle status icons - only pass/fail states
   status_icon = switch(question_result$status,
-    "pass" = shiny::icon("circle-check", class = "text-success"),
-    "fail" = shiny::icon("circle-xmark", class = "text-danger"),
-    shiny::icon("circle-question", class = "text-muted")  # Default for unknown status
+    "pass" = shiny::icon("circle-check", class = "fa-fw text-success"),
+    "fail" = shiny::icon("circle-xmark", class = "fa-fw text-danger"),
+    shiny::icon("circle-question", class = "fa-fw text-muted")  # Default for unknown status
   )
   
   # Get the document nodes for this question using section selection
@@ -100,18 +100,14 @@ create_question_card = function(question, question_result, current_ast, session)
   # Create rule details
   rule_details = create_rule_details(question, question_result)
   
-  # Create question card
+  # Create question card. mb-0 drops bslib's default 1rem card margin so the
+  # column gap set in the container controls the spacing between cards.
   bslib::card(
+    class = "mb-0",
     bslib::card_header(
-      class = "bg-light",
-      shiny::div(
-        style = "display: flex; justify-content: space-between; align-items: center;",
-        shiny::span(question_name, class = "my-0 text-dark fw-semibold"),
-        shiny::div(
-          style = "font-size: 18px;",
-          status_icon
-        )
-      )
+      class = "bg-light d-flex align-items-center",
+      shiny::span(status_icon, class = "me-2"),
+      shiny::span(question_name, class = "my-0 text-dark fw-semibold")
     ),
     bslib::card_body(
       class = "pt-2 pb-1",
@@ -169,7 +165,7 @@ mark_validate_server = function(id, ast, current_repo_name = shiny::reactiveVal(
         shiny::p("No questions available.", class = "text-muted fst-italic")
       } else {
         shiny::div(
-          style = "display: flex; flex-direction: column; gap: 3px;",
+          style = "display: flex; flex-direction: column; gap: 8px;",
           question_cards
         )
       }

@@ -190,7 +190,6 @@ mark_app = function(path, template = NULL, use_qmd = TRUE) {
     initial_repo_name,
     artifact_paths,
     repo_to_github,
-    template_path = if (is.character(template)) template else "project database",
     database_state = database_state,
     repo_errors = repo_errors
   )
@@ -250,12 +249,11 @@ resolve_mark_template = function(project, template) {
 # artifact_paths: Named character vector mapping each repo to its local HTML
 #   report path, or NA when none was found
 # repo_to_github: Named list mapping repository names to GitHub repos
-# template_path: Path to template file (optional)
 # database_state: Database state loaded from SQLite (optional)
 # repo_errors: Named list mapping repos to their missing-document or parse
 #   error message; repos absent from it parsed cleanly
 
-create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collection, repo_list, validation_results, initial_repo_ast, initial_repo_name, artifact_paths, repo_to_github, template_path = NULL, database_state = NULL, repo_errors = list()) {
+create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collection, repo_list, validation_results, initial_repo_ast, initial_repo_name, artifact_paths, repo_to_github, database_state = NULL, repo_errors = list()) {
 
   # Serve each repo's artifact via addResourcePath so the report's sibling
   # resources resolve; both viewers embed these URLs in same-origin iframes
@@ -322,6 +320,10 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
           }
 
 
+          /* Hide the parse-error slot when empty so the card body flex gap
+             does not push the validation cards down */
+          #repo_parse_error:empty { display: none; }
+
           /* Make switch more visible when in false state */
           .form-switch .form-check-input:not(:checked) {
             border-color: #212529 !important;
@@ -360,7 +362,7 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
           bslib::card_header(
             class = "bg-light repo-table-controls",
             shiny::div(
-              class = "d-flex justify-content-between align-items-center gap-2",
+              class = "d-flex justify-content-between align-items-center gap-2 w-100",
               shiny::span("Assignments"),
               shiny::div(
                 class = "d-flex align-items-center gap-2",
@@ -375,7 +377,8 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
                     choices = c(
                       "All repositories" = "all",
                       "Failed validation" = "failed",
-                      "Not fully graded" = "ungraded"
+                      "Incomplete" = "ungraded",
+                      "Complete" = "graded"
                     ),
                     width = "100%",
                     selectize = FALSE
@@ -409,14 +412,10 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
     ),
     
     
-    # Footer with project and template info
+    # Footer with project info
     footer = shiny::div(
       class = "bg-light border-top text-center text-muted p-2 fs-6 text-truncate",
-      shiny::span(shiny::strong("Project:"), " ", shiny::code(root, class = "bg-light px-1 py-1 rounded small"), class = "me-3"),
-      if (!is.null(template_path)) {
-        shiny::span(shiny::strong("Template:"), " ", shiny::code(template_path, class = "bg-light px-1 py-1 rounded small"), class = "me-3")
-      },
-      shiny::span(shiny::strong("File type:"), " ", shiny::code(if(use_qmd) ".qmd" else ".Rmd", class = "bg-light px-1 py-1 rounded small"))
+      shiny::span(shiny::strong("Project:"), " ", shiny::code(root, class = "bg-light px-1 py-1 rounded small"))
     )
   )
   
@@ -507,6 +506,9 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       if (identical(input$repo_status_filter, "ungraded") && !is.null(all_progress)) {
         visible = intersect(visible, repo_list[all_progress[repo_list] < length(question_names)])
       }
+      if (identical(input$repo_status_filter, "graded") && !is.null(all_progress)) {
+        visible = intersect(visible, repo_list[all_progress[repo_list] >= length(question_names)])
+      }
 
       if (length(visible) == 0) {
         return(shiny::p("No repositories match the current filters.", class = "text-muted fst-italic m-2"))
@@ -543,7 +545,7 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
             '</a>'
           )
         } else {
-          ""
+          paste0('<span class="opacity-25" title="No GitHub repository">', cell_icon("github"), '</span>')
         }
       })
 
@@ -630,21 +632,26 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
           Folder = "", GitHub = "", Artifacts = "", Source = "",
           Validation = "Validation", Grading = "Progress"
         ) |>
+        # Icon and validation columns hold fixed-size content, so they get
+        # fixed widths; Repository is left unspecified so it absorbs all
+        # remaining width (table-layout is fixed), keeping the icon cluster
+        # tight at any viewport size.
         gt::cols_width(
-          Repository ~ pct(33),
-          Folder ~ pct(6),
-          GitHub ~ pct(6),
-          Artifacts ~ pct(6),
-          Source ~ pct(6),
-          Validation ~ pct(17),
-          Grading ~ pct(26)
+          Folder ~ gt::px(32),
+          GitHub ~ gt::px(32),
+          Artifacts ~ gt::px(32),
+          Source ~ gt::px(32),
+          Validation ~ gt::px(80),
+          Grading ~ gt::pct(24)
         ) |>
         gt::cols_align(align = "center", columns = .data$Validation)
       
       styled_table = gt_table |>
         gt::tab_options(
+          table.width = gt::pct(100),
           table.font.size = "12px",  # Smaller font size
           data_row.padding = "2px",
+          data_row.padding.horizontal = "6px",
           column_labels.hidden = FALSE,  # Show column headers
           table.border.top.style = "none",
           table.border.bottom.style = "none",
@@ -659,7 +666,12 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
           .gt_col_heading {
             font-size: 11px !important;
             font-weight: bold !important;
-            padding: 4px 2px !important;
+            padding: 4px 6px !important;
+          }
+          /* Gutter between the repo name and the icon cluster: scales with
+             the table width but is capped so wide windows stay together */
+          .gt_table td:first-child {
+            padding-right: clamp(8px, 3%, 24px) !important;
           }
           "
         )

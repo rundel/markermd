@@ -36,7 +36,7 @@ mark_rubric_item_ui = function(id, rubric_item) {
   
   shiny::div(
     id = ns("container"),
-    class = "rubric-item-row p-2 m-0 rounded position-relative",
+    class = "rubric-item-row px-2 py-1 m-0 rounded position-relative",
     # Action buttons row: always present at reduced emphasis, full opacity on
     # hover or keyboard focus (styled via .rubric-action-btns in mark-app.R)
     shiny::div(
@@ -70,64 +70,64 @@ mark_rubric_item_ui = function(id, rubric_item) {
         )
       )
     ),
-    # Rubric item content in single layout
-    bslib::layout_columns(
-      col_widths = c(1, 11, -1, 11),
-      class = "mb-0",
-      row_heights = c("auto", "auto"),
+    # Rubric item content: hotkey button beside a tight points/description stack
+    shiny::div(
+      class = "d-flex align-items-start gap-2",
       # Hotkey button (re-rendered reactively to reflect selection state)
-      shiny::uiOutput(ns("hotkey_btn_ui")),
-      # Points
+      shiny::uiOutput(ns("hotkey_btn_ui"), class = "flex-shrink-0"),
       shiny::div(
-        id = ns("points_text"),
-        contenteditable = "true",
-        `data-points` = rubric_item@points,
-        style = glue::glue(
-          "border: 1px solid transparent; ",
-          "background: transparent; ",
-          "padding: 4px; ",
-          "border-radius: 4px; ",
-          "outline: none; ",
-          "transition: all 0.2s ease; ",
-          "font-size: 14px; ",
-          "font-weight: bold; ",
-          "display: inline-block; ",
-          "width: fit-content; ",
-          "color: <<if (rubric_item@points >= 0) POINTS_POSITIVE_COLOR else POINTS_NEGATIVE_COLOR>>;",
-          .open = "<<", .close = ">>"
+        class = "flex-grow-1",
+        style = "min-width: 0;",
+        # Points
+        shiny::div(
+          id = ns("points_text"),
+          contenteditable = "true",
+          `data-points` = rubric_item@points,
+          style = glue::glue(
+            "border: 1px solid transparent; ",
+            "background: transparent; ",
+            "padding: 2px 4px; ",
+            "border-radius: 4px; ",
+            "outline: none; ",
+            "transition: all 0.2s ease; ",
+            "font-size: 14px; ",
+            "font-weight: bold; ",
+            "display: inline-block; ",
+            "width: fit-content; ",
+            "color: <<if (rubric_item@points >= 0) POINTS_POSITIVE_COLOR else POINTS_NEGATIVE_COLOR>>;",
+            .open = "<<", .close = ">>"
+          ),
+          cli::pluralize(paste0(
+            if (rubric_item@points >= 0) "+" else "",
+            "{rubric_item@points} pt{?s}"
+          ))
         ),
-        cli::pluralize(paste0(
-          if (rubric_item@points >= 0) "+" else "",
-          "{rubric_item@points} pt{?s}"
-        ))
-      ),
-      # Description editable div
-      shiny::div(
-        id = ns("description_text"),
-        contenteditable = "true",
-        class = "form-control-like",
-        style = glue::glue(
-          "border: 1px solid transparent; ",
-          "background: transparent; ",
-          "padding: 4px; ",
-          "margin: 0; margin-top: 2px; ",
-          "font-size: 12px; ",
-          "line-height: 1.3; ",
-          "color: #6c757d; ",
-          "min-height: 20px; ",
-          "border-radius: 4px; ",
-          "white-space: pre-wrap; ",
-          "word-wrap: break-word; ",
-          "overflow-wrap: break-word; ",
-          "outline: none; ",
-          "transition: all 0.2s ease; ",
-          "<<if (nchar(rubric_item@description) == 0) 'opacity: 0.6;' else ''>>",
-          .open = "<<", .close = ">>"
-        ),
-        `data-placeholder` = "Enter description...",
-        rubric_item@description
-      ),
-      shiny::tags$style(shiny::HTML(glue::glue("
+        # Description editable div
+        shiny::div(
+          id = ns("description_text"),
+          contenteditable = "true",
+          class = "form-control-like",
+          style = paste0(
+            "border: 1px solid transparent; ",
+            "background: transparent; ",
+            "padding: 2px 4px; ",
+            "margin: 0; ",
+            "font-size: 12px; ",
+            "line-height: 1.3; ",
+            "min-height: 20px; ",
+            "border-radius: 4px; ",
+            "white-space: pre-wrap; ",
+            "word-wrap: break-word; ",
+            "overflow-wrap: break-word; ",
+            "outline: none; ",
+            "transition: all 0.2s ease;"
+          ),
+          `data-placeholder` = "Enter description...",
+          rubric_item@description
+        )
+      )
+    ),
+    shiny::tags$style(shiny::HTML(glue::glue("
         #<<ns('description_text')>>:hover {
           border: 1px solid #80bdff !important;
           background: #f8f9fa !important;
@@ -139,7 +139,6 @@ mark_rubric_item_ui = function(id, rubric_item) {
         #<<ns('description_text')>>:empty:before {
           content: attr(data-placeholder);
           color: #adb5bd;
-          opacity: 1;
         }
         #<<ns('description_text')>>:focus:before {
           display: none;
@@ -231,7 +230,6 @@ mark_rubric_item_ui = function(id, rubric_item) {
           }
         });
       ", .open = "<<", .close = ">>")))
-    )
   )
 }
 
