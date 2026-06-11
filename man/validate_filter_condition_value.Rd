@@ -16,7 +16,7 @@ Character error message if invalid, NULL if valid
 }
 \description{
 Validates a filter condition value according to the
-requirements of its condition type. "node type" values must be a node kind
-from get_allowed_node_types() (excluding "Any node"); the other types take a
-single character string (empty allowed).
+requirements of its condition type. "node type" values are one or more node
+kinds from get_allowed_node_types() (excluding "Any node"), combined as a
+logical OR; the other types take a single character string (empty allowed).
 }

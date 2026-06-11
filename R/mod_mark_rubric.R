@@ -90,7 +90,44 @@ mark_rubric_ui = function(id) {
         class = "bg-light",
         shiny::div(
           class = "d-flex justify-content-between align-items-center w-100",
-          shiny::span("Rubric"),
+          shiny::div(
+            class = "d-flex align-items-center gap-2",
+            shiny::span("Rubric"),
+            # Import/Export tucked into a popover off an exchange-arrows icon,
+            # mirroring the template app's io_menu
+            bslib::popover(
+              shiny::tags$button(
+                shiny::icon("right-left"),
+                id = ns("rubric_io_menu"),
+                type = "button",
+                class = "btn btn-outline-secondary btn-sm",
+                title = "Import / Export rubric"
+              ),
+              shiny::div(
+                class = "d-grid gap-2",
+                shiny::downloadButton(
+                  ns("export_question"),
+                  "Export question",
+                  class = "btn-outline-secondary btn-sm"
+                ),
+                shiny::downloadButton(
+                  ns("export_all"),
+                  "Export all",
+                  class = "btn-outline-secondary btn-sm"
+                ),
+                shiny::tags$button(
+                  "Import",
+                  type = "button",
+                  class = "btn btn-outline-secondary btn-sm",
+                  onclick = glue::glue(
+                    "document.getElementById('<<ns(\"rubric_import_file\")>>').click();",
+                    .open = "<<", .close = ">>"
+                  )
+                )
+              ),
+              title = "Rubric YAML"
+            )
+          ),
           shiny::div(
             style = "min-width: 150px; display: flex; align-items: center; gap: 5px;",
             bslib::tooltip(
@@ -144,12 +181,20 @@ mark_rubric_ui = function(id) {
             title = "Add Item"
           ),
           shiny::span("Add Item", class = "ms-2 text-dark")
+        ),
+        # Hidden file input the Import menu button triggers directly. Bound
+        # once here so the upload binding survives item-list re-renders.
+        shiny::div(
+          class = "visually-hidden",
+          shiny::fileInput(ns("rubric_import_file"), NULL, accept = c(".yaml", ".yml", "text/yaml"))
         )
       ),
-      # Per-question comment for the current repo, pinned in its own card body
-      # below the scrolling item list. A non-empty comment counts the question
-      # as graded, so full-credit / zero-deduction answers can be marked as
-      # reviewed without selecting a rubric item.
+      # Per-question comments for the current repo, pinned in their own card
+      # body below the scrolling item list. A non-empty public comment counts
+      # the question as graded, so full-credit / zero-deduction answers can be
+      # marked as reviewed without selecting a rubric item. The private
+      # textarea is a separate grader-internal channel that is never shared
+      # with students and does not affect grading progress.
       bslib::card_body(
         fill = FALSE,
         class = "small border-top py-2",
@@ -161,6 +206,17 @@ mark_rubric_ui = function(id) {
             rows = 2,
             width = "100%",
             placeholder = "Additional comments (also marks the question as graded)"
+          ),
+          class = "mb-1"
+        ),
+        htmltools::tagAppendAttributes(
+          shiny::textAreaInput(
+            ns("question_private_comment"),
+            NULL,
+            value = "",
+            rows = 2,
+            width = "100%",
+            placeholder = "Private notes (never shared with students)"
           ),
           class = "mb-1"
         ),
@@ -279,6 +335,16 @@ mark_rubric_server = function(id, template, artifact_paths, artifact_urls, root,
 
     # Global id index
     id_idx = 0
+
+    # Every item id this session has ever bound a module server to. Module ids
+    # share one namespace and dead module instances keep their input observers
+    # registered, so an id must never be re-bound within a session even when it
+    # is gone from both the database and question_item_servers (e.g. deleted
+    # earlier, or replaced by a rubric import).
+    session_item_ids = character(0)
+    register_session_id = function(item_id) {
+      session_item_ids <<- union(session_item_ids, item_id)
+    }
 
     question_names = purrr::map_chr(template@questions, "name")
 
@@ -409,6 +475,11 @@ mark_rubric_server = function(id, template, artifact_paths, artifact_urls, root,
     
 
     redraw_ui = shiny::reactiveVal(0)
+
+    # Bumped when a rubric import changes a question's scoring setup, so the
+    # grade widget (whose gear-popover inputs are baked into the rendered
+    # HTML) rebuilds with the imported values
+    grade_redraw = shiny::reactiveVal(0)
 
     # Wire the parent-side handlers for one rubric item server: move up/down
     # reordering and deletion. Called for items added in this session and for
@@ -562,25 +633,36 @@ mark_rubric_server = function(id, template, artifact_paths, artifact_urls, root,
         shiny::bindEvent(server$delete_signal(), ignoreInit = TRUE)
     }
 
+    # Create and register the module server for one rubric item: bind the
+    # module (module id == item id), store it under its question, wire the
+    # move/delete signals and reserve the id for the session. Shared by the
+    # startup loader, the add-item handler and the rubric import refresh.
+    #
+    # question_name: Question the item belongs to
+    # item_id: Database item id, used as the module server id
+    # item: markermd_rubric_item S7 object
+
+    add_question_item_server = function(question_name, item_id, item) {
+      server = mark_rubric_item_server(
+        item_id,
+        item,
+        collection_path = root,
+        question_name = question_name,
+        item_id = item_id
+      )
+      question_item_servers[[question_name]][[item_id]] = server
+      wire_item_signals(server)
+      register_session_id(item_id)
+      server
+    }
+
     # Initialize rubric items from database state inside an observer
     shiny::observe({
       if (!is.null(database_state) && !is.null(database_state$rubric_items)) {
         for (question_name in question_names) {
-          if (!is.null(database_state$rubric_items[[question_name]]) &&
-              length(database_state$rubric_items[[question_name]]) > 0) {
-            saved_items = database_state$rubric_items[[question_name]]
-            for (item_id in names(saved_items)) {
-              server_id = item_id  # Use the same ID from database
-              server = mark_rubric_item_server(
-                server_id,
-                saved_items[[item_id]],
-                collection_path = root,
-                question_name = question_name,
-                item_id = item_id
-              )
-              question_item_servers[[question_name]][[server_id]] = server
-              wire_item_signals(server)
-            }
+          saved_items = database_state$rubric_items[[question_name]]
+          for (item_id in names(saved_items)) {
+            add_question_item_server(question_name, item_id, saved_items[[item_id]])
           }
         }
         # Trigger UI redraw to show loaded items
@@ -606,11 +688,12 @@ mark_rubric_server = function(id, template, artifact_paths, artifact_urls, root,
         mark_grade_ui(session$ns(current_grade_server$id), current_grade_state)
       }
     }) |>
-      # Only re-render when the question changes. Within a question the score is
-      # updated imperatively via update_grade() -> update_score_display(), so
-      # rubric-item add/move/delete (which bump redraw_ui) must not rebuild this
-      # widget.
-      shiny::bindEvent(input$question_select)
+      # Only re-render when the question changes or an import updates the
+      # scoring setup (grade_redraw). Within a question the score is updated
+      # imperatively via update_grade() -> update_score_display(), so
+      # rubric-item add/move/delete (which bump redraw_ui) must not rebuild
+      # this widget.
+      shiny::bindEvent(input$question_select, grade_redraw())
     
     output$rubric_items_ui = shiny::renderUI({
       shiny::req(input$question_select)
@@ -634,16 +717,13 @@ mark_rubric_server = function(id, template, artifact_paths, artifact_urls, root,
     shiny::observe({
       current_servers = question_item_servers[[input$question_select]]
 
-      # The unique server_id must not collide across ANY question: module ids
-      # share one namespace, and items recreated from the database keep their
-      # original ids, so the fresh per-session counter could otherwise mint an
-      # id already used by a loaded item elsewhere (two servers bound to the
-      # same inputs, each saving to its own question)
-      existing_ids = unlist(lapply(shiny::reactiveValuesToList(question_item_servers), names))
-
-      # Generate unique server_id
+      # The unique server_id must not collide with ANY id this session has
+      # bound, across questions and including ids since deleted or replaced
+      # by an import: module ids share one namespace and dead module
+      # instances keep their input observers registered (two servers bound
+      # to the same inputs, each saving to its own question)
       server_id = paste0("item_", id_idx)
-      while (server_id %in% existing_ids) {
+      while (server_id %in% session_item_ids) {
         id_idx <<- id_idx + 1
         server_id = paste0("item_", id_idx)
       }
@@ -652,20 +732,11 @@ mark_rubric_server = function(id, template, artifact_paths, artifact_urls, root,
       hotkey = if (hotkey > 10) NA_integer_ else hotkey
 
       new_item = markermd_rubric_item(hotkey, 0, "")
-      
-      server = mark_rubric_item_server(
-          server_id,
-          new_item,
-          collection_path = root,
-          question_name = input$question_select,
-          item_id = server_id
-      )
-      question_item_servers[[input$question_select]][[server_id]] = server
-      
+
+      server = add_question_item_server(input$question_select, server_id, new_item)
+
       # Save new item to database
       save_rubric_item(root, input$question_select, server_id, new_item)
-
-      wire_item_signals(server)
 
       id_idx <<- id_idx + 1
 
@@ -680,8 +751,178 @@ mark_rubric_server = function(id, template, artifact_paths, artifact_urls, root,
       )
     }) |>
       shiny::bindEvent(input$add_item, ignoreInit = TRUE)
-    
-    
+
+    # --- Rubric YAML import/export -------------------------------------------
+    # Exports read current database state via collect_rubric_data(): every
+    # item/scoring edit is persisted immediately by the item and grade
+    # servers, so the database is never behind the UI.
+
+    output$export_question = shiny::downloadHandler(
+      filename = function() {
+        paste0("rubric_", gsub("[^A-Za-z0-9_-]+", "_", input$question_select), ".yaml")
+      },
+      content = function(file) {
+        write_rubric_yaml(collect_rubric_data(root, input$question_select), file)
+      },
+      contentType = "text/yaml"
+    )
+
+    output$export_all = shiny::downloadHandler(
+      filename = function() "markermd_rubric.yaml",
+      content = function(file) {
+        write_rubric_yaml(collect_rubric_data(root, question_names), file)
+      },
+      contentType = "text/yaml"
+    )
+
+    # A parsed rubric import awaiting confirmation while the modal is open
+    pending_rubric_import = shiny::reactiveVal(NULL)
+
+    # Import: the menu button triggers the hidden file picker; parse and
+    # validate the upload, then confirm mode (append/replace) before applying
+    shiny::observe({
+      file = input$rubric_import_file
+      parsed = purrr::safely(read_rubric_yaml)(file$datapath)
+
+      if (!is.null(parsed$error)) {
+        shiny::showNotification(
+          paste0("Could not import rubric: ", conditionMessage(parsed$error)),
+          type = "error"
+        )
+        return()
+      }
+
+      rubric = parsed$result
+      yaml_names = purrr::map_chr(rubric$questions, "name")
+
+      if (length(yaml_names) == 0) {
+        shiny::showNotification("The rubric file contains no questions.", type = "warning")
+        return()
+      }
+
+      unknown = setdiff(yaml_names, question_names)
+      if (length(unknown) > 0) {
+        shiny::showNotification(
+          glue::glue(
+            "Could not import rubric: question(s) {paste0('\"', unknown, '\"', collapse = ', ')} ",
+            "are not in this project's template ({paste0('\"', question_names, '\"', collapse = ', ')})."
+          ),
+          type = "error"
+        )
+        return()
+      }
+
+      summary_items = lapply(rubric$questions, function(q) {
+        n_existing = length(question_item_servers[[q$name]])
+        scoring_note = if (is.null(q$scoring)) "" else "; updates scoring"
+        shiny::tags$li(glue::glue(
+          "{q$name}: {length(q$items)} item{if (length(q$items) == 1) '' else 's'} ",
+          "({n_existing} existing){scoring_note}"
+        ))
+      })
+
+      pending_rubric_import(list(rubric = rubric, name = file$name))
+      shiny::showModal(shiny::modalDialog(
+        title = "Import rubric items?",
+        shiny::p(glue::glue("Importing \"{file$name}\" affects:")),
+        shiny::tags$ul(summary_items),
+        shiny::radioButtons(
+          session$ns("rubric_import_mode"),
+          "Import mode:",
+          choices = c(
+            "Append to existing items" = "append",
+            "Replace existing items" = "replace"
+          ),
+          selected = "append"
+        ),
+        shiny::p(
+          class = "text-danger small mb-0",
+          "Replace deletes the existing rubric items for these questions, and any",
+          "recorded selections of them, for every repository. This cannot be undone."
+        ),
+        easyClose = TRUE,
+        footer = shiny::tagList(
+          shiny::modalButton("Cancel"),
+          shiny::actionButton(session$ns("confirm_rubric_import"), "Import", class = "btn-danger")
+        )
+      ))
+    }) |>
+      shiny::bindEvent(input$rubric_import_file)
+
+    # Apply a confirmed import, then bring the live module state back in sync
+    # with the database
+    shiny::observe({
+      shiny::removeModal()
+      pending = pending_rubric_import()
+      pending_rubric_import(NULL)
+      shiny::req(pending)
+      mode = input$rubric_import_mode
+
+      summaries = apply_rubric_import(
+        root, pending$rubric, mode,
+        reserved_ids = session_item_ids
+      )
+
+      scoring_updated = FALSE
+      for (question_name in names(summaries)) {
+        s = summaries[[question_name]]
+
+        if (identical(s$mode, "replace")) {
+          # Old servers become inert (their DOM goes away on redraw); rebuild
+          # the question's server list from the database, whose ids are
+          # session-fresh by construction
+          question_item_servers[[question_name]] = list()
+          items = load_rubric_items(root, question_name)
+          for (item_id in names(items)) {
+            add_question_item_server(question_name, item_id, items[[item_id]])
+          }
+        } else {
+          # Keep existing servers (preserving live selection state and
+          # in-flight edits); append servers for just the imported items
+          for (j in seq_along(s$new_ids)) {
+            add_question_item_server(question_name, s$new_ids[j], s$new_items[[j]])
+          }
+          for (item_id in names(s$hotkey_changes)) {
+            server = question_item_servers[[question_name]][[item_id]]
+            if (!is.null(server)) {
+              item = server$item()
+              item@hotkey = s$hotkey_changes[[item_id]]
+              server$update_item(item)
+            }
+          }
+        }
+
+        if (!is.null(s$scoring)) {
+          scoring_updated = TRUE
+          grade_server = question_grade_servers[[question_name]]
+          if (!is.null(grade_server)) {
+            grade_server$update_grade(s$scoring)
+          }
+        }
+      }
+
+      # Re-baseline selection tracking so the save observer records the fresh
+      # item set without writing spurious grade rows
+      previous_selections(list())
+      redraw_ui(redraw_ui() + 1)
+      if (scoring_updated) {
+        grade_redraw(grade_redraw() + 1)
+      }
+      # Progress checkmarks re-read the database (replace cascades recorded
+      # selections away)
+      bump_grading_version()
+
+      n_new = sum(purrr::map_int(summaries, ~ length(.x$new_ids)))
+      shiny::showNotification(
+        glue::glue(
+          "Imported {n_new} item{if (n_new == 1) '' else 's'} into ",
+          "{length(summaries)} question{if (length(summaries) == 1) '' else 's'} from {pending$name}."
+        ),
+        type = "message"
+      )
+    }) |>
+      shiny::bindEvent(input$confirm_rubric_import)
+
     # Populate the repo selector, starting on the repo selected in the
     # Assignments table so the two tabs agree from the start
     shiny::observe({
@@ -1123,84 +1364,100 @@ mark_rubric_server = function(id, template, artifact_paths, artifact_urls, root,
       shiny::bindEvent(input$question_next_btn, ignoreInit = TRUE)
     
     # --- Per-question comment persistence -----------------------------------
-    # The textarea reflects one (question, repo) pair at a time. comment_pair
-    # records which pair that is and current_comment_stored the last value
-    # persisted (or loaded) for it. Every edit is captured into
-    # pending_comment_edit together with the pair it was typed against, so a
-    # save (debounced, or flushed on navigation) can never attribute text to a
-    # different question/repo even when navigation outruns the textarea's
-    # update echo. Programmatic updateTextAreaInput() echoes are consumed via
-    # pending_comment_echoes so they are never mistaken for edits.
-    comment_pair = shiny::reactiveVal(NULL)
-    current_comment_stored = shiny::reactiveVal("")
-    pending_comment_edit = shiny::reactiveVal(NULL)
-    pending_comment_echoes = shiny::reactiveVal(character(0))
+    # Wires a comment textarea to debounced, navigation-flushed persistence
+    # for the (question, repo) pair on screen. The textarea reflects one pair
+    # at a time: pair records which, and stored the last value persisted (or
+    # loaded) for it. Every edit is captured into pending_edit together with
+    # the pair it was typed against, so a save (debounced, or flushed on
+    # navigation) can never attribute text to a different question/repo even
+    # when navigation outruns the textarea's update echo. Programmatic
+    # updateTextAreaInput() echoes are consumed via pending_echoes so they are
+    # never mistaken for edits.
+    #
+    # input_id: textarea input id within this module
+    # load_fn: function(root, question, repo) returning the stored text or NULL
+    # save_fn: function(root, question, repo, text) appending one event row
+    # on_saved: optional zero-arg callback run after each persisted save
 
-    save_pending_comment = function() {
-      edit = pending_comment_edit()
-      if (is.null(edit)) {
-        return()
+    bind_comment_autosave = function(input_id, load_fn, save_fn, on_saved = NULL) {
+      pair = shiny::reactiveVal(NULL)
+      stored = shiny::reactiveVal("")
+      pending_edit = shiny::reactiveVal(NULL)
+      pending_echoes = shiny::reactiveVal(character(0))
+
+      save_pending = function() {
+        edit = pending_edit()
+        if (is.null(edit)) {
+          return()
+        }
+        save_fn(root, edit$question, edit$repo, edit$text)
+        current = pair()
+        if (!is.null(current) && identical(current$question, edit$question) && identical(current$repo, edit$repo)) {
+          stored(edit$text)
+        }
+        pending_edit(NULL)
+        if (!is.null(on_saved)) {
+          on_saved()
+        }
       }
-      save_comment(root, edit$question, edit$repo, edit$text)
-      pair = comment_pair()
-      if (!is.null(pair) && identical(pair$question, edit$question) && identical(pair$repo, edit$repo)) {
-        current_comment_stored(edit$text)
-      }
-      pending_comment_edit(NULL)
-      bump_grading_version()
+
+      # Capture typing as a pending edit bound to the pair on screen; consume
+      # programmatic echoes, and drop the pending edit when the text is typed
+      # back to the stored value
+      shiny::observe({
+        val = input[[input_id]]
+        echoes = pending_echoes()
+        hit = match(val, echoes)
+        if (!is.na(hit)) {
+          pending_echoes(echoes[-hit])
+          return()
+        }
+        current = pair()
+        if (is.null(current)) {
+          return()
+        }
+        if (identical(val, stored())) {
+          pending_edit(NULL)
+          return()
+        }
+        pending_edit(list(question = current$question, repo = current$repo, text = val))
+      }) |>
+        shiny::bindEvent(input[[input_id]], ignoreInit = TRUE)
+
+      # On question/repo change: flush the pending edit (to its own pair),
+      # then load the new pair's stored comment
+      shiny::observe({
+        shiny::req(input$question_select, input$content_repo_select)
+
+        save_pending()
+
+        pair(list(question = input$question_select, repo = input$content_repo_select))
+        loaded = load_fn(root, input$question_select, input$content_repo_select)
+        if (is.null(loaded)) loaded = ""
+        stored(loaded)
+        if (!identical(loaded, input[[input_id]])) {
+          # The update only echoes back when it changes the client value; cap
+          # the outstanding-echo list so an unmatched entry cannot linger forever
+          pending_echoes(utils::tail(c(pending_echoes(), loaded), 8))
+          shiny::updateTextAreaInput(session, input_id, value = loaded)
+        }
+      }) |>
+        shiny::bindEvent(input$question_select, input$content_repo_select)
+
+      # Debounced autosave while typing; comments are an event log, so one row
+      # per pause rather than per keystroke
+      text_debounced = shiny::debounce(shiny::reactive(input[[input_id]]), 1000)
+
+      shiny::observe({
+        save_pending()
+      }) |>
+        shiny::bindEvent(text_debounced(), ignoreInit = TRUE)
     }
 
-    # Capture typing as a pending edit bound to the pair on screen; consume
-    # programmatic echoes, and drop the pending edit when the text is typed
-    # back to the stored value
-    shiny::observe({
-      val = input$question_comment
-      echoes = pending_comment_echoes()
-      hit = match(val, echoes)
-      if (!is.na(hit)) {
-        pending_comment_echoes(echoes[-hit])
-        return()
-      }
-      pair = comment_pair()
-      if (is.null(pair)) {
-        return()
-      }
-      if (identical(val, current_comment_stored())) {
-        pending_comment_edit(NULL)
-        return()
-      }
-      pending_comment_edit(list(question = pair$question, repo = pair$repo, text = val))
-    }) |>
-      shiny::bindEvent(input$question_comment, ignoreInit = TRUE)
-
-    # On question/repo change: flush the pending edit (to its own pair), then
-    # load the new pair's stored comment
-    shiny::observe({
-      shiny::req(input$question_select, input$content_repo_select)
-
-      save_pending_comment()
-
-      comment_pair(list(question = input$question_select, repo = input$content_repo_select))
-      stored = load_comment(root, input$question_select, input$content_repo_select)
-      if (is.null(stored)) stored = ""
-      current_comment_stored(stored)
-      if (!identical(stored, input$question_comment)) {
-        # The update only echoes back when it changes the client value; cap
-        # the outstanding-echo list so an unmatched entry cannot linger forever
-        pending_comment_echoes(utils::tail(c(pending_comment_echoes(), stored), 8))
-        shiny::updateTextAreaInput(session, "question_comment", value = stored)
-      }
-    }) |>
-      shiny::bindEvent(input$question_select, input$content_repo_select)
-
-    # Debounced autosave while typing; comments are an event log, so one row
-    # per pause rather than per keystroke
-    comment_text_debounced = shiny::debounce(shiny::reactive(input$question_comment), 1000)
-
-    shiny::observe({
-      save_pending_comment()
-    }) |>
-      shiny::bindEvent(comment_text_debounced(), ignoreInit = TRUE)
+    # Only the public channel feeds grading progress: a non-empty public
+    # comment counts the pair as graded, while private notes never do
+    bind_comment_autosave("question_comment", load_comment, save_comment, on_saved = bump_grading_version)
+    bind_comment_autosave("question_private_comment", load_private_comment, save_private_comment)
 
     # Reactive calculation for selected rubric items' points for current question
     selected_rubric_points = shiny::reactive({
@@ -1387,6 +1644,17 @@ mark_rubric_server = function(id, template, artifact_paths, artifact_urls, root,
       }
     })
     
+    # Current question's item ids and descriptions, for shinytest2 assertions
+    # (namespaced under this module's id in get_values())
+    shiny::exportTestValues(
+      rubric_item_ids = if (is.null(input$question_select)) character(0) else {
+        names(question_item_servers[[input$question_select]])
+      },
+      rubric_item_descriptions = if (is.null(input$question_select)) character(0) else {
+        unname(purrr::map_chr(question_item_servers[[input$question_select]], ~ .x$item()@description))
+      }
+    )
+
     # Return reactive values for external use
     return(list(
       selected_question = shiny::reactive(input$question_select),

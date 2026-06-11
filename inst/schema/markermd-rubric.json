@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rundel.github.io/markermd/schema/markermd-rubric.json",
+  "title": "markermd grading rubric",
+  "description": "A markermd grading rubric: per-question rubric items and scoring setup used while marking in mark(). Contains no per-student grading data. A file may cover a single question or every question in a project.",
+  "type": "object",
+  "required": ["format_version", "questions"],
+  "additionalProperties": false,
+  "properties": {
+    "format_version": {
+      "type": "string",
+      "description": "Rubric format version (e.g. \"1.0\")."
+    },
+    "questions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/question" }
+    }
+  },
+  "$defs": {
+    "question": {
+      "type": "object",
+      "required": ["name", "items"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Question name; must exactly match a question name in the project's grading template."
+        },
+        "scoring": {
+          "$ref": "#/$defs/scoring",
+          "description": "Optional scoring setup for the question. When omitted the project's existing settings are left unchanged."
+        },
+        "items": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/item" },
+          "description": "Rubric items in display order. Order is meaningful: the first ten items are bound to keyboard hotkeys 1-9 and 0."
+        }
+      }
+    },
+    "scoring": {
+      "type": "object",
+      "required": ["total_score"],
+      "additionalProperties": false,
+      "properties": {
+        "total_score": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Maximum possible points for the question."
+        },
+        "grading_mode": {
+          "type": "string",
+          "enum": ["positive", "negative"],
+          "description": "\"positive\" builds the score up from 0 by adding selected item points; \"negative\" starts from total_score and applies (typically negative) item points as deductions."
+        },
+        "bound_above_zero": {
+          "type": "boolean",
+          "description": "When true the computed score is clamped to be >= 0."
+        },
+        "bound_below_max": {
+          "type": "boolean",
+          "description": "When true the computed score is clamped to be <= total_score."
+        }
+      }
+    },
+    "item": {
+      "type": "object",
+      "required": ["points", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "points": {
+          "type": "number",
+          "description": "Point value applied when the item is selected; negative values are deductions."
+        },
+        "description": {
+          "type": "string",
+          "description": "Feedback text shown for the item."
+        }
+      }
+    }
+  }
+}

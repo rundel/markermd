@@ -130,6 +130,27 @@ create_tables_if_needed = function(conn) {
     ")
   }
 
+  # Private comments table - grader/skill-internal notes per question/repo
+  # pair, never shown to students (the comments table is the student-facing
+  # channel). Same event-log semantics as comments. Created here on first
+  # touch, so existing databases gain it without migration.
+  if (!DBI::dbExistsTable(conn, "private_comments")) {
+    DBI::dbExecute(conn, "
+      CREATE TABLE private_comments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        question_name TEXT NOT NULL,
+        assignment_repo TEXT NOT NULL,
+        comment_text TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        username TEXT NOT NULL
+      )
+    ")
+
+    DBI::dbExecute(conn, "
+      CREATE INDEX idx_private_comments_lookup ON private_comments (question_name, assignment_repo, timestamp)
+    ")
+  }
+
   # Metadata table - key/value store for project-level singletons (the grading
   # template, the schema version, ...). The database is the canonical store for
   # these; YAML is an optional import/export format.
@@ -343,6 +364,26 @@ insert_comment = function(conn, question_name, assignment_repo, comment_text) {
   ))
 }
 
+# Insert private comment record (grader-internal, never student-facing)
+#
+# conn: DBI connection object
+# question_name: Character string
+# assignment_repo: Character string
+# comment_text: Character string
+
+insert_private_comment = function(conn, question_name, assignment_repo, comment_text) {
+  DBI::dbExecute(conn, "
+    INSERT INTO private_comments (question_name, assignment_repo, comment_text, timestamp, username)
+    VALUES (?, ?, ?, ?, ?)
+  ", params = list(
+    question_name,
+    assignment_repo,
+    comment_text,
+    get_current_timestamp(),
+    get_current_username()
+  ))
+}
+
 # Load all settings from database
 #
 # conn: DBI connection object
@@ -392,6 +433,24 @@ load_most_recent_comments = function(conn) {
     INNER JOIN (
       SELECT MAX(id) as max_id
       FROM comments
+      GROUP BY question_name, assignment_repo
+    ) c2 ON c1.id = c2.max_id
+  ")
+}
+
+# Load most recent private comments for all question/assignment combinations
+#
+# conn: DBI connection object
+# Returns: Data frame with most recent private comment data
+
+load_most_recent_private_comments = function(conn) {
+  # Most recent by autoincrement id; 1-second timestamps can tie
+  DBI::dbGetQuery(conn, "
+    SELECT c1.*
+    FROM private_comments c1
+    INNER JOIN (
+      SELECT MAX(id) as max_id
+      FROM private_comments
       GROUP BY question_name, assignment_repo
     ) c2 ON c1.id = c2.max_id
   ")

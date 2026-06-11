@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rundel.github.io/markermd/schema/markermd-marks.json",
+  "title": "markermd grading marks",
+  "description": "Per-repository grading marks for a markermd project: which rubric items are selected for each (repository, question) pair, plus optional public and private comments. Unlike the rubric format this file carries per-student grading state. Rubric items are identified by their description text, copied verbatim from the question's rubric.",
+  "type": "object",
+  "required": ["format_version", "repos"],
+  "additionalProperties": false,
+  "properties": {
+    "format_version": {
+      "type": "string",
+      "description": "Marks format version (e.g. \"1.0\")."
+    },
+    "repos": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/repo" }
+    }
+  },
+  "$defs": {
+    "repo": {
+      "type": "object",
+      "required": ["name", "questions"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Repository directory name under the project's configured repos directory."
+        },
+        "questions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/question" }
+        }
+      }
+    },
+    "question": {
+      "type": "object",
+      "required": ["name", "items"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Question name; must exactly match a question name in the project's grading template."
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Descriptions of the rubric items that apply, copied verbatim from the question's rubric. The entry is declarative: listed items are selected, unlisted items are deselected, and [] means no items apply."
+        },
+        "comment": {
+          "type": "string",
+          "description": "Public, student-facing comment. An empty string clears the stored comment; omit the field to leave it unchanged."
+        },
+        "private_comment": {
+          "type": "string",
+          "description": "Private grader/internal note, never shown to students. An empty string clears it; omit the field to leave it unchanged."
+        }
+      }
+    }
+  }
+}

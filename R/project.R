@@ -468,6 +468,574 @@ template_export = function(path, project = ".") {
   invisible(path)
 }
 
+# Question names stored in a project, in template order when a template is
+# stored, otherwise the distinct names found in the rubric items table
+# (sorted). Returns a list with names and a had_template flag.
+#
+# root: absolute project root
+
+project_question_names = function(root) {
+  template_obj = load_template_from_db(root, base_dir = root)
+  if (!is.null(template_obj)) {
+    names = vapply(template_obj@questions, function(q) q@name, character(1))
+    return(list(names = names, had_template = TRUE))
+  }
+  names = sort(unique(with_database(root, load_all_items)$question_name))
+  list(names = names, had_template = FALSE)
+}
+
+#' Export a project's grading rubric to YAML
+#'
+#' Writes the rubric stored in the project's grading database (each question's
+#' rubric items, in display order, plus its scoring setup when one has been
+#' configured) to a YAML file. The file contains no per-repository grading
+#' data, so it can be shared, edited by hand or by an LLM tool, and brought
+#' back with [rubric_import()]. The file format is described by the JSON
+#' Schema at `system.file("schema/markermd-rubric.json", package = "markermd")`.
+#'
+#' @param path Output path for the rubric `.yaml` file.
+#' @param project Path to the project directory. Defaults to the working directory.
+#' @param question Optional character vector of question names to export.
+#'   Defaults to every question in the project's template.
+#'
+#' @return The output `path`, invisibly.
+#' @seealso [rubric_import()], [template_export()]
+#' @export
+rubric_export = function(path, project = ".", question = NULL) {
+  proj = project_config(project)
+
+  universe = project_question_names(proj@root)
+  if (!universe$had_template && length(universe$names) > 0) {
+    cli::cli_warn(
+      "No template is stored in this project's database; exporting the questions found in the rubric database."
+    )
+  }
+  if (length(universe$names) == 0) {
+    cli::cli_abort(c(
+      "No rubric data to export.",
+      "i" = "Add rubric items in {.code mark()} first, or store a template with {.code template_import()}."
+    ))
+  }
+
+  selected = universe$names
+  if (!is.null(question)) {
+    unknown = setdiff(question, selected)
+    if (length(unknown) > 0) {
+      cli::cli_abort(c(
+        "Unknown question{?s}: {.val {unknown}}.",
+        "i" = "This project's questions: {.val {selected}}."
+      ))
+    }
+    selected = selected[selected %in% question]
+  }
+
+  write_rubric_yaml(collect_rubric_data(proj@root, selected), path)
+  invisible(path)
+}
+
+#' Import a grading rubric from YAML into a project's database
+#'
+#' Reads a rubric YAML file (see [rubric_export()] for the format) and applies
+#' it to the project's grading database. Item order in the file determines
+#' display order and keyboard hotkeys. This is the inverse of [rubric_export()].
+#'
+#' @details
+#' With `mode = "append"` (the default) the file's items are added after each
+#' question's existing items. With `mode = "replace"` each affected question's
+#' existing items are deleted first; this also deletes any recorded selections
+#' of those items, for every repository, and cannot be undone. A question's
+#' scoring setup is only updated when the file provides a `scoring` block.
+#'
+#' Question names in the file must exactly match question names in the
+#' project's stored template; mismatches abort before anything is written.
+#'
+#' @param path Path to a rubric `.yaml`/`.yml` file. Absolute or relative to
+#'   the current directory; a bare relative path is also resolved against the
+#'   project root.
+#' @param project Path to the project directory. Defaults to the working directory.
+#' @param mode Either `"append"` or `"replace"`; see Details.
+#' @param question Optional character vector restricting the import to those
+#'   question names within the file.
+#'
+#' @return The parsed rubric list, invisibly.
+#' @seealso [rubric_export()], [read_rubric_yaml()], [validate_rubric_file()]
+#' @export
+rubric_import = function(path, project = ".", mode = c("append", "replace"), question = NULL) {
+  mode = match.arg(mode)
+  proj = project_config(project)
+
+  rubric_path = if (fs::is_absolute_path(path) || fs::file_exists(path)) {
+    path
+  } else {
+    fs::path(proj@root, path)
+  }
+  if (!fs::file_exists(rubric_path)) {
+    cli::cli_abort("Rubric file does not exist: {.path {rubric_path}}")
+  }
+
+  rubric = read_rubric_yaml(rubric_path)
+  yaml_names = vapply(rubric$questions, function(q) q$name, character(1))
+
+  if (!is.null(question)) {
+    unknown = setdiff(question, yaml_names)
+    if (length(unknown) > 0) {
+      cli::cli_abort(c(
+        "Question{cli::qty(unknown)}{?s} {.val {unknown}} not found in the rubric file.",
+        "i" = "The file contains: {.val {yaml_names}}."
+      ))
+    }
+    keep = yaml_names %in% question
+    rubric$questions = rubric$questions[keep]
+    yaml_names = yaml_names[keep]
+  }
+
+  if (length(rubric$questions) == 0) {
+    cli::cli_abort("The rubric file contains no questions to import.")
+  }
+
+  # Validate question names against the stored template before any write, so a
+  # typo'd name cannot create rubric rows the mark app would never display
+  template_obj = load_template_from_db(proj@root, base_dir = proj@root)
+  if (!is.null(template_obj)) {
+    template_names = vapply(template_obj@questions, function(q) q@name, character(1))
+    unknown = setdiff(yaml_names, template_names)
+    if (length(unknown) > 0) {
+      cli::cli_abort(c(
+        "Questions in the rubric file are not in this project's template: {.val {unknown}}.",
+        "i" = "Stored template questions: {.val {template_names}}.",
+        "i" = "Question names are matched exactly; fix the YAML or update the template."
+      ))
+    }
+  } else {
+    cli::cli_warn(
+      "No template is stored in this project's database; question names cannot be validated."
+    )
+  }
+
+  summaries = apply_rubric_import(proj@root, rubric, mode)
+
+  n_items = sum(vapply(summaries, function(s) length(s$new_ids), integer(1)))
+  cli::cli_alert_success(
+    "Imported {n_items} rubric item{?s} into {length(summaries)} question{?s} ({mode} mode)."
+  )
+  for (question_name in names(summaries)) {
+    s = summaries[[question_name]]
+    action = if (identical(s$mode, "replace")) {
+      "{length(s$new_ids)} item{?s} (replaced {s$n_existing} existing)"
+    } else {
+      "{length(s$new_ids)} item{?s} appended after {s$n_existing} existing"
+    }
+    scoring_note = if (is.null(s$scoring)) "" else "; scoring updated"
+    cli::cli_bullets(c("*" = paste0("{.field {question_name}}: ", action, scoring_note)))
+  }
+
+  invisible(rubric)
+}
+
+# Student repository names for a project: the top-level directories under the
+# configured repos dir, matching how mark() enumerates repositories. Aborts
+# when no repos directory is configured or it does not exist, since marks
+# recorded for unenumerable repos would never be shown in mark().
+#
+# proj: markermd_project object
+
+project_repo_names = function(proj) {
+  if (is.na(proj@repos)) {
+    cli::cli_abort(c(
+      "No repos directory is configured for this project.",
+      "i" = "Record it with {.code project_set(repos = ...)}."
+    ))
+  }
+  repos_dir = fs::path(proj@root, proj@repos)
+  if (!fs::dir_exists(repos_dir)) {
+    cli::cli_abort("Configured repos directory does not exist: {.path {repos_dir}}")
+  }
+  fs::path_file(fs::dir_ls(repos_dir, type = "directory"))
+}
+
+# Resolve a marks exchange list against a project: validate repository names,
+# question names, and rubric item descriptions, and translate each
+# (repo, question) entry into the item_id-keyed selections that
+# apply_marks_import() writes. All validation happens here, before any write.
+# An entry whose items is NULL (only possible via marks_set()) leaves
+# selections untouched and carries comments only.
+#
+# proj: markermd_project object
+# marks: Exchange-list marks (read_marks_yaml() shape)
+# Returns: List of plan entries (repo, question, selections, comment, private_comment)
+
+resolve_marks_plan = function(proj, marks) {
+  repo_universe = project_repo_names(proj)
+  question_universe = project_question_names(proj@root)$names
+
+  items_cache = list()
+  plan = list()
+
+  for (repo_entry in marks$repos) {
+    if (!repo_entry$name %in% repo_universe) {
+      cli::cli_abort(c(
+        "Repository {.val {repo_entry$name}} is not in this project's repos directory.",
+        "i" = "Known repositories: {.val {repo_universe}}."
+      ))
+    }
+
+    for (question in repo_entry$questions) {
+      if (!question$name %in% question_universe) {
+        cli::cli_abort(c(
+          "Question {.val {question$name}} is not in this project's template.",
+          "i" = "This project's questions: {.val {question_universe}}.",
+          "i" = "Question names are matched exactly; fix the marks file."
+        ))
+      }
+
+      selections = NULL
+      if (!is.null(question$items)) {
+        if (is.null(items_cache[[question$name]])) {
+          items_cache[[question$name]] = load_rubric_items(proj@root, question$name)
+        }
+        items = items_cache[[question$name]]
+        descriptions = vapply(items, function(item) item@description, character(1))
+
+        dupes = unique(descriptions[duplicated(descriptions)])
+        if (length(dupes) > 0) {
+          cli::cli_abort(c(
+            "Question {.val {question$name}} has rubric items with duplicate descriptions: {.val {dupes}}.",
+            "i" = "Descriptions identify items in a marks file, so they must be unique; edit them in {.code mark()} or reimport the rubric first."
+          ))
+        }
+
+        unknown = setdiff(question$items, descriptions)
+        if (length(unknown) > 0) {
+          hint = if (length(descriptions) > 0) {
+            c("i" = "The question's rubric items: {.val {descriptions}}.",
+              "i" = "Descriptions are matched exactly; copy them verbatim.")
+          } else {
+            c("i" = "The question has no rubric items; import a rubric with {.code rubric_import()} first.")
+          }
+          cli::cli_abort(c(
+            "Marks for {.val {repo_entry$name}} / {.val {question$name}} list items not in the question's rubric: {.val {unknown}}.",
+            hint
+          ))
+        }
+
+        selections = stats::setNames(descriptions %in% question$items, names(items))
+      }
+
+      plan[[length(plan) + 1]] = list(
+        repo = repo_entry$name,
+        question = question$name,
+        selections = selections,
+        comment = question$comment,
+        private_comment = question$private_comment
+      )
+    }
+  }
+
+  plan
+}
+
+# One-row-per-pair summary data frame for a marks plan
+#
+# plan: List of plan entries (resolve_marks_plan() shape)
+# action: "written" or "skipped", recycled across rows
+
+marks_plan_summary = function(plan, action) {
+  data.frame(
+    repo = vapply(plan, function(e) e$repo, character(1)),
+    question = vapply(plan, function(e) e$question, character(1)),
+    action = rep(action, length.out = length(plan)),
+    n_selected = vapply(plan, function(e) {
+      if (is.null(e$selections)) NA_integer_ else sum(e$selections)
+    }, integer(1)),
+    stringsAsFactors = FALSE
+  )
+}
+
+#' Import grading marks from YAML into a project's database
+#'
+#' Reads a marks YAML file (see [marks_export()] for the format) and records
+#' the rubric item selections and comments it describes in the project's
+#' grading database, as if a grader had toggled them in [mark()]. Rubric items
+#' are identified by their description text, matched verbatim against each
+#' question's rubric.
+#'
+#' @details
+#' Each (repository, question) entry is declarative: the listed items are
+#' selected and every other rubric item of that question is explicitly
+#' deselected, so `items: []` records that no items apply. A pair imported
+#' with no selected items and no public comment still shows as ungraded in
+#' [mark()] until a human confirms it, by design: machine-written marks are
+#' suggestions awaiting review.
+#'
+#' Pairs that already have any grading activity (any recorded selection event,
+#' or a non-empty public or private comment) are skipped and reported unless
+#' `overwrite = TRUE`, so an automated pass cannot silently clobber a human's
+#' grading. An omitted `comment` / `private_comment` field leaves the stored
+#' comment unchanged, while an empty string clears it.
+#'
+#' All validation (repository names against the project's repos directory,
+#' question names against the stored template, item descriptions against each
+#' question's rubric) happens before anything is written, and the import
+#' itself is a single transaction.
+#'
+#' @param path Path to a marks `.yaml`/`.yml` file. Absolute or relative to
+#'   the current directory; a bare relative path is also resolved against the
+#'   project root.
+#' @param project Path to the project directory. Defaults to the working directory.
+#' @param overwrite When `TRUE`, pairs with existing grading activity are
+#'   re-marked instead of skipped.
+#' @param repo Optional character vector restricting the import to those
+#'   repository names within the file.
+#' @param question Optional character vector restricting the import to those
+#'   question names within the file.
+#'
+#' @return Invisibly, a data frame with one row per (repository, question)
+#'   pair: columns `repo`, `question`, `action` (`"written"` or `"skipped"`),
+#'   and `n_selected`.
+#' @seealso [marks_export()], [marks_set()], [read_marks_yaml()],
+#'   [validate_marks_file()], [rubric_import()]
+#' @export
+marks_import = function(path, project = ".", overwrite = FALSE, repo = NULL, question = NULL) {
+  proj = project_config(project)
+
+  marks_path = if (fs::is_absolute_path(path) || fs::file_exists(path)) {
+    path
+  } else {
+    fs::path(proj@root, path)
+  }
+  if (!fs::file_exists(marks_path)) {
+    cli::cli_abort("Marks file does not exist: {.path {marks_path}}")
+  }
+
+  marks = read_marks_yaml(marks_path)
+
+  if (!is.null(repo)) {
+    file_repos = vapply(marks$repos, function(r) r$name, character(1))
+    unknown = setdiff(repo, file_repos)
+    if (length(unknown) > 0) {
+      cli::cli_abort(c(
+        "Repositor{cli::qty(unknown)}{?y/ies} {.val {unknown}} not found in the marks file.",
+        "i" = "The file contains: {.val {file_repos}}."
+      ))
+    }
+    marks$repos = marks$repos[file_repos %in% repo]
+  }
+
+  if (!is.null(question)) {
+    file_questions = unique(unlist(lapply(marks$repos, function(r) {
+      vapply(r$questions, function(q) q$name, character(1))
+    })))
+    unknown = setdiff(question, file_questions)
+    if (length(unknown) > 0) {
+      cli::cli_abort(c(
+        "Question{cli::qty(unknown)}{?s} {.val {unknown}} not found in the marks file.",
+        "i" = "The file contains: {.val {file_questions}}."
+      ))
+    }
+    marks$repos = lapply(marks$repos, function(r) {
+      keep = vapply(r$questions, function(q) q$name %in% question, logical(1))
+      r$questions = r$questions[keep]
+      r
+    })
+    marks$repos = marks$repos[vapply(marks$repos, function(r) length(r$questions) > 0, logical(1))]
+  }
+
+  plan = resolve_marks_plan(proj, marks)
+  if (length(plan) == 0) {
+    cli::cli_abort("The marks file contains no marks to import.")
+  }
+
+  skipped = list()
+  if (!overwrite) {
+    marked = marked_question_pairs(proj@root)
+    marked_keys = paste(marked$assignment_repo, marked$question_name)
+    is_marked = vapply(plan, function(e) paste(e$repo, e$question) %in% marked_keys, logical(1))
+    skipped = plan[is_marked]
+    plan = plan[!is_marked]
+  }
+
+  if (length(plan) > 0) {
+    apply_marks_import(proj@root, plan)
+  }
+
+  n_selected = sum(vapply(plan, function(e) sum(e$selections), integer(1)))
+  cli::cli_alert_success(
+    "Imported marks for {length(plan)} repository/question pair{?s} ({n_selected} item selection{?s})."
+  )
+  if (length(skipped) > 0) {
+    skipped_labels = vapply(skipped, function(e) paste0(e$repo, "/", e$question), character(1))
+    cli::cli_bullets(c(
+      "!" = "Skipped {length(skipped)} pair{?s} with existing grading activity: {.val {skipped_labels}}.",
+      "i" = "Re-run with {.code overwrite = TRUE} to re-mark them."
+    ))
+  }
+
+  invisible(rbind(
+    marks_plan_summary(plan, "written"),
+    marks_plan_summary(skipped, "skipped")
+  ))
+}
+
+#' Export a project's grading marks to YAML
+#'
+#' Writes the per-repository grading state stored in the project's grading
+#' database (each repository/question pair's selected rubric items, identified
+#' by description, plus public and private comments) to a YAML file. Only
+#' pairs with grading activity are written; a pair whose items were all
+#' deselected exports as `items: []`. The file can be edited and brought back
+#' with [marks_import()], and its format is described by the JSON Schema at
+#' `system.file("schema/markermd-marks.json", package = "markermd")`.
+#'
+#' @param path Output path for the marks `.yaml` file.
+#' @param project Path to the project directory. Defaults to the working directory.
+#' @param repo Optional character vector of repository names to export.
+#' @param question Optional character vector of question names to export.
+#'
+#' @return The output `path`, invisibly.
+#' @seealso [marks_import()], [rubric_export()]
+#' @export
+marks_export = function(path, project = ".", repo = NULL, question = NULL) {
+  proj = project_config(project)
+
+  marked = marked_question_pairs(proj@root)
+
+  repo_names = sort(unique(marked$assignment_repo))
+  if (!is.null(repo)) {
+    unknown = setdiff(repo, repo_names)
+    if (length(unknown) > 0) {
+      cli::cli_abort(c(
+        "No marks recorded for repositor{cli::qty(unknown)}{?y/ies} {.val {unknown}}.",
+        "i" = "Repositories with marks: {.val {repo_names}}."
+      ))
+    }
+    repo_names = repo_names[repo_names %in% repo]
+  }
+
+  template_order = project_question_names(proj@root)$names
+  marked_questions = unique(marked$question_name)
+  question_names = c(
+    template_order[template_order %in% marked_questions],
+    sort(setdiff(marked_questions, template_order))
+  )
+  if (!is.null(question)) {
+    unknown = setdiff(question, question_names)
+    if (length(unknown) > 0) {
+      cli::cli_abort(c(
+        "No marks recorded for question{cli::qty(unknown)}{?s} {.val {unknown}}.",
+        "i" = "Questions with marks: {.val {question_names}}."
+      ))
+    }
+    question_names = question_names[question_names %in% question]
+  }
+
+  marks = collect_marks_data(proj@root, repo_names = repo_names, question_names = question_names)
+  if (length(marks$repos) == 0) {
+    cli::cli_abort(c(
+      "No marks to export.",
+      "i" = "Record marks in {.code mark()} or with {.code marks_import()} first."
+    ))
+  }
+
+  write_marks_yaml(marks, path)
+  invisible(path)
+}
+
+#' Record grading marks for one repository/question pair
+#'
+#' Programmatically marks a single (repository, question) pair in the
+#' project's grading database, without going through a marks YAML file: the
+#' one-off counterpart to [marks_import()]. Rubric items are identified by
+#' their description text, matched verbatim.
+#'
+#' @details
+#' `items` is declarative: the listed items are selected and every other
+#' rubric item of the question is deselected, so `character(0)` records that
+#' no items apply. `items = NULL` leaves the pair's selections untouched and
+#' only writes the supplied comments. At least one of `items`, `comment`, or
+#' `private_comment` must be supplied.
+#'
+#' Unlike [marks_import()], which skips pairs that already have grading
+#' activity, this targeted setter errors on such a pair unless
+#' `overwrite = TRUE`, so a script cannot believe a write happened when it was
+#' ignored.
+#'
+#' @param repo Repository name (a directory under the project's repos directory).
+#' @param question Question name from the project's template.
+#' @param items Character vector of rubric item descriptions to select
+#'   (`character(0)` to deselect everything), or `NULL` to leave selections
+#'   unchanged.
+#' @param comment Public, student-facing comment; an empty string clears the
+#'   stored comment, `NULL` leaves it unchanged.
+#' @param private_comment Private grader note, never shown to students; an
+#'   empty string clears it, `NULL` leaves it unchanged.
+#' @param project Path to the project directory. Defaults to the working directory.
+#' @param overwrite When `TRUE`, a pair with existing grading activity is
+#'   re-marked instead of raising an error.
+#'
+#' @return Invisibly, a one-row data frame with columns `repo`, `question`,
+#'   `action` (`"written"`), and `n_selected` (`NA` when `items` is `NULL`).
+#' @seealso [marks_import()], [marks_export()]
+#' @export
+marks_set = function(repo, question, items = NULL, comment = NULL, private_comment = NULL,
+                     project = ".", overwrite = FALSE) {
+  proj = project_config(project)
+
+  if (!is.character(repo) || length(repo) != 1 || !nzchar(trimws(repo))) {
+    cli::cli_abort("{.arg repo} must be a single repository name.")
+  }
+  if (!is.character(question) || length(question) != 1 || !nzchar(trimws(question))) {
+    cli::cli_abort("{.arg question} must be a single question name.")
+  }
+  if (is.null(items) && is.null(comment) && is.null(private_comment)) {
+    cli::cli_abort("Supply at least one of {.arg items}, {.arg comment}, or {.arg private_comment}.")
+  }
+  if (!is.null(items)) {
+    dupes = unique(items[duplicated(items)])
+    if (length(dupes) > 0) {
+      cli::cli_abort("{.arg items} contains duplicate descriptions: {.val {dupes}}.")
+    }
+  }
+  for (field in c("comment", "private_comment")) {
+    value = get(field)
+    if (!is.null(value) && (!is.character(value) || length(value) != 1)) {
+      cli::cli_abort("{.arg {field}} must be a single string.")
+    }
+  }
+
+  marks = list(repos = list(list(
+    name = repo,
+    questions = list(list(
+      name = question,
+      items = items,
+      comment = comment,
+      private_comment = private_comment
+    ))
+  )))
+  plan = resolve_marks_plan(proj, marks)
+
+  if (!overwrite) {
+    marked = marked_question_pairs(proj@root)
+    if (any(marked$assignment_repo == repo & marked$question_name == question)) {
+      activity = c(
+        if (length(load_grade_selections(proj@root, question, repo)) > 0) "recorded selections",
+        if (!is.null(load_comment(proj@root, question, repo))) "a public comment",
+        if (!is.null(load_private_comment(proj@root, question, repo))) "a private comment"
+      )
+      cli::cli_abort(c(
+        "{.val {repo}} / {.val {question}} already has grading activity ({activity}).",
+        "i" = "Pass {.code overwrite = TRUE} to re-mark it."
+      ))
+    }
+  }
+
+  apply_marks_import(proj@root, plan)
+
+  n_selected = if (is.null(items)) "no selection changes" else "{sum(plan[[1]]$selections)} item{?s} selected"
+  cli::cli_alert_success(paste0("Marked {.val {repo}} / {.val {question}} (", n_selected, ")."))
+
+  invisible(marks_plan_summary(plan, "written"))
+}
+
 # Basename of a path string, or NULL for a NULL/empty input.
 #
 # x: a path string or NULL

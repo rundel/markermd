@@ -127,6 +127,20 @@ save_comment = function(collection_path, question_name, assignment_repo, comment
   })
 }
 
+# Save private comment to database (grader-internal, never student-facing)
+#
+# collection_path: Path to collection directory
+# question_name: Character string
+# assignment_repo: Character string
+# comment_text: Character string
+
+save_private_comment = function(collection_path, question_name, assignment_repo, comment_text) {
+  with_database(collection_path, function(conn) {
+    insert_private_comment(conn, question_name, assignment_repo, comment_text)
+    return(TRUE)
+  })
+}
+
 # Load grade state from database
 #
 # collection_path: Path to collection directory
@@ -223,6 +237,31 @@ load_comment = function(collection_path, question_name, assignment_repo) {
   })
 }
 
+# Load private comment for a specific question and assignment
+#
+# collection_path: Path to collection directory
+# question_name: Character string
+# assignment_repo: Character string
+# Returns: Character string or NULL if no private comment found
+
+load_private_comment = function(collection_path, question_name, assignment_repo) {
+  with_database(collection_path, function(conn) {
+    comment_data = DBI::dbGetQuery(conn, "
+      SELECT comment_text
+      FROM private_comments
+      WHERE question_name = ? AND assignment_repo = ?
+      ORDER BY id DESC
+      LIMIT 1
+    ", params = list(question_name, assignment_repo))
+
+    if (nrow(comment_data) == 0) {
+      return(NULL)
+    }
+
+    return(comment_data$comment_text[1])
+  })
+}
+
 # Initialize database state for all questions from template
 #
 # collection_path: Path to collection directory
@@ -241,7 +280,8 @@ initialize_database_state = function(collection_path, template_obj) {
     grade_states = list(),
     rubric_items = list(),
     selections = list(),
-    comments = list()
+    comments = list(),
+    private_comments = list()
   )
   
   # Load data for each question
@@ -260,6 +300,7 @@ initialize_database_state = function(collection_path, template_obj) {
     # Initialize empty selections and comments lists for this question
     state$selections[[question_name]] = list()
     state$comments[[question_name]] = list()
+    state$private_comments[[question_name]] = list()
   }
   
   return(state)
@@ -323,6 +364,168 @@ batch_save_rubric_items = function(collection_path, question_name, items_list) {
   })
 }
 
+# Mint n fresh rubric item ids in the app's "item_<k>" style, continuing past
+# the largest numeric suffix among the ids already in use so imports never
+# reuse an id.
+#
+# existing_ids: Character vector of ids that must not be reused
+# n: Number of ids to mint
+
+next_item_ids = function(existing_ids, n) {
+  if (n == 0) {
+    return(character(0))
+  }
+
+  suffixes = sub("^item_", "", existing_ids[grepl("^item_[0-9]+$", existing_ids)])
+  k = if (length(suffixes) == 0) 0L else max(as.integer(suffixes)) + 1L
+
+  ids = character(0)
+  while (length(ids) < n) {
+    candidate = paste0("item_", k)
+    if (!candidate %in% existing_ids) {
+      ids = c(ids, candidate)
+    }
+    k = k + 1L
+  }
+  ids
+}
+
+# Apply a parsed rubric (the exchange list from read_rubric_yaml()) to a
+# project's grading database in a single transaction.
+#
+# Mode "append" keeps each question's existing items and adds the file's items
+# after them; "replace" deletes the existing items first, which also removes
+# their per-repo grade-selection events (delete_item_records). In both modes
+# the combined item list is renumbered to hotkeys 1-10 by display position (NA
+# beyond ten), preserving the load_rubric_items() ordering invariant. Fresh
+# item ids are minted avoiding every id in the database (across all questions,
+# since the mark app's module-id namespace is shared) plus any reserved_ids
+# the caller has ever bound.
+#
+# collection_path: Project root containing the grading database
+# rubric: Exchange-list rubric (format_version + questions)
+# mode: "append" or "replace"
+# reserved_ids: Additional item ids that must not be reused
+# Returns: Named list (by question name) of summaries with mode, n_existing,
+#   new_ids, new_items (markermd_rubric_item objects as written, hotkeys
+#   final), hotkey_changes (named integer vector for kept items whose hotkey
+#   changed; NA means the hotkey was cleared) and scoring
+#   (markermd_grade_state or NULL)
+
+apply_rubric_import = function(collection_path, rubric, mode, reserved_ids = character(0)) {
+  with_database(collection_path, function(conn) {
+    DBI::dbBegin(conn)
+
+    tryCatch({
+      taken = union(load_all_items(conn)$item_id, reserved_ids)
+      summaries = list()
+
+      for (question in rubric$questions) {
+        question_name = question$name
+
+        existing = DBI::dbGetQuery(conn, "
+          SELECT * FROM items WHERE question_name = ?
+          ORDER BY (hotkey IS NULL), hotkey, id
+        ", params = list(question_name))
+        n_existing = nrow(existing)
+
+        if (identical(mode, "replace")) {
+          for (item_id in existing$item_id) {
+            delete_item_records(conn, question_name, item_id)
+          }
+          existing = existing[0, ]
+        }
+
+        kept_ids = existing$item_id
+
+        # Renumber kept items whose stored hotkey does not match their display
+        # position (only possible when the database had non-contiguous hotkeys)
+        hotkey_changes = integer(0)
+        for (i in seq_along(kept_ids)) {
+          hotkey = if (i <= 10) as.integer(i) else NA_integer_
+          if (!identical(as.integer(existing$hotkey[i]), hotkey)) {
+            item = db_row_to_rubric_item(existing[i, ])
+            item@hotkey = hotkey
+            upsert_items(conn, question_name, kept_ids[i], item)
+            hotkey_changes[kept_ids[i]] = hotkey
+          }
+        }
+
+        # Imported items take the positions after the kept ones
+        new_ids = next_item_ids(taken, length(question$items))
+        taken = union(taken, new_ids)
+
+        new_items = lapply(seq_along(question$items), function(j) {
+          item = question$items[[j]]
+          pos = length(kept_ids) + j
+          item@hotkey = if (pos <= 10) as.integer(pos) else NA_integer_
+          item
+        })
+        for (j in seq_along(new_items)) {
+          upsert_items(conn, question_name, new_ids[j], new_items[[j]])
+        }
+
+        if (!is.null(question$scoring)) {
+          upsert_settings(conn, question_name, question$scoring)
+        }
+
+        summaries[[question_name]] = list(
+          mode = mode,
+          n_existing = n_existing,
+          new_ids = new_ids,
+          new_items = new_items,
+          hotkey_changes = hotkey_changes,
+          scoring = question$scoring
+        )
+      }
+
+      DBI::dbCommit(conn)
+      summaries
+    }, error = function(e) {
+      DBI::dbRollback(conn)
+      stop("Failed to import rubric: ", e$message, call. = FALSE)
+    })
+  })
+}
+
+# Apply a resolved marks plan to a project's grading database in a single
+# transaction. Each entry is one (repo, question) pair with fully-resolved
+# selections (named logical keyed by item_id, covering every item of the
+# question, so the pair's state is declarative; NULL to leave selections
+# untouched) and optional public / private comment text appended to their
+# event logs. The settings table is never touched: current_score is ephemeral
+# state the mark app recomputes from live selections.
+#
+# collection_path: Project root containing the grading database
+# plan: List of entries with repo, question, selections, comment, private_comment
+# Returns: TRUE
+
+apply_marks_import = function(collection_path, plan) {
+  with_database(collection_path, function(conn) {
+    DBI::dbBegin(conn)
+
+    tryCatch({
+      for (entry in plan) {
+        for (item_id in names(entry$selections)) {
+          insert_grade(conn, entry$question, entry$repo, item_id, entry$selections[[item_id]])
+        }
+        if (!is.null(entry$comment)) {
+          insert_comment(conn, entry$question, entry$repo, entry$comment)
+        }
+        if (!is.null(entry$private_comment)) {
+          insert_private_comment(conn, entry$question, entry$repo, entry$private_comment)
+        }
+      }
+
+      DBI::dbCommit(conn)
+      TRUE
+    }, error = function(e) {
+      DBI::dbRollback(conn)
+      stop("Failed to import marks: ", e$message, call. = FALSE)
+    })
+  })
+}
+
 # All (question, repo) pairs that currently count as graded
 #
 # A question/repo pair is graded if it has a selected rubric item (using the
@@ -364,6 +567,48 @@ graded_question_pairs = function(collection_path) {
     unique(rbind(
       selected_pairs[, c("question_name", "assignment_repo"), drop = FALSE],
       comment_pairs
+    ))
+  })
+}
+
+# All (question, repo) pairs that have any grading activity
+#
+# Broader than graded_question_pairs(): any grades event (even a deselection,
+# which the app's graded definition deliberately ignores), or a non-empty most
+# recent comment in either the public or the private channel, counts. This is
+# the skip-protection check for programmatic marking (marks_import() /
+# marks_set()), where "someone or something already touched this pair" is the
+# question, not "does it display as graded".
+#
+# collection_path: Path to collection directory
+# Returns: Data frame with question_name and assignment_repo columns
+
+marked_question_pairs = function(collection_path) {
+  with_database(collection_path, function(conn) {
+    grade_pairs = DBI::dbGetQuery(conn, "
+      SELECT DISTINCT question_name, assignment_repo FROM grades")
+
+    nonempty_latest_pairs = function(table) {
+      latest = DBI::dbGetQuery(conn, glue::glue("
+        SELECT c.question_name AS question_name, c.assignment_repo AS assignment_repo, c.comment_text AS comment_text
+        FROM <<table>> c
+        INNER JOIN (
+          SELECT MAX(id) AS max_id
+          FROM <<table>>
+          GROUP BY question_name, assignment_repo
+        ) latest ON c.id = latest.max_id
+      ", .open = "<<", .close = ">>"))
+      latest[
+        !is.na(latest$comment_text) & nchar(trimws(latest$comment_text)) > 0,
+        c("question_name", "assignment_repo"),
+        drop = FALSE
+      ]
+    }
+
+    unique(rbind(
+      grade_pairs,
+      nonempty_latest_pairs("comments"),
+      nonempty_latest_pairs("private_comments")
     ))
   })
 }
