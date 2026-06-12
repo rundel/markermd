@@ -1060,6 +1060,187 @@ marks_set = function(repo, question, items = NULL, comment = NULL, private_comme
   invisible(marks_plan_summary(plan, "written"))
 }
 
+#' Export per-repository scores to a CSV file
+#'
+#' Computes every student repository's per-question scores from the project's
+#' grading database and writes them to `scores.csv` in the project root, one
+#' row per repository with one column per question plus a `total` column.
+#' Scores are recomputed the same way [mark()] displays them: the points of
+#' the selected rubric items are summed and passed through the question's
+#' grading mode and score bounds. A repository/question pair that is not yet
+#' graded (no selected rubric item and no public comment) is written as `NA`,
+#' and a repository's `total` stays `NA` until all of its questions are
+#' graded.
+#'
+#' @param project Path to the project directory. Defaults to the working directory.
+#'
+#' @return The path of the written CSV file, invisibly.
+#' @seealso [export_comments()], [export_marks()], [marks_export()]
+#' @export
+export_scores = function(project = ".") {
+  proj = project_config(project)
+
+  repo_names = project_repo_names(proj)
+  if (length(repo_names) == 0) {
+    cli::cli_abort("No student repositories found under {.path {fs::path(proj@root, proj@repos)}}.")
+  }
+
+  question_names = project_question_names(proj@root)$names
+  if (length(question_names) == 0) {
+    cli::cli_abort(c(
+      "No questions found in this project.",
+      "i" = "Store a template with {.code template_import()} or author one with {.code template()} first."
+    ))
+  }
+  reserved = intersect(question_names, c("repo", "total"))
+  if (length(reserved) > 0) {
+    cli::cli_abort(
+      "The question name{?s} {.val {reserved}} cannot be exported: {.path scores.csv} reserves the {.field repo} and {.field total} columns."
+    )
+  }
+
+  scores = collect_score_data(proj@root, question_names, repo_names)
+
+  result = data.frame(repo = repo_names, stringsAsFactors = FALSE, check.names = FALSE)
+  for (question_name in question_names) {
+    question_scores = scores[scores$question_name == question_name, , drop = FALSE]
+    result[[question_name]] = question_scores$score[match(repo_names, question_scores$assignment_repo)]
+  }
+  result$total = rowSums(result[, question_names, drop = FALSE])
+
+  n_ungraded = sum(is.na(as.matrix(result[question_names])))
+  if (n_ungraded == nrow(result) * length(question_names)) {
+    cli::cli_abort(c(
+      "No scores to export: no repository/question pair has been graded.",
+      "i" = "Grade in {.code mark()} or record marks with {.code marks_import()} first."
+    ))
+  }
+
+  csv_path = fs::path(proj@root, "scores.csv")
+  utils::write.csv(result, csv_path, row.names = FALSE)
+
+  cli::cli_alert_success("Wrote scores for {nrow(result)} repositor{?y/ies} to {.path {csv_path}}.")
+  if (n_ungraded > 0) {
+    cli::cli_bullets(c(
+      "!" = "{n_ungraded} ungraded repository/question pair{?s} exported as NA."
+    ))
+  }
+
+  invisible(csv_path)
+}
+
+#' Export student-facing feedback to per-repository markdown files
+#'
+#' Writes each student repository's public feedback to
+#' `<comments>/<repo>.md` under the project root, using the project's
+#' configured comments directory (`comments/` when none is configured; it is
+#' created when missing). Each graded question appears as a heading, in
+#' template order, followed by a bulleted markdown list of its selected
+#' rubric item descriptions and its public comment. Private comments are
+#' never exported, and a repository with no public feedback gets no file.
+#'
+#' @param project Path to the project directory. Defaults to the working directory.
+#'
+#' @return The paths of the written markdown files, invisibly.
+#' @seealso [export_scores()], [export_marks()], [marks_export()]
+#' @export
+export_comments = function(project = ".") {
+  proj = project_config(project)
+
+  repo_names = project_repo_names(proj)
+  if (length(repo_names) == 0) {
+    cli::cli_abort("No student repositories found under {.path {fs::path(proj@root, proj@repos)}}.")
+  }
+
+  question_names = project_question_names(proj@root)$names
+  if (length(question_names) == 0) {
+    cli::cli_abort(c(
+      "No questions found in this project.",
+      "i" = "Store a template with {.code template_import()} or author one with {.code template()} first."
+    ))
+  }
+
+  marks = collect_marks_data(proj@root, repo_names = repo_names, question_names = question_names)
+  questions_by_repo = stats::setNames(
+    lapply(marks$repos, function(r) r$questions),
+    vapply(marks$repos, function(r) r$name, character(1))
+  )
+
+  comments_rel = if (is.na(proj@comments)) "comments" else proj@comments
+  comments_dir = fs::path(proj@root, comments_rel)
+  fs::dir_create(comments_dir)
+
+  # A markdown list item from possibly multiline text: continuation lines are
+  # indented so they stay inside the bullet
+  as_bullet = function(text) {
+    lines = strsplit(text, "\n", fixed = TRUE)[[1]]
+    if (length(lines) == 0) {
+      lines = ""
+    }
+    paste0(c("- ", rep("  ", length(lines) - 1)), lines)
+  }
+
+  written = character(0)
+  skipped = character(0)
+  for (repo_name in repo_names) {
+    sections = list()
+    for (q in questions_by_repo[[repo_name]]) {
+      bullets = unlist(lapply(as.character(q$items), as_bullet))
+      if (!is.null(q$comment)) {
+        bullets = c(bullets, as_bullet(q$comment))
+      }
+      if (length(bullets) == 0) {
+        next
+      }
+      sections[[length(sections) + 1]] = c(paste0("## ", q$name), "", bullets, "")
+    }
+
+    if (length(sections) == 0) {
+      skipped = c(skipped, repo_name)
+      next
+    }
+
+    lines = unlist(sections)
+    md_path = fs::path(comments_dir, paste0(repo_name, ".md"))
+    writeLines(lines[-length(lines)], md_path)
+    written = c(written, md_path)
+  }
+
+  if (length(written) == 0) {
+    cli::cli_abort(c(
+      "No feedback to export.",
+      "i" = "Select rubric items or write public comments in {.code mark()} first."
+    ))
+  }
+
+  cli::cli_alert_success("Wrote feedback for {length(written)} repositor{?y/ies} to {.path {comments_dir}}.")
+  if (length(skipped) > 0) {
+    cli::cli_bullets(c(
+      "!" = "Skipped {length(skipped)} repositor{?y/ies} with no public feedback: {.val {skipped}}."
+    ))
+  }
+
+  invisible(written)
+}
+
+#' Export scores and feedback for a graded project
+#'
+#' Runs [export_scores()] and [export_comments()] in one call: the final
+#' hand-off step of a grading project, writing `scores.csv` and the
+#' per-repository feedback files from the project's grading database.
+#'
+#' @param project Path to the project directory. Defaults to the working directory.
+#'
+#' @return Invisibly, a list with elements `scores` (the CSV path) and
+#'   `comments` (the feedback file paths).
+#' @seealso [export_scores()], [export_comments()]
+#' @export
+export_marks = function(project = ".") {
+  scores = export_scores(project)
+  comments = export_comments(project)
+  invisible(list(scores = scores, comments = comments))
+}
+
 # Basename of a path string, or NULL for a NULL/empty input.
 #
 # x: a path string or NULL

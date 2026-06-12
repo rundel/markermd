@@ -613,6 +613,78 @@ marked_question_pairs = function(collection_path) {
   })
 }
 
+# Per-repo per-question scores recomputed from the grading database
+#
+# Replicates the mark() rubric score: the points of the currently selected
+# rubric items (most recent grade event per item, by autoincrement id) are
+# summed and fed through the question's grading mode and bounds from the
+# settings table, defaulting to the app's positive mode with a total of 10
+# when a question has no settings row. The stored current_score is ephemeral
+# app state and is never used. A pair that does not count as graded (see
+# graded_question_pairs()) gets NA rather than a misleading 0 or full marks.
+#
+# collection_path: Path to collection directory
+# question_names: Character vector of question names
+# assignment_repos: Character vector of assignment repository names
+# Returns: Data frame with question_name, assignment_repo, and score columns
+
+collect_score_data = function(collection_path, question_names, assignment_repos) {
+  data = with_database(collection_path, function(conn) {
+    list(
+      settings = load_all_settings(conn),
+      items = load_all_items(conn),
+      grades = load_most_recent_grades(conn)
+    )
+  })
+  graded = graded_question_pairs(collection_path)
+  graded_keys = paste(graded$question_name, graded$assignment_repo)
+
+  selected = merge(
+    data$grades[data$grades$selected == 1, c("question_name", "assignment_repo", "item_id"), drop = FALSE],
+    data$items[, c("question_name", "item_id", "points"), drop = FALSE],
+    by = c("question_name", "item_id")
+  )
+
+  rows = list()
+  for (question_name in question_names) {
+    state = db_row_to_grade_state(data$settings[data$settings$question_name == question_name, , drop = FALSE])
+    if (is.null(state)) {
+      state = markermd_grade_state(current_score = 0, total_score = 10)
+    }
+
+    for (repo_name in assignment_repos) {
+      score = NA_real_
+      if (paste(question_name, repo_name) %in% graded_keys) {
+        points_sum = sum(selected$points[
+          selected$question_name == question_name & selected$assignment_repo == repo_name
+        ])
+        score = if (state@grading_mode == "positive") points_sum else state@total_score + points_sum
+        if (state@bound_above_zero && score < 0) {
+          score = 0
+        }
+        if (state@bound_below_max && score > state@total_score) {
+          score = state@total_score
+        }
+      }
+
+      rows[[length(rows) + 1]] = data.frame(
+        question_name = question_name,
+        assignment_repo = repo_name,
+        score = score,
+        stringsAsFactors = FALSE
+      )
+    }
+  }
+
+  if (length(rows) == 0) {
+    return(data.frame(
+      question_name = character(0), assignment_repo = character(0),
+      score = numeric(0), stringsAsFactors = FALSE
+    ))
+  }
+  do.call(rbind, rows)
+}
+
 # Calculate grading progress for all assignments
 #
 # Computes, for every requested repository, how many of the requested questions

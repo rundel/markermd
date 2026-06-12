@@ -13,7 +13,7 @@ The package is built around two apps:
 - `template()` authors a grading template: which document sections are the questions, and what structural rules each answer must satisfy.
 - `mark()` grades a collection of student repositories against that template with per-question rubrics.
 
-Around the apps, a set of helper functions (`validate_project()`, `template_import()` / `template_export()`, `rubric_import()` / `rubric_export()`, `marks_import()` / `marks_export()` / `marks_set()`) makes the entire workflow scriptable, and bundled Claude Code skills can scaffold the template and rubric or apply the rubric across all submissions as a first pass for human review.
+Around the apps, a set of helper functions (`validate_project()`, `template_import()` / `template_export()`, `rubric_import()` / `rubric_export()`, `marks_import()` / `marks_export()` / `marks_set()`, `export_marks()`) makes the entire workflow scriptable, and bundled Claude Code skills can scaffold the template and rubric or apply the rubric across all submissions as a first pass for human review.
 
 ## Experimental status
 
@@ -75,7 +75,7 @@ mark("hw01")
 
 ## Template creation with `template()`
 
-The template app loads an assignment (a project's key repository, a single `.qmd`/`.Rmd` file or directory, a saved template, or a GitHub `<owner>/<repo>`) and displays its structure as an interactive tree. Headings are the selectable units: selecting one maps the document section beneath it to a question. Each question then gets validation rules (counts of chunks, markdown blocks, or other node types; content checks; name checks) along with optional filters that narrow which nodes the rules see, plus a point value used later by the rubric.
+The template app loads an assignment (a project's key repository, a single `.qmd`/`.Rmd` file or directory, a saved template, or a GitHub `<owner>/<repo>`) and displays its structure as an interactive tree. Headings are the selectable units: selecting one maps the document section beneath it to a question. Each question then gets validation rules (counts of chunks, markdown blocks, or other node types; content checks; name checks) along with optional filters that narrow which nodes the rules see. Point values are not part of the template; each question's total is set with its rubric while grading.
 
 ![The template app: document structure tree on the left, questions with their selected sections and validation rules on the right](man/figures/template_screenshot.png)
 
@@ -93,7 +93,7 @@ The Validation tab checks every repository against the template's rules, so stru
 
 ### Rubric
 
-The Rubric tab is where grading happens. The left pane shows the student's rendered report or source; the right pane shows the current question's rubric. Items toggle by click or number-key hotkey, and the score follows from the question's scoring setup (additive or deduction mode, with optional clamping between zero and the question total). Below the items are two comment boxes: a public, student-facing comment (which also marks the question as graded) and private notes that are never shared with students. Every action autosaves to the project database.
+The Rubric tab is where grading happens. The left pane shows the student's rendered report or source; the right pane shows the current question's rubric. Items toggle by click or number-key hotkey, and the score follows from the question's scoring setup (additive or deduction mode, with optional clamping between zero and the question total; clicking the score display edits the total, and the gear popover holds the mode and bounds). Below the items are two comment boxes: a public, student-facing comment (which also marks the question as graded) and private notes that are never shared with students. Every action autosaves to the project database.
 
 ![The mark app's Rubric tab: rendered report on the left; rubric items with hotkeys, the computed score, and the public and private comment boxes on the right](man/figures/mark_rubric_screenshot.png)
 
@@ -122,6 +122,17 @@ marks_set("student1-hw01", "Question 2",
 ```
 
 The YAML formats are validated against bundled JSON Schemas (see `system.file("schema", package = "markermd")`) and are deliberately simple enough for LLM tools to author. Marks imports are conservative by default: repository/question pairs that already have grading activity are skipped unless explicitly overwritten.
+
+## Exporting results
+
+When grading is complete, `export_marks()` writes the final hand-off artifacts from the project database (or run `export_scores()` and `export_comments()` individually):
+
+```r
+export_marks("hw01")
+```
+
+- `export_scores()` writes `scores.csv` to the project root: one row per repository, one column per question, plus a `total` column. Scores are recomputed exactly as `mark()` displays them, passing each question's selected rubric item points through its grading mode and bounds. Ungraded repository/question pairs export as `NA`, and a repository's total stays `NA` until all of its questions are graded.
+- `export_comments()` writes each repository's student-facing feedback to `comments/<repo>.md` (or the project's configured comments directory). Each graded question appears as a heading, in template order, followed by a bulleted list of its selected rubric item descriptions and public comment. Private notes are never exported, and a repository with no public feedback gets no file.
 
 ## Claude Code skills
 

@@ -38,7 +38,9 @@ Imports:
     S7,
     shinyWidgets,
     DBI,
-    RSQLite
+    RSQLite,
+    stats,
+    utils
 Remotes:
     rundel/q2r
 URL: https://rundel.github.io/markermd/

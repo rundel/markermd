@@ -2,6 +2,9 @@
 
 export(add_question)
 export(assignment_outline)
+export(export_comments)
+export(export_marks)
+export(export_scores)
 export(filter_condition_type_choices)
 export(get_allowed_filter_condition_types)
 export(get_allowed_node_types)
