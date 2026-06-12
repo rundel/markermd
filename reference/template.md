@@ -10,7 +10,6 @@ template(
   local_dir = NULL,
   filename = "*.[Rq]md",
   assignment = NULL,
-  default_points = 10,
   ...
 )
 ```
@@ -51,12 +50,6 @@ template(
 
   Character string. Optional path to the assignment document, used when
   loading a template whose stored `source.path` cannot be located.
-
-- default_points:
-
-  Numeric. Point value assigned to newly added questions. Defaults
-  to 10. Questions loaded from an existing template keep their own
-  stored point values.
 
 - ...:
 

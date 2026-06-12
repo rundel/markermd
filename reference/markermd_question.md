@@ -11,7 +11,6 @@ markermd_question(
   name = character(0),
   selected_nodes = markermd_node_selection(),
   rules = list(),
-  points = 10,
   filters = list()
 )
 ```
@@ -33,10 +32,6 @@ markermd_question(
 - rules:
 
   List. Validation rules for this question as markermd_rule objects
-
-- points:
-
-  Numeric. Point value for this question (default 10)
 
 - filters:
 
