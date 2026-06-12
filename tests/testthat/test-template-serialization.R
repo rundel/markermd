@@ -2,7 +2,7 @@
 # it was built from.
 build_serialization_fixture = function() {
   qmd = system.file(
-    "examples/test_assignment/student1-excellent/assignment.qmd",
+    "examples/test_assignment/repos/student1-excellent/assignment.qmd",
     package = "markermd"
   )
   ast = markermd:::parse_assignment_document(qmd)

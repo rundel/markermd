@@ -4,7 +4,7 @@ library(shinytest2)
 # fixtures, a rendered report under html/, and a configured template that
 # grades Question 2 on "quantile" content and Question 3 on "ggplot").
 make_mark_fixture = function() {
-  src = system.file("examples/test_assignment", package = "markermd")
+  src = system.file("examples/test_assignment/repos", package = "markermd")
   root = tempfile("markproj_")
   repos = file.path(root, "repos")
   dir.create(repos, recursive = TRUE)
@@ -55,7 +55,8 @@ test_that("mark app launches and validates repositories by section", {
 
   expect_setequal(
     values$repo_names,
-    c("student1-excellent", "student2-average", "student3-poor")
+    c("student1-excellent", "student2-average", "student3-poor",
+      "student4-incomplete", "student5-messy")
   )
   expect_equal(values$n_questions, 2L)
 
@@ -65,8 +66,16 @@ test_that("mark app launches and validates repositories by section", {
   expect_equal(unname(status[["student1-excellent"]][["Q2"]]), "pass")
   expect_equal(unname(status[["student1-excellent"]][["Q3"]]), "pass")
 
-  # The weak answer lacks the quantile content in its Question 2 section
+  # The weak answer skipped the quartiles in its Question 2 section
   expect_equal(unname(status[["student3-poor"]][["Q2"]]), "fail")
+
+  # The unfinished submission completes Question 2 but never produced a plot
+  expect_equal(unname(status[["student4-incomplete"]][["Q2"]]), "pass")
+  expect_equal(unname(status[["student4-incomplete"]][["Q3"]]), "fail")
+
+  # The messy submission retyped the Question 3 heading ("Visualisation"),
+  # so its section anchor no longer resolves even though the work is there
+  expect_equal(unname(status[["student5-messy"]][["Q3"]]), "fail")
 })
 
 

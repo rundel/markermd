@@ -1,0 +1,80 @@
+---
+title: "Homework 3 - Summarizing the Palmer Penguins"
+author: "Solution Key"
+format:
+  html:
+    embed-resources: true
+---
+
+# Introduction
+
+This is the solution key for Homework 3. The assignment uses the Palmer penguins dataset to practice computing summary statistics, building a labeled scatterplot, and comparing groups. Student submissions should follow the same section structure used here.
+
+## Question 1: Understanding R
+
+**In your own words, explain what R is and why it has become such a common tool for data analysis. Name at least two features that set it apart from spreadsheet software.**
+
+R is a programming language designed for statistics and data analysis. It is free and open source, which helped it spread through universities and research labs, and its functionality is extended by thousands of contributed packages on CRAN. Compared to spreadsheet software, two key differences are reproducibility and scale: an R analysis is a script that records every step and can be rerun on updated data with one command, and R comfortably handles datasets and models well beyond what a spreadsheet supports. Full credit requires a reasonable description of R plus at least two concrete differences from spreadsheets (reproducibility, packages, scale, plotting, etc.).
+
+## Question 2: Basic Programming
+
+**Using the `penguins` data from the `palmerpenguins` package, compute the mean, median, standard deviation, and quartiles of body mass. Briefly describe the distribution, citing the values you compute.**
+
+```{r}
+#| label: q2-body-mass-summary
+#| message: false
+
+library(palmerpenguins)
+library(dplyr)
+library(ggplot2)
+
+penguins |>
+  summarize(
+    mean_mass = mean(body_mass_g, na.rm = TRUE),
+    median_mass = median(body_mass_g, na.rm = TRUE),
+    sd_mass = sd(body_mass_g, na.rm = TRUE)
+  )
+
+quantile(penguins$body_mass_g, na.rm = TRUE)
+```
+
+The mean body mass is 4201.8 g and the median is 4050 g, with a standard deviation of about 802 g. The quartiles are 3550 g (Q1) and 4750 g (Q3), with the full range running from 2700 g to 6300 g. Because the mean sits above the median, the distribution is right skewed; the heavy tail comes mostly from the Gentoo penguins. Note that `body_mass_g` contains two missing values, so every summary needs `na.rm = TRUE`; submissions reporting `NA` skipped this.
+
+## Question 3: Data Visualization
+
+**Create a scatterplot of body mass against flipper length, mapping species to color. Label your axes and give the plot a title, then describe the relationship you see in one or two sentences.**
+
+```{r}
+#| label: flipper-mass-plot
+#| warning: false
+
+ggplot(penguins, aes(x = flipper_length_mm, y = body_mass_g, color = species)) +
+  geom_point() +
+  labs(
+    title = "Penguin body mass vs flipper length",
+    x = "Flipper length (mm)",
+    y = "Body mass (g)",
+    color = "Species"
+  )
+```
+
+There is a strong positive relationship (correlation about 0.87): penguins with longer flippers are heavier. Gentoo penguins form a distinct cluster with both the longest flippers and the highest masses. Full credit requires species mapped to color, labeled axes, a title, and a sentence or two describing the positive association.
+
+## Question 4: Species Comparisons
+
+**Compute the average body mass and bill length for each combination of species and sex, excluding penguins where sex is missing. Which species is largest, and is the male/female difference similar across the three species?**
+
+```{r}
+#| label: q4-species-sex-summary
+
+penguins |>
+  filter(!is.na(sex)) |>
+  group_by(species, sex) |>
+  summarize(
+    mean_mass = mean(body_mass_g),
+    mean_bill = mean(bill_length_mm),
+    .groups = "drop"
+  )
+```
+
+Gentoo is the largest species (males average 5485 g, females 4680 g). Males are larger than females in all three species, but the gap is not uniform: about 805 g for Gentoo and 675 g for Adelie, but only about 412 g for Chinstrap. The same male-larger pattern holds for bill length. Answers must exclude the missing-sex penguins; a stray `NA` group in the output indicates the filter was skipped.

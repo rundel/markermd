@@ -1,5 +1,5 @@
 test_that("assignment_outline reports section anchors and content counts", {
-  dir = system.file("examples/test_assignment/student1-excellent", package = "markermd")
+  dir = system.file("examples/test_assignment/repos/student1-excellent", package = "markermd")
   out = markermd::assignment_outline(dir)
 
   expect_s3_class(out, "data.frame")
@@ -35,7 +35,7 @@ test_that("assignment_outline accepts a file path and includes id'd divs", {
 })
 
 test_that("the anchors from assignment_outline resolve in a written template", {
-  file = system.file("examples/test_assignment/student1-excellent/assignment.qmd", package = "markermd")
+  file = system.file("examples/test_assignment/repos/student1-excellent/assignment.qmd", package = "markermd")
   out = markermd::assignment_outline(file)
   anchor = out$id[out$id == "question-2-basic-programming"]
 

@@ -1,0 +1,94 @@
+---
+title: "Homework 3 - Summarizing the Palmer Penguins"
+author: "Johnny Doe"
+date: "2026-02-15"
+format:
+  html:
+    embed-resources: true
+---
+
+# Introduction
+
+For this homework we're working with the palmerpenguins dataset, which has body measurements for 344 penguins from three species (Adelie, Chinstrap, and Gentoo) recorded near Palmer Station in Antarctica. Most of the questions are about body mass so that's what I focus on below.
+
+```{r, message=FALSE, warning=FALSE}
+# install.packages('palmerpenguins')
+library(palmerpenguins)
+library(dplyr)
+
+# setwd('/Users/diego/Downloads/hw3')
+
+# just looking at the data first
+head(penguins)
+glimpse(penguins)
+table(penguins$species)
+```
+
+
+## Question 1: Understanding R
+
+**In your own words, explain what R is and why it has become such a common tool for data analysis. Name at least two features that set it apart from spreadsheet software.**
+
+### my answer
+
+R is a programming language that was built specifically for statistics and data analysis, it started as a free open source version of the S language and now its basically the default in a lot of stats courses and research labs because its free and there are thousands of packages on CRAN that do pretty much anything you'd need. Compared to a spreadsheet like Excel, two big differences are that in R everything is done with code, so your whole analysis is written down in a script and someone else (or future you) can rerun it and get the exact same results, and R can handle much bigger datasets and more complicated things like statistical models and real plots, while in Excel you're mostly clicking around and its really easy to break a formula somewhere without ever noticing.
+
+
+## Question 2: Basic Programming
+
+**Using the `penguins` data from the `palmerpenguins` package, compute the mean, median, standard deviation, and quartiles of body mass. Briefly describe the distribution, citing the values you compute.**
+
+```{r q2, message=FALSE, warning=FALSE}
+library(palmerpenguins)
+library(dplyr)
+
+# mean(penguins$body_mass_g)   # kept getting NA, forgot na.rm
+
+penguins |>
+  summarize(mean_mass = mean(body_mass_g, na.rm = TRUE),
+            median_mass = median(body_mass_g, na.rm = TRUE),
+            sd_mass = sd(body_mass_g, na.rm = TRUE))
+
+# couldnt get quantile to work inside summarize so doing it the normal way
+quantile(penguins$body_mass_g, na.rm = TRUE)
+```
+
+The mean body mass is about 4202 g and the median is 4050 g. Since the mean is above the median the distribution is right skewed, there are some really heavy penguins (mostly Gentoo) pulling the mean up. The standard deviation is about 802 g, and the quartiles show the middle half of the penguins falls between 3550 and 4750 g, with the full range going from 2700 up to 6300. Side note, the first time I ran mean() it just returned NA because there are two missing values in body mass, you have to add na.rm = TRUE.
+
+## Question 3: Data Visualisation
+
+**Create a scatterplot of body mass against flipper length, mapping species to color. Label your axes and give the plot a title, then describe the relationship you see in one or two sentences.**
+
+
+```{r q3, warning=FALSE, message=FALSE}
+library(ggplot2)
+library(palmerpenguins)
+
+ggplot(penguins, aes(x = flipper_length_mm, y = body_mass_g, color = species)) +
+  geom_point() +
+  labs(title = "Penguin body mass vs flipper length",
+       x = "Flipper length (mm)",
+       y = "Body mass (g)")
+
+# checking the correlation real quick
+print(cor(penguins$flipper_length_mm, penguins$body_mass_g, use = "complete.obs"))
+```
+
+There's a strong positive relationship between flipper length and body mass (the correlation is about 0.87), penguins with longer flippers are pretty much always heavier, and you can see the Gentoo cluster sitting above the other two species.
+
+
+## Question 4: Species Comparisons
+
+**Compute the average body mass and bill length for each combination of species and sex, excluding penguins where sex is missing. Which species is largest, and is the male/female difference similar across the three species?**
+
+```{r q4}
+library(palmerpenguins)
+
+# dropping the penguins where sex is NA like the question says
+p2 = penguins[!is.na(penguins$sex), ]
+
+agg = aggregate(cbind(body_mass_g, bill_length_mm) ~ species + sex, data = p2, FUN = mean)
+print(agg)
+```
+
+Gentoo is the largest species by a lot, gentoo males average about 5485 g and females about 4680 g, compared to Adelie (4044 male / 3369 female) and Chinstrap (3939 / 3527). The male/female difference is not really similar across the species, the gap is around 805 g for Gentoo and about 675 g for Adelie but only around 412 g for Chinstrap, so chinstraps are the closest between the sexes. Bill length does the same thing, males are bigger in all three, eg Chinstrap males average 51.1 mm vs 46.6 mm for females.

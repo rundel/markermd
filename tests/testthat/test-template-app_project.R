@@ -5,7 +5,7 @@ library(shinytest2)
 # written and imported into the project database so it can be preloaded for
 # editing.
 make_template_project = function(with_template = TRUE) {
-  src = system.file("examples/test_assignment/student1-excellent", package = "markermd")
+  src = system.file("examples/test_assignment/repos/student1-excellent", package = "markermd")
   root = tempfile("tmplproj_")
   key = file.path(root, "key")
   dir.create(key, recursive = TRUE)

@@ -1,6 +1,6 @@
 library(shinytest2)
 
-file = system.file("examples/test_assignment/student1-excellent/", package = "markermd")
+file = system.file("examples/test_assignment/repos/student1-excellent/", package = "markermd")
 
 get_n_questions = function(app) {
   app$get_values(export = "n_questions") |> unlist(use.names = FALSE)

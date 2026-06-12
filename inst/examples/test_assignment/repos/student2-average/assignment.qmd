@@ -1,0 +1,76 @@
+---
+title: "Homework 3 - Summarizing the Palmer Penguins"
+author: "John Doe"
+date: "2026-02-16"
+format:
+  html:
+    embed-resources: true
+---
+
+# Introduction
+
+For this assignment we are working with the penguins dataset from the palmerpenguins package, which has measurements for 344 penguins from three species recorded near Palmer Station in Antarctica. Below I go through the four questions, summarizing body mass, making a plot, and comparing the species.
+
+```{r}
+library(palmerpenguins)
+library(dplyr)
+library(ggplot2)
+```
+
+## Question 1: Understanding R
+
+**In your own words, explain what R is and why it has become such a common tool for data analysis. Name at least two features that set it apart from spreadsheet software.**
+
+R is a programming language that was made mainly for statistics and data analysis. It has become popular because it's free and open source, anyone can download it and start using it without paying for a license. It also has a huge number of packages people have written that add extra functions, like ggplot2 for plots, so you usually don't have to build everything from scratch.
+
+Compared to a spreadsheet like Excel, R lets you write code that you save and run again later. If your data changes you just rerun the script instead of redoing all the clicking by hand, which also makes it easier for someone else to check your work. It can also handle much bigger datasets than a spreadsheet can without slowing down.
+
+## Question 2: Basic Programming
+
+**Using the `penguins` data from the `palmerpenguins` package, compute the mean, median, standard deviation, and quartiles of body mass. Briefly describe the distribution, citing the values you compute.**
+
+First I used summary() to get an overview of body mass.
+
+```{r}
+summary(penguins$body_mass_g)
+```
+
+summary() already shows the quartiles but the question asked for them specifically so I also ran quantile(), plus sd() for the standard deviation. There are a couple missing values in body mass so I had to add na.rm = TRUE, otherwise these come back as NA.
+
+```{r}
+# sd(penguins$body_mass_g)   this was just giving NA
+mean(penguins$body_mass_g, na.rm = TRUE)
+sd(penguins$body_mass_g, na.rm = TRUE)
+quantile(penguins$body_mass_g, na.rm = TRUE)
+```
+
+The mean body mass is 4201.8 grams and the median is 4050 grams, so they are pretty close. The standard deviation is about 802 grams. The quartiles are 3550 (25%) and 4750 (75%), and the masses range from 2700 up to 6300 grams. Overall the distribution looks pretty normal to me, most penguins are between about 3550 and 4750 grams with a few bigger ones at the top end.
+
+## Question 3: Data Visualization
+
+**Create a scatterplot of body mass against flipper length, mapping species to color. Label your axes and give the plot a title, then describe the relationship you see in one or two sentences.**
+
+```{r}
+library(ggplot2)
+
+ggplot(penguins, aes(x = flipper_length_mm, y = body_mass_g, color = species)) +
+  geom_point() +
+  labs(x = "Flipper length (mm)", y = "Body mass (g)", title = "Penguin Plot")
+```
+
+There is a clear positive relationship, penguins with longer flippers weigh more, so the two variables are pretty correlated, with the Gentoos sitting up in the top right of the plot.
+
+## Question 4: Species Comparisons
+
+**Compute the average body mass and bill length for each combination of species and sex, excluding penguins where sex is missing. Which species is largest, and is the male/female difference similar across the three species?**
+
+```{r}
+species_sex = penguins %>%
+  group_by(species, sex) %>%
+  summarise(avg_mass = mean(body_mass_g, na.rm = TRUE),
+            avg_bill = mean(bill_length_mm, na.rm = TRUE))
+
+species_sex
+```
+
+Gentoo is clearly the largest species, male Gentoos average 5485 grams compared to 4044 for male Adelies and 3939 for male Chinstraps. Males are heavier than females in all three species but the gap isn't really the same size, it's around 400 grams for Chinstrap and closer to 800 for Gentoo, so the bigger species has the bigger difference. Bill length follows the same pattern, with males having longer bills in every species.

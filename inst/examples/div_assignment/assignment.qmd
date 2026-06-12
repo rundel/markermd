@@ -1,23 +1,26 @@
 ---
-title: "Div Assignment"
+title: "Lab 4 - Penguins Warm-up"
+author: "J. Doe"
+format: html
 ---
 
 # Question 1
 
-Write your answer in the div below.
+Compute the average body mass of the Adelie penguins and report the value in a sentence. Keep your full answer inside the answer block below.
 
 ::: {#q1-answer .answer}
-The mean is computed with `mean()`.
+The average Adelie penguin in this data weighs about 3,701 grams, a little under 4 kilograms.
 
 ```{r}
-mean(1:10)
+library(palmerpenguins)
+mean(penguins$body_mass_g[penguins$species == "Adelie"], na.rm = TRUE)
 ```
 :::
 
 ::: {.callout-note}
-This callout has no id and cannot be selected.
+Callout boxes like this one are part of the lab template and are not graded.
 :::
 
 ## Question 2
 
-Discuss the result.
+Adelie penguins turn out to be the lightest of the three species in the data, so it makes sense that this average sits well below the overall mean body mass.

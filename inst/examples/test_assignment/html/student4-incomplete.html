@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.38">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Janet Doe">
+<meta name="dcterms.date" content="2026-02-16">
+
+<title>Homework 3 - Summarizing the Palmer Penguins</title>
+<style>
+
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+width: 0.8em;
+margin: 0 0.8em 0.2em -1em;  vertical-align: middle;
+}
+.display.math{display: block; text-align: center; margin: 0.5rem auto;}
+
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+{ counter-reset: source-line 0; }
+pre.numberSource code > span
+{ position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+{ content: counter(source-line);
+position: relative; left: -1em; text-align: right; vertical-align: baseline;
+border: none; display: inline-block;
+-webkit-touch-callout: none; -webkit-user-select: none;
+-khtml-user-select: none; -moz-user-select: none;
+-ms-user-select: none; user-select: none;
+padding: 0 4px; width: 4em;
+}
+pre.numberSource { margin-left: 3em; padding-left: 4px; }
+div.sourceCode
+{ }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+
+
+</head>
+
+<body>
+
+
+<header id="title-block-header">
+<h1 class="title">Homework 3 - Summarizing the Palmer Penguins</h1>
+<p class="author">Janet Doe</p>
+
+<p class="date">2026-02-16</p>
+</header>
+
+
+<h1 id="introduction">Introduction</h1>
+<p>The Palmer Penguins data was collected by Dr. Kristen Gorman and the Palmer Station Long Term Ecological Research program in Antarctica between 2007 and 2009. It records body measurements (bill length and depth, flipper length, body mass) along with species, island, and sex for 344 penguins from three species: Adelie, Chinstrap, and Gentoo. In this homework I summarize body mass across the full sample and start to look at how the species differ from one another. I also spend a little time on why we are doing any of this in R rather than in a spreadsheet, which question 1 asks about directly.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(palmerpenguins)</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(dplyr)</span></code></pre></div>
+</div>
+<h2 id="question-1-understanding-r">Question 1: Understanding R</h2>
+<p><strong>In your own words, explain what R is and why it has become such a common tool for data analysis. Name at least two features that set it apart from spreadsheet software.</strong></p>
+<p>R is a programming language that was designed from the start for statistics and data analysis, rather than a general-purpose language that picked up data tools later. It is also free and open source, which matters more than it sounds: anyone can run, check, or extend an analysis without buying a license, which is a big part of why it spread through universities and research labs. The other reason it became so common, in my opinion, is the package system. CRAN hosts thousands of contributed packages, so when you need a mixed-effects model, a map, or a dataset of penguins, someone has usually already written and tested the code for it.</p>
+<p>The contrast with spreadsheet software mostly comes down to how the work is recorded. In a spreadsheet the analysis is a trail of clicks: you filter something, paste, drag a formula down a column, and a week later nobody (including you) can say exactly what was done or repeat it on updated data. In R the analysis is a script. The raw data stays untouched, every step is written down in order, and rerunning the whole thing takes one command, which is what people mean when they say R analyses are reproducible. A second difference is structure and scale: R has no trouble with data far beyond a spreadsheet’s row limits, and it treats a column as having a definite type instead of letting a stray text entry sit quietly inside what was supposed to be a numeric column.</p>
+<h2 id="question-2-basic-programming">Question 2: Basic Programming</h2>
+<p><strong>Using the <code>penguins</code> data from the <code>palmerpenguins</code> package, compute the mean, median, standard deviation, and quartiles of body mass. Briefly describe the distribution, citing the values you compute.</strong></p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>mass_stats <span class="ot">=</span> penguins <span class="sc">|&gt;</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarize</span>(</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">mean_mass =</span> <span class="fu">mean</span>(body_mass_g, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">median_mass =</span> <span class="fu">median</span>(body_mass_g, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">sd_mass =</span> <span class="fu">sd</span>(body_mass_g, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">n_missing =</span> <span class="fu">sum</span>(<span class="fu">is.na</span>(body_mass_g))</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>mass_stats</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 1 × 4
+  mean_mass median_mass sd_mass n_missing
+      &lt;dbl&gt;       &lt;dbl&gt;   &lt;dbl&gt;     &lt;int&gt;
+1     4202.        4050    802.         2</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">quantile</span>(penguins<span class="sc">$</span>body_mass_g, <span class="at">na.rm =</span> <span class="cn">TRUE</span>)</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>  0%  25%  50%  75% 100% 
+2700 3550 4050 4750 6300 </code></pre>
+</div>
+</div>
+<p>One note on the code: my first attempt was just <code>mean(penguins$body_mass_g)</code>, which returns NA. Two penguins have no recorded body mass, so every one of these summaries needs <code>na.rm = TRUE</code>.</p>
+<p>The mean body mass is 4201.8 g and the median is 4050 g, with a standard deviation of about 802 g. The quartiles fill in the picture: the middle half of the penguins fall between 3550 g (Q1) and 4750 g (Q3), and the full range runs from 2700 g up to 6300 g. Since the mean sits roughly 150 g above the median, the distribution is right skewed. The skew comes from a tail of very heavy birds, mostly Gentoos, that pulls the mean upward while the median stays put.</p>
+<h2 id="question-3-data-visualization">Question 3: Data Visualization</h2>
+<p><strong>Create a scatterplot of body mass against flipper length, mapping species to color. Label your axes and give the plot a title, then describe the relationship you see in one or two sentences.</strong></p>
+<p><em>Ran out of time here, sorry. I am leaving my partial attempt below so it is at least clear where I was headed.</em></p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># plot(penguins$flipper_length_mm, penguins$body_mass_g, col = penguins$species)</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="co"># meant to come back and add axis labels, a title, and a legend but never did</span></span></code></pre></div>
+</div>
+<h2 id="question-4-species-comparisons">Question 4: Species Comparisons</h2>
+<p><strong>Compute the average body mass and bill length for each combination of species and sex, excluding penguins where sex is missing. Which species is largest, and is the male/female difference similar across the three species?</strong></p>
+<p>Did not get to this question.</p>
+
+
+
+
+
+</body></html>

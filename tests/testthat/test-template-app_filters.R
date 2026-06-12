@@ -1,6 +1,6 @@
 library(shinytest2)
 
-file = system.file("examples/test_assignment/student1-excellent/", package = "markermd")
+file = system.file("examples/test_assignment/repos/student1-excellent/", package = "markermd")
 
 test_that("Filters build a q2r expression and narrow the rule evaluation set", {
   app = shinytest2::AppDriver$new(

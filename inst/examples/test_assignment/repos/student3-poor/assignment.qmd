@@ -1,0 +1,53 @@
+---
+title: "Homework 3 - Summarizing the Palmer Penguins"
+author: "Jay Doe"
+date: "2026-02-17"
+format:
+  html:
+    embed-resources: true
+---
+
+# Introduction
+
+this homework is about the penguins data from class.
+
+## Question 1: Understanding R
+
+**In your own words, explain what R is and why it has become such a common tool for data analysis. Name at least two features that set it apart from spreadsheet software.**
+
+R is a coding language for statistics. people use it because its free and it can do alot more than excel, like you can write code that redoes your work instead of clicking around. it also makes graphs.
+
+## Question 2: Basic Programming
+
+**Using the `penguins` data from the `palmerpenguins` package, compute the mean, median, standard deviation, and quartiles of body mass. Briefly describe the distribution, citing the values you compute.**
+
+```{r}
+library(palmerpenguins)
+
+mean(penguins$body_mass_g)
+mean(penguins$body_mass_g, na.rm = TRUE)
+median(penguins$body_mass_g, na.rm = TRUE)
+```
+
+i got NA the first time, i think theres missing values in the data. with na.rm the average is about 4200 grams and the median is 4050. ran out of time for the rest
+
+## Question 3: Data Visualization
+
+**Create a scatterplot of body mass against flipper length, mapping species to color. Label your axes and give the plot a title, then describe the relationship you see in one or two sentences.**
+
+```{r}
+# install.packages kept failing on my laptop so i used the basic plot
+plot(penguins$flipper_length_mm, penguins$body_mass_g)
+```
+
+penguins with bigger flippers are heavier basically.
+
+## Question 4: Species Comparisons
+
+**Compute the average body mass and bill length for each combination of species and sex, excluding penguins where sex is missing. Which species is largest, and is the male/female difference similar across the three species?**
+
+```{r}
+table(penguins$species)
+```
+
+Adelie has the most penguins (152) so Adelie is the biggest species.

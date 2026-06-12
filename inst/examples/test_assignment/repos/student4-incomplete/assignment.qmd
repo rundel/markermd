@@ -1,0 +1,71 @@
+---
+title: "Homework 3 - Summarizing the Palmer Penguins"
+author: "Janet Doe"
+date: "2026-02-16"
+format:
+  html:
+    embed-resources: true
+---
+
+# Introduction
+
+The Palmer Penguins data was collected by Dr. Kristen Gorman and the Palmer Station Long Term Ecological Research program in Antarctica between 2007 and 2009. It records body measurements (bill length and depth, flipper length, body mass) along with species, island, and sex for 344 penguins from three species: Adelie, Chinstrap, and Gentoo. In this homework I summarize body mass across the full sample and start to look at how the species differ from one another. I also spend a little time on why we are doing any of this in R rather than in a spreadsheet, which question 1 asks about directly.
+
+```{r}
+#| label: setup
+#| message: false
+library(palmerpenguins)
+library(dplyr)
+```
+
+## Question 1: Understanding R
+
+**In your own words, explain what R is and why it has become such a common tool for data analysis. Name at least two features that set it apart from spreadsheet software.**
+
+R is a programming language that was designed from the start for statistics and data analysis, rather than a general-purpose language that picked up data tools later. It is also free and open source, which matters more than it sounds: anyone can run, check, or extend an analysis without buying a license, which is a big part of why it spread through universities and research labs. The other reason it became so common, in my opinion, is the package system. CRAN hosts thousands of contributed packages, so when you need a mixed-effects model, a map, or a dataset of penguins, someone has usually already written and tested the code for it.
+
+The contrast with spreadsheet software mostly comes down to how the work is recorded. In a spreadsheet the analysis is a trail of clicks: you filter something, paste, drag a formula down a column, and a week later nobody (including you) can say exactly what was done or repeat it on updated data. In R the analysis is a script. The raw data stays untouched, every step is written down in order, and rerunning the whole thing takes one command, which is what people mean when they say R analyses are reproducible. A second difference is structure and scale: R has no trouble with data far beyond a spreadsheet's row limits, and it treats a column as having a definite type instead of letting a stray text entry sit quietly inside what was supposed to be a numeric column.
+
+## Question 2: Basic Programming
+
+**Using the `penguins` data from the `palmerpenguins` package, compute the mean, median, standard deviation, and quartiles of body mass. Briefly describe the distribution, citing the values you compute.**
+
+```{r}
+#| label: mass-summary
+mass_stats = penguins |>
+  summarize(
+    mean_mass = mean(body_mass_g, na.rm = TRUE),
+    median_mass = median(body_mass_g, na.rm = TRUE),
+    sd_mass = sd(body_mass_g, na.rm = TRUE),
+    n_missing = sum(is.na(body_mass_g))
+  )
+
+mass_stats
+```
+
+```{r}
+#| label: mass-quartiles
+quantile(penguins$body_mass_g, na.rm = TRUE)
+```
+
+One note on the code: my first attempt was just `mean(penguins$body_mass_g)`, which returns NA. Two penguins have no recorded body mass, so every one of these summaries needs `na.rm = TRUE`.
+
+The mean body mass is 4201.8 g and the median is 4050 g, with a standard deviation of about 802 g. The quartiles fill in the picture: the middle half of the penguins fall between 3550 g (Q1) and 4750 g (Q3), and the full range runs from 2700 g up to 6300 g. Since the mean sits roughly 150 g above the median, the distribution is right skewed. The skew comes from a tail of very heavy birds, mostly Gentoos, that pulls the mean upward while the median stays put.
+
+## Question 3: Data Visualization
+
+**Create a scatterplot of body mass against flipper length, mapping species to color. Label your axes and give the plot a title, then describe the relationship you see in one or two sentences.**
+
+*Ran out of time here, sorry. I am leaving my partial attempt below so it is at least clear where I was headed.*
+
+```{r}
+#| label: scatter-attempt
+# plot(penguins$flipper_length_mm, penguins$body_mass_g, col = penguins$species)
+# meant to come back and add axis labels, a title, and a legend but never did
+```
+
+## Question 4: Species Comparisons
+
+**Compute the average body mass and bill length for each combination of species and sex, excluding penguins where sex is missing. Which species is largest, and is the male/female difference similar across the three species?**
+
+Did not get to this question.

@@ -1,0 +1,95 @@
+---
+title: "Homework 3 - Summarizing the Palmer Penguins"
+author: "Jane Doe"
+date: "2026-02-14"
+format:
+  html:
+    embed-resources: true
+---
+
+# Introduction
+
+In this assignment I work with the Palmer penguins dataset, which contains body measurements for three penguin species observed near Palmer Station in Antarctica. I use it to practice computing summary statistics in R, make a scatterplot of mass against flipper length, and compare body size across species and sex.
+
+## Question 1: Understanding R
+
+**In your own words, explain what R is and why it has become such a common tool for data analysis. Name at least two features that set it apart from spreadsheet software.**
+
+R is a programming language built specifically for statistics and data analysis, and it is free and open source, which is a big part of why it spread through universities and research labs. Instead of clicking through menus, you write code, so every step of an analysis is written down and can be rerun or handed to someone else. That's the first big difference from a spreadsheet: if the data changes, I rerun my script and every table and figure updates, whereas in Sheets I would have to redo the work by hand and hope I remembered every step. The second is how far it extends, since thousands of contributed packages add everything from mapping tools to machine learning, and R handles datasets large enough to make a spreadsheet crawl. A spreadsheet is fine for entering data, but the actual analysis is much safer in code.
+
+After a semester and a half of doing everything in Google Sheets, a few things won me over once I switched:
+
+- It's free, which matters a lot on a student budget.
+- The package ecosystem is huge, so most problems I run into already have a well-tested solution that is one `install.packages()` call away.
+- ggplot2 figures look better in five lines of code than anything I ever produced in Sheets.
+- Rerunning an analysis after finding a data entry mistake takes seconds, not an afternoon.
+
+## Question 2: Basic Programming
+
+**Using the `penguins` data from the `palmerpenguins` package, compute the mean, median, standard deviation, and quartiles of body mass. Briefly describe the distribution, citing the values you compute.**
+
+```{r}
+#| label: q2-body-mass-summary
+#| message: false
+
+library(palmerpenguins)
+library(dplyr)
+library(ggplot2)
+
+penguins |>
+  summarize(
+    mean_mass = mean(body_mass_g, na.rm = TRUE),
+    median_mass = median(body_mass_g, na.rm = TRUE),
+    sd_mass = sd(body_mass_g, na.rm = TRUE)
+  )
+
+quantile(penguins$body_mass_g, na.rm = TRUE)
+```
+
+The average penguin weighs about 4202 g (4201.8 before the table rounds it), but the median is lower at 4050 g, and that gap is the first hint that the distribution is right skewed. The standard deviation is about 802 g, the middle half of the penguins falls between 3550 g and 4750 g, and the full range runs from 2700 g up to 6300 g. The long right tail comes mostly from the Gentoo penguins, which are much heavier than the other two species, so a chunk of very large birds pulls the mean above the median.
+
+## Question 3: Data Visualization
+
+**Create a scatterplot of body mass against flipper length, mapping species to color. Label your axes and give the plot a title, then describe the relationship you see in one or two sentences.**
+
+```{r}
+#| label: flipper-mass-plot
+#| warning: false
+
+ggplot(penguins, aes(x = flipper_length_mm, y = body_mass_g, color = species)) +
+  geom_point(alpha = 0.7) +
+  labs(
+    title = "Penguin body mass increases with flipper length",
+    x = "Flipper length (mm)",
+    y = "Body mass (g)",
+    color = "Species"
+  ) +
+  theme_minimal()
+```
+
+There's a strong positive relationship: penguins with longer flippers are heavier, and the points fall fairly close to a line. The Gentoo penguins form their own cluster in the upper right with both longer flippers and more mass, while Adelie and Chinstrap overlap quite a bit in the lower left.
+
+## Question 4: Species Comparisons
+
+**Compute the average body mass and bill length for each combination of species and sex, excluding penguins where sex is missing. Which species is largest, and is the male/female difference similar across the three species?**
+
+```{r}
+#| label: q4-species-sex-summary
+
+species_sex_summary = penguins |>
+  filter(!is.na(sex)) |>
+  group_by(species, sex) |>
+  summarize(
+    mean_mass = mean(body_mass_g, na.rm = TRUE),
+    mean_bill = mean(bill_length_mm, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+species_sex_summary
+```
+
+Gentoo is clearly the largest species: males average 5485 g and females 4680 g, both well above anything in the other two species. Males outweigh females across the board, but the size of the gap varies. It's about 805 g for Gentoo and 675 g for Adelie, but only around 412 g for Chinstrap, so Chinstrap are the least sexually dimorphic of the three by mass. Bill length follows the same male-larger pattern, and interestingly the longest bills belong to Chinstrap males at 51.1 mm, not to the much heavier Gentoo.
+
+# Wrap-up
+
+The thing that surprised me most was how similar Adelie and Chinstrap penguins are by weight. Chinstrap average 3733 g against 3701 g for Adelie, basically a rounding error, even though Chinstrap bills are dramatically longer (46.6 mm versus 37.3 mm among females). I went into this assuming a bigger bill meant a bigger bird, and the data told me otherwise pretty quickly.
