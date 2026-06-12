@@ -143,13 +143,19 @@ mark_grade_server = function(id, initial_grade, ui_ns = NULL, collection_path = 
 
     # Patch the score display's text and data attributes in place (the widget
     # is not re-rendered on score changes; see output$grade_ui in
-    # mod_mark_rubric.R)
+    # mod_mark_rubric.R). The patch is deferred to onFlushed because a
+    # question switch re-renders the widget in the same flush from a grade
+    # snapshot taken before the loaded selections recompute the score; a
+    # message sent mid-flush would land first and be clobbered by that
+    # stale re-render.
     update_score_display = function(current, total) {
-      session$sendCustomMessage("markermd_update_score", list(
-        id = target_ns("score_display"),
-        current = current,
-        total = total
-      ))
+      session$onFlushed(function() {
+        session$sendCustomMessage("markermd_update_score", list(
+          id = target_ns("score_display"),
+          current = current,
+          total = total
+        ))
+      }, once = TRUE)
     }
 
 

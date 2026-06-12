@@ -122,6 +122,37 @@ test_that("grading interactions patch the score display in place", {
 })
 
 
+test_that("a selection loaded from the database recomputes the score on question switch", {
+  fixture = make_mark_fixture()
+  markermd:::save_rubric_item(
+    fixture$project, "Q3", "item_0",
+    markermd::markermd_rubric_item(1L, 4, "Seeded bonus")
+  )
+  markermd:::save_grade_selection(fixture$project, "Q3", "student1-excellent", "item_0", TRUE)
+
+  app = shinytest2::AppDriver$new(
+    markermd:::mark_app(fixture$project),
+    name = "mark_loaded_selection_score"
+  )
+
+  app$set_inputs(main_navbar = "rubric")
+  app$wait_for_idle()
+
+  # Switching questions re-renders the grade widget in the same flush that
+  # loads the recorded selection; the recomputed score must survive that
+  # re-render (the score patch is deferred to onFlushed for this reason)
+  app$set_inputs(`rubric_module-question_select` = "Q3")
+  app$wait_for_idle()
+
+  expect_equal(
+    trimws(app$get_js(
+      "document.getElementById('rubric_module-grade_Q3-score_display').innerHTML"
+    )),
+    "4 / 10 pts"
+  )
+})
+
+
 test_that("public and private comments autosave to their own channels", {
   fixture = make_mark_fixture()
 
