@@ -29,7 +29,10 @@ A `markermd_project` object, invisibly.
 
 The key (solution) repository is detected as the top-level git
 repository (student repositories live under `repos/`); when several
-top-level repos exist, the one whose name contains "key" is used.
+top-level repos exist, the one whose name contains "key" is used. When
+no top-level git repository exists (a copied or unpacked layout, such as
+the bundled example project), a directory whose name contains "key" and
+that holds an assignment document (`.qmd`/`.Rmd`) is used instead.
 Remaining top-level directories that are not git repositories are
 recorded as artifact directories.
 
