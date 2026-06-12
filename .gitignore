@@ -8,3 +8,4 @@ docs
 # {shinytest2}: Ignore new debug snapshots for `$expect_values()`
 *_.new.png
 notes
+inst/examples/test_assignment2
