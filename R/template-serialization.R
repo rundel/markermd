@@ -105,7 +105,6 @@ question_to_list = function(question) {
   out = list(
     id = as.integer(question@id),
     name = question@name,
-    points = clean_number(question@points),
     node_ids = as.list(question@selected_nodes@node_ids),
     rules = lapply(question@rules, rule_to_list)
   )
@@ -127,6 +126,8 @@ question_from_list = function(x) {
   rules = if (is.null(x$rules)) list() else lapply(x$rules, rule_from_list)
   filters = if (is.null(x$filters)) list() else lapply(x$filters, filter_group_from_list)
 
+  # Templates written before scoring moved into the rubric carry a per-question
+  # points field; it is intentionally ignored here.
   args = list(
     id = as.integer(x$id),
     name = as.character(x$name),
@@ -134,9 +135,6 @@ question_from_list = function(x) {
     rules = rules,
     filters = filters
   )
-  # points is optional for backward compatibility; the class default applies when
-  # an older template omits it.
-  if (!is.null(x$points)) args$points = as.numeric(x$points)
 
   do.call(markermd_question, args)
 }

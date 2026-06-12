@@ -105,6 +105,17 @@ test_that("grading interactions patch the score display in place", {
   app$wait_for_idle()
   expect_equal(score_display(), "0 / 25 pts")
 
+  # The user-facing path: clicking the score display opens the Total points
+  # popover, whose input (bound once the popover first opens) drives the same
+  # observer. A second click closes the popover again.
+  app$run_js("document.getElementById('rubric_module-grade_Q2-score_popover_trigger').click();")
+  app$wait_for_idle()
+  app$set_inputs(`rubric_module-grade_Q2-total_score_input` = 30, wait_ = FALSE)
+  app$wait_for_idle()
+  expect_equal(score_display(), "0 / 30 pts")
+  app$run_js("document.getElementById('rubric_module-grade_Q2-score_popover_trigger').click();")
+  app$wait_for_idle()
+
   # Selecting a rubric item recomputes the score through the same path
   app$click("rubric_module-add_item")
   app$wait_for_idle()
@@ -113,12 +124,12 @@ test_that("grading interactions patch the score display in place", {
 
   app$click("rubric_module-item_0-hotkey_btn")
   app$wait_for_idle()
-  expect_equal(score_display(), "4 / 25 pts")
+  expect_equal(score_display(), "4 / 30 pts")
 
   # Deselecting returns the score to zero
   app$click("rubric_module-item_0-hotkey_btn")
   app$wait_for_idle()
-  expect_equal(score_display(), "0 / 25 pts")
+  expect_equal(score_display(), "0 / 30 pts")
 })
 
 

@@ -1,6 +1,6 @@
 ---
 name: markermd-scaffold-rubric
-description: Scaffold a markermd grading rubric (per-question rubric items plus scoring setup, as YAML) for an initialized markermd project that already has a stored grading template. Asks whether to base the rubric on the key (solution) repository alone or on the key plus the student repositories (sampling submissions to anticipate common mistakes), drafts concrete key-derived rubric items for each template question, writes the rubric YAML, validates it against the bundled JSON Schema, and imports it into the project's grading database with rubric_import(). Use when a user wants to bootstrap, scaffold, or generate a markermd rubric or grading rubric items for an assignment project created with markermd::init_project() / ghclass::org_grade_assignment().
+description: Scaffold a markermd grading rubric (per-question rubric items plus scoring setup, as YAML) for an initialized markermd project that already has a stored grading template. Asks whether to work through the questions all at once or one at a time (showing and importing each question's proposed items before moving to the next), and whether to base the rubric on the key (solution) repository alone or on the key plus the student repositories (sampling submissions to anticipate common mistakes); asks for the assignment's total points and how to distribute them across questions (proposing equal, content-weighted, and assignment-stated splits); drafts concrete key-derived rubric items for each template question, writes the rubric YAML, validates it against the bundled JSON Schema, and imports it into the project's grading database with rubric_import(). Use when a user wants to bootstrap, scaffold, or generate a markermd rubric or grading rubric items for an assignment project created with markermd::init_project() / ghclass::org_grade_assignment().
 ---
 
 # Scaffold a markermd grading rubric
@@ -28,12 +28,18 @@ before writing anything, so without a stored template this skill cannot
 proceed (use the `markermd-scaffold-template` skill first).
 
 The flow is: read the config -> confirm the template and learn its questions ->
-ask the user for the rubric basis and grading mode -> read the key's solution
-per question (and, if requested, sample the student repos for common mistakes)
--> draft items -> show the user the full draft and confirm -> write the rubric
-YAML -> validate -> show the final YAML and ask to import -> import into the
-project database -> report. The scaffold is a starting point;
-the user refines items while grading in the Rubric pane of `mark()`.
+ask the user for the workflow (all questions at once, or one question at a
+time), the rubric basis, and the grading mode -> read the key's solution per
+question -> ask the user for the assignment's total points and confirm a
+per-question distribution -> if requested, sample the student repos for
+common mistakes -> draft, confirm, and import. With the all-at-once workflow
+that last part is one pass: draft every question -> show the user the full
+draft and confirm -> write the rubric YAML -> validate -> show the final YAML
+and ask to import -> import into the project database (step 9). With the
+question-at-a-time workflow it repeats per question: draft -> show that
+question's proposed items -> confirm -> import, before moving to the next
+question (step 10). Either way, report at the end. The scaffold is a starting
+point; the user refines items while grading in the Rubric pane of `mark()`.
 
 Two hard rules:
 
@@ -84,17 +90,27 @@ From the printed YAML record, per question:
 - `name` -- copy verbatim; this is the rubric's question key.
 - `node_ids` -- the heading/div anchors locating the question's section in the
   assignment documents (used to slice the key in step 4).
-- `points` -- the question's point value (defaults to 10 when omitted); this
-  becomes the rubric's `scoring.total_score`.
+
+Templates exported by older markermd versions may also carry a per-question
+`points` field; ignore it -- question points live in the rubric's scoring
+setup and are decided in step 5.
 
 Also note the top-level `source.path`: the key's assignment document relative
 to the project root.
 
-### 3. Ask the user: rubric basis and grading mode
+### 3. Ask the user: workflow, rubric basis, and grading mode
 
-Ask both questions in one round (AskUserQuestion) before reading anything
+Ask all three questions in one round (AskUserQuestion) before reading anything
 else:
 
+- **Workflow** -- how to work through the template's questions:
+  - *All at once*: draft every question, show the user one full draft to
+    confirm, and import the whole rubric in a single pass (step 9).
+  - *One question at a time*: for each question in turn, show its proposed
+    items, confirm or adjust them, and import that question before moving on
+    to the next (step 10). More rounds, but the user shapes each question
+    while it is in front of them and can stop partway with everything
+    confirmed so far already imported.
 - **Basis** -- what the rubric should be built from:
   - *Key only*: items are derived from the key's solution (what a correct
     answer must contain).
@@ -106,6 +122,9 @@ else:
     the score starts at `total_score`; graders mark what is wrong.
   - *Additive* (`positive`): items carry positive points and the score builds
     up from 0; graders mark what is present.
+
+The assignment's total points and their distribution across questions are
+asked separately (step 5), once the key has been read.
 
 If the user chose key + student repos and `paths.repos` is missing/null in the
 config, ask where the student repositories live (relative to the project root)
@@ -144,12 +163,46 @@ next same-or-higher-level heading. For each question capture three things:
 - the **written answer** -- what a correct interpretation or write-up says.
 
 Also read `<root>/<paths.key>/README.md` when present; most assignments state
-per-question expectations (and sometimes point values) there. If the README's
-point values disagree with the template's `points`, do not silently pick one:
-flag the discrepancy in the confirmation step (step 7) and default to the
-template's values.
+per-question expectations there, and often point values. Note any stated
+point values -- per question or an assignment total -- verbatim: they seed
+the distribution proposals in step 5.
 
-### 5. (key + repos basis only) Sample the student repositories
+### 5. Ask the user: assignment total and per-question point distribution
+
+Question points live in the rubric (each question's `scoring.total_score`),
+not the template, and they are decided here: once, for the whole assignment,
+before any drafting -- in both workflows. The question-at-a-time loop must
+not revisit them per question.
+
+First build concrete proposals from what step 4 surfaced. Always include the
+per-question numbers; never offer an abstract "weighted" option without them.
+
+- *Stated values* (when found): if the key's README or the assignment prose
+  states per-question point values or an assignment total, turn those exact
+  numbers into a proposal -- the leading option when present.
+- *Equal split*: the same value for every question from a round total
+  (e.g. 5 questions x 10 pts = 50).
+- *Weighted by content*: weight each question by what its key section
+  actually demands -- multiple parts, code plus interpretation, or a plot
+  plus a write-up earn more than a one-line answer -- normalized to a round
+  total.
+
+Then ask, in one AskUserQuestion round:
+
+1. **Total points for the assignment** -- offer the totals the proposals
+   imply (the stated total when there is one, questions x 10, 100, ...).
+2. **Distribution across questions** -- one option per proposal, each with
+   its per-question numbers in the description (e.g. "Weighted: Q1 5, Q2 10,
+   Q3 15"). With many questions, show the full per-question table in the
+   message before asking and name the schemes in the options.
+
+If the chosen total and distribution disagree (e.g. an equal split of 100
+over 7 questions), rescale the distribution proportionally and round to
+sensible values (halves are fine), then show the final per-question table
+and confirm it. The confirmed totals become each question's
+`scoring.total_score` in everything that follows.
+
+### 6. (key + repos basis only) Sample the student repositories
 
 Skip this step entirely for the key-only basis.
 
@@ -187,11 +240,16 @@ A mistake observed in two or more sampled repos is a candidate deduction item.
 Phrase it generically -- never quote or identify a specific student or
 repository.
 
-### 6. Draft items and scoring for each question
+### 7. Draft items and scoring for each question
+
+These drafting rules apply in both workflows: all at once, draft every
+question before step 9; one question at a time, draft each question as you
+reach it in step 10's loop.
 
 Scoring setup, per question:
 
-- `total_score`: the template question's `points` (step 2).
+- `total_score`: the question's points from the distribution confirmed in
+  step 5.
 - `grading_mode`: the user's choice from step 3.
 - `bound_above_zero: true` and `bound_below_max: true` (clamped scores; the
   user can loosen these in `mark()`).
@@ -237,21 +295,13 @@ Guidelines:
 - About **3-7 items per question** (including the confirmation item) is right
   for a scaffold; never more than 10 (the hotkey limit).
 - With the key + repos basis, add items only for mistakes actually observed in
-  step 5 beyond the key-derived core checks -- do not pad with hypotheticals.
+  step 6 beyond the key-derived core checks -- do not pad with hypotheticals.
 
-### 7. Show the user the full draft rubric and confirm before writing
+### 8. The rubric YAML: shape, validation, and import mode
 
-Show the complete draft: for each question, its name, total, and mode, and
-every item in order with its points and full description, plus any
-point-value discrepancies flagged in step 4. Never summarize or elide items;
-the user must see exactly what would be imported. Ask the user to confirm or
-adjust (item wording, points magnitudes, items to add, drop, or reorder). Do
-not write any files until the user confirms.
-
-### 8. Write the rubric YAML, validate it, and import it
-
-Write the file to `<root>/markermd-rubric.yaml` (ask if the user wants a
-different location). Shape:
+Both workflows write the rubric to `<root>/markermd-rubric.yaml` (ask if the
+user wants a different location) and import from that file; the
+question-at-a-time workflow grows it one question per round. Shape:
 
 ```yaml
 format_version: "1.0"
@@ -280,12 +330,13 @@ Rules and constraints:
 - There are **no item ids and no hotkeys** in the YAML: item order is the
   binding (positions 1-10 become the hotkeys on import).
 - `scoring` is optional per question; when omitted the project's existing
-  scoring settings are left unchanged.
+  scoring settings are left unchanged. In this skill, always emit `scoring`
+  for every question, using the step 5 totals.
 - The full JSON Schema is bundled at
   `system.file("schema/markermd-rubric.json", package = "markermd")` if you
   need to check the exact structure.
 
-Confirm the file parses:
+To validate the file (re-run after every edit), confirm it parses:
 
 ```
 Rscript -e 'invisible(markermd::read_rubric_yaml("<root>/markermd-rubric.yaml")); cat("OK\n")'
@@ -301,15 +352,10 @@ Rscript -e 'print(markermd::validate_rubric_file("<root>/markermd-rubric.yaml"))
 question name, a missing `items` key, or a string where a number belongs) and
 re-validate until it loads cleanly.
 
-Importing is a separate decision from drafting: show the user the final
-rubric YAML exactly as written (print the file's contents) and ask whether to
-import it, even though they confirmed the draft in step 7 -- fixes made
-during validation may have changed it. Never run `rubric_import()` without an
-explicit yes to this question.
-
-Before importing, also check whether the project already has rubric items by
-exporting the current rubric (this succeeds, with empty `items` lists, whenever
-a template is stored -- an error is not the signal here):
+Finally, before anything is imported, check whether the project already has
+rubric items by exporting the current rubric (this succeeds, with empty
+`items` lists, whenever a template is stored -- an error is not the signal
+here):
 
 ```
 Rscript -e 'p <- tempfile(fileext = ".yaml"); markermd::rubric_export(p, project = "<root>"); cat(readLines(p), sep = "\n")'
@@ -323,7 +369,27 @@ If any question already has items, **ask the user** which import mode to use:
   along with **all recorded selections of those items, for every repository**.
   This cannot be undone, so say so explicitly when offering it.
 
-Then import:
+Ask this once: in the question-at-a-time workflow the chosen mode applies to
+every per-question import, and `replace` only touches the questions named in
+each individual import call.
+
+### 9. All at once: confirm the full draft, then write and import
+
+Skip this step if the user chose one question at a time (step 10).
+
+Show the complete draft: for each question, its name, total (from the step 5
+distribution), and mode, and every item in order with its points and full
+description. Never summarize or elide items; the user must see exactly what
+would be imported. Ask the user to confirm or adjust (item wording, points
+magnitudes, items to add, drop, or reorder). Do not write any files until the
+user confirms.
+
+Then write the full rubric YAML and validate it (step 8). Importing is a
+separate decision from drafting: show the user the final rubric YAML exactly
+as written (print the file's contents) and ask whether to import it, even
+though they confirmed the draft above -- fixes made during validation may
+have changed it. Never run `rubric_import()` without an explicit yes to this
+question. Then import, with the mode chosen in step 8:
 
 ```
 Rscript -e 'markermd::rubric_import("markermd-rubric.yaml", project = "<root>", mode = "append")'
@@ -333,12 +399,53 @@ If the import aborts because a question name is not in the project's template,
 correct the YAML to the exact names from step 2 and retry. Never rename the
 template's questions to match the rubric file.
 
-### 9. Report
+### 10. One question at a time: confirm and import each question
+
+Skip this step if the user chose all at once (step 9).
+
+Work through the template's questions in order. For each question:
+
+1. Draft its items (step 7) from the key reading in step 4 and, with the
+   key + repos basis, the sampling findings from step 6 (the sampling itself
+   is done once up front, not redone per question).
+2. Show the question's complete proposed entry: its name, total (from the
+   step 5 distribution), and mode, and every item in order with its points
+   and full description. Never summarize or elide items.
+3. Ask the user to confirm or adjust (item wording, points magnitudes, items
+   to add, drop, or reorder), iterating until they confirm. This confirmation
+   is the explicit yes that authorizes importing this question; never import
+   without it.
+4. Add the confirmed question to `<root>/markermd-rubric.yaml` -- on the
+   first question, create the file with its `format_version` header -- and
+   validate the file (step 8). If fixing a validation problem changed the
+   question's entry, show it again before importing.
+5. Import just this question, leaving every other question in the file
+   untouched, with the mode chosen in step 8:
+
+   ```
+   Rscript -e 'markermd::rubric_import("markermd-rubric.yaml", project = "<root>", mode = "append", question = "<name>")'
+   ```
+
+   If the import aborts because the question name is not in the project's
+   template, correct the YAML to the exact name from step 2 and retry; never
+   rename the template's questions.
+6. Relay the import's confirmation message, then move on to the next
+   question.
+
+The user can stop after any question: confirmed questions are already in the
+database, and the YAML file keeps everything drafted so far. If they stop
+early, list the questions that remain; a later run of this skill can pick up
+there (the step 8 existing-items check shows which questions already have
+items).
+
+### 11. Report
 
 Summarize for the user: the basis (key only vs key + repos) and grading mode
-chosen, each question's total and item count, and that the rubric was written
-to `<root>/markermd-rubric.yaml` and imported into the project database. Then
-tell them to start grading, where the rubric is refined in place:
+chosen, the assignment's total points, each imported question's total and
+item count, and that the rubric was written to `<root>/markermd-rubric.yaml`
+and imported into the project database (in the question-at-a-time workflow,
+also list any questions left for later). Then tell them to start grading,
+where the rubric is refined in place:
 
 ```
 markermd::mark("<root>")

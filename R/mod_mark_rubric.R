@@ -477,8 +477,8 @@ mark_rubric_server = function(id, template, artifact_paths, artifact_urls, root,
     redraw_ui = shiny::reactiveVal(0)
 
     # Bumped when a rubric import changes a question's scoring setup, so the
-    # grade widget (whose gear-popover inputs are baked into the rendered
-    # HTML) rebuilds with the imported values
+    # grade widget (whose popover inputs -- total points, mode, bounds -- are
+    # baked into the rendered HTML) rebuilds with the imported values
     grade_redraw = shiny::reactiveVal(0)
 
     # Wire the parent-side handlers for one rubric item server: move up/down

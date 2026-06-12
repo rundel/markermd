@@ -14,8 +14,12 @@ distributed with the `markermd` package. A skill is a folder containing a
   the `template()` app.
 - `markermd-scaffold-rubric`: scaffold a grading rubric (per-question rubric
   items plus scoring setup) for a project that already has a stored template.
-  It asks whether to base the rubric on the key alone or on the key plus the
-  student repositories (sampling submissions to anticipate common mistakes),
+  It asks whether to work through the questions all at once or one at a time
+  (confirming and importing each question before moving to the next), whether
+  to base the rubric on the key alone or on the key plus the student
+  repositories (sampling submissions to anticipate common mistakes), and for
+  the assignment's total points and their distribution across questions
+  (proposing equal, content-weighted, and assignment-stated splits), then
   drafts concrete key-derived items, validates the YAML against the bundled
   schema, and imports it with `rubric_import()`, ready to refine in `mark()`'s
   Rubric pane.

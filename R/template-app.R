@@ -7,9 +7,8 @@
 # project: markermd_project S7 object. When set, "Save Template" writes the
 #   template into the project and records it in the config (via project_set())
 #   rather than offering a browser download
-# default_points: Numeric. Point value assigned to newly added questions
 
-template_app = function(ast, template_obj = NULL, source_path = NULL, project = NULL, default_points = 10) {
+template_app = function(ast, template_obj = NULL, source_path = NULL, project = NULL) {
 
   # UI. A tagList (not a wrapper div) so the layout_columns is a direct fill
   # item of the enclosing fillable page and sizes itself to the remaining
@@ -246,8 +245,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
         id = as.integer(next_id),
         name = paste("Question", next_id),
         selected_nodes = markermd_node_selection(),
-        rules = list(),
-        points = default_points
+        rules = list()
       )
 
       # Create question module
@@ -527,7 +525,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
               id = paste0("question_card_", q_id),
               class = card_class,
               style = "border-radius: 0.375rem;",
-              question_ui(question_module$module_id, q_id, points = question_module$initial_question@points, name = question_module$initial_question@name)
+              question_ui(question_module$module_id, q_id, name = question_module$initial_question@name)
             )
           )
         )
@@ -732,24 +730,21 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       }
     })
 
-    # Question count, points total, and unsaved-changes indicator shown above
-    # the save controls
+    # Question count and unsaved-changes indicator shown above the save controls
     output$template_status_ui = shiny::renderUI({
       modules = question_modules()
       if (length(modules) == 0) {
         return(NULL)
       }
-      total = 0
       n = 0
       for (m in modules) {
         if (!is.null(m$server)) {
-          total = total + m$server$question()@points
           n = n + 1
         }
       }
       shiny::div(
         class = "small text-muted mb-1",
-        glue::glue("{n} question{if (n == 1) '' else 's'} · {total} pts total"),
+        glue::glue("{n} question{if (n == 1) '' else 's'}"),
         if (template_dirty()) {
           shiny::span(
             class = "text-warning-emphasis ms-2",
@@ -999,12 +994,11 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
 # source_path: Character. Path to the assignment document, recorded in saved templates
 # project: markermd_project S7 object. When set, the app saves into the project
 #   and records the template in its config instead of offering a file download
-# default_points: Numeric. Point value assigned to newly added questions
 
-template_app_standalone = function(ast, template_obj = NULL, assignment_path = NULL, source_path = NULL, project = NULL, default_points = 10) {
+template_app_standalone = function(ast, template_obj = NULL, assignment_path = NULL, source_path = NULL, project = NULL) {
 
   # Get the base template app components
-  app_components = template_app(ast, template_obj, source_path = source_path, project = project, default_points = default_points)
+  app_components = template_app(ast, template_obj, source_path = source_path, project = project)
 
   # A simple fillable page with a plain header bar: the app has a single view,
   # so a navbar whose only tab duplicates the page title earns nothing
@@ -1051,9 +1045,6 @@ template_app_standalone = function(ast, template_obj = NULL, assignment_path = N
 #' @param filename Character string. Glob pattern to match Rmd/qmd file to grade (ignored for templates). Default glob matches any .Rmd or .qmd file.
 #' @param assignment Character string. Optional path to the assignment document,
 #'   used when loading a template whose stored `source.path` cannot be located.
-#' @param default_points Numeric. Point value assigned to newly added questions.
-#'   Defaults to 10. Questions loaded from an existing template keep their own
-#'   stored point values.
 #' @param ... Additional arguments passed to shiny::runApp()
 #'
 #' @return Launches Shiny application for template creation
@@ -1080,7 +1071,7 @@ template_app_standalone = function(ast, template_obj = NULL, assignment_path = N
 #' my_template = read_template_yaml("/path/to/template.yaml")
 #' template(my_template)
 #' }
-template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", assignment = NULL, default_points = 10, ...) {
+template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", assignment = NULL, ...) {
   
   # Validate inputs
   if (missing(assignment_path)) {
@@ -1101,7 +1092,7 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", as
   } else if (is_markermd_project(assignment_path)) {
     # Input is an initialized markermd project: author the template against the
     # project's key (solution) repo and preload any configured template.
-    app = template_app_from_project(assignment_path, filename, assignment, default_points = default_points)
+    app = template_app_from_project(assignment_path, filename, assignment)
 
   } else if (is.character(assignment_path) && length(assignment_path) == 1) {
     # Input is a character string - could be assignment path or template file
@@ -1148,7 +1139,7 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", as
     }
 
     # Create app with template data
-    app = template_app_standalone(shiny::reactiveVal(ast), template_obj, footer_path, source_path = source_path, default_points = default_points)
+    app = template_app_standalone(shiny::reactiveVal(ast), template_obj, footer_path, source_path = source_path)
 
   } else if (is.null(app)) {
     # Assignment mode: a single assignment file, a directory containing one, or
@@ -1182,7 +1173,7 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", as
     }
 
     ast = parse_assignment_document(file_path)
-    app = template_app_standalone(shiny::reactiveVal(ast), NULL, assignment_path, source_path = file_path, default_points = default_points)
+    app = template_app_standalone(shiny::reactiveVal(ast), NULL, assignment_path, source_path = file_path)
   }
 
   shiny::shinyApp(ui=app$ui, server=app$server, ...)
@@ -1198,9 +1189,8 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", as
 # filename: glob used to locate the assignment document within the key repo
 # assignment: optional assignment-document override (unused for the DB preload,
 #   which resolves the source against the key repo)
-# default_points: point value assigned to newly added questions
 
-template_app_from_project = function(path, filename, assignment, default_points = 10) {
+template_app_from_project = function(path, filename, assignment) {
   project = project_config(path)
   root = project@root
 
@@ -1232,6 +1222,6 @@ template_app_from_project = function(path, filename, assignment, default_points 
 
   template_app_standalone(
     shiny::reactiveVal(ast), template_obj, key_doc,
-    source_path = source_path, project = project, default_points = default_points
+    source_path = source_path, project = project
   )
 }

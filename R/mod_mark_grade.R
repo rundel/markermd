@@ -14,23 +14,50 @@ mark_grade_ui = function(id, grade_state) {
     class = "border-bottom",
     bslib::layout_columns(
       col_widths = c(8, 4),
-      # Score display (left side, read-only; the total is edited in the
-      # settings popover so one student's adjustment cannot silently change
-      # the question-wide denominator)
+      # Score display (left side). Clicking it opens a popover holding the
+      # Total points input; the total is per-question (one denominator shared
+      # by every repo), so it is edited through this deliberate popover rather
+      # than inline. The trigger wraps score_display so the in-place score
+      # patches (markermd_update_score below) never touch the popover wiring
+      # or the pen affordance.
       shiny::div(
         shiny::div(
           style = "font-size: 14px;",
           "Points:"
         ),
-        shiny::div(
-          id = ns("score_display"),
-          `data-current` = grade_state@current_score,
-          `data-total` = grade_state@total_score,
-          class = "fw-bold d-inline-block py-2",
-          style = "font-size: 20px;",
-          paste0(
-            grade_state@current_score, " / ", grade_state@total_score, " ",
-            if (grade_state@total_score == 1) "pt" else "pts"
+        bslib::popover(
+          shiny::div(
+            id = ns("score_popover_trigger"),
+            class = "d-inline-flex align-items-center gap-1",
+            style = "cursor: pointer;",
+            tabindex = "0",
+            role = "button",
+            `aria-label` = "Set total points",
+            shiny::div(
+              id = ns("score_display"),
+              `data-current` = grade_state@current_score,
+              `data-total` = grade_state@total_score,
+              class = "fw-bold d-inline-block py-2",
+              style = "font-size: 20px;",
+              paste0(
+                grade_state@current_score, " / ", grade_state@total_score, " ",
+                if (grade_state@total_score == 1) "pt" else "pts"
+              )
+            ),
+            shiny::icon("pen", class = "text-muted small")
+          ),
+          title = "Total points",
+          placement = "bottom",
+          shiny::div(
+            style = "min-width: 180px;",
+            shiny::numericInput(
+              ns("total_score_input"),
+              NULL,
+              value = grade_state@total_score,
+              min = 0,
+              step = 0.5,
+              width = "100%"
+            )
           )
         )
       ),
@@ -58,14 +85,6 @@ mark_grade_ui = function(id, grade_state) {
                 margin-top: 0 !important;
               }
             ")),
-            shiny::numericInput(
-              ns("total_score_input"),
-              shiny::strong("Total points:"),
-              value = grade_state@total_score,
-              min = 0,
-              step = 0.5,
-              width = "100%"
-            ),
             # Grading mode radio buttons
             shiny::radioButtons(
               ns("grading_mode"),

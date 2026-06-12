@@ -6,19 +6,18 @@
 #
 # id: Character. Module namespace ID
 # name_id: Integer. The question ID used to build the fallback default name
-# points: Numeric. Initial point value for the question
 # name: Character. The question's name to show; defaults to "Question <name_id>"
 #   so a freshly added question keeps its positional default, while a loaded or
 #   imported question shows its own saved name
 
-question_ui = function(id, name_id, points = 10, name = paste("Question", name_id)) {
+question_ui = function(id, name_id, name = paste("Question", name_id)) {
   ns = shiny::NS(id)
 
   bslib::card(
     style = "margin: 0; width: 100%; max-width: 100%; box-sizing: border-box;",
     # The bslib card-header is itself a horizontal flex row, so these controls are
-    # added directly as its flex children. space-between spreads the title, points
-    # and delete button evenly, keeping the delete button hard-right; the title has
+    # added directly as its flex children. space-between spreads the title and
+    # delete button evenly, keeping the delete button hard-right; the title has
     # a modest, shrinkable width so it does not stretch across the whole header.
     bslib::card_header(
       class = "bg-light",
@@ -33,19 +32,6 @@ question_ui = function(id, name_id, points = 10, name = paste("Question", name_i
           value = name,
           width = "100%"
         )
-      ),
-
-      # Points input
-      shiny::div(
-        style = "flex: 0 0 auto; display: flex; align-items: center;",
-        shiny::numericInput(
-          ns("question_points"),
-          NULL,
-          value = points,
-          min = 0,
-          width = "72px"
-        ),
-        shiny::span("pts", class = "ms-1 text-muted small")
       ),
 
       # Reorder and delete controls (right aligned)
@@ -256,19 +242,6 @@ question_server = function(id, ast, initial_question = NULL) {
       state(cur_state)
     }) |>
       shiny::bindEvent(input$question_name)
-
-    # Update the question's point value. numericInput reports NA when cleared and
-    # the S7 validator rejects negatives, so ignore those rather than crash.
-    shiny::observe({
-      pts = input$question_points
-      if (is.na(pts) || pts < 0) {
-        return()
-      }
-      cur_state = state()
-      cur_state@points = pts
-      state(cur_state)
-    }) |>
-      shiny::bindEvent(input$question_points, ignoreInit = TRUE)
 
     # Confirm before deleting a question so a stray click does not lose its rules.
     # The actual removal is driven off the confirm button via delete_clicked().
