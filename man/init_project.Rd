@@ -25,9 +25,11 @@ project.
 \details{
 The key (solution) repository is detected as the top-level git repository
 (student repositories live under \verb{repos/}); when several top-level repos
-exist, the one whose name contains "key" is used. Remaining top-level
-directories that are not git repositories are recorded as artifact
-directories.
+exist, the one whose name contains "key" is used. When no top-level git
+repository exists (a copied or unpacked layout, such as the bundled example
+project), a directory whose name contains "key" and that holds an assignment
+document (\code{.qmd}/\code{.Rmd}) is used instead. Remaining top-level directories
+that are not git repositories are recorded as artifact directories.
 
 Re-running \code{init_project()} on an already-initialized directory updates it in
 place: the existing grading database (including any stored grading template)

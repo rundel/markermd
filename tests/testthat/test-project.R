@@ -87,6 +87,18 @@ test_that("init_project treats a non-repo key-named dir as an artifact", {
 })
 
 
+test_that("init_project falls back to a key-named non-repo dir holding an assignment", {
+  d = make_fake_project()
+  dir.create(file.path(d, "hw01-key"))
+  writeLines("# Solution", file.path(d, "hw01-key", "assignment.qmd"))
+
+  p = init_project(d)
+  expect_equal(p@key, "hw01-key")
+  expect_false("hw01-key" %in% p@artifacts)
+  expect_equal(p@artifacts, "html")
+})
+
+
 test_that("init_project disambiguates multiple repos by the key name", {
   d = make_fake_project()
   make_fake_repo(file.path(d, "hw01-key"))

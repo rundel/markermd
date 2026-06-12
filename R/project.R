@@ -76,6 +76,25 @@ detect_key_dir = function(repo_dirs) {
   NA_character_
 }
 
+# Name-based key fallback for projects with no top-level git repository (a
+# copied or unpacked layout, e.g. the bundled example project, since R CMD
+# build strips .git directories): a single non-repo candidate whose name
+# contains "key" and that holds an assignment document at its top level.
+# Key-named directories without a document (e.g. downloaded artifacts) are
+# left to be recorded as artifacts.
+#
+# root: project root
+# other_dirs: candidate directory names that are not git repositories
+
+detect_keyish_dir = function(root, other_dirs) {
+  keyish = other_dirs[grepl("key", other_dirs, ignore.case = TRUE)]
+  has_doc = vapply(keyish, function(nm) {
+    length(fs::dir_ls(fs::path(root, nm), type = "file", regexp = "[.](qmd|Rmd)$")) > 0
+  }, logical(1))
+  keyish = keyish[has_doc]
+  if (length(keyish) == 1) keyish else NA_character_
+}
+
 # Copy every bundled skill directory into <path>/.claude/skills/<skill>,
 # overwriting any existing copy so the project's skills track the installed
 # package. The explicit per-skill target avoids fs::dir_copy() flattening a
@@ -218,9 +237,11 @@ write_project_config = function(project) {
 #'
 #' The key (solution) repository is detected as the top-level git repository
 #' (student repositories live under `repos/`); when several top-level repos
-#' exist, the one whose name contains "key" is used. Remaining top-level
-#' directories that are not git repositories are recorded as artifact
-#' directories.
+#' exist, the one whose name contains "key" is used. When no top-level git
+#' repository exists (a copied or unpacked layout, such as the bundled example
+#' project), a directory whose name contains "key" and that holds an assignment
+#' document (`.qmd`/`.Rmd`) is used instead. Remaining top-level directories
+#' that are not git repositories are recorded as artifact directories.
 #'
 #' Re-running `init_project()` on an already-initialized directory updates it in
 #' place: the existing grading database (including any stored grading template)
@@ -262,6 +283,9 @@ init_project = function(path) {
     prior@key
   } else {
     detect_key_dir(repo_dirs)
+  }
+  if (is.na(key) && length(repo_dirs) == 0) {
+    key = detect_keyish_dir(root, candidates[!is_repo])
   }
 
   artifacts = candidates[!is_repo]
