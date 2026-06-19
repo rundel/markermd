@@ -35,11 +35,13 @@ get_question_content = function(repo_ast, question, session) {
 
 create_rule_details = function(question, question_result) {
 
-  # Parse rule messages to understand individual rule results
+  # Parse rule messages to understand individual rule results. A question can
+  # have more messages than rules (the no-rules pass message), so guard the
+  # rules index rather than dereferencing an out-of-range element.
   rule_items = lapply(seq_along(question_result$messages), function(i) {
     message = question_result$messages[i]
-    rule = question@rules[[i]]
-    
+    rule = if (i <= length(question@rules)) question@rules[[i]] else NULL
+
     # Determine if this rule passed based on message content
     rule_passed = question_result$passed[i]
     rule_color = if (rule_passed) "#28a745" else "#dc3545"
@@ -171,26 +173,45 @@ mark_validate_server = function(id, ast, current_repo_name = shiny::reactiveVal(
       }
     })
     
-    # Wire preview-modal observers once per question, guarded against duplicates.
-    # The button ids (preview_<question_id>_<index>) match those drawn by
-    # render_ast_tree() / node_preview_button() in get_question_content().
-    created_observers = shiny::reactiveValues()
+    # Wire preview-modal observers per question. Each observer resolves its node
+    # from the CURRENT repo's AST at click time (not the repo that happened to be
+    # active when it was wired), so navigating between repos previews the right
+    # content. We track how many buttons have been wired per question and only
+    # wire newly appearing indices, so a repo with more nodes extends the set
+    # without ever creating duplicate observers. The button ids
+    # (preview_<question_id>_<index>) match those drawn by render_ast_tree() /
+    # node_preview_button() in get_question_content().
+    wired_count = shiny::reactiveValues()
+
+    question_node_at = function(question) {
+      function(index) {
+        question_ast = get_question_ast(ast(), question)
+        records = if (is.null(question_ast)) list() else q2r_flatten(question_ast)
+        if (index <= length(records)) records[[index]]$node else NULL
+      }
+    }
 
     shiny::observe({
       shiny::req(template(), ast())
 
       for (question in template()@questions) {
         question_id = paste0("q_", gsub("[^A-Za-z0-9]", "", question@name))
-        if (!is.null(created_observers[[question_id]])) {
-          next
-        }
 
         question_ast = get_question_ast(ast(), question)
-        question_nodes = if (is.null(question_ast)) list() else lapply(q2r_flatten(question_ast), function(record) record$node)
+        n = if (is.null(question_ast)) 0L else length(q2r_flatten(question_ast))
 
-        if (length(question_nodes) > 0) {
-          ast_preview_observers(input, question_nodes, id_prefix = question_id)
-          created_observers[[question_id]] = TRUE
+        already = wired_count[[question_id]]
+        already = if (is.null(already)) 0L else already
+
+        if (n > already) {
+          local({
+            ast_preview_observers(
+              input, nodes = NULL, id_prefix = question_id,
+              node_at = question_node_at(question),
+              indices = seq.int(already + 1L, n)
+            )
+          })
+          wired_count[[question_id]] = n
         }
       }
     })

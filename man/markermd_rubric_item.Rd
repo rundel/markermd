@@ -12,7 +12,8 @@ markermd_rubric_item(
 )
 }
 \arguments{
-\item{hotkey}{Integer. Hotkey number (1-10) for keyboard selection}
+\item{hotkey}{Integer. Hotkey number (1-10) for keyboard selection, or NA for
+items past the first ten (which have no hotkey)}
 
 \item{points}{Numeric. Point value for this rubric item}
 

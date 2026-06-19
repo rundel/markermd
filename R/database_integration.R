@@ -306,64 +306,6 @@ initialize_database_state = function(collection_path, template_obj) {
   return(state)
 }
 
-# Load grade selections for a specific assignment across all questions
-#
-# collection_path: Path to collection directory
-# assignment_repo: Character string
-# question_names: Character vector of question names
-# Returns: List organized by question name
-
-load_assignment_selections = function(collection_path, assignment_repo, question_names) {
-  selections = list()
-  
-  for (question_name in question_names) {
-    selections[[question_name]] = load_grade_selections(collection_path, question_name, assignment_repo)
-  }
-  
-  return(selections)
-}
-
-# Load comments for a specific assignment across all questions
-#
-# collection_path: Path to collection directory
-# assignment_repo: Character string
-# question_names: Character vector of question names
-# Returns: List organized by question name
-
-load_assignment_comments = function(collection_path, assignment_repo, question_names) {
-  comments = list()
-  
-  for (question_name in question_names) {
-    comments[[question_name]] = load_comment(collection_path, question_name, assignment_repo)
-  }
-  
-  return(comments)
-}
-
-# Batch save multiple rubric items for a question
-#
-# collection_path: Path to collection directory
-# question_name: Character string
-# items_list: Named list of markermd_rubric_item S7 objects (names are item_ids)
-
-batch_save_rubric_items = function(collection_path, question_name, items_list) {
-  with_database(collection_path, function(conn) {
-    # Use transaction for consistency
-    DBI::dbBegin(conn)
-    
-    tryCatch({
-      for (item_id in names(items_list)) {
-        upsert_items(conn, question_name, item_id, items_list[[item_id]])
-      }
-      DBI::dbCommit(conn)
-      return(TRUE)
-    }, error = function(e) {
-      DBI::dbRollback(conn)
-      stop("Failed to batch save rubric items: ", e$message)
-    })
-  })
-}
-
 # Mint n fresh rubric item ids in the app's "item_<k>" style, continuing past
 # the largest numeric suffix among the ids already in use so imports never
 # reuse an id.
@@ -637,7 +579,8 @@ collect_score_data = function(collection_path, question_names, assignment_repos)
     )
   })
   graded = graded_question_pairs(collection_path)
-  graded_keys = paste(graded$question_name, graded$assignment_repo)
+  # Unit-separator join so a name containing spaces cannot collide across pairs.
+  graded_keys = paste(graded$question_name, graded$assignment_repo, sep = "\x1f")
 
   selected = merge(
     data$grades[data$grades$selected == 1, c("question_name", "assignment_repo", "item_id"), drop = FALSE],
@@ -654,7 +597,7 @@ collect_score_data = function(collection_path, question_names, assignment_repos)
 
     for (repo_name in assignment_repos) {
       score = NA_real_
-      if (paste(question_name, repo_name) %in% graded_keys) {
+      if (paste(question_name, repo_name, sep = "\x1f") %in% graded_keys) {
         points_sum = sum(selected$points[
           selected$question_name == question_name & selected$assignment_repo == repo_name
         ])
@@ -715,59 +658,6 @@ calculate_grading_progress = function(collection_path, question_names, assignmen
 
   counts = table(factor(graded_pairs$assignment_repo, levels = assignment_repos))
   stats::setNames(as.integer(counts), assignment_repos)
-}
-
-# Calculate grading progress for a single question across all assignments
-#
-# collection_path: Path to collection directory
-# question_name: Character string - name of the question
-# assignment_repos: Character vector of assignment repository names
-# Returns: List with graded_count and total_count
-
-calculate_question_progress = function(collection_path, question_name, assignment_repos) {
-  result = with_database(collection_path, function(conn) {
-    graded_count = 0L
-
-    for (repo in assignment_repos) {
-      is_graded = FALSE
-
-      # Check if there are any selected rubric items for this question/assignment
-      grade_query = DBI::dbGetQuery(conn, glue::glue("
-        SELECT COUNT(*) as selected_count
-        <<most_recent_grade_join>> AND g1.selected = 1
-      ", .open = "<<", .close = ">>"),
-        params = list(question_name, repo, question_name, repo))
-
-      # If any rubric items are selected, consider it graded
-      if (grade_query$selected_count > 0) {
-        is_graded = TRUE
-      } else {
-        # Check if there's a non-empty comment for this question/assignment
-        comment_query = DBI::dbGetQuery(conn, "
-          SELECT COUNT(*) as comment_count
-          FROM comments
-          WHERE question_name = ? AND assignment_repo = ? AND TRIM(comment_text) != ''
-          ORDER BY timestamp DESC
-          LIMIT 1
-        ", params = list(question_name, repo))
-
-        if (comment_query$comment_count > 0) {
-          is_graded = TRUE
-        }
-      }
-
-      if (is_graded) {
-        graded_count = graded_count + 1L
-      }
-    }
-
-    return(list(
-      graded_count = graded_count,
-      total_count = length(assignment_repos)
-    ))
-  })
-
-  return(result)
 }
 
 # Save a grading template into the project database (its canonical store).

@@ -2,6 +2,41 @@
 #
 # Shiny module for displaying and navigating rubric questions during marking
 
+# Renumber a question's item servers to sequential hotkeys (1-10, then NA) by
+# their current display order, pushing each new hotkey into the item server's
+# state and persisting it so load_rubric_items()'s hotkey ordering survives an
+# app restart. Shared by the move-up, move-down, and delete handlers.
+#
+# root: project root holding the grading database
+# question_name: the question whose items are being renumbered
+# servers: named list of item servers (names are item ids) in display order
+
+# Next free hotkey for a new rubric item: one past the largest existing hotkey,
+# or NA once all ten slots are taken. existing_hotkeys may contain NA (items
+# past the first ten carry NA), so NAs are dropped before taking the max.
+#
+# existing_hotkeys: integer vector of the question's current item hotkeys
+
+next_item_hotkey = function(existing_hotkeys) {
+  hotkey = max(0L, existing_hotkeys, na.rm = TRUE) + 1L
+  if (hotkey > 10) NA_integer_ else as.integer(hotkey)
+}
+
+renumber_and_persist_hotkeys = function(root, question_name, servers) {
+  ids = names(servers)
+  for (i in seq_along(servers)) {
+    current_item = servers[[i]]$item()
+    updated_item = markermd_rubric_item(
+      hotkey = if (i <= 10) as.integer(i) else NA_integer_,
+      points = current_item@points,
+      description = current_item@description,
+      selected = current_item@selected
+    )
+    servers[[i]]$update_item(updated_item)
+    save_rubric_item(root, question_name, ids[i], updated_item)
+  }
+}
+
 # Mark Rubric UI
 #
 # id: Character. Module namespace ID
@@ -513,23 +548,7 @@ mark_rubric_server = function(id, template, artifact_paths, artifact_urls, root,
           question_item_servers[[input$question_select]] = new_server_list
 
           # Update all hotkeys to maintain sequence
-          for (i in seq_along(new_server_list)) {
-            srv = new_server_list[[i]]
-            current_item = srv$item()
-            new_hotkey = if (i <= 10) as.integer(i) else NA_integer_
-
-            updated_item = markermd_rubric_item(
-              hotkey = new_hotkey,
-              points = current_item@points,
-              description = current_item@description,
-              selected = current_item@selected
-            )
-
-            srv$update_item(updated_item)
-            # Persist the renumbered hotkey; load_rubric_items() orders by
-            # hotkey, so the new arrangement survives an app restart
-            save_rubric_item(root, input$question_select, names(new_server_list)[i], updated_item)
-          }
+          renumber_and_persist_hotkeys(root, input$question_select, new_server_list)
 
           redraw_ui(redraw_ui()+1)
         }
@@ -561,23 +580,7 @@ mark_rubric_server = function(id, template, artifact_paths, artifact_urls, root,
           question_item_servers[[input$question_select]] = new_server_list
 
           # Update all hotkeys to maintain sequence
-          for (i in seq_along(new_server_list)) {
-            srv = new_server_list[[i]]
-            current_item = srv$item()
-            new_hotkey = if (i <= 10) as.integer(i) else NA_integer_
-
-            updated_item = markermd_rubric_item(
-              hotkey = new_hotkey,
-              points = current_item@points,
-              description = current_item@description,
-              selected = current_item@selected
-            )
-
-            srv$update_item(updated_item)
-            # Persist the renumbered hotkey; load_rubric_items() orders by
-            # hotkey, so the new arrangement survives an app restart
-            save_rubric_item(root, input$question_select, names(new_server_list)[i], updated_item)
-          }
+          renumber_and_persist_hotkeys(root, input$question_select, new_server_list)
 
           redraw_ui(redraw_ui()+1)
         }
@@ -593,31 +596,13 @@ mark_rubric_server = function(id, template, artifact_paths, artifact_urls, root,
         delete_rubric_item(root, input$question_select, server$id)
         bump_grading_version()
 
-        # Reorder hotkeys for remaining items to ensure continuity
+        # Reorder hotkeys for remaining items to ensure continuity. Each item's
+        # hotkey button self-renders from its server state, so remaining labels
+        # renumber without a parent re-render, and persistence keeps the database
+        # in sync with what is shown.
         remaining_servers = question_item_servers[[input$question_select]]
         if (length(remaining_servers) > 0) {
-          server_list = names(remaining_servers)
-
-          # Reassign continuous hotkeys starting from 1
-          for (i in seq_along(server_list)) {
-            srv_id = server_list[i]
-            current_item = remaining_servers[[srv_id]]$item()
-
-            new_hotkey = if (i <= 10) as.integer(i) else NA_integer_
-            updated_item = markermd_rubric_item(
-              hotkey = new_hotkey,
-              points = current_item@points,
-              description = current_item@description,
-              selected = current_item@selected
-            )
-
-            # Update the server's internal state. The item's hotkey button
-            # self-renders from this state, so remaining labels renumber without
-            # a parent re-render. Persist the renumbered hotkey so the database
-            # stays in sync with what is shown.
-            remaining_servers[[srv_id]]$update_item(updated_item)
-            save_rubric_item(root, input$question_select, srv_id, updated_item)
-          }
+          renumber_and_persist_hotkeys(root, input$question_select, remaining_servers)
         }
 
         # Remove only the deleted item; existing items keep their DOM (and any
@@ -728,8 +713,7 @@ mark_rubric_server = function(id, template, artifact_paths, artifact_urls, root,
         server_id = paste0("item_", id_idx)
       }
 
-      hotkey = max( 0L, purrr::map_int(current_servers, ~ .x$item()@hotkey) )+1L
-      hotkey = if (hotkey > 10) NA_integer_ else hotkey
+      hotkey = next_item_hotkey(purrr::map_int(current_servers, ~ .x$item()@hotkey))
 
       new_item = markermd_rubric_item(hotkey, 0, "")
 

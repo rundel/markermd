@@ -40,9 +40,13 @@ initialize_database = function(collection_path) {
   
   # Create connection
   conn = DBI::dbConnect(RSQLite::SQLite(), db_path)
-  
+
   # Enable foreign key constraints
   DBI::dbExecute(conn, "PRAGMA foreign_keys = ON")
+
+  # Wait up to 5s for a competing writer (e.g. a grading skill running while
+  # mark() is open) instead of failing immediately with "database is locked".
+  DBI::dbExecute(conn, "PRAGMA busy_timeout = 5000")
   
   # Create tables if they don't exist
   create_tables_if_needed(conn)

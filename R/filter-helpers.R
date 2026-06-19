@@ -172,9 +172,11 @@ parse_filter_option = function(value) {
     TRUE
   } else if (tolower(raw) %in% c("false", "no", "off")) {
     FALSE
-  } else if (grepl("^-?[0-9]+$", raw)) {
+  } else if (grepl("^-?[0-9]+$", raw) && !is.na(suppressWarnings(as.integer(raw)))) {
     as.integer(raw)
   } else if (!is.na(suppressWarnings(as.numeric(raw)))) {
+    # An integer literal too large for as.integer() (NA above) falls through to
+    # a double here rather than silently becoming NA.
     as.numeric(raw)
   } else {
     raw
@@ -351,13 +353,15 @@ filter_value_warnings = function(filters) {
       value = cond@value
       if (cond@type == "has text") {
         if (nchar(value) == 0) {
-          msgs = c(msgs, glue::glue("Group {gi}: an empty \"has text\" pattern matches every node."))
+          effect = if (cond@negate) "matches no nodes" else "matches every node"
+          msgs = c(msgs, glue::glue("Group {gi}: an empty \"has text\" pattern {effect}."))
         } else if (!is_valid_regex(value)) {
           msgs = c(msgs, glue::glue("Group {gi}: \"{value}\" is not a valid regular expression."))
         }
       } else if (cond@type %in% c("has class", "has id", "has label", "has engine") &&
                  nchar(value) == 0) {
-        msgs = c(msgs, glue::glue("Group {gi}: an empty \"{cond@type}\" value matches no nodes."))
+        effect = if (cond@negate) "matches every node" else "matches no nodes"
+        msgs = c(msgs, glue::glue("Group {gi}: an empty \"{cond@type}\" value {effect}."))
       } else if (cond@type == "has option" && nchar(parse_filter_option(value)$key) == 0) {
         msgs = c(msgs, glue::glue("Group {gi}: \"has option\" needs an option key."))
       }

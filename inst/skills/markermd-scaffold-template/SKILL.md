@@ -83,9 +83,9 @@ Rscript -e 'o <- markermd::assignment_outline("KEYDIR"); cat(jsonlite::toJSON(li
 It resolves the single assignment file in the key directory and prints its
 `source_file` plus a `sections` array. If the key holds more than one assignment
 document, `assignment_outline()` errors listing the candidates; ask the user
-which one and pass that file directly instead of the directory. Note the
-resolved `source_file` -- you need its path (relative to the project root) for
-`source.path` in step 6.
+which one and pass that file directly instead of the directory. The resolved
+`source_file` is an absolute path; you will need it as a path relative to the
+project root for `source.path` in step 6.
 
 Each section has:
 
@@ -161,9 +161,10 @@ guessing.
 Write the file to `<root>/markermd-template.yaml` (ask if the user wants a
 different location). This YAML is the import source; the template is stored in
 the project database once imported. Set `source.path` to the key's assignment
-**relative to the project root** (the `source_file` from step 3, e.g.
-`hw1-key/hw1.qmd`) so the template can be re-opened against the key in the
-`template()` app and so the student documents are matched by the same filename.
+**relative to the project root** (the absolute `source_file` from step 3 with the
+project-root prefix stripped, e.g. `hw1-key/hw1.qmd`) so the template can be
+re-opened against the key in the `template()` app and so the student documents
+are matched by the same filename.
 Use the exact `id`s from step 3. Shape:
 
 ```yaml
@@ -198,8 +199,11 @@ Rules and constraints:
   `system.file("schema/markermd-template.json", package = "markermd")` if you
   need to check the exact structure.
 
-Before importing, confirm the file loads and every anchor resolves against the
-re-parsed key:
+Before importing, confirm the file parses and the key document can be located.
+Note that `require_ast = TRUE` only re-parses the key to confirm `source.path`
+resolves; it does NOT check that each `node_id` exists in the document, so a
+mistyped anchor passes here and only surfaces as a per-repo error in step 7's
+`validate_project()`:
 
 ```
 Rscript -e 'invisible(markermd::read_template_yaml("<root>/markermd-template.yaml", require_ast = TRUE)); cat("OK\n")'
@@ -211,9 +215,10 @@ If `jsonvalidate` is installed, also check it against the schema:
 Rscript -e 'print(markermd::validate_template_file("<root>/markermd-template.yaml"))'
 ```
 
-`TRUE` means it conforms. Fix any reported problems (commonly a mistyped anchor,
-a missing value key for a verb, or duplicate names) and re-validate until it
-loads cleanly.
+`TRUE` means it conforms. Fix any reported problems (commonly a missing value
+key for a verb, or duplicate names) and re-validate until it loads cleanly.
+Anchor typos are not caught here; they are caught by `validate_project()` in
+step 7.
 
 Then import the template into the project database (its canonical store):
 

@@ -147,6 +147,31 @@ test_that("missing or too-new format_version errors, as do duplicate names", {
 })
 
 
+test_that("read_rubric_yaml rejects duplicate and blank item descriptions", {
+  dup_items = write_yaml_lines(c(
+    "format_version: '1.0'",
+    "questions:",
+    "- name: Q1",
+    "  items:",
+    "  - points: -1",
+    "    description: Same",
+    "  - points: -2",
+    "    description: Same"
+  ))
+  expect_error(read_rubric_yaml(dup_items), "duplicate rubric item descriptions")
+
+  blank_item = write_yaml_lines(c(
+    "format_version: '1.0'",
+    "questions:",
+    "- name: Q1",
+    "  items:",
+    "  - points: -1",
+    "    description: ''"
+  ))
+  expect_error(read_rubric_yaml(blank_item), "blank rubric item description")
+})
+
+
 test_that("write_rubric_yaml rejects malformed rubrics", {
   expect_error(write_rubric_yaml(list(), tempfile()), "questions")
   expect_error(

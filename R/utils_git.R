@@ -1,18 +1,19 @@
 # Set up an assignment repository, handling both local directories and remote
-# GitHub repositories
+# GitHub repositories. For an already-cloned GitHub repo a pull failure is
+# downgraded to a warning and the existing checkout is reused (best effort); a
+# fresh clone failure propagates.
 #
 # assignment_path: Character. Local path or "owner/repo" format
 # local_dir: Character. Local directory for cloning (required for remote)
 # is_github_repo: Logical. Whether this is a GitHub repo
 
 setup_assignment_repo = function(assignment_path, local_dir = NULL, is_github_repo = FALSE) {
-  
+
   if (!is_github_repo) {
     # Local directory - just return the path
     return(normalizePath(assignment_path))
   }
-  
-  
+
   # GitHub repository handling
   if (is.null(local_dir)) {
     stop("local_dir is required for GitHub repositories")

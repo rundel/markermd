@@ -24,8 +24,10 @@ markermd_project_version = function() "1.0"
 #' @param root Character. Absolute, normalized project root (parent of `.markermd/`).
 #' @param repos Character. Root-relative repos directory, or `NA` if absent.
 #' @param comments Character. Root-relative comments directory, or `NA` if absent.
-#' @param database Character. Root-relative path to the SQLite grading database.
-#'   The grading template is stored inside this database, not in the config.
+#' @param database Character. Root-relative path to the SQLite grading database,
+#'   fixed at `.markermd/markermd.sqlite`. It is intrinsic to the project marker
+#'   and not user-configurable; the value is recorded for reference only. The
+#'   grading template is stored inside this database, not in the config.
 #' @param key Character. Root-relative key (solution) repository directory, or `NA` if unset.
 #' @param artifacts Character vector. Root-relative artifact directory names.
 #' @param created_at Character. Project creation timestamp.

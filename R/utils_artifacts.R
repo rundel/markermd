@@ -14,7 +14,9 @@
 # its HTML report, or NA when no matching report is found. The artifacts
 # directories are searched in config order and the first match wins, preferring
 # "<dir>/<repo>.html", then the first HTML file inside "<dir>/<repo>/", then the
-# first "<dir>/<repo>*.html".
+# first "<dir>/<repo><delimiter>*.html" (a decorated name such as
+# "<repo>-report.html"). The trailing-prefix match requires a non-alphanumeric
+# boundary after the repo name so repo "hw1" does not capture "hw10.html".
 
 resolve_repo_artifacts = function(project, repo_list) {
   artifact_dirs = fs::path(project@root, project@artifacts)
@@ -36,7 +38,9 @@ resolve_repo_artifacts = function(project, repo_list) {
       }
 
       htmls = fs::dir_ls(dir, recurse = FALSE, type = "file", glob = "*.html")
-      hit = htmls[startsWith(fs::path_file(htmls), repo)]
+      fname = fs::path_file(htmls)
+      remainder = substring(fname, nchar(repo) + 1L)
+      hit = htmls[startsWith(fname, repo) & grepl("^([^[:alnum:]]|$)", remainder)]
       if (length(hit) > 0) {
         return(as.character(fs::path_real(hit[[1]])))
       }
@@ -66,7 +70,10 @@ register_artifact_resources = function(artifact_paths) {
   for (i in seq_along(artifact_paths)) {
     path = artifact_paths[[i]]
     if (is.na(path)) next
-    prefix = paste0("markermd_artifact_", i)
+    # Derive the resource prefix from the serving directory rather than the loop
+    # position so a second mark() launch in the same R session re-registers each
+    # prefix to the same directory instead of silently rebinding it.
+    prefix = paste0("markermd_artifact_", substr(rlang::hash(dirname(path)), 1, 16))
     shiny::addResourcePath(prefix, dirname(path))
     urls[[i]] = paste0(prefix, "/", utils::URLencode(basename(path), reserved = TRUE))
   }
@@ -82,19 +89,16 @@ open_folder = function(folder_path) {
     return(FALSE)
   }
 
-  tryCatch({
-    if (Sys.info()[["sysname"]] == "Darwin") {
-      # macOS
-      system(paste("open", shQuote(folder_path)))
-    } else if (Sys.info()[["sysname"]] == "Windows") {
-      # Windows
-      system(paste("explorer", shQuote(folder_path)))
-    } else {
-      # Linux and other Unix-like systems
-      system(paste("xdg-open", shQuote(folder_path)))
-    }
-    return(TRUE)
-  }, error = function(e) {
-    return(FALSE)
-  })
+  cmd = switch(
+    Sys.info()[["sysname"]],
+    "Darwin" = "open",
+    "Windows" = "explorer",
+    "xdg-open"
+  )
+  status = suppressWarnings(
+    system2(cmd, shQuote(folder_path), stdout = FALSE, stderr = FALSE)
+  )
+  # explorer.exe exits non-zero even when it successfully opens the folder, so
+  # its status is not authoritative; every other launcher reports 0 on success.
+  cmd == "explorer" || identical(as.integer(status), 0L)
 }

@@ -23,8 +23,10 @@ markermd_project(
 
 \item{comments}{Character. Root-relative comments directory, or \code{NA} if absent.}
 
-\item{database}{Character. Root-relative path to the SQLite grading database.
-The grading template is stored inside this database, not in the config.}
+\item{database}{Character. Root-relative path to the SQLite grading database,
+fixed at \code{.markermd/markermd.sqlite}. It is intrinsic to the project marker
+and not user-configurable; the value is recorded for reference only. The
+grading template is stored inside this database, not in the config.}
 
 \item{key}{Character. Root-relative key (solution) repository directory, or \code{NA} if unset.}
 

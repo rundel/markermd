@@ -163,6 +163,12 @@ metadata_from_list = function(x, version, total_nodes) {
 
   if (!is.null(x$created_at)) {
     parsed = as.POSIXct(x$created_at, format = "%Y-%m-%dT%H:%M:%S%z")
+    # Fall back to an offsetless ISO-8601 timestamp (valid per the schema, and
+    # what hand- or third-party-authored files may carry) so a missing numeric
+    # offset does not silently drop the recorded creation time.
+    if (is.na(parsed)) {
+      parsed = as.POSIXct(x$created_at, format = "%Y-%m-%dT%H:%M:%S", tz = "UTC")
+    }
     if (!is.na(parsed)) args$created_at = parsed
   }
   if (!is.null(x$created_by)) {

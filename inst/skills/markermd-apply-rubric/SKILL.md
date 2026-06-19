@@ -127,10 +127,14 @@ repositories:
 
 - **Scope** -- mark all student repositories, or a named subset.
 - **Existing grading** (recommend skip): `marks_import()` by default skips
-  any (repository, question) pair that already has grading activity (recorded
-  selections or comments) and reports it, so a previous human or machine pass
-  is never clobbered. Offer `overwrite = TRUE` only if the user explicitly
-  wants those pairs re-marked, and say that it replaces their selections.
+  any (repository, question) pair that already has any grading activity and
+  reports it, so a previous human or machine pass is never clobbered. Activity
+  here is broad: any recorded grade row (even one where every item is
+  deselected), or any non-empty public **or private** comment. Because this
+  skill records a private note for every pair it processes, re-running it skips
+  every pair from its own previous pass unless you pass `overwrite = TRUE`.
+  Offer `overwrite = TRUE` only if the user explicitly wants those pairs
+  re-marked, and say that it replaces their selections.
 
 If step 3 found questions without a confirmation item, also ask whether to
 add one to each (recommended): a 0-point "Looks good" item in deduction mode,

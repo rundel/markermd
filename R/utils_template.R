@@ -75,33 +75,66 @@ classify_selected_ids = function(ast, ids) {
   list(heading_ids = setdiff(ids, div_ids), div_ids = div_ids)
 }
 
-# Enclosing-heading id chain for each top-level block of a document
+# Flattened indices of the blocks belonging to the selected heading sections
 #
-# Walks the top-level blocks tracking a stack of open headings (level, id). A
-# heading belongs to the section it introduces, so a heading block's own chain
-# includes its id; every following block until the next same-or-higher heading
-# carries it too. Returns one character vector of ids per top-level block.
+# A selected heading contributes itself and its following siblings (within the
+# same container) up to the next heading of the same or higher level - its
+# section. Sections are resolved at every container level, so a heading nested
+# inside a fenced div resolves to that div's sibling blocks rather than silently
+# matching nothing. Indices are returned at the granularity of the matched
+# section's container: a top-level section yields its top-level block indices (a
+# div block counted whole), while an in-div section yields the in-div sibling
+# block indices. A div that is itself part of a captured section is included
+# whole and not descended into, so an outer-plus-inner selection never
+# double-counts.
 #
-# ast: q2r pandoc AST object
+# records: q2r_flatten() output for the AST
+# heading_ids: Character vector of selected heading ids
 
-block_id_chains = function(ast) {
-  blocks = ast@blocks@content
-  chains = vector("list", length(blocks))
-  stack = list()
-
-  for (k in seq_along(blocks)) {
-    block = blocks[[k]]
-    if (S7::S7_inherits(block, q2r::pandoc_header)) {
-      level = block@level
-      while (length(stack) > 0 && stack[[length(stack)]]$level >= level) {
-        stack[[length(stack)]] = NULL
-      }
-      stack[[length(stack) + 1]] = list(level = level, id = block@attr@id)
-    }
-    chains[[k]] = vapply(stack, function(s) s$id, character(1))
+heading_section_indices = function(records, heading_ids) {
+  if (length(heading_ids) == 0) {
+    return(integer(0))
   }
 
-  chains
+  is_header = function(node) S7::S7_inherits(node, q2r::pandoc_header)
+
+  children = list()
+  for (record in records) {
+    key = as.character(record$container)
+    children[[key]] = c(children[[key]], list(record))
+  }
+
+  collect = function(container_key) {
+    kids = children[[container_key]]
+    out = integer(0)
+    k = 1L
+    while (k <= length(kids)) {
+      record = kids[[k]]
+      node = record$node
+      if (is_header(node) && nzchar(node@attr@id) && node@attr@id %in% heading_ids) {
+        level = node@level
+        out = c(out, record$index)
+        j = k + 1L
+        while (j <= length(kids)) {
+          sib = kids[[j]]$node
+          if (is_header(sib) && sib@level <= level) {
+            break
+          }
+          out = c(out, kids[[j]]$index)
+          j = j + 1L
+        }
+        k = j
+      } else {
+        if (S7::S7_inherits(node, q2r::pandoc_div)) {
+          out = c(out, collect(as.character(record$index)))
+        }
+        k = k + 1L
+      }
+    }
+    out
+  }
+
+  sort(unique(collect("0")))
 }
 
 # Evaluate "has between" rule
@@ -162,20 +195,27 @@ evaluate_rule_has_at_most = function(nodes, rule) {
   list(passed = passed, message = message)
 }
 
-# Check whether any node's extracted text matches a glob pattern
+# Check whether any node's extracted text matches a regular expression
 #
-# Shared node-loop used by the content and name rule evaluators. Each node's
-# text is obtained via extract_fn and tested against the glob-converted pattern.
+# Shared node-loop used by the content and name rule evaluators (the rule UI
+# labels these fields "regex pattern" / "name (regex)"). Each node's text is
+# obtained via extract_fn and tested against pattern as a case-insensitive
+# regular expression. An uncompilable pattern matches nothing rather than
+# erroring mid-grading, mirroring how the filter layer treats a bad regex.
 #
 # nodes: List of AST nodes
-# pattern: Glob pattern to match against each node's extracted text
+# pattern: Regular expression to match against each node's extracted text
 # extract_fn: Function taking a single node and returning its text to match
 
 evaluate_pattern_in_nodes = function(nodes, pattern, extract_fn) {
+  if (!is_valid_regex(pattern)) {
+    return(FALSE)
+  }
+
   for (node in nodes) {
     node_text = extract_fn(node)
 
-    if (nchar(node_text) > 0 && length(grep(utils::glob2rx(pattern), node_text, ignore.case = TRUE)) > 0) {
+    if (nchar(node_text) > 0 && grepl(pattern, node_text, ignore.case = TRUE)) {
       return(TRUE)
     }
   }
@@ -318,21 +358,20 @@ validate_question_rules = function(repo_ast, question) {
   # Get question AST subset using the shared helper function
   question_ast = get_question_ast(repo_ast, question)
 
-  if (is.null(question_ast)) {
-    stop("No sections could be resolved from the selected nodes")
-  }
-
   # Selected nodes (by id) for details display
   node_ids = question@selected_nodes@node_ids
   formatted_hierarchies = if (length(node_ids) > 0) paste0("#", node_ids) else character(0)
 
-  # If no rules, consider it a pass
+  # If no rules, consider it a pass. messages/passed stay length-aligned with
+  # each other (length 1) even though question@rules is empty, so the mark-side
+  # create_rule_details() loop never indexes the empty rules list.
   if (length(question@rules) == 0) {
     return(list(
       question_name = question@name,
       status = "pass",
       messages = "No rules defined - validation passed",
-      details = paste0("Selected node(s): ", paste(formatted_hierarchies, collapse = ", "))
+      passed = TRUE,
+      details = paste0("Selected section(s): ", paste(formatted_hierarchies, collapse = ", "))
     ))
   }
 
@@ -402,6 +441,13 @@ assert_template_compatible = function(template) {
       call. = FALSE
     )
   }
+  if (utils::compareVersion(version, markermd_template_version()) > 0) {
+    stop(
+      "This template's format_version '", version, "' is newer than this version of ",
+      "markermd understands (", markermd_template_version(), "). Update markermd to load it.",
+      call. = FALSE
+    )
+  }
 }
 
 # Validates a parsed repository AST against template rules using section-based matching
@@ -466,23 +512,16 @@ question_filtered_indices = function(current_ast, question) {
   records = q2r_flatten(current_ast)
   container_of = vapply(records, function(r) as.integer(r$container), integer(1))
 
-  # Flatten index of each top-level block, by its position in blocks
   blocks = current_ast@blocks@content
-  index_by_block_pos = integer(length(blocks))
-  for (r in records) {
-    if (!is.na(r$block_pos)) index_by_block_pos[r$block_pos] = r$index
-  }
-
   split = classify_selected_ids(current_ast, ids)
 
   nodes = list()
   node_indices = integer(0)
 
   if (length(split$heading_ids) > 0) {
-    chains = block_id_chains(current_ast)
-    matched = vapply(chains, function(chain) any(split$heading_ids %in% chain), logical(1))
-    nodes = c(nodes, blocks[matched])
-    node_indices = c(node_indices, index_by_block_pos[matched])
+    matched = heading_section_indices(records, split$heading_ids)
+    nodes = c(nodes, lapply(matched, function(i) records[[i]]$node))
+    node_indices = c(node_indices, matched)
   }
 
   for (did in split$div_ids) {
@@ -575,14 +614,14 @@ get_question_ast = function(current_ast, question) {
   }
 
   blocks = current_ast@blocks@content
+  records = q2r_flatten(current_ast)
   split = classify_selected_ids(current_ast, ids)
 
   result_blocks = list()
 
   if (length(split$heading_ids) > 0) {
-    chains = block_id_chains(current_ast)
-    matched = vapply(chains, function(chain) any(split$heading_ids %in% chain), logical(1))
-    result_blocks = c(result_blocks, blocks[matched])
+    matched = heading_section_indices(records, split$heading_ids)
+    result_blocks = c(result_blocks, lapply(matched, function(i) records[[i]]$node))
   }
 
   for (did in split$div_ids) {

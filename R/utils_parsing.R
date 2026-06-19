@@ -103,7 +103,8 @@ convert_chunk_header = function(inner) {
       key = gsub("\\.", "-", trimws(sub("=.*$", "", part)))
       value = convert_knitr_value(trimws(sub("^[^=]*=", "", part)))
       options = c(options, paste0(key, ": ", value))
-    } else if (!have_label) {
+    } else if (!have_label && !grepl("^[.#]", part)) {
+      # A leading "." (class) or "#" (id) is a pandoc attribute, not a label.
       options = c(options, paste0("label: ", part))
       have_label = TRUE
     }

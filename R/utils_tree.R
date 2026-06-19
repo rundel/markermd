@@ -33,8 +33,7 @@ build_ast_tree_structure = function(ast) {
     depth = 0,
     parent_index = NULL,
     description = "Document",
-    detail = "",
-    prefix = ""
+    detail = ""
   )
 
   for (record in records) {
@@ -51,8 +50,7 @@ build_ast_tree_structure = function(ast) {
       depth = record$depth,
       parent_index = record$parent,
       description = record$label,
-      detail = record$detail,
-      prefix = "\\u251c\\u2500\\u2500 "
+      detail = record$detail
     )
   }
 

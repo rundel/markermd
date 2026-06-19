@@ -202,7 +202,11 @@ project_from_list = function(x, root) {
     root = root,
     repos = chr_or_na(paths$repos),
     comments = chr_or_na(paths$comments),
-    database = if (is.null(paths$database)) ".markermd/markermd.sqlite" else as.character(paths$database),
+    # The database path is fixed at .markermd/markermd.sqlite (it is intrinsic to
+    # the project marker and is the only path the DB layer ever opens). Any value
+    # in the config is ignored so a hand-edited path cannot silently split
+    # grading data across two files.
+    database = ".markermd/markermd.sqlite",
     key = chr_or_na(paths$key),
     artifacts = if (is.null(x$artifacts)) character(0) else as.character(unlist(x$artifacts)),
     created_at = as.character(if (is.null(x$created_at)) get_current_timestamp() else x$created_at),
@@ -872,8 +876,10 @@ marks_import = function(path, project = ".", overwrite = FALSE, repo = NULL, que
   skipped = list()
   if (!overwrite) {
     marked = marked_question_pairs(proj@root)
-    marked_keys = paste(marked$assignment_repo, marked$question_name)
-    is_marked = vapply(plan, function(e) paste(e$repo, e$question) %in% marked_keys, logical(1))
+    # Join on a unit-separator that cannot appear in a repo or question name, so
+    # two distinct (repo, question) pairs never collapse to the same key.
+    marked_keys = paste(marked$assignment_repo, marked$question_name, sep = "\x1f")
+    is_marked = vapply(plan, function(e) paste(e$repo, e$question, sep = "\x1f") %in% marked_keys, logical(1))
     skipped = plan[is_marked]
     plan = plan[!is_marked]
   }
@@ -1250,8 +1256,8 @@ basename_or_null = function(x) {
 }
 
 # Locate a repository's assignment file: prefer one whose basename matches
-# assignment_file, otherwise the first file matching the extension pattern.
-# Returns NA_character_ when none is found.
+# assignment_file, otherwise a document at the repo root, otherwise the first
+# file matching the extension pattern. Returns NA_character_ when none is found.
 #
 # repo_dir: a student repository directory
 # assignment_file: expected assignment basename (e.g. "hw1.qmd"), or NULL
@@ -1267,6 +1273,14 @@ find_repo_assignment = function(repo_dir, assignment_file, ext) {
     if (length(match) >= 1) {
       return(match[1])
     }
+  }
+  # Prefer a document at the repo root over one nested in a subdirectory:
+  # recursive listing sorts some subdirectory paths ahead of root-level files.
+  root_files = files[
+    normalizePath(dirname(files), mustWork = FALSE) == normalizePath(repo_dir, mustWork = FALSE)
+  ]
+  if (length(root_files) >= 1) {
+    return(root_files[1])
   }
   files[1]
 }

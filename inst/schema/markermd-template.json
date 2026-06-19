@@ -102,6 +102,10 @@
           "type": "array",
           "items": { "$ref": "#/$defs/filter_group" },
           "description": "Filter groups narrowing the question's node set before rules evaluate. Conditions within a group are ANDed; groups are ORed."
+        },
+        "points": {
+          "type": "number",
+          "description": "Deprecated per-question points. Scoring moved into the rubric; accepted for backward compatibility with older templates and ignored on load."
         }
       }
     },

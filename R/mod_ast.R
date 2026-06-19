@@ -5,6 +5,51 @@
 # mark side; this module adds the reactivity: the preview-modal observers and,
 # in interactive mode, the node-selection click handling.
 
+# Open the read-only Monaco preview modal for a single q2r node
+#
+# node: A q2r pandoc node
+
+show_node_preview = function(node) {
+  content = node_to_qmd(node) |>
+    as.character() |>
+    paste(collapse = "\n")
+
+  language = monaco_language_for_node(node)
+  if (!identical(language, "markdown")) {
+    # Engine-language previews: drop the surrounding fence lines so the
+    # engine grammar is not applied to the ``` markers themselves
+    lines = strsplit(content, "\n", fixed = TRUE)[[1]]
+    fence = grepl("^\\s*(`{3,}|~{3,})", lines)
+    if (length(lines) >= 2 && fence[1] && fence[length(lines)]) {
+      content = paste(lines[-c(1, length(lines))], collapse = "\n")
+    }
+  }
+
+  # One fixed editor id: only one preview modal is open at a time, and
+  # the shared init disposes the previous editor before creating anew
+  editor_id = "markermd-preview-editor"
+
+  shiny::showModal(
+    shiny::modalDialog(
+      # Echo the tree row that was clicked rather than an internal class
+      # name, so the modal speaks the same vocabulary as the tree
+      title = shiny::span(q2r_node_label(node), class = "fs-6 fw-bold"),
+      size = "l",
+      easyClose = TRUE,
+      footer = shiny::modalButton("Close"),
+      shiny::div(
+        style = "height: 400px;",
+        shiny::div(
+          id = editor_id,
+          class = "h-100 w-100 border rounded"
+        )
+      )
+    )
+  )
+
+  render_monaco_editor(editor_id, content, language)
+}
+
 # Wire preview-modal observers for a set of nodes
 #
 # Binds an observer to each node's preview button (preview_<id_prefix>_<index>,
@@ -12,12 +57,23 @@
 # editor showing the node rendered back to qmd. Shared by the template app and
 # the mark validation display so the preview behaviour is defined once.
 #
+# When node_at is supplied the clicked node is resolved lazily at click time
+# (used by the mark validation display, where the same button index must show
+# the currently selected repo's node rather than a node captured at wiring
+# time); otherwise the static nodes list is indexed.
+#
 # input: The module's input object
-# nodes: List of q2r nodes in tree order (index i is node i)
+# nodes: List of q2r nodes in tree order (index i is node i), or NULL when
+#   node_at is supplied
 # id_prefix: Optional prefix matching node_preview_button()'s button ids
+# node_at: Optional function(index) returning the current node for that index
+# indices: Button indices to wire (defaults to seq_along(nodes))
 
-ast_preview_observers = function(input, nodes, id_prefix = NULL) {
-  for (i in seq_along(nodes)) {
+ast_preview_observers = function(input, nodes, id_prefix = NULL, node_at = NULL, indices = NULL) {
+  resolve = if (!is.null(node_at)) node_at else function(k) nodes[[k]]
+  wire = if (!is.null(indices)) indices else seq_along(nodes)
+
+  for (i in wire) {
     local({
       node_index = i
       button_id = if (!is.null(id_prefix)) {
@@ -27,46 +83,10 @@ ast_preview_observers = function(input, nodes, id_prefix = NULL) {
       }
 
       shiny::observe({
-        node = nodes[[node_index]]
-
-        content = node_to_qmd(node) |>
-          as.character() |>
-          paste(collapse = "\n")
-
-        language = monaco_language_for_node(node)
-        if (!identical(language, "markdown")) {
-          # Engine-language previews: drop the surrounding fence lines so the
-          # engine grammar is not applied to the ``` markers themselves
-          lines = strsplit(content, "\n", fixed = TRUE)[[1]]
-          fence = grepl("^\\s*(`{3,}|~{3,})", lines)
-          if (length(lines) >= 2 && fence[1] && fence[length(lines)]) {
-            content = paste(lines[-c(1, length(lines))], collapse = "\n")
-          }
+        node = resolve(node_index)
+        if (!is.null(node)) {
+          show_node_preview(node)
         }
-
-        # One fixed editor id: only one preview modal is open at a time, and
-        # the shared init disposes the previous editor before creating anew
-        editor_id = "markermd-preview-editor"
-
-        shiny::showModal(
-          shiny::modalDialog(
-            # Echo the tree row that was clicked rather than an internal class
-            # name, so the modal speaks the same vocabulary as the tree
-            title = shiny::span(q2r_node_label(node), class = "fs-6 fw-bold"),
-            size = "l",
-            easyClose = TRUE,
-            footer = shiny::modalButton("Close"),
-            shiny::div(
-              style = "height: 400px;",
-              shiny::div(
-                id = editor_id,
-                class = "h-100 w-100 border rounded"
-              )
-            )
-          )
-        )
-
-        render_monaco_editor(editor_id, content, language)
       }) |>
         shiny::bindEvent(input[[button_id]], ignoreInit = TRUE)
     })

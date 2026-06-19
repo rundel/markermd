@@ -74,7 +74,8 @@
         },
         "description": {
           "type": "string",
-          "description": "Feedback text shown for the item."
+          "minLength": 1,
+          "description": "Feedback text shown for the item. Used as the cross-format identity key, so it must be non-empty and unique within a question."
         }
       }
     }

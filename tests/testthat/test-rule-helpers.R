@@ -40,6 +40,7 @@ test_that("validate_rule_values checks 'has between' ranges", {
   expect_match(markermd::validate_rule_values("has between", c(1, Inf)), "finite")
   expect_match(markermd::validate_rule_values("has between", c(-1, 2)), "non-negative")
   expect_match(markermd::validate_rule_values("has between", c(3, 1)), "<=")
+  expect_match(markermd::validate_rule_values("has between", c(1.5, 2.5)), "whole number")
 })
 
 

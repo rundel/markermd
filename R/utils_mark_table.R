@@ -59,7 +59,9 @@ validation_status_cell = function(repo, validation_results, template_obj, repo_e
     tooltip_parts = paste("All", total_count, "validation rules passed")
   }
 
-  tooltip_text = paste(tooltip_parts, collapse = "&#10;")
+  # Escape each part (question names are instructor-authored but may contain
+  # quotes/markup) before joining on the literal newline entity.
+  tooltip_text = paste(htmltools::htmlEscape(tooltip_parts, attribute = TRUE), collapse = "&#10;")
 
   if (fail_count == 0) {
     # All passed
@@ -116,7 +118,7 @@ grading_progress_cell = function(repo, template_obj, all_progress, graded_pairs,
     }
   }
 
-  tooltip_text = paste(tooltip_parts, collapse = "&#10;")
+  tooltip_text = paste(htmltools::htmlEscape(tooltip_parts, attribute = TRUE), collapse = "&#10;")
 
   # Bootstrap progress component with the count overlaid
   paste0(

@@ -153,3 +153,89 @@ test_that("export_marks runs both exports and returns their paths", {
     c("## Q1", "", "- Issue B")
   )
 })
+
+
+test_that("export_scores clamps a negative-mode score at zero when deductions exceed the total", {
+  d = make_export_project()
+  # Q2 negative mode out of 2 with a -3 deduction selected: raw score -1.
+  markermd:::save_grade_state(
+    d, "Q2",
+    markermd_grade_state(current_score = 2, total_score = 2, grading_mode = "negative",
+                         bound_above_zero = TRUE, bound_below_max = TRUE)
+  )
+  markermd:::save_grade_selection(d, "Q2", "hw01-team01", "item_2", TRUE)
+
+  suppressMessages(export_scores(d))
+  scores = read_scores_csv(d)
+  expect_equal(scores[scores$repo == "hw01-team01", "Q2"], 0)
+})
+
+
+test_that("export_scores leaves a negative-mode score below zero when bound_above_zero is off", {
+  d = make_export_project()
+  markermd:::save_grade_state(
+    d, "Q2",
+    markermd_grade_state(current_score = 2, total_score = 2, grading_mode = "negative",
+                         bound_above_zero = FALSE, bound_below_max = FALSE)
+  )
+  markermd:::save_grade_selection(d, "Q2", "hw01-team01", "item_2", TRUE)
+
+  suppressMessages(export_scores(d))
+  scores = read_scores_csv(d)
+  expect_equal(scores[scores$repo == "hw01-team01", "Q2"], -1)
+})
+
+
+test_that("export_scores clamps a positive-mode score at total_score when bound_below_max is on", {
+  d = make_export_project()
+  # A +20 item on Q2 (positive mode out of 10): raw score 20, clamped to 10.
+  markermd:::save_rubric_item(d, "Q2", "item_bonus", markermd_rubric_item(2L, 20, "Bonus"))
+  markermd:::save_grade_state(
+    d, "Q2",
+    markermd_grade_state(current_score = 0, total_score = 10, grading_mode = "positive",
+                         bound_above_zero = TRUE, bound_below_max = TRUE)
+  )
+  markermd:::save_grade_selection(d, "Q2", "hw01-team01", "item_bonus", TRUE)
+
+  suppressMessages(export_scores(d))
+  scores = read_scores_csv(d)
+  expect_equal(scores[scores$repo == "hw01-team01", "Q2"], 10)
+})
+
+
+test_that("export_scores leaves a positive-mode score above total_score when bound_below_max is off", {
+  d = make_export_project()
+  markermd:::save_rubric_item(d, "Q2", "item_bonus", markermd_rubric_item(2L, 20, "Bonus"))
+  markermd:::save_grade_state(
+    d, "Q2",
+    markermd_grade_state(current_score = 0, total_score = 10, grading_mode = "positive",
+                         bound_above_zero = TRUE, bound_below_max = FALSE)
+  )
+  markermd:::save_grade_selection(d, "Q2", "hw01-team01", "item_bonus", TRUE)
+
+  suppressMessages(export_scores(d))
+  scores = read_scores_csv(d)
+  expect_equal(scores[scores$repo == "hw01-team01", "Q2"], 20)
+})
+
+
+test_that("export_scores aborts when a question name collides with a reserved column", {
+  d = tempfile("markproj_")
+  dir.create(file.path(d, "repos", "hw01-team01"), recursive = TRUE)
+  d = normalizePath(d, winslash = "/")
+  template_path = file.path(d, "template.yaml")
+  writeLines(c(
+    sprintf("format_version: '%s'", markermd:::markermd_template_version()),
+    "source:",
+    "  path: hw1.qmd",
+    "questions:",
+    "  - id: 1",
+    "    name: total"
+  ), template_path)
+  suppressMessages(init_project(d))
+  suppressMessages(template_import(template_path, project = d))
+  markermd:::save_rubric_item(d, "total", "item_0", markermd_rubric_item(1L, 5, "ok"))
+  markermd:::save_grade_selection(d, "total", "hw01-team01", "item_0", TRUE)
+
+  expect_error(suppressMessages(export_scores(d)), "cannot be exported")
+})

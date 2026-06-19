@@ -116,11 +116,11 @@ q2r_node_label = function(node) {
     engine = q2r::cell_engine(node)
     chunk_label = q2r::cell_label(node)
     n_lines = length(unlist(strsplit(q2r::cell_code(node), "\n", fixed = TRUE)))
-    lines_txt = glue::glue("({n_lines} line{if (n_lines == 1) '' else 's'})")
+    lines_txt = if (n_lines == 0) "" else glue::glue(" ({n_lines} line{if (n_lines == 1) '' else 's'})")
     if (is.na(chunk_label)) {
-      as.character(glue::glue("Chunk [{engine}] {lines_txt}"))
+      as.character(glue::glue("Chunk [{engine}]{lines_txt}"))
     } else {
-      as.character(glue::glue("Chunk [{engine}] - {chunk_label} {lines_txt}"))
+      as.character(glue::glue("Chunk [{engine}] - {chunk_label}{lines_txt}"))
     }
   } else if (kind == "Raw Block") {
     if (nzchar(node@format)) as.character(glue::glue("Raw Block [{node@format}]")) else "Raw Block"
@@ -190,7 +190,7 @@ line_node_id_chains = function(lines, repo_ast) {
   combined_ids = function() {
     c(
       vapply(stack, function(s) s$id, character(1)),
-      vapply(div_stack, function(d) d, character(1))
+      vapply(div_stack, function(d) d$id, character(1))
     )
   }
 
@@ -209,17 +209,24 @@ line_node_id_chains = function(lines, repo_ast) {
       next
     }
 
-    # Fenced-div close: the line still belongs to the div, then pop it.
+    # Fenced-div close: the line still belongs to the div, then pop it and
+    # restore the heading stack to its pre-div state so headings opened inside
+    # the div do not leak their ids onto lines after the closing fence.
     if (length(div_stack) > 0 && grepl(div_close_re, line)) {
       chains[[i]] = combined_ids()
+      stack = div_stack[[length(div_stack)]]$heading_stack
       div_stack[[length(div_stack)]] = NULL
       next
     }
 
-    # Fenced-div open: push its id (or "" when class-only); line includes it.
+    # Fenced-div open: push its id (or "" when class-only) along with a snapshot
+    # of the current heading stack to restore on close; line includes the fence.
     if (grepl(div_open_re, line)) {
       m = regmatches(line, regexec(div_id_re, line))[[1]]
-      div_stack[[length(div_stack) + 1]] = if (length(m) == 2L) m[2] else ""
+      div_stack[[length(div_stack) + 1]] = list(
+        id = if (length(m) == 2L) m[2] else "",
+        heading_stack = stack
+      )
       chains[[i]] = combined_ids()
       next
     }

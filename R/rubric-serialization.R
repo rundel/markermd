@@ -119,6 +119,23 @@ rubric_question_from_list = function(x) {
     rubric_item_from_list(items_in[[i]], hotkey)
   })
 
+  # Descriptions are the cross-format identity key used by the marks layer, so
+  # they must be non-empty and unique within a question. Reject violations here
+  # rather than letting them surface far away at marking time. Mirrors the
+  # marks-side guard in marks_question_from_list().
+  descriptions = vapply(items, function(item) item@description, character(1))
+  if (any(!nzchar(trimws(descriptions)))) {
+    stop("Rubric question '", name, "' has a blank rubric item description.", call. = FALSE)
+  }
+  dupes = unique(descriptions[duplicated(descriptions)])
+  if (length(dupes) > 0) {
+    stop(
+      "Rubric question '", name, "' lists duplicate rubric item descriptions: ",
+      paste0("'", dupes, "'", collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+
   list(
     name = name,
     scoring = if (is.null(x$scoring)) NULL else scoring_from_list(x$scoring),

@@ -282,20 +282,20 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     # Get selected nodes for current question
     selected_nodes = shiny::reactive({
       current_q_id = current_question_id()
-      selected_nodes = integer(0)
+      result_nodes = integer(0)
       modules_list = question_modules()
-      
+
       if (length(modules_list) > 0 && !is.null(modules_list[[as.character(current_q_id)]])) {
         current_module = modules_list[[as.character(current_q_id)]]
         if (!is.null(current_module$server)) {
           nodes_result = current_module$server$get_selected_nodes()
           if (!is.null(nodes_result)) {
-            selected_nodes = nodes_result
+            result_nodes = nodes_result
           }
         }
       }
-      
-      return(selected_nodes)
+
+      return(result_nodes)
     })
     
     # Tree indices excluded by the current question's filters, drawn in red
@@ -313,7 +313,30 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
 
     # Initialize AST selectable module
     ast_result = ast_module_server("ast_panel", ast, selected_nodes, filtered_nodes, interactive = TRUE)
-    
+
+    # Toggle a node in the current question's selection: a no-op when the node
+    # sits under an already-selected ancestor, a removal when itself selected,
+    # otherwise an add that first clears any selected descendants. Shared by the
+    # pending-click and direct-click observers so the two never drift.
+    apply_node_toggle = function(current_module, node_index) {
+      current_selected = current_module$server$get_selected_nodes()
+      tree_items = tree_items_memo()
+
+      if (has_selected_ancestor(tree_items, node_index, current_selected)) {
+        return(invisible())
+      }
+
+      if (node_index %in% current_selected) {
+        current_module$server$remove_node(node_index)
+      } else {
+        descendants_to_remove = find_selected_descendants(tree_items, node_index, current_selected)
+        for (desc in descendants_to_remove) {
+          current_module$server$remove_node(desc)
+        }
+        current_module$server$add_node(node_index)
+      }
+    }
+
     # Handle pending node clicks when question modules change
     shiny::observe({
       click_data = pending_node_click()
@@ -329,26 +352,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
         pending_node_click(NULL)
 
         # Apply the node selection
-        node_index = click_data$node_index
-        current_selected = current_module$server$get_selected_nodes()
-        tree_items = tree_items_memo()
-
-        # Check if node has selected ancestors
-        if (has_selected_ancestor(tree_items, node_index, current_selected)) {
-          return()
-        }
-
-        # Toggle this node
-        if (node_index %in% current_selected) {
-          current_module$server$remove_node(node_index)
-        } else {
-          # Remove descendants first
-          descendants_to_remove = find_selected_descendants(tree_items, node_index, current_selected)
-          for (desc in descendants_to_remove) {
-            current_module$server$remove_node(desc)
-          }
-          current_module$server$add_node(node_index)
-        }
+        apply_node_toggle(current_module, click_data$node_index)
       }
     }) |>
       shiny::bindEvent(list(question_modules(), pending_node_click()))
@@ -379,26 +383,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       }
 
       # Process the click immediately
-      node_index = click_data$node_index
-      current_selected = current_module$server$get_selected_nodes()
-      tree_items = tree_items_memo()
-
-      # Check if node has selected ancestors
-      if (has_selected_ancestor(tree_items, node_index, current_selected)) {
-        return()
-      }
-
-      # Toggle this node
-      if (node_index %in% current_selected) {
-        current_module$server$remove_node(node_index)
-      } else {
-        # Remove descendants first
-        descendants_to_remove = find_selected_descendants(tree_items, node_index, current_selected)
-        for (desc in descendants_to_remove) {
-          current_module$server$remove_node(desc)
-        }
-        current_module$server$add_node(node_index)
-      }
+      apply_node_toggle(current_module, click_data$node_index)
     }) |>
       shiny::bindEvent(ast_result$node_clicked(), ignoreNULL = TRUE, ignoreInit = TRUE)
     
@@ -786,7 +771,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
               shiny::downloadButton(
                 "export_template",
                 "Export",
-                class = paste("btn-outline-secondary btn-sm", if (!has_questions) "disabled")
+                class = paste(c("btn-outline-secondary btn-sm", if (!has_questions) "disabled"), collapse = " ")
               ),
               shiny::tags$button(
                 "Import",
@@ -1045,7 +1030,7 @@ template_app_standalone = function(ast, template_obj = NULL, assignment_path = N
 #' @param filename Character string. Glob pattern to match Rmd/qmd file to grade (ignored for templates). Default glob matches any .Rmd or .qmd file.
 #' @param assignment Character string. Optional path to the assignment document,
 #'   used when loading a template whose stored `source.path` cannot be located.
-#' @param ... Additional arguments passed to shiny::runApp()
+#' @param ... Additional arguments passed to shiny::shinyApp()
 #'
 #' @return Launches Shiny application for template creation
 #' @export

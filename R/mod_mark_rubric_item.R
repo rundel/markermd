@@ -210,9 +210,11 @@ mark_rubric_item_ui = function(id, rubric_item) {
               this.setAttribute('data-points', newValue);
               originalPoints = newValue;
               
-              // Format display text
+              // Format display text. Match the initial cli::pluralize() render,
+              // which is singular only when the value is exactly 1 (so -1 and
+              // 1.5 are both plural).
               var sign = newValue >= 0 ? '+' : '';
-              var suffix = Math.abs(newValue) === 1 ? 'pt' : 'pts';
+              var suffix = newValue === 1 ? 'pt' : 'pts';
               this.innerHTML = sign + newValue + ' ' + suffix;
               
               // Update color

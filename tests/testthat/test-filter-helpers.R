@@ -24,6 +24,24 @@ test_that("parse_filter_option splits keys from YAML-typed values", {
     markermd:::parse_filter_option("fig-cap: a: b"),
     list(key = "fig-cap", value = "a: b")
   )
+
+  # an integer literal too large for as.integer() falls through to a double
+  # rather than silently becoming NA
+  big = markermd:::parse_filter_option("n: 99999999999")$value
+  expect_false(is.na(big))
+  expect_identical(big, 99999999999)
+})
+
+
+test_that("filter_value_warnings phrases empty-value warnings by match direction (negate)", {
+  group = function(cond) markermd:::markermd_filter_group(conditions = list(cond))
+  text_cond = function(neg) markermd:::markermd_filter_condition(type = "has text", value = "", negate = neg)
+  class_cond = function(neg) markermd:::markermd_filter_condition(type = "has class", value = "", negate = neg)
+
+  expect_match(markermd:::filter_value_warnings(list(group(text_cond(FALSE)))), "matches every node")
+  expect_match(markermd:::filter_value_warnings(list(group(text_cond(TRUE)))), "matches no nodes")
+  expect_match(markermd:::filter_value_warnings(list(group(class_cond(FALSE)))), "matches no nodes")
+  expect_match(markermd:::filter_value_warnings(list(group(class_cond(TRUE)))), "matches every node")
 })
 
 

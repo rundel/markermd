@@ -61,8 +61,8 @@ markermd_question = S7::new_class(
         if (length(value) != 1) {
           return("@id must be a single integer")
         }
-        if (value < 1) {
-          return("@id must be positive")
+        if (is.na(value) || value < 1) {
+          return("@id must be a positive integer")
         }
         return(NULL)
       }
@@ -144,8 +144,8 @@ markermd_metadata = S7::new_class(
         if (length(value) != 1) {
           return("@total_nodes must be a single integer")
         }
-        if (value < 0) {
-          return("@total_nodes must be non-negative")
+        if (is.na(value) || value < 0) {
+          return("@total_nodes must be a non-negative integer")
         }
         return(NULL)
       }
@@ -222,7 +222,8 @@ markermd_template = S7::new_class(
 
 #' @title Rubric Item
 #' @description S7 class representing a single rubric item with hotkey, points, description and selection state
-#' @param hotkey Integer. Hotkey number (1-10) for keyboard selection
+#' @param hotkey Integer. Hotkey number (1-10) for keyboard selection, or NA for
+#'   items past the first ten (which have no hotkey)
 #' @param points Numeric. Point value for this rubric item
 #' @param description Character. Description text for the rubric item
 #' @param selected Logical. Whether this item is currently selected
@@ -305,8 +306,8 @@ markermd_grade_state = S7::new_class(
         if (length(value) != 1) {
           return("total_score must be a single numeric value")
         }
-        if (value < 0) {
-          return("total_score must be >= 0")
+        if (is.na(value) || value < 0) {
+          return("total_score must be a non-negative number")
         }
         return(NULL)
       }

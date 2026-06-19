@@ -133,26 +133,30 @@ validate_rule_values = function(verb, values) {
   switch(verb,
     "has between" = {
       # Should be a numeric vector of length 2 (min, max)
-      if (!is.numeric(values) && !is.integer(values)) {
+      if (!is.numeric(values)) {
         return("Count range values must be numeric")
       }
-      
+
       if (length(values) != 2) {
         return("Count range must have exactly 2 values (min, max)")
       }
-      
+
       if (any(is.na(values)) || any(!is.finite(values))) {
         return("Count range values must be finite numbers")
       }
-      
+
       if (any(values < 0)) {
         return("Count range values must be non-negative")
       }
-      
+
+      if (any(values != floor(values))) {
+        return("Count range values must be whole numbers")
+      }
+
       if (values[1] > values[2]) {
         return("Count range minimum must be <= maximum")
       }
-      
+
       NULL
     },
     
@@ -162,8 +166,8 @@ validate_rule_values = function(verb, values) {
       if (length(values) != 1) {
         return("Count value must be a single value")
       }
-      
-      if (!is.numeric(values) && !is.integer(values)) {
+
+      if (!is.numeric(values)) {
         return("Count value must be numeric")
       }
       

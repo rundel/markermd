@@ -66,14 +66,15 @@ mark_app = function(path, template = NULL, use_qmd = TRUE) {
 
   template_obj = resolve_mark_template(project, template)
 
-  # Initialize database for persistent storage (lives at <root>/.markermd/)
+  # Initialize database for persistent storage (lives at <root>/.markermd/). A
+  # failure is downgraded to a warning so the app still opens in a read-only-ish
+  # degraded mode; database_state then stays NULL (set above).
   database_state = NULL
   if (!is.null(template_obj)) {
     tryCatch({
       database_state = initialize_database_state(root, template_obj)
     }, error = function(e) {
       warning("Database initialization failed: ", e$message)
-      database_state = NULL
     })
   }
 

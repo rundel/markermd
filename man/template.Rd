@@ -33,7 +33,7 @@ project and records it in the config.
 \item{assignment}{Character string. Optional path to the assignment document,
 used when loading a template whose stored \code{source.path} cannot be located.}
 
-\item{...}{Additional arguments passed to shiny::runApp()}
+\item{...}{Additional arguments passed to shiny::shinyApp()}
 }
 \value{
 Launches Shiny application for template creation
