@@ -11,6 +11,28 @@
 # question_name: the question whose items are being renumbered
 # servers: named list of item servers (names are item ids) in display order
 
+# Compute the next selection in a list of choices, wrapping around at the ends.
+# Returns NULL when there is nothing to move to (one or zero choices, a NULL
+# current selection, or a current value not present in choices).
+#
+# current: currently selected value
+# choices: character vector of available choices
+# direction: -1 for previous, 1 for next
+
+navigate_select = function(current, choices, direction) {
+  if (length(choices) <= 1 || is.null(current)) {
+    return(NULL)
+  }
+
+  current_index = match(current, choices)
+  if (is.na(current_index)) {
+    return(NULL)
+  }
+
+  new_index = (current_index - 1 + direction) %% length(choices) + 1
+  choices[new_index]
+}
+
 # Next free hotkey for a new rubric item: one past the largest existing hotkey,
 # or NA once all ten slots are taken. existing_hotkeys may contain NA (items
 # past the first ten carry NA), so NAs are dropped before taking the max.
@@ -1276,26 +1298,6 @@ mark_rubric_server = function(id, template, artifact_paths, artifact_urls, root,
       shiny::bindEvent(input$artifact_loaded)
     
     # Navigation button observers
-
-    # Compute the next selection in a list of choices, wrapping around at the ends
-    #
-    # current: Currently selected value
-    # choices: Character vector of available choices
-    # direction: -1 for previous, 1 for next
-
-    navigate_select = function(current, choices, direction) {
-      if (length(choices) <= 1 || is.null(current)) {
-        return(NULL)
-      }
-
-      current_index = match(current, choices)
-      if (is.na(current_index)) {
-        return(NULL)
-      }
-
-      new_index = (current_index - 1 + direction) %% length(choices) + 1
-      choices[new_index]
-    }
 
     # Repository navigation buttons
     shiny::observe({
