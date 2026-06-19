@@ -51,8 +51,9 @@ consistency across the application.</p>
 
 
 <dl><dt id="arg-node-type">node_type<a class="anchor" aria-label="anchor" href="#arg-node-type"></a></dt>
-<dd><p>Character. The type of AST node this rule applies to.
-Must be one of the values returned by get_allowed_node_types().</p></dd>
+<dd><p>Character vector. One or more AST node types this rule
+applies to, combined as a logical OR. Each must be one of the values
+returned by get_allowed_node_types().</p></dd>
 
 
 <dt id="arg-verb">verb<a class="anchor" aria-label="anchor" href="#arg-verb"></a></dt>

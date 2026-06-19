@@ -53,7 +53,7 @@ template(
 
 - ...:
 
-  Additional arguments passed to shiny::runApp()
+  Additional arguments passed to shiny::shinyApp()
 
 ## Value
 

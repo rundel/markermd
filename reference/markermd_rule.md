@@ -14,8 +14,9 @@ markermd_rule(node_type = character(0), verb = character(0), values = NULL)
 
 - node_type:
 
-  Character. The type of AST node this rule applies to. Must be one of
-  the values returned by get_allowed_node_types().
+  Character vector. One or more AST node types this rule applies to,
+  combined as a logical OR. Each must be one of the values returned by
+  get_allowed_node_types().
 
 - verb:
 

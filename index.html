@@ -58,7 +58,7 @@
 <li>
 <code><a href="reference/mark.html">mark()</a></code> grades a collection of student repositories against that template with per-question rubrics.</li>
 </ul>
-<p>Around the apps, a set of helper functions (<code><a href="reference/validate_project.html">validate_project()</a></code>, <code><a href="reference/template_import.html">template_import()</a></code> / <code><a href="reference/template_export.html">template_export()</a></code>, <code><a href="reference/rubric_import.html">rubric_import()</a></code> / <code><a href="reference/rubric_export.html">rubric_export()</a></code>, <code><a href="reference/marks_import.html">marks_import()</a></code> / <code><a href="reference/marks_export.html">marks_export()</a></code> / <code><a href="reference/marks_set.html">marks_set()</a></code>) makes the entire workflow scriptable, and bundled Claude Code skills can scaffold the template and rubric or apply the rubric across all submissions as a first pass for human review.</p>
+<p>Around the apps, a set of helper functions (<code><a href="reference/validate_project.html">validate_project()</a></code>, <code><a href="reference/template_import.html">template_import()</a></code> / <code><a href="reference/template_export.html">template_export()</a></code>, <code><a href="reference/rubric_import.html">rubric_import()</a></code> / <code><a href="reference/rubric_export.html">rubric_export()</a></code>, <code><a href="reference/marks_import.html">marks_import()</a></code> / <code><a href="reference/marks_export.html">marks_export()</a></code> / <code><a href="reference/marks_set.html">marks_set()</a></code>, <code><a href="reference/export_marks.html">export_marks()</a></code>) makes the entire workflow scriptable, and bundled Claude Code skills can scaffold the template and rubric or apply the rubric across all submissions as a first pass for human review.</p>
 <div class="section level2">
 <h2 id="experimental-status">Experimental status<a class="anchor" aria-label="anchor" href="#experimental-status"></a>
 </h2>
@@ -114,7 +114,7 @@
 <h2 id="template-creation-with-template">Template creation with <code>template()</code>
 <a class="anchor" aria-label="anchor" href="#template-creation-with-template"></a>
 </h2>
-<p>The template app loads an assignment (a project’s key repository, a single <code>.qmd</code>/<code>.Rmd</code> file or directory, a saved template, or a GitHub <code>&lt;owner&gt;/&lt;repo&gt;</code>) and displays its structure as an interactive tree. Headings are the selectable units: selecting one maps the document section beneath it to a question. Each question then gets validation rules (counts of chunks, markdown blocks, or other node types; content checks; name checks) along with optional filters that narrow which nodes the rules see, plus a point value used later by the rubric.</p>
+<p>The template app loads an assignment (a project’s key repository, a single <code>.qmd</code>/<code>.Rmd</code> file or directory, a saved template, or a GitHub <code>&lt;owner&gt;/&lt;repo&gt;</code>) and displays its structure as an interactive tree. Headings are the selectable units: selecting one maps the document section beneath it to a question. Each question then gets validation rules (counts of chunks, markdown blocks, or other node types; content checks; name checks) along with optional filters that narrow which nodes the rules see. Point values are not part of the template; each question’s total is set with its rubric while grading.</p>
 <div class="float">
 <img src="reference/figures/template_screenshot.png" alt="The template app: document structure tree on the left, questions with their selected sections and validation rules on the right"><div class="figcaption">The template app: document structure tree on the left, questions with their selected sections and validation rules on the right</div>
 </div>
@@ -136,7 +136,7 @@
 <div class="section level3">
 <h3 id="rubric">Rubric<a class="anchor" aria-label="anchor" href="#rubric"></a>
 </h3>
-<p>The Rubric tab is where grading happens. The left pane shows the student’s rendered report or source; the right pane shows the current question’s rubric. Items toggle by click or number-key hotkey, and the score follows from the question’s scoring setup (additive or deduction mode, with optional clamping between zero and the question total). Below the items are two comment boxes: a public, student-facing comment (which also marks the question as graded) and private notes that are never shared with students. Every action autosaves to the project database.</p>
+<p>The Rubric tab is where grading happens. The left pane shows the student’s rendered report or source; the right pane shows the current question’s rubric. Items toggle by click or number-key hotkey, and the score follows from the question’s scoring setup (additive or deduction mode, with optional clamping between zero and the question total; clicking the score display edits the total, and the gear popover holds the mode and bounds). Below the items are two comment boxes: a public, student-facing comment (which also marks the question as graded) and private notes that are never shared with students. Every action autosaves to the project database.</p>
 <div class="float">
 <img src="reference/figures/mark_rubric_screenshot.png" alt="The mark app’s Rubric tab: rendered report on the left; rubric items with hotkeys, the computed score, and the public and private comment boxes on the right"><div class="figcaption">The mark app’s Rubric tab: rendered report on the left; rubric items with hotkeys, the computed score, and the public and private comment boxes on the right</div>
 </div>
@@ -164,6 +164,19 @@
 <span>  project <span class="op">=</span> <span class="st">"hw01"</span></span>
 <span><span class="op">)</span></span></code></pre></div>
 <p>The YAML formats are validated against bundled JSON Schemas (see <code>system.file("schema", package = "markermd")</code>) and are deliberately simple enough for LLM tools to author. Marks imports are conservative by default: repository/question pairs that already have grading activity are skipped unless explicitly overwritten.</p>
+</div>
+<div class="section level2">
+<h2 id="exporting-results">Exporting results<a class="anchor" aria-label="anchor" href="#exporting-results"></a>
+</h2>
+<p>When grading is complete, <code><a href="reference/export_marks.html">export_marks()</a></code> writes the final hand-off artifacts from the project database (or run <code><a href="reference/export_scores.html">export_scores()</a></code> and <code><a href="reference/export_comments.html">export_comments()</a></code> individually):</p>
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="reference/export_marks.html">export_marks</a></span><span class="op">(</span><span class="st">"hw01"</span><span class="op">)</span></span></code></pre></div>
+<ul>
+<li>
+<code><a href="reference/export_scores.html">export_scores()</a></code> writes <code>scores.csv</code> to the project root: one row per repository, one column per question, plus a <code>total</code> column. Scores are recomputed exactly as <code><a href="reference/mark.html">mark()</a></code> displays them, passing each question’s selected rubric item points through its grading mode and bounds. Ungraded repository/question pairs export as <code>NA</code>, and a repository’s total stays <code>NA</code> until all of its questions are graded.</li>
+<li>
+<code><a href="reference/export_comments.html">export_comments()</a></code> writes each repository’s student-facing feedback to <code>comments/&lt;repo&gt;.md</code> (or the project’s configured comments directory). Each graded question appears as a heading, in template order, followed by a bulleted list of its selected rubric item descriptions and public comment. Private notes are never exported, and a repository with no public feedback gets no file.</li>
+</ul>
 </div>
 <div class="section level2">
 <h2 id="claude-code-skills">Claude Code skills<a class="anchor" aria-label="anchor" href="#claude-code-skills"></a>

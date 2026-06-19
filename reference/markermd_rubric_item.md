@@ -18,7 +18,8 @@ markermd_rubric_item(
 
 - hotkey:
 
-  Integer. Hotkey number (1-10) for keyboard selection
+  Integer. Hotkey number (1-10) for keyboard selection, or NA for items
+  past the first ten (which have no hotkey)
 
 - points:
 

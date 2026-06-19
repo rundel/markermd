@@ -39,7 +39,9 @@ markermd_project(
 
 - database:
 
-  Character. Root-relative path to the SQLite grading database. The
+  Character. Root-relative path to the SQLite grading database, fixed at
+  `.markermd/markermd.sqlite`. It is intrinsic to the project marker and
+  not user-configurable; the value is recorded for reference only. The
   grading template is stored inside this database, not in the config.
 
 - key:

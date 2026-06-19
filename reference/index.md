@@ -6,6 +6,12 @@
   : Add Question to Template
 - [`assignment_outline()`](https://rundel.github.io/markermd/reference/assignment_outline.md)
   : Outline the gradable sections of an assignment
+- [`export_comments()`](https://rundel.github.io/markermd/reference/export_comments.md)
+  : Export student-facing feedback to per-repository markdown files
+- [`export_marks()`](https://rundel.github.io/markermd/reference/export_marks.md)
+  : Export scores and feedback for a graded project
+- [`export_scores()`](https://rundel.github.io/markermd/reference/export_scores.md)
+  : Export per-repository scores to a CSV file
 - [`filter_classes`](https://rundel.github.io/markermd/reference/filter_classes.md)
   : S7 Classes for Question Filters
 - [`filter_condition_type_choices()`](https://rundel.github.io/markermd/reference/filter_condition_type_choices.md)
