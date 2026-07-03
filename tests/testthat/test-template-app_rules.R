@@ -60,12 +60,6 @@ test_that("Rule edits are captured into state before an add re-renders the rows"
 test_that("Deleting a rule preserves the re-indexed survivor's own values", {
   testthat::skip_if_not_installed("shinytest2")
   testthat::skip_on_cran()
-  # Known failure: the input-updates observer reads the deleted rule's stale
-  # inputs into the re-indexed survivor before the re-rendered widgets
-  # re-report, so the survivor inherits the deleted rule's verb/values. The
-  # rules symmetry back-port freezes the survivors' inputs on structural
-  # changes and removes this skip.
-  testthat::skip("stale-input clobber on delete; fixed by the symmetry back-port")
 
   app = shinytest2::AppDriver$new(
     template(file),

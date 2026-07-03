@@ -160,6 +160,26 @@ question_filters_server = function(input, output, session, state, ast) {
     groups
   }
 
+  # Freeze every group and condition input for the given keyed groups, called
+  # by the structural observers after they capture pending edits and before
+  # the re-render (the filters-side twin of freeze_rule_inputs). Structural
+  # changes remap group/condition ids (deletes shift survivors down; adds may
+  # reuse a previously vacated slot), so the input-updates observer would
+  # otherwise read the pre-change widgets' stale inputs under the new ids in
+  # this same flush, clobbering the re-mapped groups. Freezing silences the
+  # stale reads for the rest of the flush, and the client re-reports every
+  # frozen input once the re-rendered widgets bind, even when unchanged.
+  freeze_filter_inputs = function(groups) {
+    for (group_id in names(groups)) {
+      shiny::freezeReactiveValue(input, paste0("filter_group_", group_id, "-negate"))
+      for (cond_id in names(groups[[group_id]]$conditions)) {
+        for (field in c("type", "value", "negate")) {
+          shiny::freezeReactiveValue(input, paste0("filter_", group_id, "_", cond_id, "-", field))
+        }
+      }
+    }
+  }
+
   # Add filter group button observer
   shiny::observe({
     groups = capture_all_filter_inputs(filters_list())
@@ -170,6 +190,7 @@ question_filters_server = function(input, output, session, state, ast) {
       conditions = list("1" = new_markermd_filter_condition())
     )
 
+    freeze_filter_inputs(groups)
     set_filters_state(groups)
     next_group_id(group_id + 1L)
     trigger_filters_render()
@@ -192,17 +213,20 @@ question_filters_server = function(input, output, session, state, ast) {
       conditions[[as.character(length(conditions) + 1L)]] = new_markermd_filter_condition()
       groups[[group_id]]$conditions = conditions
 
+      freeze_filter_inputs(groups)
       set_filters_state(groups)
       trigger_filters_render()
     }) |>
       shiny::bindEvent(input[[paste0("filter_group_", group_id, "-add_condition")]], ignoreInit = TRUE)
 
     delete_observer = shiny::observe({
-      groups = capture_all_filter_inputs(filters_list())
+      pre_groups = capture_all_filter_inputs(filters_list())
 
+      groups = pre_groups
       groups[[group_id]] = NULL
       groups = reindex_keys(groups)
 
+      freeze_filter_inputs(pre_groups)
       set_filters_state(groups)
       next_group_id(length(groups) + 1L)
       trigger_filters_render()
@@ -220,8 +244,9 @@ question_filters_server = function(input, output, session, state, ast) {
 
   create_filter_condition_observer = function(group_id, cond_id) {
     shiny::observe({
-      groups = capture_all_filter_inputs(filters_list())
+      pre_groups = capture_all_filter_inputs(filters_list())
 
+      groups = pre_groups
       conditions = groups[[group_id]]$conditions
       conditions[[cond_id]] = NULL
 
@@ -233,6 +258,7 @@ question_filters_server = function(input, output, session, state, ast) {
         groups[[group_id]]$conditions = reindex_keys(conditions)
       }
 
+      freeze_filter_inputs(pre_groups)
       set_filters_state(groups)
       trigger_filters_render()
     }) |>

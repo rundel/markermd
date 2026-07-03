@@ -166,46 +166,64 @@ question_rules_server = function(input, output, session, state, ast) {
     )
   }
 
+  # Write a keyed rules structure into both rules_list and the question state
+  # so consumers (per-rule status, serialization) update together (the
+  # rules-side twin of set_filters_state)
+  set_rules_state = function(rules) {
+    rules_list(rules)
+    cur_state = state()
+    cur_state@rules = rules
+    state(cur_state)
+  }
+
+  # Capture current inputs for every rule, used before structural changes so
+  # pending edits are not lost on re-render (the rules-side twin of
+  # capture_all_filter_inputs). Values inputs that are absent or invalid keep
+  # the stored rule's values.
+  capture_all_rule_inputs = function(rules) {
+    for (rule_id in names(rules)) {
+      if (!is.null(input[[paste0("rule_", rule_id, "-node_types")]])) {
+        note_node_types_seen(rule_id)
+      }
+      rules[[rule_id]] = capture_rule_inputs(
+        rule_id, rules[[rule_id]],
+        function(verb, rule) rule@values,
+        node_type_seen = rule_id %in% shiny::isolate(node_types_seen())
+      )
+    }
+    rules
+  }
+
+  # Freeze every row input for the given rule ids, called by the structural
+  # observers after they capture pending edits and before the re-render.
+  # Structural changes remap row ids (deletes shift survivors down; adds may
+  # reuse a previously vacated slot), so the input-updates observer would
+  # otherwise read the pre-change widgets' stale inputs under the new ids in
+  # this same flush, clobbering the re-mapped rules. Freezing silences the
+  # stale reads for the rest of the flush, and the client re-reports every
+  # frozen input once the re-rendered widgets bind, even when the value is
+  # unchanged.
+  freeze_rule_inputs = function(rule_ids) {
+    for (rule_id in rule_ids) {
+      for (field in c("node_types", "verb", "values")) {
+        shiny::freezeReactiveValue(input, paste0("rule_", rule_id, "-", field))
+      }
+    }
+  }
+
   # Add rule button observer
   shiny::observe({
     rule_id = next_rule_id()
 
-    # Before adding new rule, capture current input values for existing rules
-    # This mirrors the question name handling approach
-    current_rules = rules_list()
-    for (existing_rule_id in names(current_rules)) {
-      rule = current_rules[[existing_rule_id]]
-
-      node_types_input = paste0("rule_", existing_rule_id, "-node_types")
-      verb_input = paste0("rule_", existing_rule_id, "-verb")
-
-      # Update rule with current input values if available
-      if (!is.null(input[[node_types_input]]) && !is.null(input[[verb_input]])) {
-        note_node_types_seen(existing_rule_id)
-        updated_rule = capture_rule_inputs(
-          existing_rule_id, rule,
-          function(verb, rule) get_default_rule_values(verb),
-          node_type_seen = TRUE
-        )
-
-        # Update the rule if anything changed
-        if (!setequal(rule@node_type, updated_rule@node_type) || rule@verb != updated_rule@verb || !identical(rule@values, updated_rule@values)) {
-          current_rules[[existing_rule_id]] = updated_rule
-        }
-      }
-    }
+    # Before adding the new rule, capture pending input edits for the
+    # existing rules so the structural re-render does not lose them
+    current_rules = capture_all_rule_inputs(rules_list())
 
     # Create new rule with default values
-    new_rule = new_markermd_rule()
+    current_rules[[as.character(rule_id)]] = new_markermd_rule()
 
-    # Add rule to rules list
-    current_rules[[as.character(rule_id)]] = new_rule
-    rules_list(current_rules)
-
-    # Update question state
-    cur_state = state()
-    cur_state@rules = current_rules
-    state(cur_state)
+    freeze_rule_inputs(names(current_rules))
+    set_rules_state(current_rules)
 
     # Increment rule ID for next rule
     next_rule_id(rule_id + 1L)
@@ -240,34 +258,17 @@ question_rules_server = function(input, output, session, state, ast) {
 
     observer = shiny::observe({
       current_rules = rules_list()
+      all_ids = names(current_rules)
 
-      # Before deletion, capture current input values for all remaining rules
-      preserved_rules = list()
-      for (preserve_rule_id in names(current_rules)) {
-        if (preserve_rule_id != rule_id) {  # Skip the rule being deleted
-          rule = current_rules[[preserve_rule_id]]
+      # Before deletion, capture current input values for the surviving
+      # rules, keeping stored values when a values input is absent or invalid
+      preserved_rules = capture_all_rule_inputs(
+        current_rules[setdiff(all_ids, rule_id)]
+      )
 
-          # Create updated rule with current input values, keeping the stored
-          # values when the values input is absent or invalid
-          preserved_rules[[preserve_rule_id]] = capture_rule_inputs(
-            preserve_rule_id, rule,
-            function(verb, rule) rule@values,
-            node_type_seen = preserve_rule_id %in% shiny::isolate(node_types_seen())
-          )
-        }
-      }
-
-      # Re-index preserved rules to maintain sequential numbering
-      if (length(preserved_rules) > 0) {
-        reindexed_rules = list()
-        rule_objects = unname(preserved_rules)
-        for (i in seq_along(rule_objects)) {
-          reindexed_rules[[as.character(i)]] = rule_objects[[i]]
-        }
-        current_rules = reindexed_rules
-      } else {
-        current_rules = list()
-      }
+      # Re-index preserved rules to maintain sequential numbering; state
+      # never sees a zero-length named list
+      reindexed = if (length(preserved_rules) > 0) reindex_keys(preserved_rules) else list()
 
       # Remap the seen-widget bookkeeping through the same re-indexing: the
       # k-th preserved rule takes id k. Stale ids would otherwise mark
@@ -276,15 +277,11 @@ question_rules_server = function(input, output, session, state, ast) {
       seen = shiny::isolate(node_types_seen())
       node_types_seen(as.character(which(names(preserved_rules) %in% seen)))
 
-      rules_list(current_rules)
-
-      # Update question state
-      cur_state = state()
-      cur_state@rules = current_rules
-      state(cur_state)
+      freeze_rule_inputs(all_ids)
+      set_rules_state(reindexed)
 
       # Reset next rule ID for sequential numbering
-      next_rule_id(length(current_rules) + 1L)
+      next_rule_id(length(reindexed) + 1L)
       trigger_rules_render()
 
       # The monitor observer will handle creating new observers for the updated rules_list
@@ -366,12 +363,7 @@ question_rules_server = function(input, output, session, state, ast) {
 
     # Update reactive values if there were changes
     if (rules_changed) {
-      rules_list(current_rules)
-
-      # Update question state
-      cur_state = state()
-      cur_state@rules = current_rules
-      state(cur_state)
+      set_rules_state(current_rules)
 
       # A verb change swaps the values control, which is part of the statically
       # rendered rule UI, so it must re-render. Node-type and value edits do not.
