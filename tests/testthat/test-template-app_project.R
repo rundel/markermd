@@ -175,3 +175,29 @@ test_that("template() exports the current template to YAML", {
   tmpl = markermd::read_template_yaml(out, require_ast = FALSE)
   expect_length(tmpl@questions, 2)
 })
+
+
+test_that("template() tracks unsaved changes and clears the flag on save", {
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
+  proj = make_template_project(with_template = TRUE)
+
+  app = shinytest2::AppDriver$new(
+    template(proj$root),
+    name = "template_project_dirty"
+  )
+
+  # Clean at startup: the preloaded template becomes the baseline snapshot.
+  # The serialization is debounced 500ms, so idle waits outlast it.
+  app$wait_for_idle(duration = 1000)
+  expect_false(app$get_values(export = "template_dirty") |> unlist(use.names = FALSE))
+
+  app$click("add_question")
+  app$wait_for_idle(duration = 1000)
+  expect_true(app$get_values(export = "template_dirty") |> unlist(use.names = FALSE))
+
+  app$click("save_to_project")
+  app$wait_for_idle(duration = 1000)
+  expect_false(app$get_values(export = "template_dirty") |> unlist(use.names = FALSE))
+})
