@@ -2,15 +2,6 @@
 #
 # Shiny module for managing a single question with its rules
 
-# Re-key a list sequentially as "1".."n" (positional row ids, shared by the
-# rules and filters row machinery)
-#
-# x: A named list to re-key
-
-reindex_keys = function(x) {
-  stats::setNames(unname(x), as.character(seq_along(x)))
-}
-
 # Question UI
 #
 # id: Character. Module namespace ID

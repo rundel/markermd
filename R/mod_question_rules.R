@@ -42,29 +42,16 @@ question_rules_server = function(input, output, session, state, ast) {
   rules_list = shiny::reactiveVal(list())
   next_rule_id = shiny::reactiveVal(1L)
 
-  # rule_ids whose node-type multiselect has reported a (non-NULL) value at
-  # least once. An empty selectize multiselect reports NULL, which is also the
-  # not-yet-initialised state, so this lets capture_rule_inputs() tell a
-  # deliberate clear (the catch-all "Any node") apart from a loaded rule whose
-  # widget has not reported yet (keep its stored value). Bookkeeping only, so
-  # reads/writes are isolated from reactivity.
-  node_types_seen = shiny::reactiveVal(character(0))
-  note_node_types_seen = function(rule_id) {
-    seen = shiny::isolate(node_types_seen())
-    if (!(rule_id %in% seen)) {
-      node_types_seen(c(seen, rule_id))
-    }
-  }
+  # Seen registry for the per-rule node-type multiselects: a NULL from a
+  # noted widget is a deliberate clear meaning the catch-all "Any node", so
+  # the delete path MUST remap the keys through its re-indexing (see the
+  # policy note on make_seen_registry in mod_question_rows.R)
+  node_types_seen = make_seen_registry()
 
-  # Bumped only when the set of rules changes (load/add/delete) so the rules UI
-  # re-renders on structural changes but not on every value edit. Re-rendering on
-  # a value edit would rebuild the node-type multiselect mid-interaction; its
-  # menu lives on <body> (dropdownParent = "body"), so the rebuild orphans the
-  # open menu and subsequent clicks are lost.
-  rules_render_trigger = shiny::reactiveVal(0L)
-  trigger_rules_render = function() {
-    rules_render_trigger(shiny::isolate(rules_render_trigger()) + 1L)
-  }
+  # Structural render trigger: bumped on load/add/delete and verb changes
+  # (which swap the values control), never on value edits (see
+  # make_render_trigger in mod_question_rows.R)
+  rules_render = make_render_trigger()
 
   # Live evaluation of every rule against the template's own document. Keyed by
   # rule_id ("1".."k", matching the rules_list ordering) so per-rule status
@@ -117,7 +104,7 @@ question_rules_server = function(input, output, session, state, ast) {
       }
       rules_list(loaded_rules)
       next_rule_id(length(loaded_rules) + 1L)
-      trigger_rules_render()
+      rules_render$bump()
     }
   }, priority = 1000)  # High priority to run before other observers
 
@@ -183,12 +170,12 @@ question_rules_server = function(input, output, session, state, ast) {
   capture_all_rule_inputs = function(rules) {
     for (rule_id in names(rules)) {
       if (!is.null(input[[paste0("rule_", rule_id, "-node_types")]])) {
-        note_node_types_seen(rule_id)
+        node_types_seen$note(rule_id)
       }
       rules[[rule_id]] = capture_rule_inputs(
         rule_id, rules[[rule_id]],
         function(verb, rule) rule@values,
-        node_type_seen = rule_id %in% shiny::isolate(node_types_seen())
+        node_type_seen = node_types_seen$has(rule_id)
       )
     }
     rules
@@ -227,7 +214,7 @@ question_rules_server = function(input, output, session, state, ast) {
 
     # Increment rule ID for next rule
     next_rule_id(rule_id + 1L)
-    trigger_rules_render()
+    rules_render$bump()
   }) |>
     shiny::bindEvent(input$add_rule)
 
@@ -274,15 +261,14 @@ question_rules_server = function(input, output, session, state, ast) {
       # k-th preserved rule takes id k. Stale ids would otherwise mark
       # whichever rule now holds an old id as already seen, turning its
       # not-yet-rendered widget's NULL into a deliberate clear ("Any node").
-      seen = shiny::isolate(node_types_seen())
-      node_types_seen(as.character(which(names(preserved_rules) %in% seen)))
+      node_types_seen$remap(names(preserved_rules))
 
       freeze_rule_inputs(all_ids)
       set_rules_state(reindexed)
 
       # Reset next rule ID for sequential numbering
       next_rule_id(length(reindexed) + 1L)
-      trigger_rules_render()
+      rules_render$bump()
 
       # The monitor observer will handle creating new observers for the updated rules_list
       # No need for manual cleanup here since re-indexing changes rule IDs anyway
@@ -296,28 +282,15 @@ question_rules_server = function(input, output, session, state, ast) {
   # Monitor rules_list changes to create/destroy delete observers
   shiny::observe({
     current_rules = rules_list()
-    current_observers = delete_observers()
 
-    # Create observers for new rules
-    new_observers = current_observers
-    for (rule_id in names(current_rules)) {
-      if (!rule_id %in% names(current_observers)) {
-        new_observers[[rule_id]] = create_delete_observer(rule_id)
-      }
-    }
-
-    # Remove observers for deleted rules (though this is handled in deletion logic too)
-    for (obs_id in names(current_observers)) {
-      if (!obs_id %in% names(current_rules)) {
-        current_observers[[obs_id]]$destroy()
-        new_observers[[obs_id]] = NULL
-      }
-    }
-
-    delete_observers(new_observers)
+    delete_observers(sync_keyed_observers(
+      delete_observers(), names(current_rules), create_delete_observer
+    ))
 
     # Wire a live-status output for any newly seen rule id; keep the tracked
-    # set mirroring the current rules (outputs persist but read by id).
+    # set mirroring the current rules. Outputs are not observers and are
+    # never destroyed (they read rule_status() by id), so they stay outside
+    # the sync_keyed_observers lifecycle.
     wired = status_outputs()
     for (rule_id in names(current_rules)) {
       if (!rule_id %in% wired) {
@@ -342,13 +315,13 @@ question_rules_server = function(input, output, session, state, ast) {
       # is handled (clear -> "Any node") in capture_rule_inputs.
       shiny::req(input[[verb_input]])
 
-      if (!is.null(input[[node_types_input]])) note_node_types_seen(rule_id)
+      if (!is.null(input[[node_types_input]])) node_types_seen$note(rule_id)
 
       rule = current_rules[[rule_id]]
       new_rule = capture_rule_inputs(
         rule_id, rule,
         function(verb, rule) get_default_rule_values(verb),
-        node_type_seen = rule_id %in% shiny::isolate(node_types_seen())
+        node_type_seen = node_types_seen$has(rule_id)
       )
 
       # Check if anything changed (including values)
@@ -367,14 +340,14 @@ question_rules_server = function(input, output, session, state, ast) {
 
       # A verb change swaps the values control, which is part of the statically
       # rendered rule UI, so it must re-render. Node-type and value edits do not.
-      if (verb_changed) trigger_rules_render()
+      if (verb_changed) rules_render$bump()
     }
   })
 
   # Render rules UI. Depends only on the structural trigger; rule values are read
   # via isolate() so editing a rule's inputs does not rebuild the rule controls.
   output$rules_ui = shiny::renderUI({
-    rules_render_trigger()
+    rules_render$depend()
     current_rules = shiny::isolate(rules_list())
 
     if (length(current_rules) == 0) {

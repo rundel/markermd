@@ -35,13 +35,10 @@ question_filters_server = function(input, output, session, state, ast) {
   filters_list = shiny::reactiveVal(list())
   next_group_id = shiny::reactiveVal(1L)
 
-  # Bumped only on structural filter changes (load/add/delete and condition
-  # type changes, which swap the value control) so value edits do not rebuild
-  # the filter controls mid-interaction.
-  filters_render_trigger = shiny::reactiveVal(0L)
-  trigger_filters_render = function() {
-    filters_render_trigger(shiny::isolate(filters_render_trigger()) + 1L)
-  }
+  # Structural render trigger: bumped on load/add/delete and condition type
+  # changes (which swap the value control), never on value edits (see
+  # make_render_trigger in mod_question_rows.R)
+  filters_render = make_render_trigger()
 
   # Write a keyed filters structure into both filters_list and the question
   # state so consumers (preview, rule_status via get_question_ast) update
@@ -71,24 +68,16 @@ question_filters_server = function(input, output, session, state, ast) {
       }
       filters_list(loaded_groups)
       next_group_id(length(loaded_groups) + 1L)
-      trigger_filters_render()
+      filters_render$bump()
     }
   }, priority = 1000)  # High priority to run before other observers
 
-  # Filter node-type multiselects that have reported a (non-NULL) value at
-  # least once. The node-type value control is a selectize multiselect, so
-  # an empty selection reports NULL, which is also the not-yet-initialised
-  # state; this disambiguates the two (same scheme as node_types_seen for
-  # rule rows). Stale keys after re-indexing are harmless here: the
-  # deliberate-clear branch keeps the stored value and merely re-syncs the
-  # widget to it.
-  filter_values_seen = shiny::reactiveVal(character(0))
-  note_filter_value_seen = function(key) {
-    seen = shiny::isolate(filter_values_seen())
-    if (!(key %in% seen)) {
-      filter_values_seen(c(seen, key))
-    }
-  }
+  # Seen registry for the per-condition node-type multiselects, keyed
+  # "<gid>_<cid>". Unlike the rules machine, stale keys after re-indexing are
+  # harmless here (the deliberate-clear branch keeps the stored value and
+  # merely re-syncs the widget to it), so no remap on delete (see the policy
+  # note on make_seen_registry in mod_question_rows.R)
+  filter_values_seen = make_seen_registry()
 
   # Capture the current input values for a single filter condition into a new
   # markermd_filter_condition. The type and negate controls always report a
@@ -111,7 +100,7 @@ question_filters_server = function(input, output, session, state, ast) {
     final_negate = if (!is.null(input[[negate_input]])) input[[negate_input]] else condition@negate
 
     if (!is.null(input[[value_input]])) {
-      note_filter_value_seen(seen_key)
+      filter_values_seen$note(seen_key)
     }
 
     # A type change always resets the value to the new type's default so a
@@ -124,7 +113,7 @@ question_filters_server = function(input, output, session, state, ast) {
       get_default_filter_condition_value(final_type)
     } else if (!is.null(input[[value_input]])) {
       input[[value_input]]
-    } else if (final_type == "node type" && seen_key %in% shiny::isolate(filter_values_seen())) {
+    } else if (final_type == "node type" && filter_values_seen$has(seen_key)) {
       # The multiselect was deliberately emptied. An empty kind set is not a
       # valid condition (it would match nothing), so keep the stored kinds
       # and snap the widget back to them rather than leaving the UI showing
@@ -193,7 +182,7 @@ question_filters_server = function(input, output, session, state, ast) {
     freeze_filter_inputs(groups)
     set_filters_state(groups)
     next_group_id(group_id + 1L)
-    trigger_filters_render()
+    filters_render$bump()
   }) |>
     shiny::bindEvent(input$add_filter_group)
 
@@ -215,7 +204,7 @@ question_filters_server = function(input, output, session, state, ast) {
 
       freeze_filter_inputs(groups)
       set_filters_state(groups)
-      trigger_filters_render()
+      filters_render$bump()
     }) |>
       shiny::bindEvent(input[[paste0("filter_group_", group_id, "-add_condition")]], ignoreInit = TRUE)
 
@@ -229,7 +218,7 @@ question_filters_server = function(input, output, session, state, ast) {
       freeze_filter_inputs(pre_groups)
       set_filters_state(groups)
       next_group_id(length(groups) + 1L)
-      trigger_filters_render()
+      filters_render$bump()
     }) |>
       shiny::bindEvent(input[[paste0("filter_group_", group_id, "-delete")]], ignoreInit = TRUE)
 
@@ -260,15 +249,16 @@ question_filters_server = function(input, output, session, state, ast) {
 
       freeze_filter_inputs(pre_groups)
       set_filters_state(groups)
-      trigger_filters_render()
+      filters_render$bump()
     }) |>
       shiny::bindEvent(input[[paste0("filter_", group_id, "_", cond_id, "-delete")]], ignoreInit = TRUE)
   }
 
-  # Monitor filters_list changes to create/destroy filter observers
+  # Monitor filters_list changes to create/destroy filter observers. Group
+  # keys ("g<id>") map to add/delete observer pairs; condition keys
+  # ("c<gid>_<cid>") to a single delete observer.
   shiny::observe({
     groups = filters_list()
-    current_observers = filter_observers()
 
     active_keys = character(0)
     for (group_id in names(groups)) {
@@ -278,28 +268,17 @@ question_filters_server = function(input, output, session, state, ast) {
       }
     }
 
-    new_observers = current_observers
-    for (stale_key in setdiff(names(current_observers), active_keys)) {
-      observers = current_observers[[stale_key]]
-      if (!is.list(observers)) observers = list(observers)
-      for (observer in observers) observer$destroy()
-      new_observers[[stale_key]] = NULL
-    }
-
-    for (group_id in names(groups)) {
-      group_key = paste0("g", group_id)
-      if (!group_key %in% names(new_observers)) {
-        new_observers[[group_key]] = create_filter_group_observers(group_id)
-      }
-      for (cond_id in names(groups[[group_id]]$conditions)) {
-        cond_key = paste0("c", group_id, "_", cond_id)
-        if (!cond_key %in% names(new_observers)) {
-          new_observers[[cond_key]] = create_filter_condition_observer(group_id, cond_id)
+    filter_observers(sync_keyed_observers(
+      filter_observers(), active_keys,
+      function(key) {
+        if (startsWith(key, "g")) {
+          create_filter_group_observers(substring(key, 2))
+        } else {
+          ids = strsplit(substring(key, 2), "_", fixed = TRUE)[[1]]
+          create_filter_condition_observer(ids[1], ids[2])
         }
       }
-    }
-
-    filter_observers(new_observers)
+    ))
   })
 
   # Handle filter condition input updates (type, value, and negate edits)
@@ -337,14 +316,14 @@ question_filters_server = function(input, output, session, state, ast) {
 
     if (filters_changed) {
       set_filters_state(groups)
-      if (type_changed) trigger_filters_render()
+      if (type_changed) filters_render$bump()
     }
   })
 
   # Render filter groups UI. Depends only on the structural trigger; condition
   # values are read via isolate() so editing inputs does not rebuild controls.
   output$filters_ui = shiny::renderUI({
-    filters_render_trigger()
+    filters_render$depend()
     groups = shiny::isolate(filters_list())
 
     if (length(groups) == 0) {
