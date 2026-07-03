@@ -456,15 +456,10 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
     # Debounced name filter so the table does not rebuild per keystroke
     repo_name_filter = shiny::debounce(shiny::reactive(input$repo_filter), 300)
 
-    # Icon tag for the gt cells; the Font Awesome dependency is already on the
-    # page via the static shiny::icon() uses in the rubric tab
-    cell_icon = function(name, ...) {
-      shiny::icon(name, class = "fa-fw fs-6", ...)
-    }
-
-    # Create repository table with gt. Rendered as static HTML (rather than
-    # gt::render_gt) so the gt_shiny input binding is not registered on the same
-    # id as the output, which would trigger a shared input/output id warning.
+    # Create repository table with gt (the data/gt builders live in
+    # utils_mark_table.R). Rendered as static HTML (rather than gt::render_gt)
+    # so the gt_shiny input binding is not registered on the same id as the
+    # output, which would trigger a shared input/output id warning.
     output$repo_table = shiny::renderUI({
       # Rebuild only after grading data is actually written (the rubric module
       # bumps its version on selection, comment, delete, and import writes);
@@ -483,210 +478,40 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
         all_progress = calculate_grading_progress(root, question_names, repo_list, graded_pairs = graded_pairs)
       }
 
-      # Apply the name and status filters from the card header. Button ids
-      # stay keyed to each repo's position in the full repo_list so the
-      # observers registered over seq_along(repo_list) keep working.
-      visible = repo_list
-      flt = repo_name_filter()
-      if (!is.null(flt) && nzchar(trimws(flt))) {
-        visible = visible[grepl(tolower(trimws(flt)), tolower(visible), fixed = TRUE)]
-      }
-      if (identical(input$repo_status_filter, "failed")) {
-        failed = vapply(repo_list, function(repo) {
-          if (!is.null(repo_errors[[repo]])) return(TRUE)
-          res = validation_results[[repo]]
-          !is.null(res) && any(vapply(res, function(q) q$status %in% c("fail", "error"), logical(1)))
-        }, logical(1))
-        visible = intersect(visible, repo_list[failed])
-      }
-      if (identical(input$repo_status_filter, "ungraded") && !is.null(all_progress)) {
-        visible = intersect(visible, repo_list[all_progress[repo_list] < length(question_names)])
-      }
-      if (identical(input$repo_status_filter, "graded") && !is.null(all_progress)) {
-        visible = intersect(visible, repo_list[all_progress[repo_list] >= length(question_names)])
-      }
+      visible = filter_repo_table_rows(
+        repo_list,
+        name_filter = repo_name_filter(),
+        status_filter = input$repo_status_filter,
+        validation_results = validation_results,
+        repo_errors = repo_errors,
+        all_progress = all_progress,
+        question_names = question_names
+      )
 
       if (length(visible) == 0) {
         return(shiny::p("No repositories match the current filters.", class = "text-muted fst-italic m-2"))
       }
 
-      visible_idx = match(visible, repo_list)
-
-      # Create table data with action buttons and validation summary
-      repo_df = data.frame(
-        Repository = visible,
-        OriginalName = visible,  # Store original names for button creation
-        stringsAsFactors = FALSE
+      # The active-selection highlight is read once via isolate() (so the
+      # table is not re-rendered on every repo click) and baked into the
+      # class; subsequent selections toggle .active via shinyjs.
+      table_data = build_repo_table_data(
+        visible = visible,
+        visible_idx = match(visible, repo_list),
+        repo_list = repo_list,
+        collection = collection,
+        artifact_paths = artifact_paths,
+        repo_to_github = repo_to_github,
+        validation_results = validation_results,
+        template_obj = template_obj,
+        repo_errors = repo_errors,
+        all_progress = all_progress,
+        graded_pairs = graded_pairs,
+        question_names = question_names,
+        active_row = shiny::isolate(selected_repo_index())
       )
 
-      # Add Folder column. Every action button reports its row index through
-      # one shared input per column (priority: 'event' so re-clicking the same
-      # row re-fires), keeping the server at one observer per column instead
-      # of one per repo. Cells are built as htmltools tags (escaping is
-      # structural) and rendered to strings at the gt boundary.
-      repo_df$Folder = sapply(visible_idx, function(i) {
-        as.character(htmltools::tags$button(
-          onclick = paste0("Shiny.setInputValue('folder_clicked', ", i, ", {priority: 'event'})"),
-          class = "btn btn-link p-0 border-0 text-reset",
-          title = "Open folder",
-          cell_icon("folder-open")
-        ))
-      })
-
-      # Add GitHub column
-      repo_df$GitHub = sapply(visible, function(repo) {
-        if (repo %in% names(repo_to_github)) {
-          github_url = paste0("https://github.com/", repo_to_github[[repo]])
-          as.character(htmltools::a(
-            href = github_url,
-            target = "_blank",
-            class = "text-reset text-decoration-none",
-            title = "Open on GitHub",
-            cell_icon("github")
-          ))
-        } else {
-          as.character(htmltools::span(
-            class = "opacity-25",
-            title = "No GitHub repository",
-            cell_icon("github")
-          ))
-        }
-      })
-
-      # Add artifact column with clickable icons for repos with a local report
-      repo_df$Artifacts = sapply(visible_idx, function(i) {
-        repo = repo_list[i]
-        if (!is.na(artifact_paths[[repo]])) {
-          # Has a resolved local report - clickable file icon
-          as.character(htmltools::tags$button(
-            onclick = paste0("Shiny.setInputValue('artifact_clicked', ", i, ", {priority: 'event'})"),
-            class = "btn btn-link p-0 border-0 text-reset",
-            title = "View artifact",
-            cell_icon("file")
-          ))
-        } else {
-          # No report found - greyed out unclickable icon
-          as.character(htmltools::span(
-            class = "opacity-25",
-            title = "No artifact available",
-            cell_icon("file")
-          ))
-        }
-      })
-
-      # Add source code column with clickable file-code icons; repos without a
-      # matching document get a greyed-out marker instead of a dead button
-      repos_with_doc = collection$repo
-      repo_df$Source = sapply(visible_idx, function(i) {
-        repo = repo_list[i]
-        if (!repo %in% repos_with_doc) {
-          return(as.character(htmltools::span(
-            class = "opacity-25",
-            title = "No document found",
-            cell_icon("file-code")
-          )))
-        }
-        as.character(htmltools::tags$button(
-          onclick = paste0("Shiny.setInputValue('source_clicked', ", i, ", {priority: 'event'})"),
-          class = "btn btn-link p-0 border-0 text-reset",
-          title = "View source code",
-          cell_icon("file-code")
-        ))
-      })
-
-      # Add validation summary column
-      repo_df$Validation = sapply(
-        visible, validation_status_cell,
-        validation_results = validation_results, template_obj = template_obj,
-        repo_errors = repo_errors
-      )
-
-      # Add grading progress column with progress bars
-      repo_df$Grading = sapply(
-        visible, grading_progress_cell,
-        template_obj = template_obj, all_progress = all_progress,
-        graded_pairs = graded_pairs, question_names = question_names
-      )
-
-      # Create clickable repository names. The active-selection highlight is read
-      # once via isolate() (so the table is not re-rendered on every repo click)
-      # and baked into the class; subsequent selections toggle .active via shinyjs.
-      active_row = shiny::isolate(selected_repo_index())
-      repo_df$Repository = purrr::map_chr(seq_along(visible), function(k) {
-        i = visible_idx[k]
-        active_class = if (i == active_row) " active" else ""
-
-        # Just show the repo name - no GitHub icon here; htmltools escapes it,
-        # so a directory name cannot inject markup into the table
-        as.character(htmltools::tags$button(
-          onclick = paste0("Shiny.setInputValue('repo_select_clicked', ", i, ", {priority: 'event'})"),
-          class = paste0("repo-select-btn", active_class),
-          `data-row` = i,
-          visible[k]
-        ))
-      })
-      
-      # Create gt table with all columns
-      table_data = repo_df[, c("Repository", "Folder", "GitHub", "Artifacts", "Source", "Validation", "Grading"), drop = FALSE]
-      
-      gt_table = gt::gt(table_data) |>
-        gt::fmt_markdown(columns = .data$Repository) |>
-        gt::fmt_markdown(columns = .data$Folder) |>
-        gt::fmt_markdown(columns = .data$GitHub) |>
-        gt::fmt_markdown(columns = .data$Artifacts) |>
-        gt::fmt_markdown(columns = .data$Source) |>
-        gt::fmt_markdown(columns = .data$Grading) |>
-        gt::fmt_markdown(columns = .data$Validation) |>
-        gt::cols_label(
-          Repository = "Repository", 
-          Folder = "", GitHub = "", Artifacts = "", Source = "",
-          Validation = "Validation", Grading = "Progress"
-        ) |>
-        # Icon and validation columns hold fixed-size content, so they get
-        # fixed widths; Repository is left unspecified so it absorbs all
-        # remaining width (table-layout is fixed), keeping the icon cluster
-        # tight at any viewport size.
-        gt::cols_width(
-          Folder ~ gt::px(32),
-          GitHub ~ gt::px(32),
-          Artifacts ~ gt::px(32),
-          Source ~ gt::px(32),
-          Validation ~ gt::px(80),
-          Grading ~ gt::pct(24)
-        ) |>
-        gt::cols_align(align = "center", columns = .data$Validation)
-      
-      styled_table = gt_table |>
-        gt::tab_options(
-          table.width = gt::pct(100),
-          table.font.size = "12px",  # Smaller font size
-          data_row.padding = "2px",
-          data_row.padding.horizontal = "6px",
-          column_labels.hidden = FALSE,  # Show column headers
-          table.border.top.style = "none",
-          table.border.bottom.style = "none",
-          table.border.left.style = "none",
-          table.border.right.style = "none"
-        ) |>
-        gt::opt_css(
-          css = "
-          .gt_table {
-            border: none !important;
-          }
-          .gt_col_heading {
-            font-size: 11px !important;
-            font-weight: bold !important;
-            padding: 4px 6px !important;
-          }
-          /* Gutter between the repo name and the icon cluster: scales with
-             the table width but is capped so wide windows stay together */
-          .gt_table td:first-child {
-            padding-right: clamp(8px, 3%, 24px) !important;
-          }
-          "
-        )
-
-      shiny::HTML(gt::as_raw_html(styled_table, inline_css = FALSE))
+      shiny::HTML(gt::as_raw_html(repo_table_gt(table_data), inline_css = FALSE))
     })
     
     # Handle repository button clicks (the clicked row index is the input value)
