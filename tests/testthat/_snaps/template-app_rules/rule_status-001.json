@@ -10,6 +10,15 @@
     "question_names": {
       "1": "Question 1"
     },
+    "rules_per_question": {
+      "1": {
+        "1": {
+          "node_type": "Any node",
+          "verb": "has at least",
+          "values": 1
+        }
+      }
+    },
     "selected_nodes": {
       "1": "question-1-understanding-r"
     },

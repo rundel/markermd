@@ -753,6 +753,18 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
           }
         })
       },
+      rules_per_question = {
+        modules = question_modules()
+        purrr::map(modules, function(m) {
+          if (!is.null(m$server) && !is.null(m$server$question)) {
+            lapply(m$server$question()@rules, function(r) {
+              list(node_type = r@node_type, verb = r@verb, values = r@values)
+            })
+          } else {
+            NULL
+          }
+        })
+      },
       selected_nodes = {
         modules = question_modules()
         purrr::map(modules, function(m) {

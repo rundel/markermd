@@ -10,6 +10,11 @@
     "question_names": {
       "1": "Question 1"
     },
+    "rules_per_question": {
+      "1": [
+
+      ]
+    },
     "selected_nodes": {
       "1": "q1-answer"
     },

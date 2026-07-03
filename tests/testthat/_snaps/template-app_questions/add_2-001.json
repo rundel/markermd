@@ -13,6 +13,14 @@
       "1": "Question 1",
       "2": "Question 2"
     },
+    "rules_per_question": {
+      "1": [
+
+      ],
+      "2": [
+
+      ]
+    },
     "selected_nodes": {
       "1": [
 
