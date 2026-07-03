@@ -38,7 +38,7 @@ node_classes = function(node) {
 
 truncate_text = function(x, n) {
   x = gsub("\\s+", " ", trimws(x))
-  if (nchar(x) > n) paste0(substr(x, 1, n - 1), "…") else x
+  if (nchar(x) > n) paste0(substr(x, 1, n - 1), "\u2026") else x
 }
 
 # Canonical friendly category for a Pandoc node
@@ -303,7 +303,44 @@ monaco_language_for_node = function(node) {
 #
 # doc: A q2r pandoc document
 
+# Flatten results cached by document object identity. Parsed ASTs are never
+# mutated (any modification copies the object, changing its address), yet
+# selection, validation, and highlighting helpers all re-walk the same
+# document per interaction. Each entry retains its key object, so an address
+# can never be reused by a different object while its entry is alive; hits
+# move an entry to the back so the documents in active use survive eviction.
+
+.flatten_cache = local({
+  e = new.env(parent = emptyenv())
+  e$entries = list()
+  e
+})
+
 q2r_flatten = function(doc) {
+  key = rlang::obj_address(doc)
+  entries = .flatten_cache$entries
+  entry = entries[[key]]
+  if (!is.null(entry)) {
+    if (names(entries)[length(entries)] != key) {
+      entries[[key]] = NULL
+      entries[[key]] = entry
+      .flatten_cache$entries = entries
+    }
+    return(entry$records)
+  }
+
+  records = q2r_flatten_walk(doc)
+
+  entries[[key]] = list(doc = doc, records = records)
+  if (length(entries) > 32) {
+    entries = entries[-1]
+  }
+  .flatten_cache$entries = entries
+
+  records
+}
+
+q2r_flatten_walk = function(doc) {
   records = list()
   heading_stack = list()
   idx = 0L

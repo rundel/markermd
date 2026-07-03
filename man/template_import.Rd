@@ -21,3 +21,8 @@ Reads a template YAML file and stores it in the project's grading database,
 which is the canonical store for templates. This is the inverse of
 \code{\link[=template_export]{template_export()}}. Equivalent to \code{project_set(project, template = path)}.
 }
+\examples{
+\dontrun{
+template_import("hw01-template.yaml", project = "hw01")
+}
+}

@@ -18,6 +18,11 @@ Runs \code{\link[=export_scores]{export_scores()}} and \code{\link[=export_comme
 hand-off step of a grading project, writing \code{scores.csv} and the
 per-repository feedback files from the project's grading database.
 }
+\examples{
+\dontrun{
+export_marks("hw01")
+}
+}
 \seealso{
 \code{\link[=export_scores]{export_scores()}}, \code{\link[=export_comments]{export_comments()}}
 }

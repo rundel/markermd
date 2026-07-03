@@ -9,4 +9,5 @@
 ^docs$
 ^pkgdown$
 _\.new\.png$
+_\.png$
 ^notes$

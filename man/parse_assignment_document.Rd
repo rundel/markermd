@@ -9,6 +9,9 @@ parse_assignment_document(file_path)
 \arguments{
 \item{file_path}{Character. Path to the assignment file}
 }
+\value{
+A q2r \code{pandoc} AST object for the parsed document.
+}
 \description{
 Reads a qmd document, normalises any knitr-style chunk headers so the
 Quarto parser accepts them, and parses it into a q2r \code{pandoc} AST.

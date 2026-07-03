@@ -1,5 +1,3 @@
-library(shinytest2)
-
 file = system.file("examples/test_assignment/repos/student1-excellent/", package = "markermd")
 
 get_n_questions = function(app) {
@@ -8,6 +6,10 @@ get_n_questions = function(app) {
 
 
 test_that("Select Question 1 heading", {
+  announce_app_snapshots("template-app_ast")
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
   app = shinytest2::AppDriver$new(
     template(file),
     name  = "select_3"
@@ -18,6 +20,10 @@ test_that("Select Question 1 heading", {
 })
 
 test_that("Select Question 2 heading", {
+  announce_app_snapshots("template-app_ast")
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
   app = shinytest2::AppDriver$new(
     template(file),
     name  = "select_8"
@@ -28,6 +34,10 @@ test_that("Select Question 2 heading", {
 })
 
 test_that("Select Question 1 & 2 headings", {
+  announce_app_snapshots("template-app_ast")
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
   app = shinytest2::AppDriver$new(
     template(file),
     name  = "select_3_8"

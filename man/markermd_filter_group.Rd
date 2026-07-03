@@ -12,6 +12,9 @@ markermd_filter_group(conditions = list(), negate = FALSE)
 \item{negate}{Logical. When TRUE the whole group's predicate is negated
 (logical NOT around the ANDed conditions).}
 }
+\value{
+A \code{markermd_filter_group} S7 object.
+}
 \description{
 S7 class representing a group of filter conditions combined
 with logical AND. A question's filter groups are combined with logical OR.

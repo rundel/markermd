@@ -99,10 +99,8 @@ ast_preview_observers = function(input, nodes, id_prefix = NULL, node_at = NULL,
 # title: Character. Panel title (default: "Document Structure")
 # header_extra: Tag. Optional content shown on the right of the card header
 #   (the template app shows the active-question badge there)
-# show_clear_button: Logical. Whether to show the clear-selections footer
-#   button (the template app now clears from the question card instead)
 
-ast_module_ui = function(id, title = "Document Structure", header_extra = NULL, show_clear_button = FALSE) {
+ast_module_ui = function(id, title = "Document Structure", header_extra = NULL) {
   ns = shiny::NS(id)
 
   bslib::card(
@@ -119,13 +117,7 @@ ast_module_ui = function(id, title = "Document Structure", header_extra = NULL, 
         class = "bg-light p-3",
         shiny::uiOutput(ns("ast_tree_ui"))
       )
-    ),
-    if (show_clear_button) {
-      bslib::card_footer(
-        class = "text-center",
-        shiny::actionButton(ns("clear_selections"), "Clear selected nodes", class = "btn-secondary btn-sm")
-      )
-    }
+    )
   )
 }
 
@@ -213,12 +205,7 @@ ast_module_server = function(id, ast, selected_nodes = shiny::reactive(integer(0
       }
     })
 
-    result = list(
-      ast_nodes = ast_nodes,
-      clear_clicked = shiny::reactive({
-        input$clear_selections
-      })
-    )
+    result = list()
 
     if (interactive) {
       result$node_clicked = shiny::reactive({

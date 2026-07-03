@@ -18,3 +18,8 @@ The output \code{path}, invisibly.
 Writes the template stored in the project's grading database to a YAML file
 (the optional import/export format). This is the inverse of \code{\link[=template_import]{template_import()}}.
 }
+\examples{
+\dontrun{
+template_export("hw01-template.yaml", project = "hw01")
+}
+}

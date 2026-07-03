@@ -18,3 +18,7 @@ timestamps, and the configured locations along with whether they exist (repo
 and comment counts, artifact directories, the grading database, and the
 template).
 }
+\examples{
+project = system.file("examples/test_assignment2", package = "markermd")
+project_sitrep(project)
+}

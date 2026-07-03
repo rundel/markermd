@@ -56,6 +56,15 @@ activity, this targeted setter errors on such a pair unless
 \code{overwrite = TRUE}, so a script cannot believe a write happened when it was
 ignored.
 }
+\examples{
+\dontrun{
+marks_set("student1-hw01", "Question 2",
+  items = "Looks good",
+  private_comment = "Quartiles and summary statistics all present.",
+  project = "hw01"
+)
+}
+}
 \seealso{
 \code{\link[=marks_import]{marks_import()}}, \code{\link[=marks_export]{marks_export()}}
 }

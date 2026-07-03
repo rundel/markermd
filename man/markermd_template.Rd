@@ -17,6 +17,9 @@ markermd_template(
 
 \item{metadata}{template_metadata. Template metadata}
 }
+\value{
+A \code{markermd_template} S7 object.
+}
 \description{
 S7 class representing a complete markermd template with questions and metadata
 }

@@ -28,14 +28,11 @@ get_allowed_filter_condition_types = function() {
   )
 }
 
-#' Validate filter condition type
-#'
-#' @description Checks if a filter condition type is valid according to the
-#' allowed types.
-#'
-#' @param type Character. The condition type to validate
-#' @return Character error message if invalid, NULL if valid
-#' @export
+# Checks if a filter condition type is valid according to the allowed types.
+# Returns a character error message if invalid, NULL if valid.
+#
+# type: Character. The condition type to validate
+
 validate_filter_condition_type = function(type) {
   if (length(type) != 1) {
     return("Filter condition type must be a single character string")
@@ -57,17 +54,15 @@ validate_filter_condition_type = function(type) {
   NULL
 }
 
-#' Validate filter condition value based on condition type
-#'
-#' @description Validates a filter condition value according to the
-#' requirements of its condition type. "node type" values are one or more node
-#' kinds from get_allowed_node_types() (excluding "Any node"), combined as a
-#' logical OR; the other types take a single character string (empty allowed).
-#'
-#' @param type Character. The condition type that determines validation requirements
-#' @param value Character. The value to validate
-#' @return Character error message if invalid, NULL if valid
-#' @export
+# Validates a filter condition value according to the requirements of its
+# condition type. "node type" values are one or more node kinds from
+# get_allowed_node_types() (excluding "Any node"), combined as a logical OR;
+# the other types take a single character string (empty allowed). Returns a
+# character error message if invalid, NULL if valid.
+#
+# type: Character. The condition type that determines validation requirements
+# value: Character. The value to validate
+
 validate_filter_condition_value = function(type, value) {
   type_error = validate_filter_condition_type(type)
   if (!is.null(type_error)) {
@@ -106,15 +101,12 @@ validate_filter_condition_value = function(type, value) {
   NULL
 }
 
-#' Display choices for the filter condition-type select
-#'
-#' @description Returns the get_allowed_filter_condition_types() values with
-#' display labels annotating each type's matching semantics (exact, regex,
-#' glob, or the option mini-syntax), so the semantics stay visible after a
-#' value has been typed.
-#'
-#' @return Named character vector suitable for shiny select choices
-#' @export
+# Display choices for the filter condition-type select: the
+# get_allowed_filter_condition_types() values with display labels annotating
+# each type's matching semantics (exact, regex, glob, or the option
+# mini-syntax), so the semantics stay visible after a value has been typed.
+# Returns a named character vector suitable for shiny select choices.
+
 filter_condition_type_choices = function() {
   c(
     "node type" = "node type",
@@ -127,14 +119,11 @@ filter_condition_type_choices = function() {
   )
 }
 
-#' Get default value for a filter condition type
-#'
-#' @description Returns an appropriate default value for each filter condition
-#' type. Used when creating new conditions or resetting after a type change.
-#'
-#' @param type Character. The condition type
-#' @return Default value appropriate for the condition type
-#' @export
+# Returns an appropriate default value for each filter condition type. Used
+# when creating new conditions or resetting after a type change.
+#
+# type: Character. The condition type
+
 get_default_filter_condition_value = function(type) {
   switch(type,
     "node type" = "Div",
@@ -215,7 +204,7 @@ filter_node_kind_exprs = list(
 filter_node_kind_expr = function(kind) {
   expr = filter_node_kind_exprs[[kind]]
   if (is.null(expr)) {
-    stop("Unknown node kind for filter: ", kind)
+    cli::cli_abort("Unknown node kind for filter: {kind}")
   }
   expr
 }
@@ -273,7 +262,7 @@ filter_condition_expr = function(condition) {
       }
     },
     "has engine" = call("has_engine", condition@value),
-    stop("Unknown filter condition type: ", condition@type)
+    cli::cli_abort("Unknown filter condition type: {condition@type}")
   )
 
   if (condition@negate) negate_expr(expr) else expr

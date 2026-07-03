@@ -1,5 +1,3 @@
-library(shinytest2)
-
 file = system.file("examples/test_assignment/repos/student1-excellent/", package = "markermd")
 
 get_n_questions = function(app) {
@@ -8,6 +6,10 @@ get_n_questions = function(app) {
 
 
 test_that("Add 1 question", {
+  announce_app_snapshots("template-app_questions")
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
   app = shinytest2::AppDriver$new(
     template(file),
     name  = "add_1"
@@ -24,6 +26,10 @@ test_that("Add 1 question", {
 })
 
 test_that("Add 2 questions", {
+  announce_app_snapshots("template-app_questions")
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
   app = shinytest2::AppDriver$new(
     template(file),
     name  = "add_2"
@@ -40,6 +46,10 @@ test_that("Add 2 questions", {
 })
 
 test_that("Add 2 questions, delete 1", {
+  announce_app_snapshots("template-app_questions")
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
   app = shinytest2::AppDriver$new(
     template(file),
     name  = "add_2-delete_1"
@@ -64,6 +74,10 @@ test_that("Add 2 questions, delete 1", {
 
 
 test_that("Add 2 questions, delete 1, add 1", {
+  announce_app_snapshots("template-app_questions")
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
   app = shinytest2::AppDriver$new(
     template(file),
     name  = "add_2-delete_1-add_1"
@@ -93,6 +107,10 @@ test_that("Add 2 questions, delete 1, add 1", {
 
 
 test_that("Save Template downloads a readable YAML template", {
+  announce_app_snapshots("template-app_questions")
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
   app = shinytest2::AppDriver$new(
     template(file),
     name = "save_yaml"

@@ -29,3 +29,7 @@ a validation rule scoped to that anchor would see them (via the same
 section-selection logic used during grading), so they can drive starter-rule
 heuristics when scaffolding a template.
 }
+\examples{
+key = system.file("examples/test_assignment2/hw3-key", package = "markermd")
+assignment_outline(key)
+}

@@ -88,10 +88,10 @@ ast_render_opts = function(mode = c("interactive", "readonly"),
   start_depth = as.integer(start_depth)
 
   if (start_depth < 0L) {
-    stop("`start_depth` must be >= 0", call. = FALSE)
+    cli::cli_abort("`start_depth` must be >= 0")
   }
   if (mode == "interactive" && (drop_root || start_depth != 0L)) {
-    stop("interactive mode requires `drop_root = FALSE` and `start_depth = 0`", call. = FALSE)
+    cli::cli_abort("interactive mode requires `drop_root = FALSE` and `start_depth = 0`")
   }
 
   list(
@@ -142,9 +142,14 @@ render_ast_tree = function(tree_items, ns, opts = ast_render_opts()) {
     "ast-tree-readonly"
   }
 
-  all_selected_nodes = compute_all_selected_nodes(tree_items, opts$selected)
+  # One children-by-parent index for the whole render: the tree re-renders on
+  # every selection click, and per-level rescans of all items made large
+  # documents quadratic
+  children_index = tree_children_index(tree_items)
 
-  tree_html = build_ast_tree_level(tree_items, opts$start_depth, NULL, opts, all_selected_nodes, ns)
+  all_selected_nodes = compute_all_selected_nodes(tree_items, opts$selected, children_index)
+
+  tree_html = build_ast_tree_level(tree_items, opts$start_depth, NULL, opts, all_selected_nodes, ns, children_index)
 
   shiny::tagList(
     ast_tree_css(css_class, opts),
@@ -590,6 +595,21 @@ ast_tree_node_content = function(item, opts, tree_items, ns,
   )
 }
 
+# Children of each tree item, keyed by parent index as a character string
+# ("root" for items with no parent). Built once per render so each level looks
+# up its items directly instead of rescanning the whole list.
+#
+# tree_items: All tree items
+
+tree_children_index = function(tree_items) {
+  index = new.env(parent = emptyenv())
+  for (item in tree_items) {
+    key = if (is.null(item$parent_index)) "root" else as.character(item$parent_index)
+    index[[key]] = c(index[[key]], list(item))
+  }
+  index
+}
+
 # Build the nested <li> elements for one depth level, recursing into children
 #
 # tree_items: All tree items
@@ -598,14 +618,16 @@ ast_tree_node_content = function(item, opts, tree_items, ns,
 # opts: Render options from ast_render_opts()
 # all_selected_nodes: Vector of all selected node indices (direct + descendants)
 # ns: Shiny namespace function
+# children_index: Children-by-parent index (see tree_children_index())
 
-build_ast_tree_level = function(tree_items, target_depth, parent_index, opts, all_selected_nodes, ns) {
+build_ast_tree_level = function(tree_items, target_depth, parent_index, opts, all_selected_nodes, ns, children_index = NULL) {
+  if (is.null(children_index)) {
+    children_index = tree_children_index(tree_items)
+  }
 
-  level_items = tree_items[sapply(tree_items, function(x) {
-    x$depth == target_depth &&
-    ((is.null(parent_index) && is.null(x$parent_index)) ||
-     (!is.null(parent_index) && !is.null(x$parent_index) && x$parent_index == parent_index))
-  })]
+  key = if (is.null(parent_index)) "root" else as.character(parent_index)
+  candidates = children_index[[key]]
+  level_items = Filter(function(x) x$depth == target_depth, candidates)
 
   if (length(level_items) == 0) {
     return(list())
@@ -618,10 +640,7 @@ build_ast_tree_level = function(tree_items, target_depth, parent_index, opts, al
     is_indirectly_selected = is_selected && !is_directly_selected
     is_filtered = item$index %in% opts$filtered
 
-    children = tree_items[sapply(tree_items, function(x) {
-      !is.null(x$parent_index) && x$parent_index == item$index
-    })]
-    has_children = length(children) > 0
+    has_children = length(children_index[[as.character(item$index)]]) > 0
 
     node_content = ast_tree_node_content(
       item, opts, tree_items, ns,
@@ -632,7 +651,7 @@ build_ast_tree_level = function(tree_items, target_depth, parent_index, opts, al
     li_class = if (item$type == "document_root") "document-root" else NULL
 
     if (has_children) {
-      child_elements = build_ast_tree_level(tree_items, target_depth + 1, item$index, opts, all_selected_nodes, ns)
+      child_elements = build_ast_tree_level(tree_items, target_depth + 1, item$index, opts, all_selected_nodes, ns, children_index)
       shiny::tags$li(
         class = li_class,
         node_content,
@@ -729,38 +748,16 @@ has_selected_ancestor = function(tree_items, node_index, directly_selected_nodes
     return(FALSE)
   }
 
-  node_item = NULL
-  for (item in tree_items) {
-    if (item$index == node_index) {
-      node_item = item
-      break
-    }
-  }
-
-  if (is.null(node_item)) {
-    return(FALSE)
-  }
-
-  current_parent = node_item$parent_index
+  # Only called for interactive trees, which never drop the root, so the
+  # "node index i is stored at tree_items[[i + 1]]" invariant holds and the
+  # parent chain can be walked by direct indexing
+  current_parent = tree_items[[node_index + 1]]$parent_index
 
   while (!is.null(current_parent) && current_parent != 0) {  # 0 is document root
     if (current_parent %in% directly_selected_nodes) {
       return(TRUE)
     }
-
-    parent_item = NULL
-    for (item in tree_items) {
-      if (item$index == current_parent) {
-        parent_item = item
-        break
-      }
-    }
-
-    if (is.null(parent_item)) {
-      break
-    }
-
-    current_parent = parent_item$parent_index
+    current_parent = tree_items[[current_parent + 1]]$parent_index
   }
 
   return(FALSE)
@@ -770,20 +767,29 @@ has_selected_ancestor = function(tree_items, node_index, directly_selected_nodes
 #
 # tree_items: List of tree items
 # directly_selected_nodes: Vector of directly selected node indices
+# children_index: Optional children-by-parent index (see tree_children_index())
 
-compute_all_selected_nodes = function(tree_items, directly_selected_nodes) {
+compute_all_selected_nodes = function(tree_items, directly_selected_nodes, children_index = NULL) {
 
   if (length(directly_selected_nodes) == 0) {
     return(integer(0))
   }
 
-  all_selected = integer(0)
+  if (is.null(children_index)) {
+    children_index = tree_children_index(tree_items)
+  }
 
-  for (node_index in directly_selected_nodes) {
+  all_selected = integer(0)
+  stack = as.integer(directly_selected_nodes)
+  while (length(stack) > 0) {
+    node_index = stack[[1]]
+    stack = stack[-1]
     all_selected = c(all_selected, node_index)
 
-    descendants = find_all_descendants(tree_items, node_index)
-    all_selected = c(all_selected, descendants)
+    kids = children_index[[as.character(node_index)]]
+    if (length(kids) > 0) {
+      stack = c(stack, vapply(kids, function(k) as.integer(k$index), integer(1)))
+    }
   }
 
   return(unique(sort(all_selected)))

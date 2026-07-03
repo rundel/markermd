@@ -41,6 +41,14 @@ scoring setup is only updated when the file provides a \code{scoring} block.
 Question names in the file must exactly match question names in the
 project's stored template; mismatches abort before anything is written.
 }
+\examples{
+\dontrun{
+rubric_import("hw01-rubric.yaml", project = "hw01")
+
+# Replace each affected question's existing items
+rubric_import("hw01-rubric.yaml", project = "hw01", mode = "replace")
+}
+}
 \seealso{
 \code{\link[=rubric_export]{rubric_export()}}, \code{\link[=read_rubric_yaml]{read_rubric_yaml()}}, \code{\link[=validate_rubric_file]{validate_rubric_file()}}
 }

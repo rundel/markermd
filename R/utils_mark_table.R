@@ -14,11 +14,11 @@ validation_status_cell = function(repo, validation_results, template_obj, repo_e
   err = repo_errors[[repo]]
   if (!is.null(err)) {
     first_line = strsplit(err, "\n")[[1]][1]
-    return(paste0(
-      '<span class="text-danger" title="',
-      htmltools::htmlEscape(first_line, attribute = TRUE),
-      '">', as.character(shiny::icon("triangle-exclamation")), '</span>'
-    ))
+    return(as.character(htmltools::span(
+      class = "text-danger",
+      title = first_line,
+      shiny::icon("triangle-exclamation")
+    )))
   }
 
   if (is.null(template_obj)) {
@@ -36,10 +36,10 @@ validation_status_cell = function(repo, validation_results, template_obj, repo_e
   total_count = length(repo_validation)
 
   # Collect failed questions (including errors) in template order
-  template_question_names = sapply(template_obj@questions, function(q) q@name)
+  ordered_names = template_question_names(template_obj)
   validation_names = names(repo_validation)
   failed_questions = character(0)
-  for (question_name in template_question_names) {
+  for (question_name in ordered_names) {
     if (question_name %in% validation_names) {
       validation = repo_validation[[question_name]]
       if (validation$status %in% c("fail", "error")) {
@@ -53,22 +53,33 @@ validation_status_cell = function(repo, validation_results, template_obj, repo_e
   if (fail_count > 0) {
     if (length(failed_questions) > 0) {
       tooltip_parts = c(tooltip_parts, "Failed validation:")
-      tooltip_parts = c(tooltip_parts, paste("•", failed_questions))
+      tooltip_parts = c(tooltip_parts, paste("\u2022", failed_questions))
     }
   } else {
     tooltip_parts = paste("All", total_count, "validation rules passed")
   }
 
-  # Escape each part (question names are instructor-authored but may contain
-  # quotes/markup) before joining on the literal newline entity.
-  tooltip_text = paste(htmltools::htmlEscape(tooltip_parts, attribute = TRUE), collapse = "&#10;")
+  # Parts joined with literal newlines: htmltools escapes the title attribute
+  # structurally (quotes as entities, newlines as &#10;), so instructor-authored
+  # question names cannot inject markup.
+  tooltip_text = paste(tooltip_parts, collapse = "\n")
 
   if (fail_count == 0) {
     # All passed
-    paste0('<span class="text-success" title="', tooltip_text, '">', as.character(shiny::icon("circle-check")), ' ', pass_count, '/', total_count, '</span>')
+    as.character(htmltools::span(
+      class = "text-success",
+      title = tooltip_text,
+      shiny::icon("circle-check"),
+      paste0(" ", pass_count, "/", total_count)
+    ))
   } else {
     # Has failures (including errors)
-    paste0('<span class="text-danger" title="', tooltip_text, '">', as.character(shiny::icon("circle-xmark")), ' ', pass_count, '/', total_count, '</span>')
+    as.character(htmltools::span(
+      class = "text-danger",
+      title = tooltip_text,
+      shiny::icon("circle-xmark"),
+      paste0(" ", pass_count, "/", total_count)
+    ))
   }
 }
 
@@ -114,20 +125,29 @@ grading_progress_cell = function(repo, template_obj, all_progress, graded_pairs,
   } else {
     if (length(ungraded_questions) > 0) {
       tooltip_parts = c(tooltip_parts, "Ungraded questions:")
-      tooltip_parts = c(tooltip_parts, paste("•", ungraded_questions))
+      tooltip_parts = c(tooltip_parts, paste("\u2022", ungraded_questions))
     }
   }
 
-  tooltip_text = paste(htmltools::htmlEscape(tooltip_parts, attribute = TRUE), collapse = "&#10;")
+  tooltip_text = paste(tooltip_parts, collapse = "\n")
 
   # Bootstrap progress component with the count overlaid
-  paste0(
-    '<div class="progress position-relative" title="', tooltip_text, '" style="height: 16px;">',
-    '<div class="progress-bar bg-success" role="progressbar" style="width: ', percentage, '%;"',
-    ' aria-valuenow="', graded_questions, '" aria-valuemin="0" aria-valuemax="', total_questions, '"></div>',
-    '<span class="position-absolute top-50 start-50 translate-middle fw-semibold text-dark" style="font-size: 10px; pointer-events: none;">',
-    graded_questions, '/', total_questions,
-    '</span>',
-    '</div>'
-  )
+  as.character(htmltools::div(
+    class = "progress position-relative",
+    title = tooltip_text,
+    style = "height: 16px;",
+    htmltools::div(
+      class = "progress-bar bg-success",
+      role = "progressbar",
+      style = paste0("width: ", percentage, "%;"),
+      `aria-valuenow` = graded_questions,
+      `aria-valuemin` = "0",
+      `aria-valuemax` = total_questions
+    ),
+    htmltools::span(
+      class = "position-absolute top-50 start-50 translate-middle fw-semibold text-dark",
+      style = "font-size: 10px; pointer-events: none;",
+      paste0(graded_questions, "/", total_questions)
+    )
+  ))
 }

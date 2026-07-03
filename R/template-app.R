@@ -16,6 +16,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
   ui = shiny::tagList(
     # Initialize shinyjs
     shinyjs::useShinyjs(),
+    markermd_modal_css(),
 
       shiny::tags$style(shiny::HTML("
       /* Rule form controls */
@@ -99,10 +100,6 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       /* dropdownParent='body' renders the menu on <body> */
       .selectize-dropdown { font-size: 12px !important; }
 
-      /* Modal styling */
-      .modal-header { padding: 8px 15px !important; }
-      .modal-title { margin: 0 !important; padding: 0 !important; line-height: 1.2 !important; }
-      
       /* Question cards: inactive cards collapse to their header plus a
          one-line summary; the active card shows its full body. Toggled via
          the question-active class on the card wrapper. */
@@ -166,9 +163,31 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
         bslib::card_footer(
           class = "text-center",
           shiny::uiOutput("template_status_ui"),
-          shiny::uiOutput("save_button_ui"),
-          # Hidden file input the Import button triggers directly (see
-          # save_button_ui). Bound once here so the upload survives re-renders.
+          if (!is.null(project)) {
+            # Project sessions: the import/export popover is static so its
+            # download link binds exactly once; only the save button re-renders
+            # (see save_button_ui)
+            shiny::div(
+              class = "d-flex gap-2 justify-content-center",
+              shiny::uiOutput("save_button_ui"),
+              io_menu_ui(
+                id = "io_menu",
+                title = "Template YAML",
+                export_buttons = list(
+                  shiny::downloadButton(
+                    "export_template",
+                    "Export",
+                    class = "btn-outline-secondary btn-sm"
+                  )
+                ),
+                import_input_id = "import_file"
+              )
+            )
+          } else {
+            shiny::uiOutput("save_button_ui")
+          },
+          # Hidden file input the Import button triggers directly. Bound once
+          # here so the upload survives re-renders.
           if (!is.null(project)) shiny::div(
             class = "visually-hidden",
             shiny::fileInput("import_file", NULL, accept = c(".yaml", ".yml", "text/yaml"))
@@ -746,42 +765,13 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       has_questions = length(question_modules()) > 0
       save_class = if (template_dirty()) "btn-warning" else "btn-success"
       if (!is.null(project)) {
-        # Project sessions: save to the project database, plus YAML
-        # export/import. Import is available even with no questions; saving and
-        # exporting an empty template is not.
-        shiny::div(
-          class = "d-flex gap-2 justify-content-center",
-          shiny::actionButton(
-            "save_to_project",
-            "Save to Project",
-            class = paste(save_class, "btn-sm"),
-            disabled = !has_questions
-          ),
-          # Import/Export tucked into a popover off an exchange-arrows icon
-          bslib::popover(
-            shiny::tags$button(
-              shiny::icon("right-left"),
-              id = "io_menu",
-              type = "button",
-              class = "btn btn-outline-secondary btn-sm",
-              title = "Import / Export"
-            ),
-            shiny::div(
-              class = "d-grid gap-2",
-              shiny::downloadButton(
-                "export_template",
-                "Export",
-                class = paste(c("btn-outline-secondary btn-sm", if (!has_questions) "disabled"), collapse = " ")
-              ),
-              shiny::tags$button(
-                "Import",
-                type = "button",
-                class = "btn btn-outline-secondary btn-sm",
-                onclick = "document.getElementById('import_file').click();"
-              )
-            ),
-            title = "Template YAML"
-          )
+        # Project sessions: save to the project database. The adjacent
+        # import/export popover is static UI (see the card footer).
+        shiny::actionButton(
+          "save_to_project",
+          "Save to Project",
+          class = paste(save_class, "btn-sm"),
+          disabled = !has_questions
         )
       } else if (!has_questions) {
         shiny::actionButton(
@@ -798,6 +788,18 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
         )
       }
     })
+
+    # Import is available even with no questions; exporting an empty template
+    # is not, so the static export button is soft-disabled via its class
+    if (!is.null(project)) {
+      shiny::observe({
+        shinyjs::toggleClass(
+          id = "export_template",
+          class = "disabled",
+          condition = length(question_modules()) == 0
+        )
+      })
+    }
 
     # Save template functionality (file download for non-project sessions)
     output$save_template = shiny::downloadHandler(
@@ -1032,7 +1034,8 @@ template_app_standalone = function(ast, template_obj = NULL, assignment_path = N
 #'   used when loading a template whose stored `source.path` cannot be located.
 #' @param ... Additional arguments passed to shiny::shinyApp()
 #'
-#' @return Launches Shiny application for template creation
+#' @return A Shiny app object (from [shiny::shinyApp()]); printing it at an
+#'   interactive console runs the template editor.
 #' @export
 #'
 #' @examples
@@ -1060,7 +1063,7 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", as
   
   # Validate inputs
   if (missing(assignment_path)) {
-    stop("assignment_path is required")
+    cli::cli_abort("assignment_path is required")
   }
   
   # Determine what type of input we have
@@ -1085,7 +1088,7 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", as
     if (grepl("\\.ya?ml$", assignment_path, ignore.case = TRUE)) {
       # Input is a saved template YAML file
       if (!file.exists(assignment_path)) {
-        stop("Template file does not exist: ", assignment_path, call. = FALSE)
+        cli::cli_abort("Template file does not exist: {assignment_path}")
       }
       template_obj = read_template_yaml(assignment_path, assignment = assignment, require_ast = TRUE)
       is_template_mode = TRUE
@@ -1096,14 +1099,8 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", as
     }
 
   } else {
-    stop(
-      "assignment_path must be a single character string (an assignment file, a ",
-      "directory containing one, a saved template .yaml, or a GitHub '<owner>/<repo>') ",
-      "or a markermd_template object, not ",
-      if (is.character(assignment_path)) paste0("a length-", length(assignment_path), " character vector") else paste0("an object of class ", class(assignment_path)[1]),
-      ".",
-      call. = FALSE
-    )
+    input_desc = if (is.character(assignment_path)) paste0("a length-", length(assignment_path), " character vector") else paste0("an object of class ", class(assignment_path)[1])
+    cli::cli_abort("assignment_path must be a single character string (an assignment file, a directory containing one, a saved template .yaml, or a GitHub '<owner>/<repo>') or a markermd_template object, not {input_desc}.")
   }
   
   # Handle template mode vs assignment mode (project mode already built `app`)
@@ -1134,7 +1131,7 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", as
 
     if (is_github_repo) {
       if (is.null(local_dir)) {
-        stop("local_dir is required when cloning the GitHub repository '", assignment_path, "'.", call. = FALSE)
+        cli::cli_abort("local_dir is required when cloning the GitHub repository '{assignment_path}'.")
       }
       repo_path = setup_assignment_repo(assignment_path, local_dir, is_github_repo = TRUE)
       file_path = resolve_assignment_file(repo_path, filename)
@@ -1143,18 +1140,13 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", as
       file_path = resolve_assignment_file(assignment_path, filename)
 
     } else if (file.exists(assignment_path)) {
-      if (!tolower(tools::file_ext(assignment_path)) %in% c("qmd", "rmd")) {
-        stop("Assignment file must be a .qmd or .Rmd document: ", assignment_path, call. = FALSE)
+      if (!tolower(fs::path_ext(assignment_path)) %in% c("qmd", "rmd")) {
+        cli::cli_abort("Assignment file must be a .qmd or .Rmd document: {assignment_path}")
       }
       file_path = normalizePath(assignment_path)
 
     } else {
-      stop(
-        "assignment_path not found: '", assignment_path, "'.\n",
-        "Pass a path to an assignment file (.qmd/.Rmd), a directory containing one, ",
-        "a saved template (.yaml), a markermd project directory, or a GitHub repository as '<owner>/<repo>'.",
-        call. = FALSE
-      )
+      cli::cli_abort("assignment_path not found: '{assignment_path}'.\nPass a path to an assignment file (.qmd/.Rmd), a directory containing one, a saved template (.yaml), a markermd project directory, or a GitHub repository as '<owner>/<repo>'.")
     }
 
     ast = parse_assignment_document(file_path)

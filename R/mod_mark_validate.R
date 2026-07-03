@@ -140,12 +140,10 @@ mark_validate_ui = function(id) {
 #
 # id: Character. Module namespace ID
 # ast: Reactive. The parsed AST object
-# current_repo_name: Reactive. Current repository name
 # validation_results: Reactive. Validation results for current repository
-# selected_question_name: Reactive. Currently selected question name
 # template: Reactive. Template object for reference
 
-mark_validate_server = function(id, ast, current_repo_name = shiny::reactiveVal(NULL), validation_results = shiny::reactiveVal(NULL), selected_question_name = shiny::reactiveVal(NULL), template = shiny::reactiveVal(NULL)) {
+mark_validate_server = function(id, ast, validation_results = shiny::reactiveVal(NULL), template = shiny::reactiveVal(NULL)) {
   shiny::moduleServer(id, function(input, output, session) {
     
     
@@ -216,7 +214,6 @@ mark_validate_server = function(id, ast, current_repo_name = shiny::reactiveVal(
       }
     })
     
-    # Return empty list for now
     return(list())
   })
 }

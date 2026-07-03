@@ -14,7 +14,8 @@
 #' @param use_qmd Logical. Whether to parse .qmd files (TRUE) or .Rmd files (FALSE). Default is TRUE.
 #' @param ... Additional arguments passed to shiny::runApp()
 #'
-#' @return Launches Shiny application
+#' @return The value returned by [shiny::runApp()] when the app exits; called
+#'   for its side effect of running the marking application.
 #' @export
 #'
 #' @examples
@@ -46,23 +47,14 @@ mark = function(path, template = NULL, use_qmd = TRUE, ...) {
 mark_app = function(path, template = NULL, use_qmd = TRUE) {
 
   if (missing(path)) {
-    stop("path is required")
+    cli::cli_abort("path is required")
   }
 
   # Load and resolve the project configuration (errors if not a project)
   project = project_config(path)
   root = project@root
 
-  if (is.na(project@repos)) {
-    cli::cli_abort(c(
-      "No repos directory is configured for this project.",
-      "i" = "Record one with {.code markermd::project_set(\"{root}\", repos = \"repos\")}."
-    ))
-  }
-  repos_dir = fs::path(root, project@repos)
-  if (!fs::dir_exists(repos_dir)) {
-    cli::cli_abort("Configured repos directory does not exist: {.path {repos_dir}}")
-  }
+  repos_dir = project_repos_dir(project)
 
   template_obj = resolve_mark_template(project, template)
 
@@ -108,7 +100,7 @@ mark_app = function(path, template = NULL, use_qmd = TRUE) {
     sort()
 
   if (length(repo_list) == 0) {
-    stop("No repositories found in repos directory: ", repos_dir)
+    cli::cli_abort("No repositories found in repos directory: {repos_dir}")
   }
 
   # Per-repo problem messages: a missing document or the parse error verbatim
@@ -213,11 +205,11 @@ resolve_mark_template = function(project, template) {
 
   if (is.character(template) && length(template) == 1) {
     if (!file.exists(template)) {
-      stop("Template file does not exist: ", template, call. = FALSE)
+      cli::cli_abort("Template file does not exist: {template}")
     }
     template_obj = read_template_yaml(template, require_ast = FALSE)
   } else if (!is.null(template)) {
-    stop("Template must be a file path or markermd_template S7 object")
+    cli::cli_abort("Template must be a file path or markermd_template S7 object")
   } else {
     template_obj = load_template_from_db(project@root, base_dir = project@root)
     if (is.null(template_obj)) {
@@ -229,7 +221,7 @@ resolve_mark_template = function(project, template) {
   }
 
   if (!S7::S7_inherits(template_obj, markermd_template)) {
-    stop("Template file must contain a markermd_template S7 object")
+    cli::cli_abort("Template file must contain a markermd_template S7 object")
   }
   assert_template_compatible(template_obj)
   template_obj
@@ -278,12 +270,8 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       # tab uses static icons), so no CDN stylesheet is needed
       shiny::tags$head(
         shinyjs::useShinyjs(),
-        # CSS to fix modal content formatting (copied from working template app)
+        markermd_modal_css(),
         shiny::tags$style(shiny::HTML('
-          /* Modal styling */
-          .modal-header { padding: 8px 15px !important; }
-          .modal-title { margin: 0 !important; padding: 0 !important; line-height: 1.2 !important; }
-
           /* Content repo select styling - selectize */
           .selectize-control.single .selectize-input {
             font-size: 12px !important;
@@ -405,11 +393,18 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       )
     ),
     
-    # Rubric tab (right aligned)
+    # Rubric tab (right aligned): the content pane and rubric are sibling
+    # modules; the hotkey script drives ids in both, so it gets both namespaces
     bslib::nav_panel(
-      title = "Rubric", 
+      title = "Rubric",
       value = "rubric",
-      mark_rubric_ui("rubric_module")
+      bslib::layout_columns(
+        col_widths = c(7, 5),
+        class = "h-100",
+        mark_content_ui("content_module"),
+        mark_rubric_ui("rubric_module"),
+        rubric_hotkeys_js(shiny::NS("rubric_module"), shiny::NS("content_module"))
+      )
     ),
     
     
@@ -458,24 +453,24 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       )
     })
 
-    # Create reactive trigger for progress updates (initialized here to ensure it exists)
-    progress_update_trigger = shiny::reactiveVal(0)
-
     # Debounced name filter so the table does not rebuild per keystroke
     repo_name_filter = shiny::debounce(shiny::reactive(input$repo_filter), 300)
 
-    # Icon HTML for the raw gt cells; the Font Awesome dependency is already
-    # on the page via the static shiny::icon() uses in the rubric tab
+    # Icon tag for the gt cells; the Font Awesome dependency is already on the
+    # page via the static shiny::icon() uses in the rubric tab
     cell_icon = function(name, ...) {
-      as.character(shiny::icon(name, class = "fa-fw fs-6", ...))
+      shiny::icon(name, class = "fa-fw fs-6", ...)
     }
 
     # Create repository table with gt. Rendered as static HTML (rather than
     # gt::render_gt) so the gt_shiny input binding is not registered on the same
     # id as the output, which would trigger a shared input/output id warning.
     output$repo_table = shiny::renderUI({
-      # Include the progress update trigger as a dependency to force refresh when needed
-      trigger_value = progress_update_trigger()
+      # Rebuild only after grading data is actually written (the rubric module
+      # bumps its version on selection, comment, delete, and import writes);
+      # the output is suspended while the Validation tab is hidden, so tabbing
+      # back recomputes at most once
+      rubric_result$grading_data_version()
 
       # Calculate grading progress for all repos at once: one set of queries
       # feeds the counts, the per-repo ungraded tooltips, and the status filter
@@ -483,7 +478,7 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       question_names = NULL
       graded_pairs = NULL
       if (!is.null(template_obj) && length(template_obj@questions) > 0) {
-        question_names = sapply(template_obj@questions, function(q) q@name)
+        question_names = template_question_names(template_obj)
         graded_pairs = graded_question_pairs(root)
         all_progress = calculate_grading_progress(root, question_names, repo_list, graded_pairs = graded_pairs)
       }
@@ -524,29 +519,37 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
         stringsAsFactors = FALSE
       )
 
-      # Add Folder column
+      # Add Folder column. Every action button reports its row index through
+      # one shared input per column (priority: 'event' so re-clicking the same
+      # row re-fires), keeping the server at one observer per column instead
+      # of one per repo. Cells are built as htmltools tags (escaping is
+      # structural) and rendered to strings at the gt boundary.
       repo_df$Folder = sapply(visible_idx, function(i) {
-        folder_button_id = paste0("folder_", i)
-        paste0(
-          '<button onclick="Shiny.setInputValue(\'', folder_button_id, '\', Math.random())" class="btn btn-link p-0 border-0 text-reset" title="Open folder">',
-          cell_icon("folder-open"),
-          '</button>'
-        )
+        as.character(htmltools::tags$button(
+          onclick = paste0("Shiny.setInputValue('folder_clicked', ", i, ", {priority: 'event'})"),
+          class = "btn btn-link p-0 border-0 text-reset",
+          title = "Open folder",
+          cell_icon("folder-open")
+        ))
       })
 
       # Add GitHub column
       repo_df$GitHub = sapply(visible, function(repo) {
         if (repo %in% names(repo_to_github)) {
-          github_repo = repo_to_github[[repo]]
-          github_url = paste0("https://github.com/", github_repo)
-          paste0(
-            '<a href="', htmltools::htmlEscape(github_url, attribute = TRUE),
-            '" target="_blank" class="text-reset text-decoration-none" title="Open on GitHub">',
-            cell_icon("github"),
-            '</a>'
-          )
+          github_url = paste0("https://github.com/", repo_to_github[[repo]])
+          as.character(htmltools::a(
+            href = github_url,
+            target = "_blank",
+            class = "text-reset text-decoration-none",
+            title = "Open on GitHub",
+            cell_icon("github")
+          ))
         } else {
-          paste0('<span class="opacity-25" title="No GitHub repository">', cell_icon("github"), '</span>')
+          as.character(htmltools::span(
+            class = "opacity-25",
+            title = "No GitHub repository",
+            cell_icon("github")
+          ))
         }
       })
 
@@ -555,15 +558,19 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
         repo = repo_list[i]
         if (!is.na(artifact_paths[[repo]])) {
           # Has a resolved local report - clickable file icon
-          button_id = paste0("artifact_", i)
-          paste0(
-            '<button onclick="Shiny.setInputValue(\'', button_id, '\', Math.random())" class="btn btn-link p-0 border-0 text-reset" title="View artifact">',
-            cell_icon("file"),
-            '</button>'
-          )
+          as.character(htmltools::tags$button(
+            onclick = paste0("Shiny.setInputValue('artifact_clicked', ", i, ", {priority: 'event'})"),
+            class = "btn btn-link p-0 border-0 text-reset",
+            title = "View artifact",
+            cell_icon("file")
+          ))
         } else {
           # No report found - greyed out unclickable icon
-          paste0('<span class="opacity-25" title="No artifact available">', cell_icon("file"), '</span>')
+          as.character(htmltools::span(
+            class = "opacity-25",
+            title = "No artifact available",
+            cell_icon("file")
+          ))
         }
       })
 
@@ -573,14 +580,18 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       repo_df$Source = sapply(visible_idx, function(i) {
         repo = repo_list[i]
         if (!repo %in% repos_with_doc) {
-          return(paste0('<span class="opacity-25" title="No document found">', cell_icon("file-code"), '</span>'))
+          return(as.character(htmltools::span(
+            class = "opacity-25",
+            title = "No document found",
+            cell_icon("file-code")
+          )))
         }
-        button_id = paste0("source_", i)
-        paste0(
-          '<button onclick="Shiny.setInputValue(\'', button_id, '\', Math.random())" class="btn btn-link p-0 border-0 text-reset" title="View source code">',
-          cell_icon("file-code"),
-          '</button>'
-        )
+        as.character(htmltools::tags$button(
+          onclick = paste0("Shiny.setInputValue('source_clicked', ", i, ", {priority: 'event'})"),
+          class = "btn btn-link p-0 border-0 text-reset",
+          title = "View source code",
+          cell_icon("file-code")
+        ))
       })
 
       # Add validation summary column
@@ -605,16 +616,14 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
         i = visible_idx[k]
         active_class = if (i == active_row) " active" else ""
 
-        # Just show repo name - no GitHub icon here. Escaped so a directory
-        # name cannot inject markup into the raw-HTML table.
-        content = htmltools::htmlEscape(visible[k])
-
-        paste0(
-          '<button onclick="Shiny.setInputValue(\'repo_select_', i, '\', Math.random())"',
-          ' class="repo-select-btn', active_class, '" data-row="', i, '">',
-          content,
-          '</button>'
-        )
+        # Just show the repo name - no GitHub icon here; htmltools escapes it,
+        # so a directory name cannot inject markup into the table
+        as.character(htmltools::tags$button(
+          onclick = paste0("Shiny.setInputValue('repo_select_clicked', ", i, ", {priority: 'event'})"),
+          class = paste0("repo-select-btn", active_class),
+          `data-row` = i,
+          visible[k]
+        ))
       })
       
       # Create gt table with all columns
@@ -680,32 +689,19 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       shiny::HTML(gt::as_raw_html(styled_table, inline_css = FALSE))
     })
     
-    # Handle repository button clicks
+    # Handle repository button clicks (the clicked row index is the input value)
     shiny::observe({
-      for (i in seq_along(repo_list)) {
-          local({
-            row_index = i
-            button_id = paste0("repo_select_", row_index)
-            
-            shiny::observe({
-              selected_repo = repo_list[row_index]
+      row_index = input$repo_select_clicked
+      selected_repo = repo_list[row_index]
 
-              # Update selected index for highlighting
-              selected_repo_index(row_index)
+      # Update selected index for highlighting
+      selected_repo_index(row_index)
 
-              # Find rows for the selected repository; repos whose document is
-              # missing or failed to parse get a NULL AST and show their error
-              current_repo_name(selected_repo)
-              repo_rows = collection$repo == selected_repo
-              if (any(repo_rows) && !is.null(collection$ast[repo_rows][[1]])) {
-                current_repo_ast(collection$ast[repo_rows][[1]])
-              } else {
-                current_repo_ast(NULL)
-              }
-            }) |> bindEvent(input[[button_id]])
-          })
-        }
-    })
+      # Repos whose document is missing or failed to parse get a NULL AST and
+      # show their error
+      current_repo_name(selected_repo)
+      current_repo_ast(collection_ast_for(collection, selected_repo))
+    }) |> shiny::bindEvent(input$repo_select_clicked)
 
     # Move the selected-repo highlight in place instead of re-rendering the table.
     # Fires on init too, so the initial selection is highlighted once the table
@@ -722,156 +718,129 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
 
     # Handle artifact button clicks
     shiny::observe({
-      for (i in seq_along(repo_list)) {
-        local({
-          row_index = i
-          artifact_button_id = paste0("artifact_", row_index)
-          
-          shiny::observe({
-            repo = repo_list[row_index]
-            cached_path = artifact_paths[[repo]]
+      repo = repo_list[input$artifact_clicked]
+      cached_path = artifact_paths[[repo]]
 
-            # Only process if this repo has a resolved local report
-            if (!is.na(cached_path)) {
-              if (file.exists(cached_path)) {
-                # Show the served report in an iframe so its figures and
-                # styles load without touching the app document
-                shiny::showModal(
-                  shiny::modalDialog(
-                    title = repo,
-                    size = "xl",
-                    easyClose = TRUE,
-                    footer = shiny::tags$a(
-                      href = artifact_urls[[repo]],
-                      target = "_blank",
-                      class = "btn btn-outline-secondary btn-sm",
-                      shiny::icon("up-right-from-square"),
-                      " Open in browser"
-                    ),
-                    shiny::div(
-                      style = "height: 70vh;",
-                      shiny::tags$iframe(
-                        src = artifact_urls[[repo]],
-                        class = "w-100 h-100 border rounded bg-white"
-                      )
-                    )
-                  )
+      # Only process if this repo has a resolved local report
+      if (!is.na(cached_path)) {
+        if (file.exists(cached_path)) {
+          # Show the served report in an iframe so its figures and
+          # styles load without touching the app document
+          shiny::showModal(
+            shiny::modalDialog(
+              title = repo,
+              size = "xl",
+              easyClose = TRUE,
+              footer = shiny::tags$a(
+                href = artifact_urls[[repo]],
+                target = "_blank",
+                class = "btn btn-outline-secondary btn-sm",
+                shiny::icon("up-right-from-square"),
+                " Open in browser"
+              ),
+              shiny::div(
+                style = "height: 70vh;",
+                shiny::tags$iframe(
+                  src = artifact_urls[[repo]],
+                  class = "w-100 h-100 border rounded bg-white"
                 )
-              } else {
-                # Show error modal - resolved file went missing
-                shiny::showModal(
-                  shiny::modalDialog(
-                    title = "Artifact Not Available",
-                    easyClose = TRUE,
-                    shiny::div(
-                      class = "p-4 text-center",
-                      shiny::icon("triangle-exclamation", class = "fa-fw fs-3 text-warning me-2"),
-                      "Artifact file not found."
-                    )
-                  )
-                )
-              }
-            }
-          }) |> bindEvent(input[[artifact_button_id]])
-        })
+              )
+            )
+          )
+        } else {
+          # Show error modal - resolved file went missing
+          shiny::showModal(
+            shiny::modalDialog(
+              title = "Artifact Not Available",
+              easyClose = TRUE,
+              shiny::div(
+                class = "p-4 text-center",
+                shiny::icon("triangle-exclamation", class = "fa-fw fs-3 text-warning me-2"),
+                "Artifact file not found."
+              )
+            )
+          )
+        }
       }
-    })
+    }) |> shiny::bindEvent(input$artifact_clicked)
     
     # Handle source button clicks
     shiny::observe({
-      for (i in seq_along(repo_list)) {
-        local({
-          row_index = i
-          source_button_id = paste0("source_", row_index)
-          
-          shiny::observe({
-            repo = repo_list[row_index]
+      repo = repo_list[input$source_clicked]
 
-            # Find the source file path from collection
-            repo_rows = collection$repo == repo
-            if (any(repo_rows)) {
-              file_path = collection$path[repo_rows][1]
-              
-              if (file.exists(file_path)) {
-                # Read the raw source content
-                raw_content = readLines(file_path, warn = FALSE) |> paste(collapse = "\n")
+      # Find the source file path from collection
+      repo_rows = collection$repo == repo
+      if (any(repo_rows)) {
+        file_path = collection$path[repo_rows][1]
 
-                file_name = basename(file_path)
+        if (file.exists(file_path)) {
+          # Read the raw source content
+          raw_content = readLines(file_path, warn = FALSE) |> paste(collapse = "\n")
 
-                # One fixed editor id: the shared init disposes the previous
-                # modal's editor, so repeated viewing does not leak instances
-                editor_id = "markermd-source-modal-editor"
+          file_name = basename(file_path)
 
-                # Show source in modal with Monaco Editor
-                shiny::showModal(
-                  shiny::modalDialog(
-                    title = paste("Source Code:", file_name),
-                    size = "xl",
-                    easyClose = TRUE,
-                    footer = shiny::modalButton("Close"),
-                    shiny::div(
-                      style = "height: 70vh;",
-                      shiny::div(
-                        id = editor_id,
-                        class = "h-100 w-100 border rounded"
-                      )
-                    )
-                  )
+          # One fixed editor id: the shared init disposes the previous
+          # modal's editor, so repeated viewing does not leak instances
+          editor_id = "markermd-source-modal-editor"
+
+          # Show source in modal with Monaco Editor
+          shiny::showModal(
+            shiny::modalDialog(
+              title = paste("Source Code:", file_name),
+              size = "xl",
+              easyClose = TRUE,
+              footer = shiny::modalButton("Close"),
+              shiny::div(
+                style = "height: 70vh;",
+                shiny::div(
+                  id = editor_id,
+                  class = "h-100 w-100 border rounded"
                 )
+              )
+            )
+          )
 
-                render_monaco_editor(editor_id, raw_content, "markdown")
-              } else {
-                # Show error modal - file not found
-                shiny::showModal(
-                  shiny::modalDialog(
-                    title = "Source File Not Available",
-                    easyClose = TRUE,
-                    shiny::div(
-                      class = "p-4 text-center",
-                      shiny::icon("triangle-exclamation", class = "fa-fw fs-3 text-warning me-2"),
-                      "Source file not found."
-                    )
-                  )
-                )
-              }
-            }
-          }) |> bindEvent(input[[source_button_id]])
-        })
+          render_monaco_editor(editor_id, raw_content, "markdown")
+        } else {
+          # Show error modal - file not found
+          shiny::showModal(
+            shiny::modalDialog(
+              title = "Source File Not Available",
+              easyClose = TRUE,
+              shiny::div(
+                class = "p-4 text-center",
+                shiny::icon("triangle-exclamation", class = "fa-fw fs-3 text-warning me-2"),
+                "Source file not found."
+              )
+            )
+          )
+        }
       }
-    })
+    }) |> shiny::bindEvent(input$source_clicked)
 
     # Handle folder button clicks
     shiny::observe({
-      for (i in seq_along(repo_list)) {
-        local({
-          row_index = i
-          folder_button_id = paste0("folder_", row_index)
-          
-          shiny::observe({
-            repo = repo_list[row_index]
-            repo_path = normalizePath(file.path(repos_dir, repo), mustWork = FALSE)
+      repo = repo_list[input$folder_clicked]
+      repo_path = normalizePath(file.path(repos_dir, repo), mustWork = FALSE)
 
-            # Attempt to open the folder
-            success = open_folder(repo_path)
+      # Attempt to open the folder
+      success = open_folder(repo_path)
 
-            if (!success) {
-              # Show error modal if folder couldn't be opened
-              shiny::showModal(
-                shiny::modalDialog(
-                  title = "Error Opening Folder",
-                  easyClose = TRUE,
-                  shiny::div(
-                    class = "p-4 text-center",
-                    shiny::icon("triangle-exclamation", class = "fa-fw fs-3 text-danger me-2"),
-                    paste("Could not open folder:", repo_path)
-                  )
-                )
-              )
-            }
-          }) |> bindEvent(input[[folder_button_id]])
-        })
+      if (!success) {
+        # Show error modal if folder couldn't be opened
+        shiny::showModal(
+          shiny::modalDialog(
+            title = "Error Opening Folder",
+            easyClose = TRUE,
+            shiny::div(
+              class = "p-4 text-center",
+              shiny::icon("triangle-exclamation", class = "fa-fw fs-3 text-danger me-2"),
+              paste("Could not open folder:", repo_path)
+            )
+          )
+        )
       }
-    })
+    }) |> shiny::bindEvent(input$folder_clicked)
     
     # Create reactive for current repository validation results
     current_repo_validation = shiny::reactive({
@@ -884,15 +853,24 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
     })
     
     # Mark validation module - pass validation data
-    explore_result = mark_validate_server("explore_module", current_repo_ast, current_repo_name, current_repo_validation, shiny::reactiveVal(NULL), shiny::reactiveVal(template_obj))
+    mark_validate_server("explore_module", current_repo_ast, current_repo_validation, shiny::reactiveVal(template_obj))
     
     
-    # Initialize rubric module, sharing the table's repo selection so both
-    # tabs always point at the same repository
+    # Initialize the content module, sharing the table's repo selection so
+    # both tabs always point at the same repository. selected_question is a
+    # lazy forward reference: reactives only evaluate at flush time, after
+    # rubric_result is assigned below.
+    content_result = mark_content_server(
+      "content_module", template_obj, collection, artifact_paths, artifact_urls, use_qmd,
+      selected_question = shiny::reactive(rubric_result$selected_question()),
+      external_repo = current_repo_name
+    )
+
+    # Initialize the rubric module, keyed on the content pane's repo selection
     rubric_result = mark_rubric_server(
-      "rubric_module", template_obj, artifact_paths, artifact_urls, root,
-      use_qmd, collection, database_state,
-      selected_repo = current_repo_name
+      "rubric_module", template_obj, repo_list, root, database_state,
+      selected_repo = content_result$selected_repo,
+      set_repo_labels = content_result$set_repo_labels
     )
 
     # Reverse sync: z/x navigation (or the dropdown) in the Rubric tab moves
@@ -905,27 +883,11 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       if (!is.na(idx) && idx != shiny::isolate(selected_repo_index())) {
         selected_repo_index(idx)
         current_repo_name(repo)
-        repo_rows = collection$repo == repo
-        if (any(repo_rows) && !is.null(collection$ast[repo_rows][[1]])) {
-          current_repo_ast(collection$ast[repo_rows][[1]])
-        } else {
-          current_repo_ast(NULL)
-        }
+        current_repo_ast(collection_ast_for(collection, repo))
       }
     }) |>
-      bindEvent(rubric_result$selected_content_repo())
+      shiny::bindEvent(rubric_result$selected_content_repo())
 
-    # Handle navbar tab switching to update grading progress
-    shiny::observe({
-      if (!is.null(input$main_navbar) && input$main_navbar == "validation") {
-        # When validation pane becomes active, refresh the grading progress
-        # This ensures the progress column reflects current grading status
-        if (length(repo_list) > 0 && !is.null(template_obj)) {
-          # Increment trigger to force table recalculation
-          progress_update_trigger(progress_update_trigger() + 1)
-        }
-      }
-    }) |> bindEvent(input$main_navbar, ignoreInit = TRUE)
   }
   
   # Return the app

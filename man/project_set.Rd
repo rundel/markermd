@@ -35,3 +35,10 @@ Updates path entries in a project's \code{config.yml}. Only supplied arguments a
 changed; an omitted (\code{NULL}) argument is left untouched. Paths are interpreted
 relative to the project root.
 }
+\examples{
+\dontrun{
+# Record the key repository and store a template from YAML
+project_set("hw01", key = "hw01-key")
+project_set("hw01", template = "hw01-template.yaml")
+}
+}

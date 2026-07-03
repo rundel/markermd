@@ -25,6 +25,9 @@ markermd_question(
 objects. Conditions within a group are ANDed, groups are ORed; filters
 narrow the question's node set before rules evaluate.}
 }
+\value{
+A \code{markermd_question} S7 object.
+}
 \description{
 S7 class representing a single template question with selected nodes and validation rules
 }

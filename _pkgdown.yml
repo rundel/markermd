@@ -2,3 +2,77 @@ url: https://rundel.github.io/markermd/
 template:
   bootstrap: 5
 
+reference:
+- title: Project setup and management
+  desc: Initialize a grading project and inspect or edit its configuration.
+  contents:
+  - init_project
+  - project_config
+  - project_set
+  - project_sitrep
+  - validate_project
+  - markermd_skills_path
+- title: Grading apps
+  desc: The interactive template editor and marking interface.
+  contents:
+  - mark
+  - template
+- title: Templates
+  desc: Author, inspect, and move grading templates in and out of the project database.
+  contents:
+  - assignment_outline
+  - template_import
+  - template_export
+  - add_question
+  - remove_question
+  - get_question
+  - template_methods
+  - parse_assignment_document
+- title: Rubrics
+  desc: Move per-question rubrics between the project database and YAML.
+  contents:
+  - rubric_import
+  - rubric_export
+- title: Marks and score export
+  desc: Import, export, and set recorded grading, and export scores and comments.
+  contents:
+  - marks_import
+  - marks_export
+  - marks_set
+  - export_scores
+  - export_comments
+  - export_marks
+- title: YAML file formats
+  desc: Read, write, and schema-validate the template, rubric, and marks file formats.
+  contents:
+  - read_template_yaml
+  - write_template_yaml
+  - validate_template_file
+  - read_rubric_yaml
+  - write_rubric_yaml
+  - validate_rubric_file
+  - read_marks_yaml
+  - write_marks_yaml
+  - validate_marks_file
+- title: Classes and vocabularies
+  desc: S7 classes for templates, questions, rules, filters, and grading state, plus the allowed rule vocabularies.
+  contents:
+  - markermd_template
+  - markermd_question
+  - markermd_node_selection
+  - markermd_metadata
+  - markermd_rule
+  - markermd_filter_condition
+  - markermd_filter_group
+  - markermd_rubric_item
+  - markermd_grade_state
+  - markermd_project
+  - get_allowed_rule_verbs
+  - get_allowed_node_types
+  - get_allowed_filter_condition_types
+  - template_classes
+  - project_classes
+  - rule_classes
+  - rule_helpers
+  - filter_classes
+  - filter_helpers

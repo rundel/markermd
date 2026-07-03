@@ -57,27 +57,20 @@ marks_question_to_list = function(question) {
 marks_question_from_list = function(x) {
   name = if (is.null(x$name)) "" else as.character(x$name)
   if (length(name) != 1 || !nzchar(trimws(name))) {
-    stop("Each marks question requires a non-empty 'name'.", call. = FALSE)
+    cli::cli_abort("Each marks question requires a non-empty 'name'.")
   }
 
   if (!"items" %in% names(x)) {
-    stop(
-      "Marks question '", name, "' is missing the required 'items' field. ",
-      "Use 'items: []' to state that no rubric items apply.",
-      call. = FALSE
-    )
+    cli::cli_abort("Marks question '{name}' is missing the required 'items' field. Use 'items: []' to state that no rubric items apply.")
   }
   items = as.character(unlist(x$items))
   if (any(!nzchar(trimws(items)))) {
-    stop("Marks question '", name, "' has a blank rubric item description.", call. = FALSE)
+    cli::cli_abort("Marks question '{name}' has a blank rubric item description.")
   }
   dupes = unique(items[duplicated(items)])
   if (length(dupes) > 0) {
-    stop(
-      "Marks question '", name, "' lists duplicate rubric item descriptions: ",
-      paste0("'", dupes, "'", collapse = ", "), ".",
-      call. = FALSE
-    )
+    dupes_str = paste0("'", dupes, "'", collapse = ", ")
+    cli::cli_abort("Marks question '{name}' lists duplicate rubric item descriptions: {dupes_str}.")
   }
 
   read_comment = function(field) {
@@ -86,7 +79,7 @@ marks_question_from_list = function(x) {
     }
     value = as.character(x[[field]])
     if (length(value) != 1) {
-      stop("Marks question '", name, "' has a non-scalar '", field, "'.", call. = FALSE)
+      cli::cli_abort("Marks question '{name}' has a non-scalar '{field}'.")
     }
     value
   }
@@ -117,7 +110,7 @@ marks_repo_to_list = function(repo) {
 marks_repo_from_list = function(x) {
   name = if (is.null(x$name)) "" else as.character(x$name)
   if (length(name) != 1 || !nzchar(trimws(name))) {
-    stop("Each marks repository requires a non-empty 'name'.", call. = FALSE)
+    cli::cli_abort("Each marks repository requires a non-empty 'name'.")
   }
 
   questions = if (is.null(x$questions)) list() else lapply(x$questions, marks_question_from_list)
@@ -125,11 +118,8 @@ marks_repo_from_list = function(x) {
   question_names = vapply(questions, function(q) q$name, character(1))
   dupes = unique(question_names[duplicated(question_names)])
   if (length(dupes) > 0) {
-    stop(
-      "Marks repository '", name, "' contains duplicate question names: ",
-      paste0("'", dupes, "'", collapse = ", "), ".",
-      call. = FALSE
-    )
+    dupes_str = paste0("'", dupes, "'", collapse = ", ")
+    cli::cli_abort("Marks repository '{name}' contains duplicate question names: {dupes_str}.")
   }
 
   list(name = name, questions = questions)
@@ -154,14 +144,10 @@ marks_to_list = function(marks) {
 marks_from_list = function(x) {
   version = x$format_version
   if (is.null(version)) {
-    stop("Marks file is missing the required 'format_version' field.", call. = FALSE)
+    cli::cli_abort("Marks file is missing the required 'format_version' field.")
   }
   if (utils::compareVersion(as.character(version), markermd_marks_version()) > 0) {
-    stop(
-      "Marks file format_version '", version, "' is newer than this version of ",
-      "markermd understands (", markermd_marks_version(), "). Update markermd to import it.",
-      call. = FALSE
-    )
+    cli::cli_abort("Marks file format_version '{version}' is newer than this version of markermd understands ({markermd_marks_version()}). Update markermd to import it.")
   }
 
   repos = if (is.null(x$repos)) list() else lapply(x$repos, marks_repo_from_list)
@@ -169,11 +155,8 @@ marks_from_list = function(x) {
   repo_names = vapply(repos, function(r) r$name, character(1))
   dupes = unique(repo_names[duplicated(repo_names)])
   if (length(dupes) > 0) {
-    stop(
-      "Marks file contains duplicate repository names: ",
-      paste0("'", dupes, "'", collapse = ", "), ".",
-      call. = FALSE
-    )
+    dupes_str = paste0("'", dupes, "'", collapse = ", ")
+    cli::cli_abort("Marks file contains duplicate repository names: {dupes_str}.")
   }
 
   list(
@@ -206,11 +189,8 @@ collect_marks_data = function(collection_path, repo_names = NULL, question_names
     )
   })
 
-  nonempty = function(df) {
-    df[!is.na(df$comment_text) & nchar(trimws(df$comment_text)) > 0, , drop = FALSE]
-  }
-  comments = nonempty(data$comments)
-  private_comments = nonempty(data$private_comments)
+  comments = nonempty_comments(data$comments)
+  private_comments = nonempty_comments(data$private_comments)
 
   pairs = unique(rbind(
     data$grades[, c("question_name", "assignment_repo"), drop = FALSE],
@@ -286,7 +266,7 @@ collect_marks_data = function(collection_path, repo_names = NULL, question_names
 #' @export
 write_marks_yaml = function(marks, path) {
   if (!is.list(marks) || !is.list(marks$repos)) {
-    stop("`marks` must be a list with a 'repos' list.", call. = FALSE)
+    cli::cli_abort("`marks` must be a list with a 'repos' list.")
   }
   if (is.null(marks$format_version)) {
     marks$format_version = markermd_marks_version()
@@ -317,7 +297,7 @@ write_marks_yaml = function(marks, path) {
 #' @export
 read_marks_yaml = function(path) {
   if (!file.exists(path)) {
-    stop("Marks file does not exist: ", path, call. = FALSE)
+    cli::cli_abort("Marks file does not exist: {path}")
   }
   x = yaml::read_yaml(path)
   marks_from_list(x)
@@ -340,10 +320,10 @@ read_marks_yaml = function(path) {
 #' @export
 validate_marks_file = function(path) {
   if (!requireNamespace("jsonvalidate", quietly = TRUE)) {
-    stop("validate_marks_file() requires the 'jsonvalidate' package.", call. = FALSE)
+    cli::cli_abort("validate_marks_file() requires the 'jsonvalidate' package.")
   }
   if (!file.exists(path)) {
-    stop("Marks file does not exist: ", path, call. = FALSE)
+    cli::cli_abort("Marks file does not exist: {path}")
   }
 
   schema = system.file("schema/markermd-marks.json", package = "markermd")

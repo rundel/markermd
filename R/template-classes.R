@@ -18,6 +18,7 @@ markermd_template_version = function() "3.0"
 #'   question targets, identified by their q2r/Pandoc ids (header ids or div
 #'   ids). An empty vector means no selection (the whole document).
 #' @param node_ids Character vector of document-unique node ids (header or div ids)
+#' @return A `markermd_node_selection` S7 object.
 #' @export
 markermd_node_selection = S7::new_class(
   "markermd_node_selection",
@@ -51,6 +52,7 @@ markermd_node_selection = S7::new_class(
 #' @param filters List. Filter groups for this question as markermd_filter_group
 #'   objects. Conditions within a group are ANDed, groups are ORed; filters
 #'   narrow the question's node set before rules evaluate.
+#' @return A `markermd_question` S7 object.
 #' @export
 markermd_question = S7::new_class(
   "markermd_question",
@@ -119,6 +121,7 @@ markermd_question = S7::new_class(
 #' @param created_by Character. User who created the template
 #' @param total_nodes Integer. Total number of nodes in original AST
 #' @param version Character. Template format version
+#' @return A `markermd_metadata` S7 object.
 #' @export
 markermd_metadata = S7::new_class(
   "markermd_metadata",
@@ -169,6 +172,7 @@ markermd_metadata = S7::new_class(
 #' @param original_ast pandoc. The original parsed AST from q2r
 #' @param questions List of question objects
 #' @param metadata template_metadata. Template metadata
+#' @return A `markermd_template` S7 object.
 #' @export
 markermd_template = S7::new_class(
   "markermd_template",
@@ -227,6 +231,7 @@ markermd_template = S7::new_class(
 #' @param points Numeric. Point value for this rubric item
 #' @param description Character. Description text for the rubric item
 #' @param selected Logical. Whether this item is currently selected
+#' @return A `markermd_rubric_item` S7 object.
 #' @export
 markermd_rubric_item = S7::new_class(
   "markermd_rubric_item",
@@ -285,6 +290,7 @@ markermd_rubric_item = S7::new_class(
 #' @param grading_mode Character. Either "positive" or "negative" grading
 #' @param bound_above_zero Logical. Whether to enforce score >= 0
 #' @param bound_below_max Logical. Whether to enforce score <= maximum
+#' @return A `markermd_grade_state` S7 object.
 #' @export
 markermd_grade_state = S7::new_class(
   "markermd_grade_state",

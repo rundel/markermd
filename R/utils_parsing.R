@@ -8,10 +8,11 @@
 #' If parsing yields an empty AST (no blocks) an error is reported.
 #'
 #' @param file_path Character. Path to the assignment file
+#' @return A q2r `pandoc` AST object for the parsed document.
 #' @export
 parse_assignment_document = function(file_path) {
   if (!file.exists(file_path)) {
-    stop("Assignment file does not exist: ", file_path)
+    cli::cli_abort("Assignment file does not exist: {file_path}")
   }
 
   lines = readLines(file_path, warn = FALSE)
@@ -19,7 +20,7 @@ parse_assignment_document = function(file_path) {
   ast = q2r::parse_qmd(text, quiet = FALSE)
 
   if (length(ast@blocks@content) == 0) {
-    stop("Failed to parse assignment file (empty AST): ", file_path)
+    cli::cli_abort("Failed to parse assignment file (empty AST): {file_path}")
   }
 
   ast
@@ -198,5 +199,21 @@ parse_assignment_collection = function(collection_path, use_qmd = TRUE) {
     if (is.null(p$error)) NA_character_ else conditionMessage(p$error)
   }, character(1))
   collection
+}
+
+# The parsed AST for one repo of a collection, or NULL when the repo has no
+# document or its document failed to parse
+#
+# collection: Collection data frame (see parse_assignment_collection(), with
+#   the repo column attributed by the caller)
+# repo: Character. Repository name
+
+collection_ast_for = function(collection, repo) {
+  repo_rows = collection$repo == repo
+  if (any(repo_rows) && !is.null(collection$ast[repo_rows][[1]])) {
+    collection$ast[repo_rows][[1]]
+  } else {
+    NULL
+  }
 }
 

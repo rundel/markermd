@@ -1,3 +1,25 @@
+# Question names of a template, in template order
+#
+# template: markermd_template S7 object
+
+template_question_names = function(template) {
+  vapply(template@questions, function(q) q@name, character(1))
+}
+
+# A template's question by name, or NULL when no question has that name
+#
+# template: markermd_template S7 object
+# name: Character. Question name
+
+template_question = function(template, name) {
+  for (q in template@questions) {
+    if (q@name == name) {
+      return(q)
+    }
+  }
+  NULL
+}
+
 # The q2r/Pandoc id of the selectable node at a flattened index
 #
 # Headings and id'd divs are selectable; everything else (and a div without an
@@ -425,28 +447,15 @@ validate_question_rules = function(repo_ast, question) {
 
 assert_template_compatible = function(template) {
   if (!S7::S7_inherits(template@original_ast, q2r::pandoc)) {
-    stop(
-      "This template was created with a previous version of markermd and is no longer ",
-      "compatible: its stored document AST predates the move to the q2r parser. ",
-      "Please recreate the template with template().",
-      call. = FALSE
-    )
+    cli::cli_abort("This template was created with a previous version of markermd and is no longer compatible: its stored document AST predates the move to the q2r parser. Please recreate the template with template().")
   }
 
   version = template@metadata@version
   if (is.na(version) || utils::compareVersion(version, markermd_template_version()) < 0) {
-    stop(
-      "This template was created with an older version of markermd and is no longer ",
-      "compatible. Please recreate the template with template().",
-      call. = FALSE
-    )
+    cli::cli_abort("This template was created with an older version of markermd and is no longer compatible. Please recreate the template with template().")
   }
   if (utils::compareVersion(version, markermd_template_version()) > 0) {
-    stop(
-      "This template's format_version '", version, "' is newer than this version of ",
-      "markermd understands (", markermd_template_version(), "). Update markermd to load it.",
-      call. = FALSE
-    )
+    cli::cli_abort("This template's format_version '{version}' is newer than this version of markermd understands ({markermd_template_version()}). Update markermd to load it.")
   }
 }
 

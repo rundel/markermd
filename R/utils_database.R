@@ -35,9 +35,17 @@ get_database_path = function(collection_path) {
 #
 # collection_path: Path to collection directory
 
+# Database files whose tables have already been verified this session, keyed
+# by database path. Every keystroke-level save opens a fresh connection, so
+# re-probing all six tables each time is measurable overhead; a database file
+# that was deleted and re-created at the same path is detected via the
+# pre-connect existence check and re-initialized.
+.initialized_dbs = new.env(parent = emptyenv())
+
 initialize_database = function(collection_path) {
   db_path = get_database_path(collection_path)
-  
+  fresh = !file.exists(db_path)
+
   # Create connection
   conn = DBI::dbConnect(RSQLite::SQLite(), db_path)
 
@@ -47,10 +55,14 @@ initialize_database = function(collection_path) {
   # Wait up to 5s for a competing writer (e.g. a grading skill running while
   # mark() is open) instead of failing immediately with "database is locked".
   DBI::dbExecute(conn, "PRAGMA busy_timeout = 5000")
-  
-  # Create tables if they don't exist
-  create_tables_if_needed(conn)
 
+  if (fresh || !isTRUE(.initialized_dbs[[db_path]])) {
+    create_tables_if_needed(conn)
+    .initialized_dbs[[db_path]] = TRUE
+  }
+
+  # Always re-checked (one metadata read): a concurrent skill run may have
+  # upgraded the schema while this session held the table cache
   assert_db_compatible(conn)
 
   return(conn)
@@ -223,45 +235,30 @@ with_database = function(collection_path, query_func) {
 
 upsert_settings = function(conn, question_name, grade_state) {
   timestamp = get_current_timestamp()
-  
-  # Check if record exists
-  existing = DBI::dbGetQuery(conn, "
-    SELECT question_name FROM settings WHERE question_name = ?
-  ", params = list(question_name))
-  
-  if (nrow(existing) > 0) {
-    # Update existing record
-    DBI::dbExecute(conn, "
-      UPDATE settings 
-      SET current_score = ?, total_score = ?, grading_mode = ?, 
-          bound_above_zero = ?, bound_below_max = ?, updated_at = ?
-      WHERE question_name = ?
-    ", params = list(
-      grade_state@current_score,
-      grade_state@total_score, 
-      grade_state@grading_mode,
-      as.integer(grade_state@bound_above_zero),
-      as.integer(grade_state@bound_below_max),
-      timestamp,
-      question_name
-    ))
-  } else {
-    # Insert new record
-    DBI::dbExecute(conn, "
-      INSERT INTO settings (question_name, current_score, total_score, grading_mode, 
-                           bound_above_zero, bound_below_max, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ", params = list(
-      question_name,
-      grade_state@current_score,
-      grade_state@total_score,
-      grade_state@grading_mode,
-      as.integer(grade_state@bound_above_zero),
-      as.integer(grade_state@bound_below_max),
-      timestamp,
-      timestamp
-    ))
-  }
+
+  # Single atomic statement (created_at is preserved on update); the previous
+  # SELECT-then-write pattern was racy against a concurrent skill writer
+  DBI::dbExecute(conn, "
+    INSERT INTO settings (question_name, current_score, total_score, grading_mode,
+                          bound_above_zero, bound_below_max, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(question_name) DO UPDATE SET
+      current_score = excluded.current_score,
+      total_score = excluded.total_score,
+      grading_mode = excluded.grading_mode,
+      bound_above_zero = excluded.bound_above_zero,
+      bound_below_max = excluded.bound_below_max,
+      updated_at = excluded.updated_at
+  ", params = list(
+    question_name,
+    grade_state@current_score,
+    grade_state@total_score,
+    grade_state@grading_mode,
+    as.integer(grade_state@bound_above_zero),
+    as.integer(grade_state@bound_below_max),
+    timestamp,
+    timestamp
+  ))
 }
 
 # Upsert items record
@@ -273,41 +270,26 @@ upsert_settings = function(conn, question_name, grade_state) {
 
 upsert_items = function(conn, question_name, item_id, rubric_item) {
   timestamp = get_current_timestamp()
-  
-  # Check if record exists
-  existing = DBI::dbGetQuery(conn, "
-    SELECT question_name FROM items WHERE question_name = ? AND item_id = ?
-  ", params = list(question_name, item_id))
-  
-  if (nrow(existing) > 0) {
-    # Update existing record
-    DBI::dbExecute(conn, "
-      UPDATE items 
-      SET hotkey = ?, points = ?, description = ?, updated_at = ?
-      WHERE question_name = ? AND item_id = ?
-    ", params = list(
-      if (is.na(rubric_item@hotkey)) NA_integer_ else rubric_item@hotkey,
-      rubric_item@points,
-      rubric_item@description,
-      timestamp,
-      question_name,
-      item_id
-    ))
-  } else {
-    # Insert new record
-    DBI::dbExecute(conn, "
-      INSERT INTO items (question_name, item_id, hotkey, points, description, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    ", params = list(
-      question_name,
-      item_id,
-      if (is.na(rubric_item@hotkey)) NA_integer_ else rubric_item@hotkey,
-      rubric_item@points,
-      rubric_item@description,
-      timestamp,
-      timestamp
-    ))
-  }
+
+  # Single atomic statement (created_at is preserved on update); the previous
+  # SELECT-then-write pattern was racy against a concurrent skill writer
+  DBI::dbExecute(conn, "
+    INSERT INTO items (question_name, item_id, hotkey, points, description, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(question_name, item_id) DO UPDATE SET
+      hotkey = excluded.hotkey,
+      points = excluded.points,
+      description = excluded.description,
+      updated_at = excluded.updated_at
+  ", params = list(
+    question_name,
+    item_id,
+    if (is.na(rubric_item@hotkey)) NA_integer_ else rubric_item@hotkey,
+    rubric_item@points,
+    rubric_item@description,
+    timestamp,
+    timestamp
+  ))
 }
 
 # Delete an items record along with its grade-selection events, so a repo no
@@ -406,22 +388,48 @@ load_all_items = function(conn) {
   DBI::dbGetQuery(conn, "SELECT * FROM items ORDER BY question_name, id")
 }
 
+# Most recent row per group from an event-log table
+#
+# Recency is decided by the autoincrement id, not the timestamp: timestamps
+# have 1-second resolution, so two quick events for the same group tie on
+# MAX(timestamp) and a timestamp join would return both rows.
+#
+# conn: DBI connection object
+# table: Event-log table name ("grades", "comments", "private_comments")
+# group_cols: Character vector of columns defining a group
+# where: Optional SQL condition restricting which rows are considered
+# params: Query parameters for the where condition
+# Returns: Data frame with the most recent full row per group
+
+latest_rows = function(conn, table, group_cols, where = NULL, params = NULL) {
+  where_clause = if (is.null(where)) "" else paste0("WHERE ", where, "\n      ")
+  DBI::dbGetQuery(conn, glue::glue("
+    SELECT t1.*
+    FROM <<table>> t1
+    INNER JOIN (
+      SELECT MAX(id) AS max_id
+      FROM <<table>>
+      <<where_clause>>GROUP BY <<paste(group_cols, collapse = ', ')>>
+    ) t2 ON t1.id = t2.max_id
+  ", .open = "<<", .close = ">>"), params = params)
+}
+
+# Rows of a latest-comments data frame whose comment_text is non-empty
+# (a blank or whitespace-only latest comment counts as "no comment")
+#
+# df: Data frame with a comment_text column
+
+nonempty_comments = function(df) {
+  df[!is.na(df$comment_text) & nchar(trimws(df$comment_text)) > 0, , drop = FALSE]
+}
+
 # Load most recent grades for all question/assignment combinations
 #
 # conn: DBI connection object
 # Returns: Data frame with most recent grade data
 
 load_most_recent_grades = function(conn) {
-  # Most recent by autoincrement id; 1-second timestamps can tie
-  DBI::dbGetQuery(conn, "
-    SELECT g1.*
-    FROM grades g1
-    INNER JOIN (
-      SELECT MAX(id) as max_id
-      FROM grades
-      GROUP BY question_name, assignment_repo, item_id
-    ) g2 ON g1.id = g2.max_id
-  ")
+  latest_rows(conn, "grades", c("question_name", "assignment_repo", "item_id"))
 }
 
 # Load most recent comments for all question/assignment combinations
@@ -430,16 +438,7 @@ load_most_recent_grades = function(conn) {
 # Returns: Data frame with most recent comment data
 
 load_most_recent_comments = function(conn) {
-  # Most recent by autoincrement id; 1-second timestamps can tie
-  DBI::dbGetQuery(conn, "
-    SELECT c1.*
-    FROM comments c1
-    INNER JOIN (
-      SELECT MAX(id) as max_id
-      FROM comments
-      GROUP BY question_name, assignment_repo
-    ) c2 ON c1.id = c2.max_id
-  ")
+  latest_rows(conn, "comments", c("question_name", "assignment_repo"))
 }
 
 # Load most recent private comments for all question/assignment combinations
@@ -448,16 +447,7 @@ load_most_recent_comments = function(conn) {
 # Returns: Data frame with most recent private comment data
 
 load_most_recent_private_comments = function(conn) {
-  # Most recent by autoincrement id; 1-second timestamps can tie
-  DBI::dbGetQuery(conn, "
-    SELECT c1.*
-    FROM private_comments c1
-    INNER JOIN (
-      SELECT MAX(id) as max_id
-      FROM private_comments
-      GROUP BY question_name, assignment_repo
-    ) c2 ON c1.id = c2.max_id
-  ")
+  latest_rows(conn, "private_comments", c("question_name", "assignment_repo"))
 }
 
 # Get a metadata value by key
@@ -478,18 +468,12 @@ get_metadata = function(conn, key) {
 # value: Character string
 
 set_metadata = function(conn, key, value) {
-  timestamp = get_current_timestamp()
-  existing = DBI::dbGetQuery(conn, "SELECT key FROM metadata WHERE key = ?", params = list(key))
-
-  if (nrow(existing) > 0) {
-    DBI::dbExecute(conn, "
-      UPDATE metadata SET value = ?, updated_at = ? WHERE key = ?
-    ", params = list(value, timestamp, key))
-  } else {
-    DBI::dbExecute(conn, "
-      INSERT INTO metadata (key, value, updated_at) VALUES (?, ?, ?)
-    ", params = list(key, value, timestamp))
-  }
+  DBI::dbExecute(conn, "
+    INSERT INTO metadata (key, value, updated_at) VALUES (?, ?, ?)
+    ON CONFLICT(key) DO UPDATE SET
+      value = excluded.value,
+      updated_at = excluded.updated_at
+  ", params = list(key, value, get_current_timestamp()))
 }
 
 # Delete a metadata key

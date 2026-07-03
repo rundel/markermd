@@ -22,7 +22,8 @@ over the project's configured template. Can be:
 \item{...}{Additional arguments passed to shiny::runApp()}
 }
 \value{
-Launches Shiny application
+The value returned by \code{\link[shiny:runApp]{shiny::runApp()}} when the app exits; called
+for its side effect of running the marking application.
 }
 \description{
 Points the marking app at an initialized markermd project (a directory

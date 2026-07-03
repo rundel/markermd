@@ -243,7 +243,7 @@ empty_pandoc_ast = function() {
 template_from_list = function(x, base_dir = ".", assignment = NULL, require_ast = FALSE) {
   version = x$format_version
   if (is.null(version)) {
-    stop("Template file is missing the required 'format_version' field.", call. = FALSE)
+    cli::cli_abort("Template file is missing the required 'format_version' field.")
   }
 
   questions = if (is.null(x$questions)) list() else lapply(x$questions, question_from_list)
@@ -253,12 +253,8 @@ template_from_list = function(x, base_dir = ".", assignment = NULL, require_ast 
   if (!is.null(source_path)) {
     ast = parse_assignment_document(source_path)
   } else if (require_ast) {
-    stop(
-      "Could not locate the assignment document for this template",
-      if (!is.null(x$source$path)) paste0(" (source.path: '", x$source$path, "')") else "",
-      ".\nPass the assignment explicitly via the `assignment` argument, or fix source.path in the file.",
-      call. = FALSE
-    )
+    source_hint = if (!is.null(x$source$path)) paste0(" (source.path: '", x$source$path, "')") else ""
+    cli::cli_abort("Could not locate the assignment document for this template{source_hint}.\nPass the assignment explicitly via the `assignment` argument, or fix source.path in the file.")
   } else {
     ast = empty_pandoc_ast()
   }
@@ -293,9 +289,15 @@ template_from_list = function(x, base_dir = ".", assignment = NULL, require_ast 
 #'
 #' @return The output `path`, invisibly.
 #' @export
+#'
+#' @examples
+#' \dontrun{
+#' tmpl = read_template_yaml("hw01-template.yaml")
+#' write_template_yaml(tmpl, "hw01-template-copy.yaml")
+#' }
 write_template_yaml = function(template, path, source_path = NULL) {
   if (!S7::S7_inherits(template, markermd_template)) {
-    stop("`template` must be a markermd_template object.", call. = FALSE)
+    cli::cli_abort("`template` must be a markermd_template object.")
   }
   yaml::write_yaml(template_to_list(template, source_path = source_path), path)
   invisible(path)
@@ -316,9 +318,16 @@ write_template_yaml = function(template, path, source_path = NULL) {
 #'
 #' @return A `markermd_template` object.
 #' @export
+#'
+#' @examples
+#' path = system.file(
+#'   "examples/test_assignment2/markermd-template.yaml",
+#'   package = "markermd"
+#' )
+#' read_template_yaml(path)
 read_template_yaml = function(path, assignment = NULL, require_ast = FALSE) {
   if (!file.exists(path)) {
-    stop("Template file does not exist: ", path, call. = FALSE)
+    cli::cli_abort("Template file does not exist: {path}")
   }
   x = yaml::read_yaml(path)
   template_from_list(x, base_dir = dirname(path), assignment = assignment, require_ast = require_ast)
@@ -339,10 +348,10 @@ read_template_yaml = function(path, assignment = NULL, require_ast = FALSE) {
 #' @export
 validate_template_file = function(path) {
   if (!requireNamespace("jsonvalidate", quietly = TRUE)) {
-    stop("validate_template_file() requires the 'jsonvalidate' package.", call. = FALSE)
+    cli::cli_abort("validate_template_file() requires the 'jsonvalidate' package.")
   }
   if (!file.exists(path)) {
-    stop("Template file does not exist: ", path, call. = FALSE)
+    cli::cli_abort("Template file does not exist: {path}")
   }
 
   schema = system.file("schema/markermd-template.json", package = "markermd")

@@ -23,6 +23,9 @@ is the class name, id, regex pattern, or glob pattern.}
 
 \item{negate}{Logical. When TRUE the predicate is negated (logical NOT).}
 }
+\value{
+A \code{markermd_filter_condition} S7 object.
+}
 \description{
 S7 class representing a single filter condition. Each condition
 maps to one q2r predicate: a node-type test (\verb{is(<pandoc class>)}) or one of

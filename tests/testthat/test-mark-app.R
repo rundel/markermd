@@ -1,5 +1,3 @@
-library(shinytest2)
-
 # Build a temporary markermd project (repos/ populated from the bundled
 # fixtures, a rendered report under html/, and a configured template that
 # grades Question 2 on "quantile" content and Question 3 on "ggplot").
@@ -44,6 +42,9 @@ make_mark_fixture = function() {
 
 
 test_that("mark app launches and validates repositories by section", {
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
   fixture = make_mark_fixture()
 
   app = shinytest2::AppDriver$new(
@@ -80,6 +81,9 @@ test_that("mark app launches and validates repositories by section", {
 
 
 test_that("grading interactions patch the score display in place", {
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
   fixture = make_mark_fixture()
 
   app = shinytest2::AppDriver$new(
@@ -134,6 +138,9 @@ test_that("grading interactions patch the score display in place", {
 
 
 test_that("a selection loaded from the database recomputes the score on question switch", {
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
   fixture = make_mark_fixture()
   markermd:::save_rubric_item(
     fixture$project, "Q3", "item_0",
@@ -165,6 +172,9 @@ test_that("a selection loaded from the database recomputes the score on question
 
 
 test_that("public and private comments autosave to their own channels", {
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
   fixture = make_mark_fixture()
 
   app = shinytest2::AppDriver$new(
@@ -206,6 +216,9 @@ test_that("public and private comments autosave to their own channels", {
 
 
 test_that("rubric YAML export and import work through the mark app", {
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
   fixture = make_mark_fixture()
   markermd:::save_rubric_item(
     fixture$project, "Q2", "item_0",

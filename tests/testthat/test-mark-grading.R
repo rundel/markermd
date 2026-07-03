@@ -1,5 +1,3 @@
-library(shinytest2)
-
 # Self-contained fixture (mirrors make_mark_fixture in test-mark-app.R but with a
 # unique name, since testthat does not share helpers across files reliably). Two
 # questions: Q2 graded on "quantile" content, Q3 on "ggplot".
@@ -50,6 +48,9 @@ mg_set_points = function(app, item, value) {
 
 
 test_that("negative-mode score recomputes live and clamps at zero", {
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
   root = mg_make_fixture()
   # Seed Q2 as negative-mode out of 10 so the grade widget loads in that mode.
   markermd:::save_grade_state(
@@ -86,6 +87,9 @@ test_that("negative-mode score recomputes live and clamps at zero", {
 
 
 test_that("positive-mode score clamps at the question total", {
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
   root = mg_make_fixture()  # Q2 has no settings row, so it defaults to positive / out of 10
 
   app = shinytest2::AppDriver$new(markermd:::mark_app(root), name = "mark_belowmax_clamp")
@@ -109,6 +113,9 @@ test_that("positive-mode score clamps at the question total", {
 
 
 test_that("moving a rubric item reorders it and renumbers hotkeys, including the wrap branch", {
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
   root = mg_make_fixture()
 
   app = shinytest2::AppDriver$new(markermd:::mark_app(root), name = "mark_item_reorder")
@@ -149,6 +156,9 @@ test_that("moving a rubric item reorders it and renumbers hotkeys, including the
 
 
 test_that("a pending comment edit is saved to the pair it was typed against on navigation", {
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
   root = mg_make_fixture()
 
   app = shinytest2::AppDriver$new(markermd:::mark_app(root), name = "mark_comment_attribution")
@@ -173,6 +183,9 @@ test_that("a pending comment edit is saved to the pair it was typed against on n
 
 
 test_that("the assignments-table status filter narrows the repo list", {
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
   root = mg_make_fixture()
   # Make student1-excellent fully graded (both questions get a public comment)
   markermd:::save_comment(root, "Q2", "student1-excellent", "ok")
@@ -207,4 +220,45 @@ test_that("the assignments-table status filter narrows the repo list", {
   expect_true(table_has("student3-poor"))     # Q2 quantile rule fails
   expect_true(table_has("student4-incomplete"))  # Q3 ggplot rule fails
   expect_true(table_has("student5-messy"))    # Q3 anchor no longer resolves
+})
+
+
+test_that("navigation hotkeys move repos (z/x), questions (,/.), and the html toggle (h)", {
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
+  root = mg_make_fixture()
+
+  app = shinytest2::AppDriver$new(markermd:::mark_app(root), name = "mark_nav_hotkeys")
+  app$set_inputs(main_navbar = "rubric")
+  app$wait_for_idle()
+
+  press = function(key) {
+    app$run_js(glue::glue(
+      "document.dispatchEvent(new KeyboardEvent('keydown', {key: '<<key>>'}));",
+      .open = "<<", .close = ">>"
+    ))
+    app$wait_for_idle()
+  }
+
+  expect_equal(app$get_value(input = "content_module-content_repo_select"), "student1-excellent")
+  expect_equal(app$get_value(input = "rubric_module-question_select"), "Q2")
+
+  press("x")
+  expect_equal(app$get_value(input = "content_module-content_repo_select"), "student2-average")
+
+  # z steps back, then wraps from the first repo to the last
+  press("z")
+  expect_equal(app$get_value(input = "content_module-content_repo_select"), "student1-excellent")
+  press("z")
+  expect_equal(app$get_value(input = "content_module-content_repo_select"), "student5-messy")
+
+  press(".")
+  expect_equal(app$get_value(input = "rubric_module-question_select"), "Q3")
+  press(",")
+  expect_equal(app$get_value(input = "rubric_module-question_select"), "Q2")
+
+  expect_true(app$get_value(input = "content_module-html_toggle"))
+  press("h")
+  expect_false(app$get_value(input = "content_module-html_toggle"))
 })

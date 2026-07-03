@@ -2,24 +2,6 @@
 #
 # These functions bridge between S7 objects and SQLite database operations
 
-# SQL fragment selecting the most recent grade row per item_id for a given
-# question_name / assignment_repo pair. Recency is decided by the
-# autoincrement id, not the timestamp: timestamps have 1-second resolution, so
-# two quick toggles of the same item tie on MAX(timestamp) and the join would
-# return both rows. The outer query must alias the grades table as g1 and
-# supply two pairs of (question_name, assignment_repo) params: one pair for
-# this inner subquery and one for the outer WHERE clause.
-
-most_recent_grade_join = "
-  FROM grades g1
-  INNER JOIN (
-    SELECT MAX(id) as max_id
-    FROM grades
-    WHERE question_name = ? AND assignment_repo = ?
-    GROUP BY item_id
-  ) g2 ON g1.id = g2.max_id
-  WHERE g1.question_name = ? AND g1.assignment_repo = ?"
-
 # Convert database settings row to markermd_grade_state S7 object
 #
 # settings_row: Single row data frame from settings table
@@ -82,6 +64,30 @@ save_rubric_item = function(collection_path, question_name, item_id, rubric_item
   with_database(collection_path, function(conn) {
     upsert_items(conn, question_name, item_id, rubric_item)
     return(TRUE)
+  })
+}
+
+# Save several rubric items for one question atomically, so a renumbering
+# (move/delete rewrites every hotkey) cannot be half-persisted and pays one
+# connection rather than one per item
+#
+# collection_path: Path to collection directory
+# question_name: Character string
+# items: Named list of markermd_rubric_item S7 objects keyed by item_id
+
+save_rubric_items = function(collection_path, question_name, items) {
+  with_database(collection_path, function(conn) {
+    DBI::dbBegin(conn)
+    tryCatch({
+      for (item_id in names(items)) {
+        upsert_items(conn, question_name, item_id, items[[item_id]])
+      }
+      DBI::dbCommit(conn)
+    }, error = function(e) {
+      DBI::dbRollback(conn)
+      cli::cli_abort("Failed to save rubric items: {conditionMessage(e)}")
+    })
+    invisible(TRUE)
   })
 }
 
@@ -198,11 +204,11 @@ load_rubric_items = function(collection_path, question_name) {
 
 load_grade_selections = function(collection_path, question_name, assignment_repo) {
   with_database(collection_path, function(conn) {
-    grades_data = DBI::dbGetQuery(conn, glue::glue("
-      SELECT g1.*
-      <<most_recent_grade_join>>
-    ", .open = "<<", .close = ">>"),
-      params = list(question_name, assignment_repo, question_name, assignment_repo))
+    grades_data = latest_rows(
+      conn, "grades", "item_id",
+      where = "question_name = ? AND assignment_repo = ?",
+      params = list(question_name, assignment_repo)
+    )
 
     if (nrow(grades_data) == 0) {
       return(list())
@@ -272,38 +278,59 @@ initialize_database_state = function(collection_path, template_obj) {
   if (is.null(template_obj)) {
     return(list())
   }
-  
-  question_names = sapply(template_obj@questions, function(q) q@name)
-  
-  # Initialize return structure
+
+  question_names = template_question_names(template_obj)
+
+  # One connection for the whole load rather than two per question
+  data = with_database(collection_path, function(conn) {
+    list(
+      settings = load_all_settings(conn),
+      items = load_all_items(conn)
+    )
+  })
+
   state = list(
     grade_states = list(),
-    rubric_items = list(),
-    selections = list(),
-    comments = list(),
-    private_comments = list()
+    rubric_items = list()
   )
-  
-  # Load data for each question
+
   for (question_name in question_names) {
-    # Load grade state (or use defaults)
-    loaded_grade_state = load_grade_state(collection_path, question_name)
+    loaded_grade_state = db_row_to_grade_state(
+      data$settings[data$settings$question_name == question_name, , drop = FALSE]
+    )
     if (is.null(loaded_grade_state)) {
       # Use default grade state if none found
       loaded_grade_state = markermd_grade_state(current_score = 0, total_score = 10)
     }
     state$grade_states[[question_name]] = loaded_grade_state
-    
-    # Load rubric items 
-    state$rubric_items[[question_name]] = load_rubric_items(collection_path, question_name)
-    
-    # Initialize empty selections and comments lists for this question
-    state$selections[[question_name]] = list()
-    state$comments[[question_name]] = list()
-    state$private_comments[[question_name]] = list()
+
+    state$rubric_items[[question_name]] = items_df_to_rubric_list(data$items, question_name)
   }
-  
+
   return(state)
+}
+
+# Rubric items for one question out of a full items-table data frame, as a
+# named list of markermd_rubric_item in display order (hotkey slots first,
+# un-hotkeyed items by insertion id at the tail) matching load_rubric_items()
+#
+# items_df: Data frame of items rows (see load_all_items())
+# question_name: Character string
+
+items_df_to_rubric_list = function(items_df, question_name) {
+  rows = items_df[items_df$question_name == question_name, , drop = FALSE]
+  if (nrow(rows) == 0) {
+    return(list())
+  }
+
+  hotkey_rank = ifelse(is.na(rows$hotkey), Inf, rows$hotkey)
+  rows = rows[order(hotkey_rank, rows$id), , drop = FALSE]
+
+  items = list()
+  for (i in seq_len(nrow(rows))) {
+    items[[rows$item_id[i]]] = db_row_to_rubric_item(rows[i, ], selected = FALSE)
+  }
+  items
 }
 
 # Mint n fresh rubric item ids in the app's "item_<k>" style, continuing past
@@ -425,7 +452,7 @@ apply_rubric_import = function(collection_path, rubric, mode, reserved_ids = cha
       summaries
     }, error = function(e) {
       DBI::dbRollback(conn)
-      stop("Failed to import rubric: ", e$message, call. = FALSE)
+      cli::cli_abort("Failed to import rubric: {conditionMessage(e)}")
     })
   })
 }
@@ -463,7 +490,7 @@ apply_marks_import = function(collection_path, plan) {
       TRUE
     }, error = function(e) {
       DBI::dbRollback(conn)
-      stop("Failed to import marks: ", e$message, call. = FALSE)
+      cli::cli_abort("Failed to import marks: {conditionMessage(e)}")
     })
   })
 }
@@ -481,35 +508,19 @@ apply_marks_import = function(collection_path, plan) {
 graded_question_pairs = function(collection_path) {
   with_database(collection_path, function(conn) {
     # Pairs with a selected rubric item among the most recent grade per item
-    selected_pairs = DBI::dbGetQuery(conn, "
-      SELECT DISTINCT g1.question_name AS question_name, g1.assignment_repo AS assignment_repo
-      FROM grades g1
-      INNER JOIN (
-        SELECT MAX(id) AS max_id
-        FROM grades
-        GROUP BY item_id, question_name, assignment_repo
-      ) g2 ON g1.id = g2.max_id
-      WHERE g1.selected = 1")
-
-    # Most recent comment per pair, kept when it is non-empty
-    latest_comments = DBI::dbGetQuery(conn, "
-      SELECT c.question_name AS question_name, c.assignment_repo AS assignment_repo, c.comment_text AS comment_text
-      FROM comments c
-      INNER JOIN (
-        SELECT MAX(id) AS max_id
-        FROM comments
-        GROUP BY question_name, assignment_repo
-      ) latest ON c.id = latest.max_id")
-    comment_pairs = latest_comments[
-      !is.na(latest_comments$comment_text) & nchar(trimws(latest_comments$comment_text)) > 0,
+    latest_grades = load_most_recent_grades(conn)
+    selected_pairs = unique(latest_grades[
+      latest_grades$selected == 1,
       c("question_name", "assignment_repo"),
       drop = FALSE
+    ])
+
+    # Most recent comment per pair, kept when it is non-empty
+    comment_pairs = nonempty_comments(load_most_recent_comments(conn))[
+      , c("question_name", "assignment_repo"), drop = FALSE
     ]
 
-    unique(rbind(
-      selected_pairs[, c("question_name", "assignment_repo"), drop = FALSE],
-      comment_pairs
-    ))
+    unique(rbind(selected_pairs, comment_pairs))
   })
 }
 
@@ -531,19 +542,8 @@ marked_question_pairs = function(collection_path) {
       SELECT DISTINCT question_name, assignment_repo FROM grades")
 
     nonempty_latest_pairs = function(table) {
-      latest = DBI::dbGetQuery(conn, glue::glue("
-        SELECT c.question_name AS question_name, c.assignment_repo AS assignment_repo, c.comment_text AS comment_text
-        FROM <<table>> c
-        INNER JOIN (
-          SELECT MAX(id) AS max_id
-          FROM <<table>>
-          GROUP BY question_name, assignment_repo
-        ) latest ON c.id = latest.max_id
-      ", .open = "<<", .close = ">>"))
-      latest[
-        !is.na(latest$comment_text) & nchar(trimws(latest$comment_text)) > 0,
-        c("question_name", "assignment_repo"),
-        drop = FALSE
+      nonempty_comments(latest_rows(conn, table, c("question_name", "assignment_repo")))[
+        , c("question_name", "assignment_repo"), drop = FALSE
       ]
     }
 

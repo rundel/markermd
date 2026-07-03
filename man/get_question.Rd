@@ -11,6 +11,9 @@ get_question(tmpl, id)
 
 \item{id}{Integer question ID}
 }
+\value{
+The matching \code{markermd_question} object, or \code{NULL} when \code{id} is not found.
+}
 \description{
 Get Question by ID
 }

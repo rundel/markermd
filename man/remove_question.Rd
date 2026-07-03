@@ -11,6 +11,10 @@ remove_question(tmpl, id)
 
 \item{id}{Integer question ID to remove}
 }
+\value{
+The \code{markermd_template} object without the matching question
+(returned unchanged, with a warning, when \code{id} is not found).
+}
 \description{
 Remove Question from Template
 }

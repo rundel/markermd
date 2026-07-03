@@ -25,6 +25,14 @@ data, so it can be shared, edited by hand or by an LLM tool, and brought
 back with \code{\link[=rubric_import]{rubric_import()}}. The file format is described by the JSON
 Schema at \code{system.file("schema/markermd-rubric.json", package = "markermd")}.
 }
+\examples{
+\dontrun{
+rubric_export("hw01-rubric.yaml", project = "hw01")
+
+# Export only some questions
+rubric_export("hw01-q1.yaml", project = "hw01", question = "Question 1")
+}
+}
 \seealso{
 \code{\link[=rubric_import]{rubric_import()}}, \code{\link[=template_export]{template_export()}}
 }

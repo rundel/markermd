@@ -1,8 +1,10 @@
-library(shinytest2)
-
 file = system.file("examples/div_assignment/", package = "markermd")
 
 test_that("Select an id'd div", {
+  announce_app_snapshots("template-app_divs")
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
   app = shinytest2::AppDriver$new(
     template(file),
     name = "select_div_3"

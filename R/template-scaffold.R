@@ -21,13 +21,17 @@
 #'   `n_table`, `n_div`, `n_other` and `n_content` (all non-heading blocks). The
 #'   resolved source file is attached as the `"source_file"` attribute.
 #' @export
+#'
+#' @examples
+#' key = system.file("examples/test_assignment2/hw3-key", package = "markermd")
+#' assignment_outline(key)
 assignment_outline = function(assignment_path, filename = "*.[Rq]md") {
   file = if (dir.exists(assignment_path)) {
     resolve_assignment_file(assignment_path, filename)
   } else if (file.exists(assignment_path)) {
     normalizePath(assignment_path)
   } else {
-    stop("Assignment path not found: ", assignment_path, call. = FALSE)
+    cli::cli_abort("Assignment path not found: {assignment_path}")
   }
 
   ast = parse_assignment_document(file)

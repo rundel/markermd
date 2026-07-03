@@ -33,6 +33,7 @@ markermd_project_version = function() "1.0"
 #' @param created_at Character. Project creation timestamp.
 #' @param updated_at Character. Last config-update timestamp.
 #' @param version Character. Config format version.
+#' @return A `markermd_project` S7 object.
 #' @export
 markermd_project = S7::new_class(
   "markermd_project",
@@ -73,7 +74,6 @@ markermd_project = S7::new_class(
   package = "markermd"
 )
 
-#' @export
 S7::method(print, markermd_project) = function(x, ...) {
   resolve = function(rel) if (length(rel) == 1 && !is.na(rel)) fs::path(x@root, rel) else NA_character_
 

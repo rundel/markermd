@@ -110,7 +110,7 @@ rubric_question_to_list = function(question) {
 rubric_question_from_list = function(x) {
   name = if (is.null(x$name)) "" else as.character(x$name)
   if (length(name) != 1 || !nzchar(trimws(name))) {
-    stop("Each rubric question requires a non-empty 'name'.", call. = FALSE)
+    cli::cli_abort("Each rubric question requires a non-empty 'name'.")
   }
 
   items_in = if (is.null(x$items)) list() else x$items
@@ -125,15 +125,12 @@ rubric_question_from_list = function(x) {
   # marks-side guard in marks_question_from_list().
   descriptions = vapply(items, function(item) item@description, character(1))
   if (any(!nzchar(trimws(descriptions)))) {
-    stop("Rubric question '", name, "' has a blank rubric item description.", call. = FALSE)
+    cli::cli_abort("Rubric question '{name}' has a blank rubric item description.")
   }
   dupes = unique(descriptions[duplicated(descriptions)])
   if (length(dupes) > 0) {
-    stop(
-      "Rubric question '", name, "' lists duplicate rubric item descriptions: ",
-      paste0("'", dupes, "'", collapse = ", "), ".",
-      call. = FALSE
-    )
+    dupes_str = paste0("'", dupes, "'", collapse = ", ")
+    cli::cli_abort("Rubric question '{name}' lists duplicate rubric item descriptions: {dupes_str}.")
   }
 
   list(
@@ -163,14 +160,10 @@ rubric_to_list = function(rubric) {
 rubric_from_list = function(x) {
   version = x$format_version
   if (is.null(version)) {
-    stop("Rubric file is missing the required 'format_version' field.", call. = FALSE)
+    cli::cli_abort("Rubric file is missing the required 'format_version' field.")
   }
   if (utils::compareVersion(as.character(version), markermd_rubric_version()) > 0) {
-    stop(
-      "Rubric file format_version '", version, "' is newer than this version of ",
-      "markermd understands (", markermd_rubric_version(), "). Update markermd to import it.",
-      call. = FALSE
-    )
+    cli::cli_abort("Rubric file format_version '{version}' is newer than this version of markermd understands ({markermd_rubric_version()}). Update markermd to import it.")
   }
 
   questions = if (is.null(x$questions)) list() else lapply(x$questions, rubric_question_from_list)
@@ -178,11 +171,8 @@ rubric_from_list = function(x) {
   names = vapply(questions, function(q) q$name, character(1))
   dupes = unique(names[duplicated(names)])
   if (length(dupes) > 0) {
-    stop(
-      "Rubric file contains duplicate question names: ",
-      paste0("'", dupes, "'", collapse = ", "), ".",
-      call. = FALSE
-    )
+    dupes_str = paste0("'", dupes, "'", collapse = ", ")
+    cli::cli_abort("Rubric file contains duplicate question names: {dupes_str}.")
   }
 
   list(
@@ -201,11 +191,21 @@ rubric_from_list = function(x) {
 # question_names: Character vector of question names to include
 
 collect_rubric_data = function(collection_path, question_names) {
+  # One connection for the whole export rather than two per question
+  data = with_database(collection_path, function(conn) {
+    list(
+      settings = load_all_settings(conn),
+      items = load_all_items(conn)
+    )
+  })
+
   questions = lapply(question_names, function(question_name) {
     list(
       name = question_name,
-      scoring = load_grade_state(collection_path, question_name),
-      items = unname(load_rubric_items(collection_path, question_name))
+      scoring = db_row_to_grade_state(
+        data$settings[data$settings$question_name == question_name, , drop = FALSE]
+      ),
+      items = unname(items_df_to_rubric_list(data$items, question_name))
     )
   })
 
@@ -234,7 +234,7 @@ collect_rubric_data = function(collection_path, question_names) {
 #' @export
 write_rubric_yaml = function(rubric, path) {
   if (!is.list(rubric) || !is.list(rubric$questions)) {
-    stop("`rubric` must be a list with a 'questions' list.", call. = FALSE)
+    cli::cli_abort("`rubric` must be a list with a 'questions' list.")
   }
   if (is.null(rubric$format_version)) {
     rubric$format_version = markermd_rubric_version()
@@ -242,11 +242,11 @@ write_rubric_yaml = function(rubric, path) {
   for (question in rubric$questions) {
     for (item in question$items) {
       if (!S7::S7_inherits(item, markermd_rubric_item)) {
-        stop("Rubric items must be markermd_rubric_item objects.", call. = FALSE)
+        cli::cli_abort("Rubric items must be markermd_rubric_item objects.")
       }
     }
     if (!is.null(question$scoring) && !S7::S7_inherits(question$scoring, markermd_grade_state)) {
-      stop("Question scoring must be a markermd_grade_state object.", call. = FALSE)
+      cli::cli_abort("Question scoring must be a markermd_grade_state object.")
     }
   }
 
@@ -276,7 +276,7 @@ write_rubric_yaml = function(rubric, path) {
 #' @export
 read_rubric_yaml = function(path) {
   if (!file.exists(path)) {
-    stop("Rubric file does not exist: ", path, call. = FALSE)
+    cli::cli_abort("Rubric file does not exist: {path}")
   }
   x = yaml::read_yaml(path)
   rubric_from_list(x)
@@ -298,10 +298,10 @@ read_rubric_yaml = function(path) {
 #' @export
 validate_rubric_file = function(path) {
   if (!requireNamespace("jsonvalidate", quietly = TRUE)) {
-    stop("validate_rubric_file() requires the 'jsonvalidate' package.", call. = FALSE)
+    cli::cli_abort("validate_rubric_file() requires the 'jsonvalidate' package.")
   }
   if (!file.exists(path)) {
-    stop("Rubric file does not exist: ", path, call. = FALSE)
+    cli::cli_abort("Rubric file does not exist: {path}")
   }
 
   schema = system.file("schema/markermd-rubric.json", package = "markermd")

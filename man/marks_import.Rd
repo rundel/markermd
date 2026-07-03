@@ -59,6 +59,14 @@ question names against the stored template, item descriptions against each
 question's rubric) happens before anything is written, and the import
 itself is a single transaction.
 }
+\examples{
+\dontrun{
+marks_import("hw01-marks.yaml", project = "hw01")
+
+# Re-mark pairs that already have grading activity
+marks_import("hw01-marks.yaml", project = "hw01", overwrite = TRUE)
+}
+}
 \seealso{
 \code{\link[=marks_export]{marks_export()}}, \code{\link[=marks_set]{marks_set()}}, \code{\link[=read_marks_yaml]{read_marks_yaml()}},
 \code{\link[=validate_marks_file]{validate_marks_file()}}, \code{\link[=rubric_import]{rubric_import()}}

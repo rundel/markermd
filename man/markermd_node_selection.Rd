@@ -9,6 +9,9 @@ markermd_node_selection(node_ids = character(0))
 \arguments{
 \item{node_ids}{Character vector of document-unique node ids (header or div ids)}
 }
+\value{
+A \code{markermd_node_selection} S7 object.
+}
 \description{
 S7 class representing the headings and id'd divs a template
 question targets, identified by their q2r/Pandoc ids (header ids or div

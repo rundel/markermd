@@ -27,6 +27,11 @@ deselected exports as \verb{items: []}. The file can be edited and brought back
 with \code{\link[=marks_import]{marks_import()}}, and its format is described by the JSON Schema at
 \code{system.file("schema/markermd-marks.json", package = "markermd")}.
 }
+\examples{
+\dontrun{
+marks_export("hw01-marks.yaml", project = "hw01")
+}
+}
 \seealso{
 \code{\link[=marks_import]{marks_import()}}, \code{\link[=rubric_export]{rubric_export()}}
 }

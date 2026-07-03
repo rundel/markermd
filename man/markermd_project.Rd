@@ -38,6 +38,9 @@ grading template is stored inside this database, not in the config.}
 
 \item{version}{Character. Config format version.}
 }
+\value{
+A \code{markermd_project} S7 object.
+}
 \description{
 S7 class describing an initialized markermd project. Path
 properties are stored relative to \code{root} (resolved to absolute paths at

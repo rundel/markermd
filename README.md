@@ -4,6 +4,7 @@
 [![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
 
 [![R-CMD-check](https://github.com/rundel/markermd/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/rundel/markermd/actions/workflows/R-CMD-check.yaml)
+[![pkgdown](https://img.shields.io/badge/docs-pkgdown-blue.svg)](https://rundel.github.io/markermd/)
 <!-- badges: end -->
 
 markermd is a Shiny-based grading environment for assignments submitted as git repositories containing Quarto (`.qmd`) or R Markdown (`.Rmd`) documents, such as the classroom layouts produced by [ghclass](https://rundel.github.io/ghclass/)'s `org_grade_assignment()`. Each submission is parsed into a document tree (via [q2r](https://github.com/rundel/q2r)), validated against the structural requirements of the assignment, and graded question by question with a fast, hotkey-driven rubric interface. Everything (the template, the rubric, and all recorded grading) lives in a per-project SQLite database.

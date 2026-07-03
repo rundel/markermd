@@ -23,3 +23,9 @@ YAML file. The assignment document is referenced by \code{source_path} (recorded
 under \code{source.path}) rather than embedded; the parsed AST is regenerated on
 load by re-parsing that document.
 }
+\examples{
+\dontrun{
+tmpl = read_template_yaml("hw01-template.yaml")
+write_template_yaml(tmpl, "hw01-template-copy.yaml")
+}
+}

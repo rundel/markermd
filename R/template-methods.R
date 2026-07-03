@@ -8,7 +8,6 @@ NULL
 
 # Print methods for better console output
 
-#' @export
 S7::method(print, markermd_node_selection) = function(x, ...) {
   cat("Node selection with", length(x@node_ids), "node(s)\n")
   if (length(x@node_ids) > 0) {
@@ -21,7 +20,6 @@ S7::method(print, markermd_node_selection) = function(x, ...) {
   invisible(x)
 }
 
-#' @export
 S7::method(print, markermd_question) = function(x, ...) {
   cat("Question:", x@name, "(ID:", x@id, ")\n")
   cat("Selected nodes:", length(x@selected_nodes@node_ids), "\n")
@@ -29,7 +27,6 @@ S7::method(print, markermd_question) = function(x, ...) {
   invisible(x)
 }
 
-#' @export
 S7::method(print, markermd_metadata) = function(x, ...) {
   cat("Template metadata:\n")
   cat("  Created:", format(x@created_at), "\n")
@@ -39,7 +36,6 @@ S7::method(print, markermd_metadata) = function(x, ...) {
   invisible(x)
 }
 
-#' @export
 S7::method(print, markermd_template) = function(x, ...) {
   cat("Markermd template with", length(x@questions), "questions\n")
   if (length(x@questions) > 0) {
@@ -59,12 +55,11 @@ S7::method(print, markermd_template) = function(x, ...) {
 }
 
 # Length methods
-#' @export
+
 S7::method(length, markermd_node_selection) = function(x) {
   length(x@node_ids)
 }
 
-#' @export  
 S7::method(length, markermd_template) = function(x) {
   length(x@questions)
 }
@@ -74,25 +69,26 @@ S7::method(length, markermd_template) = function(x) {
 #' Add Question to Template
 #' @param tmpl template object
 #' @param q question object
+#' @return The `markermd_template` object with `q` appended to its questions.
 #' @export
 add_question = function(tmpl, q) {
   if (!S7::S7_inherits(tmpl, markermd_template)) {
-    stop("tmpl must be a markermd_template object")
+    cli::cli_abort("tmpl must be a markermd_template object")
   }
   if (!S7::S7_inherits(q, markermd_question)) {
-    stop("q must be a markermd_question object")
+    cli::cli_abort("q must be a markermd_question object")
   }
   
   # Check for duplicate ID
   existing_ids = sapply(tmpl@questions, function(x) x@id)
   if (q@id %in% existing_ids) {
-    stop("Question ID ", q@id, " already exists in template")
+    cli::cli_abort("Question ID {q@id} already exists in template")
   }
   
   # Check for duplicate name
   existing_names = sapply(tmpl@questions, function(x) x@name)
   if (q@name %in% existing_names) {
-    stop("Question name '", q@name, "' already exists in template")
+    cli::cli_abort("Question name '{q@name}' already exists in template")
   }
   
   tmpl@questions = c(tmpl@questions, list(q))
@@ -102,10 +98,12 @@ add_question = function(tmpl, q) {
 #' Remove Question from Template
 #' @param tmpl template object
 #' @param id Integer question ID to remove
+#' @return The `markermd_template` object without the matching question
+#'   (returned unchanged, with a warning, when `id` is not found).
 #' @export
 remove_question = function(tmpl, id) {
   if (!S7::S7_inherits(tmpl, markermd_template)) {
-    stop("tmpl must be a markermd_template object")
+    cli::cli_abort("tmpl must be a markermd_template object")
   }
   
   question_ids = sapply(tmpl@questions, function(x) x@id)
@@ -123,10 +121,11 @@ remove_question = function(tmpl, id) {
 #' Get Question by ID
 #' @param tmpl template object
 #' @param id Integer question ID
+#' @return The matching `markermd_question` object, or `NULL` when `id` is not found.
 #' @export
 get_question = function(tmpl, id) {
   if (!S7::S7_inherits(tmpl, markermd_template)) {
-    stop("tmpl must be a markermd_template object")
+    cli::cli_abort("tmpl must be a markermd_template object")
   }
   
   question_ids = sapply(tmpl@questions, function(x) x@id)

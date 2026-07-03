@@ -16,3 +16,7 @@ A \code{markermd_project} object.
 Loads the \code{config.yml} written by \code{\link[=init_project]{init_project()}} and returns it as a
 \code{markermd_project} object. Errors if the directory has not been initialized.
 }
+\examples{
+project = system.file("examples/test_assignment2", package = "markermd")
+project_config(project)
+}

@@ -1,5 +1,3 @@
-library(shinytest2)
-
 # Build a temporary markermd project whose key (solution) repo holds the bundled
 # example assignment. When with_template = TRUE a two-question template is
 # written and imported into the project database so it can be preloaded for
@@ -44,6 +42,9 @@ make_template_project = function(with_template = TRUE) {
 
 
 test_that("template() preloads a project's stored template", {
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
   proj = make_template_project(with_template = TRUE)
 
   app = shinytest2::AppDriver$new(
@@ -59,6 +60,9 @@ test_that("template() preloads a project's stored template", {
 
 
 test_that("template() saves into the project database", {
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
   proj = make_template_project(with_template = FALSE)
 
   expect_null(markermd:::load_template_from_db(proj$root))
@@ -77,6 +81,9 @@ test_that("template() saves into the project database", {
 
 
 test_that("template() imports a YAML file into the editor", {
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
   proj = make_template_project(with_template = FALSE)
   qmd = file.path(proj$root, "key", "assignment.qmd")
 
@@ -111,6 +118,9 @@ test_that("template() imports a YAML file into the editor", {
 
 
 test_that("template() confirms before an import replaces existing questions", {
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
   proj = make_template_project(with_template = TRUE)
   qmd = file.path(proj$root, "key", "assignment.qmd")
 
@@ -147,6 +157,9 @@ test_that("template() confirms before an import replaces existing questions", {
 
 
 test_that("template() exports the current template to YAML", {
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
   proj = make_template_project(with_template = TRUE)
 
   app = shinytest2::AppDriver$new(

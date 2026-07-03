@@ -21,6 +21,9 @@ items past the first ten (which have no hotkey)}
 
 \item{selected}{Logical. Whether this item is currently selected}
 }
+\value{
+A \code{markermd_rubric_item} S7 object.
+}
 \description{
 S7 class representing a single rubric item with hotkey, points, description and selection state
 }

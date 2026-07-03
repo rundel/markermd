@@ -11,6 +11,9 @@ add_question(tmpl, q)
 
 \item{q}{question object}
 }
+\value{
+The \code{markermd_template} object with \code{q} appended to its questions.
+}
 \description{
 Add Question to Template
 }

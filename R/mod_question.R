@@ -191,8 +191,8 @@ question_server = function(id, ast, initial_question = NULL) {
       n_filters = length(q@filters)
       n_rules = length(q@rules)
       shiny::span(glue::glue(
-        "{n_nodes} node{if (n_nodes == 1) '' else 's'} selected · ",
-        "{n_filters} filter{if (n_filters == 1) '' else 's'} · ",
+        "{n_nodes} node{if (n_nodes == 1) '' else 's'} selected \u00b7 ",
+        "{n_filters} filter{if (n_filters == 1) '' else 's'} \u00b7 ",
         "{n_rules} rule{if (n_rules == 1) '' else 's'}"
       ))
     })
@@ -1037,12 +1037,6 @@ question_server = function(id, ast, initial_question = NULL) {
         cur_state@selected_nodes = markermd_node_selection(
           node_ids = setdiff(cur_state@selected_nodes@node_ids, id)
         )
-        state(cur_state)
-      },
-
-      clear_nodes = function() {
-        cur_state = state()
-        cur_state@selected_nodes = markermd_node_selection(node_ids = character(0))
         state(cur_state)
       },
 

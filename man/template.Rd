@@ -36,7 +36,8 @@ used when loading a template whose stored \code{source.path} cannot be located.}
 \item{...}{Additional arguments passed to shiny::shinyApp()}
 }
 \value{
-Launches Shiny application for template creation
+A Shiny app object (from \code{\link[shiny:shinyApp]{shiny::shinyApp()}}); printing it at an
+interactive console runs the template editor.
 }
 \description{
 Launch the markermd Template Creation Application

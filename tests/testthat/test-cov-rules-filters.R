@@ -39,13 +39,13 @@ test_that("markermd_rule validator cross-checks verb against values at construct
 
 test_that("new_markermd_rule fills defaults for every allowed verb", {
   for (verb in markermd::get_allowed_rule_verbs()) {
-    rule = markermd::new_markermd_rule(verb = verb)
+    rule = markermd:::new_markermd_rule(verb = verb)
     expect_s7_class(rule, markermd::markermd_rule)
     expect_equal(rule@node_type, "Any node", label = verb)
     expect_equal(rule@verb, verb, label = verb)
     expect_identical(
       rule@values,
-      markermd::get_default_rule_values(verb),
+      markermd:::get_default_rule_values(verb),
       label = verb
     )
   }
@@ -53,7 +53,7 @@ test_that("new_markermd_rule fills defaults for every allowed verb", {
 
 
 test_that("new_markermd_rule honors explicit node_type and values overrides", {
-  rule = markermd::new_markermd_rule(
+  rule = markermd:::new_markermd_rule(
     node_type = "Chunk",
     verb = "has at least",
     values = 3L
@@ -65,12 +65,12 @@ test_that("new_markermd_rule honors explicit node_type and values overrides", {
 
 
 test_that("validate_markermd_rule rejects non-rules and accepts valid rules", {
-  bad = markermd::validate_markermd_rule(list())
+  bad = markermd:::validate_markermd_rule(list())
   expect_false(bad$valid)
   expect_true(length(bad$errors) > 0)
   expect_true(nzchar(paste(bad$errors, collapse = "")))
 
-  ok = markermd::validate_markermd_rule(markermd::new_markermd_rule())
+  ok = markermd:::validate_markermd_rule(markermd:::new_markermd_rule())
   expect_true(ok$valid)
   expect_length(ok$errors, 0)
 })

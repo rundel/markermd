@@ -16,7 +16,7 @@ setup_assignment_repo = function(assignment_path, local_dir = NULL, is_github_re
 
   # GitHub repository handling
   if (is.null(local_dir)) {
-    stop("local_dir is required for GitHub repositories")
+    cli::cli_abort("local_dir is required for GitHub repositories")
   }
   
   # Create local directory if it doesn't exist
@@ -27,7 +27,7 @@ setup_assignment_repo = function(assignment_path, local_dir = NULL, is_github_re
   # Parse GitHub repo
   repo_parts = strsplit(assignment_path, "/")[[1]]
   if (length(repo_parts) != 2) {
-    stop("GitHub repository must be in format 'owner/repo'")
+    cli::cli_abort("GitHub repository must be in format 'owner/repo'")
   }
   
   owner = repo_parts[1]
@@ -63,20 +63,12 @@ resolve_assignment_file = function(dir, pattern) {
   matched = Sys.glob(file.path(dir, pattern))
 
   if (length(matched) == 0) {
-    stop(
-      "No files matching '", pattern, "' found in directory: ", dir, "\n",
-      "Pass the assignment file directly, or a `filename` pattern that matches one file.",
-      call. = FALSE
-    )
+    cli::cli_abort("No files matching '{pattern}' found in directory: {dir}\nPass the assignment file directly, or a `filename` pattern that matches one file.")
   }
 
   if (length(matched) > 1) {
-    stop(
-      "Multiple files match '", pattern, "' in ", dir, ":\n  ",
-      paste(fs::path_file(matched), collapse = "\n  "), "\n",
-      "Pass the assignment file directly, or a `filename` pattern that matches exactly one file.",
-      call. = FALSE
-    )
+    matched_files = paste(fs::path_file(matched), collapse = "\n  ")
+    cli::cli_abort("Multiple files match '{pattern}' in {dir}:\n  {matched_files}\nPass the assignment file directly, or a `filename` pattern that matches exactly one file.")
   }
 
   normalizePath(matched[1])

@@ -21,8 +21,9 @@ NULL
 #'   - "has at least": integer (minimum count)
 #'   - "has at most": integer (maximum count)
 #'   - "has content": character string (pattern)
-#'   - "lacks content": character string (pattern)  
+#'   - "lacks content": character string (pattern)
 #'   - "has name": character string (pattern)
+#' @return A `markermd_rule` S7 object.
 #' @export
 #' @examples
 #' # Create a count rule
@@ -38,12 +39,6 @@ NULL
 #'   verb = "has content",
 #'   values = "*plot*"
 #' )
-#'
-#' # Validate a rule
-#' validation = validate_markermd_rule(count_rule)
-#' if (!validation$valid) {
-#'   print(validation$errors)
-#' }
 markermd_rule = S7::new_class(
   "markermd_rule",
   properties = list(
@@ -76,16 +71,14 @@ markermd_rule = S7::new_class(
   package = "markermd"
 )
 
-#' Create a new markermd rule with default values
-#'
-#' @description Convenience function to create a new rule with appropriate default values
-#' based on the specified verb type.
-#'
-#' @param node_type Character. The node type (defaults to "Any node")
-#' @param verb Character. The validation verb (defaults to "has at least")
-#' @param values Vector. Custom values (if NULL, uses defaults for the verb)
-#' @return markermd_rule object
-#' @export
+# Create a new markermd rule, using the appropriate default values for the
+# specified verb type when no values are supplied. Returns a markermd_rule
+# object.
+#
+# node_type: Character. The node type (defaults to "Any node")
+# verb: Character. The validation verb (defaults to "has at least")
+# values: Vector. Custom values (if NULL, uses defaults for the verb)
+
 new_markermd_rule = function(node_type = "Any node", verb = "has at least", values = NULL) {
   # Use default values if none provided
   if (is.null(values)) {
@@ -99,14 +92,12 @@ new_markermd_rule = function(node_type = "Any node", verb = "has at least", valu
   )
 }
 
-#' Validate a markermd rule object
-#'
-#' @description Manually validate a rule object and return detailed error information.
-#' This is useful for debugging or providing user feedback.
-#'
-#' @param rule markermd_rule object to validate
-#' @return List with 'valid' (logical) and 'errors' (character vector) components
-#' @export
+# Manually validate a rule object and return detailed error information as a
+# list with 'valid' (logical) and 'errors' (character vector) components.
+# Useful for debugging or providing user feedback.
+#
+# rule: markermd_rule object to validate
+
 validate_markermd_rule = function(rule) {
   if (!S7::S7_inherits(rule, markermd_rule)) {
     return(list(valid = FALSE, errors = "Object is not a markermd_rule"))

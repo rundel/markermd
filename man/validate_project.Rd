@@ -34,3 +34,12 @@ Each repository's assignment file is matched by the basename recorded in the
 template's \code{source.path} (falling back to the first matching document), so the
 template's heading/div anchors line up with the student documents.
 }
+\examples{
+\dontrun{
+# Check every student repository against the stored template
+validate_project("hw01")
+
+# Validate against a template YAML instead of the stored one
+validate_project("hw01", template = "hw01-template.yaml")
+}
+}

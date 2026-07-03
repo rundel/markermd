@@ -23,6 +23,11 @@ graded (no selected rubric item and no public comment) is written as \code{NA},
 and a repository's \code{total} stays \code{NA} until all of its questions are
 graded.
 }
+\examples{
+\dontrun{
+export_scores("hw01")
+}
+}
 \seealso{
 \code{\link[=export_comments]{export_comments()}}, \code{\link[=export_marks]{export_marks()}}, \code{\link[=marks_export]{marks_export()}}
 }

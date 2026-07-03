@@ -23,6 +23,7 @@ NULL
 #'   "has engine" it is a cell engine name (e.g. "r"); for the other types it
 #'   is the class name, id, regex pattern, or glob pattern.
 #' @param negate Logical. When TRUE the predicate is negated (logical NOT).
+#' @return A `markermd_filter_condition` S7 object.
 #' @export
 #' @examples
 #' # Match divs
@@ -74,6 +75,7 @@ markermd_filter_condition = S7::new_class(
 #' @param conditions List of markermd_filter_condition objects
 #' @param negate Logical. When TRUE the whole group's predicate is negated
 #'   (logical NOT around the ANDed conditions).
+#' @return A `markermd_filter_group` S7 object.
 #' @export
 markermd_filter_group = S7::new_class(
   "markermd_filter_group",
@@ -104,16 +106,14 @@ markermd_filter_group = S7::new_class(
   package = "markermd"
 )
 
-#' Create a new markermd filter condition with default values
-#'
-#' @description Convenience function to create a new filter condition with an
-#' appropriate default value for the specified condition type.
-#'
-#' @param type Character. The condition type (defaults to "node type")
-#' @param value Character. Custom value (if NULL, uses the default for the type)
-#' @param negate Logical. Whether the condition is negated (defaults to FALSE)
-#' @return markermd_filter_condition object
-#' @export
+# Create a new markermd filter condition, using the default value for the
+# condition type when no value is supplied. Returns a
+# markermd_filter_condition object.
+#
+# type: Character. The condition type (defaults to "node type")
+# value: Character. Custom value (if NULL, uses the default for the type)
+# negate: Logical. Whether the condition is negated (defaults to FALSE)
+
 new_markermd_filter_condition = function(type = "node type", value = NULL, negate = FALSE) {
   if (is.null(value)) {
     value = get_default_filter_condition_value(type)
@@ -126,16 +126,13 @@ new_markermd_filter_condition = function(type = "node type", value = NULL, negat
   )
 }
 
-#' Create a new markermd filter group
-#'
-#' @description Convenience function to create a new filter group. By default
-#' the group contains a single default condition.
-#'
-#' @param conditions List of markermd_filter_condition objects (if NULL, a
-#'   single default condition is used)
-#' @param negate Logical. Whether the group is negated (defaults to FALSE)
-#' @return markermd_filter_group object
-#' @export
+# Create a new markermd filter group; by default the group contains a single
+# default condition. Returns a markermd_filter_group object.
+#
+# conditions: List of markermd_filter_condition objects (if NULL, a single
+#   default condition is used)
+# negate: Logical. Whether the group is negated (defaults to FALSE)
+
 new_markermd_filter_group = function(conditions = NULL, negate = FALSE) {
   if (is.null(conditions)) {
     conditions = list(new_markermd_filter_condition())

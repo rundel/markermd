@@ -340,6 +340,10 @@ init_project = function(path) {
 #'
 #' @return A `markermd_project` object.
 #' @export
+#'
+#' @examples
+#' project = system.file("examples/test_assignment2", package = "markermd")
+#' project_config(project)
 project_config = function(path = ".") {
   root = normalizePath(path, winslash = "/", mustWork = FALSE)
   cfg_path = project_config_path(root)
@@ -364,6 +368,10 @@ project_config = function(path = ".") {
 #'
 #' @return The project's `markermd_project` object, invisibly.
 #' @export
+#'
+#' @examples
+#' project = system.file("examples/test_assignment2", package = "markermd")
+#' project_sitrep(project)
 project_sitrep = function(path = ".") {
   project = project_config(path)
   print(project)
@@ -388,6 +396,13 @@ project_sitrep = function(path = ".") {
 #'
 #' @return The updated `markermd_project` object, invisibly.
 #' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Record the key repository and store a template from YAML
+#' project_set("hw01", key = "hw01-key")
+#' project_set("hw01", template = "hw01-template.yaml")
+#' }
 project_set = function(path = ".", repos = NULL, comments = NULL, template = NULL, key = NULL) {
   project = project_config(path)
 
@@ -441,14 +456,7 @@ project_set = function(path = ".", repos = NULL, comments = NULL, template = NUL
 # path: path to a template YAML file
 
 import_template_yaml_to_db = function(root, path) {
-  template_path = if (fs::is_absolute_path(path) || fs::file_exists(path)) {
-    path
-  } else {
-    fs::path(root, path)
-  }
-  if (!fs::file_exists(template_path)) {
-    cli::cli_abort("Template file does not exist: {.path {template_path}}")
-  }
+  template_path = resolve_project_file(root, path, "Template")
   template_obj = read_template_yaml(template_path, require_ast = FALSE)
   assert_template_compatible(template_obj)
   save_template_to_db(root, template_obj, source_path = attr(template_obj, "markermd_source_raw"))
@@ -468,6 +476,11 @@ import_template_yaml_to_db = function(root, path) {
 #'
 #' @return The imported `markermd_template` object, invisibly.
 #' @export
+#'
+#' @examples
+#' \dontrun{
+#' template_import("hw01-template.yaml", project = "hw01")
+#' }
 template_import = function(path, project = ".") {
   proj = project_config(project)
   import_template_yaml_to_db(proj@root, path)
@@ -483,6 +496,11 @@ template_import = function(path, project = ".") {
 #'
 #' @return The output `path`, invisibly.
 #' @export
+#'
+#' @examples
+#' \dontrun{
+#' template_export("hw01-template.yaml", project = "hw01")
+#' }
 template_export = function(path, project = ".") {
   proj = project_config(project)
   template_obj = load_template_from_db(proj@root, base_dir = proj@root)
@@ -505,8 +523,7 @@ template_export = function(path, project = ".") {
 project_question_names = function(root) {
   template_obj = load_template_from_db(root, base_dir = root)
   if (!is.null(template_obj)) {
-    names = vapply(template_obj@questions, function(q) q@name, character(1))
-    return(list(names = names, had_template = TRUE))
+    return(list(names = template_question_names(template_obj), had_template = TRUE))
   }
   names = sort(unique(with_database(root, load_all_items)$question_name))
   list(names = names, had_template = FALSE)
@@ -529,6 +546,14 @@ project_question_names = function(root) {
 #' @return The output `path`, invisibly.
 #' @seealso [rubric_import()], [template_export()]
 #' @export
+#'
+#' @examples
+#' \dontrun{
+#' rubric_export("hw01-rubric.yaml", project = "hw01")
+#'
+#' # Export only some questions
+#' rubric_export("hw01-q1.yaml", project = "hw01", question = "Question 1")
+#' }
 rubric_export = function(path, project = ".", question = NULL) {
   proj = project_config(project)
 
@@ -545,17 +570,11 @@ rubric_export = function(path, project = ".", question = NULL) {
     ))
   }
 
-  selected = universe$names
-  if (!is.null(question)) {
-    unknown = setdiff(question, selected)
-    if (length(unknown) > 0) {
-      cli::cli_abort(c(
-        "Unknown question{?s}: {.val {unknown}}.",
-        "i" = "This project's questions: {.val {selected}}."
-      ))
-    }
-    selected = selected[selected %in% question]
-  }
+  selected = restrict_names(
+    question, universe$names,
+    "Unknown question{?s}: {.val {unknown}}.",
+    "This project's questions: {.val {available}}."
+  )
 
   write_rubric_yaml(collect_rubric_data(proj@root, selected), path)
   invisible(path)
@@ -588,30 +607,29 @@ rubric_export = function(path, project = ".", question = NULL) {
 #' @return The parsed rubric list, invisibly.
 #' @seealso [rubric_export()], [read_rubric_yaml()], [validate_rubric_file()]
 #' @export
+#'
+#' @examples
+#' \dontrun{
+#' rubric_import("hw01-rubric.yaml", project = "hw01")
+#'
+#' # Replace each affected question's existing items
+#' rubric_import("hw01-rubric.yaml", project = "hw01", mode = "replace")
+#' }
 rubric_import = function(path, project = ".", mode = c("append", "replace"), question = NULL) {
   mode = match.arg(mode)
   proj = project_config(project)
 
-  rubric_path = if (fs::is_absolute_path(path) || fs::file_exists(path)) {
-    path
-  } else {
-    fs::path(proj@root, path)
-  }
-  if (!fs::file_exists(rubric_path)) {
-    cli::cli_abort("Rubric file does not exist: {.path {rubric_path}}")
-  }
+  rubric_path = resolve_project_file(proj@root, path, "Rubric")
 
   rubric = read_rubric_yaml(rubric_path)
   yaml_names = vapply(rubric$questions, function(q) q$name, character(1))
 
   if (!is.null(question)) {
-    unknown = setdiff(question, yaml_names)
-    if (length(unknown) > 0) {
-      cli::cli_abort(c(
-        "Question{cli::qty(unknown)}{?s} {.val {unknown}} not found in the rubric file.",
-        "i" = "The file contains: {.val {yaml_names}}."
-      ))
-    }
+    restrict_names(
+      question, yaml_names,
+      "Question{cli::qty(unknown)}{?s} {.val {unknown}} not found in the rubric file.",
+      "The file contains: {.val {available}}."
+    )
     keep = yaml_names %in% question
     rubric$questions = rubric$questions[keep]
     yaml_names = yaml_names[keep]
@@ -625,7 +643,7 @@ rubric_import = function(path, project = ".", mode = c("append", "replace"), que
   # typo'd name cannot create rubric rows the mark app would never display
   template_obj = load_template_from_db(proj@root, base_dir = proj@root)
   if (!is.null(template_obj)) {
-    template_names = vapply(template_obj@questions, function(q) q@name, character(1))
+    template_names = template_question_names(template_obj)
     unknown = setdiff(yaml_names, template_names)
     if (length(unknown) > 0) {
       cli::cli_abort(c(
@@ -668,17 +686,69 @@ rubric_import = function(path, project = ".", mode = c("append", "replace"), que
 # proj: markermd_project object
 
 project_repo_names = function(proj) {
+  fs::path_file(fs::dir_ls(project_repos_dir(proj), type = "directory"))
+}
+
+# Absolute path of a project's configured repos directory. Aborts when no
+# repos directory is configured or the configured directory is missing.
+# Shared by mark(), validate_project(), and the marks import/export surface so
+# they enumerate repositories identically.
+#
+# proj: markermd_project object
+
+project_repos_dir = function(proj) {
   if (is.na(proj@repos)) {
     cli::cli_abort(c(
       "No repos directory is configured for this project.",
-      "i" = "Record it with {.code project_set(repos = ...)}."
+      "i" = "Record it with {.code project_set(\"{proj@root}\", repos = ...)}."
     ))
   }
   repos_dir = fs::path(proj@root, proj@repos)
   if (!fs::dir_exists(repos_dir)) {
     cli::cli_abort("Configured repos directory does not exist: {.path {repos_dir}}")
   }
-  fs::path_file(fs::dir_ls(repos_dir, type = "directory"))
+  repos_dir
+}
+
+# Resolve a user-supplied file path against a project root: absolute paths and
+# paths that resolve from the working directory are used as-is, anything else
+# is taken as root-relative. Aborts when the file does not exist.
+#
+# root: absolute project root
+# path: user-supplied path
+# what: Capitalized noun for the error message (e.g. "Template")
+
+resolve_project_file = function(root, path, what) {
+  resolved = if (fs::is_absolute_path(path) || fs::file_exists(path)) {
+    path
+  } else {
+    fs::path(root, path)
+  }
+  if (!fs::file_exists(resolved)) {
+    cli::cli_abort("{what} file does not exist: {.path {resolved}}")
+  }
+  resolved
+}
+
+# Restrict a requested set of names to those available, aborting when any
+# requested name is unknown. The message templates are cli strings evaluated
+# with {unknown} and {available} in scope, so every call site keeps its exact
+# wording.
+#
+# requested: Character vector of requested names, or NULL for all available
+# available: Character vector of known names (result keeps this order)
+# unknown_msg: cli template for the error
+# hint_msg: cli template for the "i" hint
+
+restrict_names = function(requested, available, unknown_msg, hint_msg) {
+  if (is.null(requested)) {
+    return(available)
+  }
+  unknown = setdiff(requested, available)
+  if (length(unknown) > 0) {
+    cli::cli_abort(c(unknown_msg, "i" = hint_msg), call = parent.frame())
+  }
+  available[available %in% requested]
 }
 
 # Resolve a marks exchange list against a project: validate repository names,
@@ -823,29 +893,28 @@ marks_plan_summary = function(plan, action) {
 #' @seealso [marks_export()], [marks_set()], [read_marks_yaml()],
 #'   [validate_marks_file()], [rubric_import()]
 #' @export
+#'
+#' @examples
+#' \dontrun{
+#' marks_import("hw01-marks.yaml", project = "hw01")
+#'
+#' # Re-mark pairs that already have grading activity
+#' marks_import("hw01-marks.yaml", project = "hw01", overwrite = TRUE)
+#' }
 marks_import = function(path, project = ".", overwrite = FALSE, repo = NULL, question = NULL) {
   proj = project_config(project)
 
-  marks_path = if (fs::is_absolute_path(path) || fs::file_exists(path)) {
-    path
-  } else {
-    fs::path(proj@root, path)
-  }
-  if (!fs::file_exists(marks_path)) {
-    cli::cli_abort("Marks file does not exist: {.path {marks_path}}")
-  }
+  marks_path = resolve_project_file(proj@root, path, "Marks")
 
   marks = read_marks_yaml(marks_path)
 
   if (!is.null(repo)) {
     file_repos = vapply(marks$repos, function(r) r$name, character(1))
-    unknown = setdiff(repo, file_repos)
-    if (length(unknown) > 0) {
-      cli::cli_abort(c(
-        "Repositor{cli::qty(unknown)}{?y/ies} {.val {unknown}} not found in the marks file.",
-        "i" = "The file contains: {.val {file_repos}}."
-      ))
-    }
+    restrict_names(
+      repo, file_repos,
+      "Repositor{cli::qty(unknown)}{?y/ies} {.val {unknown}} not found in the marks file.",
+      "The file contains: {.val {available}}."
+    )
     marks$repos = marks$repos[file_repos %in% repo]
   }
 
@@ -853,13 +922,11 @@ marks_import = function(path, project = ".", overwrite = FALSE, repo = NULL, que
     file_questions = unique(unlist(lapply(marks$repos, function(r) {
       vapply(r$questions, function(q) q$name, character(1))
     })))
-    unknown = setdiff(question, file_questions)
-    if (length(unknown) > 0) {
-      cli::cli_abort(c(
-        "Question{cli::qty(unknown)}{?s} {.val {unknown}} not found in the marks file.",
-        "i" = "The file contains: {.val {file_questions}}."
-      ))
-    }
+    restrict_names(
+      question, file_questions,
+      "Question{cli::qty(unknown)}{?s} {.val {unknown}} not found in the marks file.",
+      "The file contains: {.val {available}}."
+    )
     marks$repos = lapply(marks$repos, function(r) {
       keep = vapply(r$questions, function(q) q$name %in% question, logical(1))
       r$questions = r$questions[keep]
@@ -924,22 +991,21 @@ marks_import = function(path, project = ".", overwrite = FALSE, repo = NULL, que
 #' @return The output `path`, invisibly.
 #' @seealso [marks_import()], [rubric_export()]
 #' @export
+#'
+#' @examples
+#' \dontrun{
+#' marks_export("hw01-marks.yaml", project = "hw01")
+#' }
 marks_export = function(path, project = ".", repo = NULL, question = NULL) {
   proj = project_config(project)
 
   marked = marked_question_pairs(proj@root)
 
-  repo_names = sort(unique(marked$assignment_repo))
-  if (!is.null(repo)) {
-    unknown = setdiff(repo, repo_names)
-    if (length(unknown) > 0) {
-      cli::cli_abort(c(
-        "No marks recorded for repositor{cli::qty(unknown)}{?y/ies} {.val {unknown}}.",
-        "i" = "Repositories with marks: {.val {repo_names}}."
-      ))
-    }
-    repo_names = repo_names[repo_names %in% repo]
-  }
+  repo_names = restrict_names(
+    repo, sort(unique(marked$assignment_repo)),
+    "No marks recorded for repositor{cli::qty(unknown)}{?y/ies} {.val {unknown}}.",
+    "Repositories with marks: {.val {available}}."
+  )
 
   template_order = project_question_names(proj@root)$names
   marked_questions = unique(marked$question_name)
@@ -947,16 +1013,11 @@ marks_export = function(path, project = ".", repo = NULL, question = NULL) {
     template_order[template_order %in% marked_questions],
     sort(setdiff(marked_questions, template_order))
   )
-  if (!is.null(question)) {
-    unknown = setdiff(question, question_names)
-    if (length(unknown) > 0) {
-      cli::cli_abort(c(
-        "No marks recorded for question{cli::qty(unknown)}{?s} {.val {unknown}}.",
-        "i" = "Questions with marks: {.val {question_names}}."
-      ))
-    }
-    question_names = question_names[question_names %in% question]
-  }
+  question_names = restrict_names(
+    question, question_names,
+    "No marks recorded for question{cli::qty(unknown)}{?s} {.val {unknown}}.",
+    "Questions with marks: {.val {available}}."
+  )
 
   marks = collect_marks_data(proj@root, repo_names = repo_names, question_names = question_names)
   if (length(marks$repos) == 0) {
@@ -1006,6 +1067,15 @@ marks_export = function(path, project = ".", repo = NULL, question = NULL) {
 #'   `action` (`"written"`), and `n_selected` (`NA` when `items` is `NULL`).
 #' @seealso [marks_import()], [marks_export()]
 #' @export
+#'
+#' @examples
+#' \dontrun{
+#' marks_set("student1-hw01", "Question 2",
+#'   items = "Looks good",
+#'   private_comment = "Quartiles and summary statistics all present.",
+#'   project = "hw01"
+#' )
+#' }
 marks_set = function(repo, question, items = NULL, comment = NULL, private_comment = NULL,
                      project = ".", overwrite = FALSE) {
   proj = project_config(project)
@@ -1083,6 +1153,11 @@ marks_set = function(repo, question, items = NULL, comment = NULL, private_comme
 #' @return The path of the written CSV file, invisibly.
 #' @seealso [export_comments()], [export_marks()], [marks_export()]
 #' @export
+#'
+#' @examples
+#' \dontrun{
+#' export_scores("hw01")
+#' }
 export_scores = function(project = ".") {
   proj = project_config(project)
 
@@ -1150,6 +1225,11 @@ export_scores = function(project = ".") {
 #' @return The paths of the written markdown files, invisibly.
 #' @seealso [export_scores()], [export_marks()], [marks_export()]
 #' @export
+#'
+#' @examples
+#' \dontrun{
+#' export_comments("hw01")
+#' }
 export_comments = function(project = ".") {
   proj = project_config(project)
 
@@ -1241,6 +1321,11 @@ export_comments = function(project = ".") {
 #'   `comments` (the feedback file paths).
 #' @seealso [export_scores()], [export_comments()]
 #' @export
+#'
+#' @examples
+#' \dontrun{
+#' export_marks("hw01")
+#' }
 export_marks = function(project = ".") {
   scores = export_scores(project)
   comments = export_comments(project)
@@ -1309,6 +1394,15 @@ find_repo_assignment = function(repo_dir, assignment_file, ext) {
 #'   `question`, `status` (`"pass"`, `"fail"`, or `"error"`), and `detail`. A repo
 #'   whose assignment cannot be found or parsed yields a single `"error"` row.
 #' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Check every student repository against the stored template
+#' validate_project("hw01")
+#'
+#' # Validate against a template YAML instead of the stored one
+#' validate_project("hw01", template = "hw01-template.yaml")
+#' }
 validate_project = function(path = ".", template = NULL, use_qmd = TRUE) {
   project = project_config(path)
 
@@ -1332,16 +1426,7 @@ validate_project = function(path = ".", template = NULL, use_qmd = TRUE) {
   }
   assert_template_compatible(template_obj)
 
-  if (is.na(project@repos)) {
-    cli::cli_abort(c(
-      "No repos directory is configured for this project.",
-      "i" = "Record it with {.code project_set(repos = ...)}."
-    ))
-  }
-  repos_dir = fs::path(project@root, project@repos)
-  if (!fs::dir_exists(repos_dir)) {
-    cli::cli_abort("Configured repos directory does not exist: {.path {repos_dir}}")
-  }
+  repos_dir = project_repos_dir(project)
 
   assignment_file = basename_or_null(attr(template_obj, "markermd_source_raw"))
   ext = if (use_qmd) "\\.qmd$" else "\\.Rmd$"

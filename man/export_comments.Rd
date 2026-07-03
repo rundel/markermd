@@ -21,6 +21,11 @@ template order, followed by a bulleted markdown list of its selected
 rubric item descriptions and its public comment. Private comments are
 never exported, and a repository with no public feedback gets no file.
 }
+\examples{
+\dontrun{
+export_comments("hw01")
+}
+}
 \seealso{
 \code{\link[=export_scores]{export_scores()}}, \code{\link[=export_marks]{export_marks()}}, \code{\link[=marks_export]{marks_export()}}
 }

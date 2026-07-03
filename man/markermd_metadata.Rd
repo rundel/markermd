@@ -20,6 +20,9 @@ markermd_metadata(
 
 \item{version}{Character. Template format version}
 }
+\value{
+A \code{markermd_metadata} S7 object.
+}
 \description{
 S7 class representing template creation and modification metadata
 }

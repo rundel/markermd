@@ -23,6 +23,9 @@ markermd_grade_state(
 
 \item{bound_below_max}{Logical. Whether to enforce score <= maximum}
 }
+\value{
+A \code{markermd_grade_state} S7 object.
+}
 \description{
 Represents the grading state for a question including current score, total possible points,
 and grading configuration options.

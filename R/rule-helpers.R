@@ -52,15 +52,13 @@ get_allowed_rule_verbs = function() {
   )
 }
 
-#' Validate node type value
-#'
-#' @description Checks if a rule's node types are valid. A rule targets one or
-#' more node types combined as a logical OR, so this accepts a non-empty
-#' character vector of unique allowed types.
-#'
-#' @param node_type Character vector. The node type(s) to validate
-#' @return Character error message if invalid, NULL if valid
-#' @export
+# Checks if a rule's node types are valid. A rule targets one or more node
+# types combined as a logical OR, so this accepts a non-empty character
+# vector of unique allowed types. Returns a character error message if
+# invalid, NULL if valid.
+#
+# node_type: Character vector. The node type(s) to validate
+
 validate_node_type = function(node_type) {
   if (!is.character(node_type)) {
     return("Node type must be a character vector")
@@ -86,13 +84,11 @@ validate_node_type = function(node_type) {
   NULL
 }
 
-#' Validate rule verb value
-#'
-#' @description Checks if a rule verb is valid according to the allowed verbs.
-#'
-#' @param verb Character. The verb to validate
-#' @return Character error message if invalid, NULL if valid
-#' @export
+# Checks if a rule verb is valid according to the allowed verbs. Returns a
+# character error message if invalid, NULL if valid.
+#
+# verb: Character. The verb to validate
+
 validate_rule_verb = function(verb) {
   if (length(verb) != 1) {
     return("Rule verb must be a single character string")
@@ -114,15 +110,14 @@ validate_rule_verb = function(verb) {
   NULL
 }
 
-#' Validate rule values based on verb type
-#'
-#' @description Validates rule values according to the specific requirements of each verb type.
-#' Different verbs have different value requirements (numeric ranges, text patterns, etc.).
-#'
-#' @param verb Character. The rule verb that determines validation requirements
-#' @param values List or vector. The values to validate
-#' @return Character error message if invalid, NULL if valid
-#' @export
+# Validates rule values according to the specific requirements of each verb
+# type; different verbs have different value requirements (numeric ranges,
+# text patterns, etc.). Returns a character error message if invalid, NULL if
+# valid.
+#
+# verb: Character. The rule verb that determines validation requirements
+# values: List or vector. The values to validate
+
 validate_rule_values = function(verb, values) {
   # First validate the verb itself
   verb_error = validate_rule_verb(verb)
@@ -228,14 +223,11 @@ validate_rule_values = function(verb, values) {
   )
 }
 
-#' Get default values for a rule verb
-#'
-#' @description Returns appropriate default values for each rule verb type.
-#' Used when creating new rules or resetting rule values.
-#'
-#' @param verb Character. The rule verb
-#' @return Default values appropriate for the verb type
-#' @export
+# Returns appropriate default values for each rule verb type. Used when
+# creating new rules or resetting rule values.
+#
+# verb: Character. The rule verb
+
 get_default_rule_values = function(verb) {
   switch(verb,
     "has between" = c(0, 10),

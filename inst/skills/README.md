@@ -9,9 +9,9 @@ distributed with the `markermd` package. A skill is a folder containing a
 - `markermd-scaffold-template`: scaffold a grading template (YAML) for an
   initialized markermd project. It reads `.markermd/config.yml` to find the key
   (solution) repository, builds a starter template from the key's assignment
-  (detecting the gradable sections and their exact anchors), records it in the
-  config, and validates it across the student repositories, ready to refine in
-  the `template()` app.
+  (detecting the gradable sections and their exact anchors), imports it into
+  the project's grading database, and validates it across the student
+  repositories, ready to refine in the `template()` app.
 - `markermd-scaffold-rubric`: scaffold a grading rubric (per-question rubric
   items plus scoring setup) for a project that already has a stored template.
   It asks whether to work through the questions all at once or one at a time

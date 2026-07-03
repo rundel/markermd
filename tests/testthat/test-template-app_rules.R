@@ -1,8 +1,10 @@
-library(shinytest2)
-
 file = system.file("examples/test_assignment/repos/student1-excellent/", package = "markermd")
 
 test_that("A rule shows a live pass/fail status against the document", {
+  announce_app_snapshots("template-app_rules")
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
   app = shinytest2::AppDriver$new(
     template(file),
     name = "rule_status"

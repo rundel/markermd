@@ -25,6 +25,9 @@ Type and format depend on the verb:
 \item "has name": character string (pattern)
 }}
 }
+\value{
+A \code{markermd_rule} S7 object.
+}
 \description{
 S7 class representing a single validation rule for template questions.
 This class provides built-in validation for all rule properties and ensures
@@ -44,10 +47,4 @@ content_rule = markermd_rule(
   verb = "has content",
   values = "*plot*"
 )
-
-# Validate a rule
-validation = validate_markermd_rule(count_rule)
-if (!validation$valid) {
-  print(validation$errors)
-}
 }

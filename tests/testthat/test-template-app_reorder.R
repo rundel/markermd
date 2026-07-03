@@ -1,5 +1,3 @@
-library(shinytest2)
-
 tr_file = system.file("examples/test_assignment/repos/student1-excellent/", package = "markermd")
 
 tr_n_questions = function(app) {
@@ -14,6 +12,9 @@ tr_question_ids = function(app) {
 
 
 test_that("moving a question down reorders the saved template, and the top guard no-ops", {
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
   app = shinytest2::AppDriver$new(template(tr_file), name = "question_reorder")
 
   app$click("add_question")
