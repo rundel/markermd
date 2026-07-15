@@ -26,6 +26,13 @@ test_that("private_comments table is added to an existing database on reopen", {
     invisible()
   })
 
+  # The migration happens when an old database is opened by a new session, so
+  # drop the session-level table cache before reopening
+  rm(
+    list = markermd:::get_database_path(dir),
+    envir = markermd:::.initialized_dbs
+  )
+
   markermd:::with_database(dir, function(conn) {
     expect_true(DBI::dbExistsTable(conn, "private_comments"))
     invisible()

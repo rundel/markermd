@@ -28,7 +28,11 @@ get_database_path = function(collection_path) {
   if (!dir.exists(cache_dir)) {
     dir.create(cache_dir, recursive = TRUE)
   }
-  normalizePath(file.path(cache_dir, "markermd.sqlite"), mustWork = FALSE)
+  # Normalize the directory (which exists) rather than the sqlite file (which
+  # may not yet): on macOS normalizePath(mustWork = FALSE) leaves a missing
+  # file's path unresolved but resolves it once the file exists, which would
+  # give the same database two different .initialized_dbs cache keys
+  file.path(normalizePath(cache_dir), "markermd.sqlite")
 }
 
 # Initialize database connection and create tables if needed
