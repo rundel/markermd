@@ -27,7 +27,7 @@ A `markermd_project` object.
 src = system.file("examples/test_assignment", package = "markermd")
 project = fs::dir_copy(src, fs::file_temp("markermd_example_"))
 init_project(project)
-#> ✔ Initialized markermd project at /tmp/RtmpHKtQ5Y/markermd_example_38005b599ca4
+#> ✔ Initialized markermd project at /tmp/Rtmp8Lc6kN/markermd_example_22116276b469
 #> • database: .markermd/markermd.sqlite (created)
 #> • skills: markermd-apply-rubric, markermd-scaffold-rubric,
 #>   markermd-scaffold-template (.claude/skills/)
@@ -39,10 +39,10 @@ init_project(project)
 project_config(project)
 #> 
 #> ── markermd project ────────────────────────────────────────────────────────────
-#> root: /tmp/RtmpHKtQ5Y/markermd_example_38005b599ca4
+#> root: /tmp/Rtmp8Lc6kN/markermd_example_22116276b469
 #> version: 1.0
-#> created: 2026-07-15 10:39:06
-#> updated: 2026-07-15 10:39:06
+#> created: 2026-07-15 11:54:49
+#> updated: 2026-07-15 11:54:50
 #> 
 #> ── Locations ──
 #> 
