@@ -19,6 +19,9 @@ and comment counts, artifact directories, the grading database, and the
 template).
 }
 \examples{
-project = system.file("examples/test_assignment2", package = "markermd")
+src = system.file("examples/test_assignment", package = "markermd")
+project = fs::dir_copy(src, fs::file_temp("markermd_example_"))
+init_project(project)
+
 project_sitrep(project)
 }

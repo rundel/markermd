@@ -342,7 +342,10 @@ init_project = function(path) {
 #' @export
 #'
 #' @examples
-#' project = system.file("examples/test_assignment2", package = "markermd")
+#' src = system.file("examples/test_assignment", package = "markermd")
+#' project = fs::dir_copy(src, fs::file_temp("markermd_example_"))
+#' init_project(project)
+#'
 #' project_config(project)
 project_config = function(path = ".") {
   root = normalizePath(path, winslash = "/", mustWork = FALSE)
@@ -370,7 +373,10 @@ project_config = function(path = ".") {
 #' @export
 #'
 #' @examples
-#' project = system.file("examples/test_assignment2", package = "markermd")
+#' src = system.file("examples/test_assignment", package = "markermd")
+#' project = fs::dir_copy(src, fs::file_temp("markermd_example_"))
+#' init_project(project)
+#'
 #' project_sitrep(project)
 project_sitrep = function(path = ".") {
   project = project_config(path)

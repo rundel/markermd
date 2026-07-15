@@ -1,0 +1,45 @@
+format_version: "3.0"
+source:
+  path: hw3-key/assignment.qmd
+questions:
+  - id: 1
+    name: Q1
+    node_ids:
+      - question-1-understanding-r
+    rules:
+      - node_type: Markdown
+        verb: has at least
+        count: 1
+  - id: 2
+    name: Q2
+    node_ids:
+      - question-2-basic-programming
+    rules:
+      - node_type: Chunk
+        verb: has at least
+        count: 1
+      - node_type: Markdown
+        verb: has at least
+        count: 1
+  - id: 3
+    name: Q3
+    node_ids:
+      - question-3-data-visualization
+    rules:
+      - node_type: Chunk
+        verb: has at least
+        count: 1
+      - node_type: Markdown
+        verb: has at least
+        count: 1
+  - id: 4
+    name: Q4
+    node_ids:
+      - question-4-species-comparisons
+    rules:
+      - node_type: Chunk
+        verb: has at least
+        count: 1
+      - node_type: Markdown
+        verb: has at least
+        count: 1

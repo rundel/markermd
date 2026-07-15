@@ -23,7 +23,7 @@
 #' @export
 #'
 #' @examples
-#' key = system.file("examples/test_assignment2/hw3-key", package = "markermd")
+#' key = system.file("examples/test_assignment/hw3-key", package = "markermd")
 #' assignment_outline(key)
 assignment_outline = function(assignment_path, filename = "*.[Rq]md") {
   file = if (dir.exists(assignment_path)) {

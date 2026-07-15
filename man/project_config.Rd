@@ -17,6 +17,9 @@ Loads the \code{config.yml} written by \code{\link[=init_project]{init_project()
 \code{markermd_project} object. Errors if the directory has not been initialized.
 }
 \examples{
-project = system.file("examples/test_assignment2", package = "markermd")
+src = system.file("examples/test_assignment", package = "markermd")
+project = fs::dir_copy(src, fs::file_temp("markermd_example_"))
+init_project(project)
+
 project_config(project)
 }

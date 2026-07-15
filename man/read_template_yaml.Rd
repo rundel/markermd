@@ -26,7 +26,7 @@ validation is performed by the S7 constructors as objects are built.
 }
 \examples{
 path = system.file(
-  "examples/test_assignment2/markermd-template.yaml",
+  "examples/test_assignment/markermd-template.yaml",
   package = "markermd"
 )
 read_template_yaml(path)

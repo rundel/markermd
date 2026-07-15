@@ -11,3 +11,4 @@
 _\.new\.png$
 _\.png$
 ^notes$
+^inst/examples/test_assignment2$

@@ -321,7 +321,7 @@ write_template_yaml = function(template, path, source_path = NULL) {
 #'
 #' @examples
 #' path = system.file(
-#'   "examples/test_assignment2/markermd-template.yaml",
+#'   "examples/test_assignment/markermd-template.yaml",
 #'   package = "markermd"
 #' )
 #' read_template_yaml(path)
