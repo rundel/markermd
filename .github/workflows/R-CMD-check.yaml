@@ -19,8 +19,9 @@ jobs:
       fail-fast: false
       matrix:
         config:
+          # windows is omitted: q2r's cargo build fails there (the pampa git
+          # dependency checkout exceeds Windows path-length limits)
           - {os: macos-latest,   r: 'release'}
-          - {os: windows-latest, r: 'release'}
           - {os: ubuntu-latest,   r: 'devel', http-user-agent: 'release'}
           - {os: ubuntu-latest,   r: 'release'}
           - {os: ubuntu-latest,   r: 'oldrel-1'}
