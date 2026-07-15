@@ -1,6 +1,6 @@
 Package: markermd
 Title: Interactive Shiny-Based Grading Interface for Quarto and R Markdown Assignments
-Version: 0.0.0.9000
+Version: 0.1.0
 Authors@R:
     person("Colin", "Rundel", , "rundel@gmail.com", role = c("aut", "cre"))
 Description: Provides a Shiny-based workflow for grading assignments submitted
