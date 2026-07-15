@@ -5,7 +5,7 @@ test_that("Select an id'd div", {
   testthat::skip_if_not_installed("shinytest2")
   testthat::skip_on_cran()
 
-  app = shinytest2::AppDriver$new(
+  app = new_app_driver(
     template(file),
     name = "select_div_3"
   )

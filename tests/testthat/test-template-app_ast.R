@@ -10,7 +10,7 @@ test_that("Select Question 1 heading", {
   testthat::skip_if_not_installed("shinytest2")
   testthat::skip_on_cran()
 
-  app = shinytest2::AppDriver$new(
+  app = new_app_driver(
     template(file),
     name  = "select_3"
   )
@@ -24,7 +24,7 @@ test_that("Select Question 2 heading", {
   testthat::skip_if_not_installed("shinytest2")
   testthat::skip_on_cran()
 
-  app = shinytest2::AppDriver$new(
+  app = new_app_driver(
     template(file),
     name  = "select_8"
   )
@@ -38,7 +38,7 @@ test_that("Select Question 1 & 2 headings", {
   testthat::skip_if_not_installed("shinytest2")
   testthat::skip_on_cran()
 
-  app = shinytest2::AppDriver$new(
+  app = new_app_driver(
     template(file),
     name  = "select_3_8"
   )

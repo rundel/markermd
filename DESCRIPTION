@@ -21,6 +21,7 @@ Roxygen: list(markdown = TRUE)
 Suggests:
     shinytest2,
     testthat (>= 3.0.0),
+    withr,
     jsonvalidate,
     ghclass
 Config/testthat/edition: 3

@@ -61,7 +61,7 @@ test_that("negative-mode score recomputes live and clamps at zero", {
     )
   )
 
-  app = shinytest2::AppDriver$new(markermd:::mark_app(root), name = "mark_negative_score")
+  app = new_app_driver(markermd:::mark_app(root), name = "mark_negative_score")
   app$set_inputs(main_navbar = "rubric")
   app$wait_for_idle()
 
@@ -92,7 +92,7 @@ test_that("positive-mode score clamps at the question total", {
 
   root = mg_make_fixture()  # Q2 has no settings row, so it defaults to positive / out of 10
 
-  app = shinytest2::AppDriver$new(markermd:::mark_app(root), name = "mark_belowmax_clamp")
+  app = new_app_driver(markermd:::mark_app(root), name = "mark_belowmax_clamp")
   app$set_inputs(main_navbar = "rubric")
   app$wait_for_idle()
   expect_equal(mg_score(app, "Q2"), "0 / 10 pts")
@@ -118,7 +118,7 @@ test_that("moving a rubric item reorders it and renumbers hotkeys, including the
 
   root = mg_make_fixture()
 
-  app = shinytest2::AppDriver$new(markermd:::mark_app(root), name = "mark_item_reorder")
+  app = new_app_driver(markermd:::mark_app(root), name = "mark_item_reorder")
   app$set_inputs(main_navbar = "rubric")
   app$wait_for_idle()
 
@@ -161,7 +161,7 @@ test_that("a pending comment edit is saved to the pair it was typed against on n
 
   root = mg_make_fixture()
 
-  app = shinytest2::AppDriver$new(markermd:::mark_app(root), name = "mark_comment_attribution")
+  app = new_app_driver(markermd:::mark_app(root), name = "mark_comment_attribution")
   app$set_inputs(main_navbar = "rubric")
   app$wait_for_idle()
 
@@ -191,7 +191,7 @@ test_that("the assignments-table status filter narrows the repo list", {
   markermd:::save_comment(root, "Q2", "student1-excellent", "ok")
   markermd:::save_comment(root, "Q3", "student1-excellent", "ok")
 
-  app = shinytest2::AppDriver$new(markermd:::mark_app(root), name = "mark_status_filter")
+  app = new_app_driver(markermd:::mark_app(root), name = "mark_status_filter")
   app$wait_for_idle()  # default tab is "validation", where the table lives
 
   table_has = function(repo) grepl(repo, app$get_html("#repo_table"), fixed = TRUE)
@@ -229,7 +229,7 @@ test_that("navigation hotkeys move repos (z/x), questions (,/.), and the html to
 
   root = mg_make_fixture()
 
-  app = shinytest2::AppDriver$new(markermd:::mark_app(root), name = "mark_nav_hotkeys")
+  app = new_app_driver(markermd:::mark_app(root), name = "mark_nav_hotkeys")
   app$set_inputs(main_navbar = "rubric")
   app$wait_for_idle()
 

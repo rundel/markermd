@@ -5,7 +5,7 @@ test_that("A rule shows a live pass/fail status against the document", {
   testthat::skip_if_not_installed("shinytest2")
   testthat::skip_on_cran()
 
-  app = shinytest2::AppDriver$new(
+  app = new_app_driver(
     template(file),
     name = "rule_status"
   )
@@ -26,7 +26,7 @@ test_that("Rule edits are captured into state before an add re-renders the rows"
   testthat::skip_if_not_installed("shinytest2")
   testthat::skip_on_cran()
 
-  app = shinytest2::AppDriver$new(
+  app = new_app_driver(
     template(file),
     name = "rule_crud"
   )
@@ -61,7 +61,7 @@ test_that("Deleting a rule preserves the re-indexed survivor's own values", {
   testthat::skip_if_not_installed("shinytest2")
   testthat::skip_on_cran()
 
-  app = shinytest2::AppDriver$new(
+  app = new_app_driver(
     template(file),
     name = "rule_delete"
   )

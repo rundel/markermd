@@ -15,7 +15,7 @@ test_that("moving a question down reorders the saved template, and the top guard
   testthat::skip_if_not_installed("shinytest2")
   testthat::skip_on_cran()
 
-  app = shinytest2::AppDriver$new(template(tr_file), name = "question_reorder")
+  app = new_app_driver(template(tr_file), name = "question_reorder")
 
   app$click("add_question")
   app$click("add_question")

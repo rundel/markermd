@@ -4,7 +4,7 @@ test_that("Filters build a q2r expression and narrow the rule evaluation set", {
   testthat::skip_if_not_installed("shinytest2")
   testthat::skip_on_cran()
 
-  app = shinytest2::AppDriver$new(
+  app = new_app_driver(
     template(file),
     name = "filter_groups"
   )

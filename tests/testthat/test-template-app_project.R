@@ -47,7 +47,7 @@ test_that("template() preloads a project's stored template", {
 
   proj = make_template_project(with_template = TRUE)
 
-  app = shinytest2::AppDriver$new(
+  app = new_app_driver(
     template(proj$root),
     name = "template_project_preload"
   )
@@ -67,7 +67,7 @@ test_that("template() saves into the project database", {
 
   expect_null(markermd:::load_template_from_db(proj$root))
 
-  app = shinytest2::AppDriver$new(
+  app = new_app_driver(
     template(proj$root),
     name = "template_project_save"
   )
@@ -96,7 +96,7 @@ test_that("template() imports a YAML file into the editor", {
     "- {id: 2, name: Q3, node_ids: [question-3-data-visualization], rules: []}"
   ), import_yaml)
 
-  app = shinytest2::AppDriver$new(
+  app = new_app_driver(
     template(proj$root),
     name = "template_project_import"
   )
@@ -132,7 +132,7 @@ test_that("template() confirms before an import replaces existing questions", {
     "- {id: 1, name: Imported, node_ids: [question-2-basic-programming], rules: []}"
   ), import_yaml)
 
-  app = shinytest2::AppDriver$new(
+  app = new_app_driver(
     template(proj$root),
     name = "template_project_import_confirm"
   )
@@ -162,7 +162,7 @@ test_that("template() exports the current template to YAML", {
 
   proj = make_template_project(with_template = TRUE)
 
-  app = shinytest2::AppDriver$new(
+  app = new_app_driver(
     template(proj$root),
     name = "template_project_export"
   )
@@ -183,7 +183,7 @@ test_that("template() tracks unsaved changes and clears the flag on save", {
 
   proj = make_template_project(with_template = TRUE)
 
-  app = shinytest2::AppDriver$new(
+  app = new_app_driver(
     template(proj$root),
     name = "template_project_dirty"
   )

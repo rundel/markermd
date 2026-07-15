@@ -47,7 +47,7 @@ test_that("mark app launches and validates repositories by section", {
 
   fixture = make_mark_fixture()
 
-  app = shinytest2::AppDriver$new(
+  app = new_app_driver(
     markermd:::mark_app(fixture$project),
     name = "mark_validate"
   )
@@ -86,7 +86,7 @@ test_that("grading interactions patch the score display in place", {
 
   fixture = make_mark_fixture()
 
-  app = shinytest2::AppDriver$new(
+  app = new_app_driver(
     markermd:::mark_app(fixture$project),
     name = "mark_grading"
   )
@@ -148,7 +148,7 @@ test_that("a selection loaded from the database recomputes the score on question
   )
   markermd:::save_grade_selection(fixture$project, "Q3", "student1-excellent", "item_0", TRUE)
 
-  app = shinytest2::AppDriver$new(
+  app = new_app_driver(
     markermd:::mark_app(fixture$project),
     name = "mark_loaded_selection_score"
   )
@@ -177,7 +177,7 @@ test_that("public and private comments autosave to their own channels", {
 
   fixture = make_mark_fixture()
 
-  app = shinytest2::AppDriver$new(
+  app = new_app_driver(
     markermd:::mark_app(fixture$project),
     name = "mark_comments"
   )
@@ -225,7 +225,7 @@ test_that("rubric YAML export and import work through the mark app", {
     markermd::markermd_rubric_item(1L, -2, "Seeded")
   )
 
-  app = shinytest2::AppDriver$new(
+  app = new_app_driver(
     markermd:::mark_app(fixture$project),
     name = "mark_rubric_io"
   )
