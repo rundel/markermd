@@ -47,3 +47,13 @@ project_set(
 ## Value
 
 The updated `markermd_project` object, invisibly.
+
+## Examples
+
+``` r
+if (FALSE) { # \dontrun{
+# Record the key repository and store a template from YAML
+project_set("hw01", key = "hw01-key")
+project_set("hw01", template = "hw01-template.yaml")
+} # }
+```

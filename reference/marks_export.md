@@ -42,3 +42,11 @@ The output `path`, invisibly.
 
 [`marks_import()`](https://rundel.github.io/markermd/reference/marks_import.md),
 [`rubric_export()`](https://rundel.github.io/markermd/reference/rubric_export.md)
+
+## Examples
+
+``` r
+if (FALSE) { # \dontrun{
+marks_export("hw01-marks.yaml", project = "hw01")
+} # }
+```

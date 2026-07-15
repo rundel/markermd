@@ -57,7 +57,9 @@ template(
 
 ## Value
 
-Launches Shiny application for template creation
+A Shiny app object (from
+[`shiny::shinyApp()`](https://rdrr.io/pkg/shiny/man/shinyApp.html));
+printing it at an interactive console runs the template editor.
 
 ## Examples
 

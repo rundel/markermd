@@ -34,3 +34,28 @@ A data frame with one row per anchorable section and columns `type`
 the content counts `n_chunk`, `n_code_block`, `n_markdown`, `n_list`,
 `n_table`, `n_div`, `n_other` and `n_content` (all non-heading blocks).
 The resolved source file is attached as the `"source_file"` attribute.
+
+## Examples
+
+``` r
+key = system.file("examples/test_assignment/hw3-key", package = "markermd")
+assignment_outline(key)
+#>      type                             id level                           title
+#> 1 heading                   introduction     1                    Introduction
+#> 2 heading     question-1-understanding-r     2     Question 1: Understanding R
+#> 3 heading   question-2-basic-programming     2   Question 2: Basic Programming
+#> 4 heading  question-3-data-visualization     2  Question 3: Data Visualization
+#> 5 heading question-4-species-comparisons     2 Question 4: Species Comparisons
+#>   n_subsections n_chunk n_code_block n_markdown n_list n_table n_div n_other
+#> 1             4       3            0          9      0       0     0       0
+#> 2             0       0            0          2      0       0     0       0
+#> 3             0       1            0          2      0       0     0       0
+#> 4             0       1            0          2      0       0     0       0
+#> 5             0       1            0          2      0       0     0       0
+#>   n_content
+#> 1        12
+#> 2         2
+#> 3         3
+#> 4         3
+#> 5         3
+```

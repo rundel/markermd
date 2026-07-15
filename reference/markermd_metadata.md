@@ -30,3 +30,7 @@ markermd_metadata(
 - version:
 
   Character. Template format version
+
+## Value
+
+A `markermd_metadata` S7 object.

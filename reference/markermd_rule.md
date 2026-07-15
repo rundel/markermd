@@ -40,6 +40,10 @@ markermd_rule(node_type = character(0), verb = character(0), values = NULL)
 
   - "has name": character string (pattern)
 
+## Value
+
+A `markermd_rule` S7 object.
+
 ## Examples
 
 ``` r
@@ -56,10 +60,4 @@ content_rule = markermd_rule(
   verb = "has content",
   values = "*plot*"
 )
-
-# Validate a rule
-validation = validate_markermd_rule(count_rule)
-if (!validation$valid) {
-  print(validation$errors)
-}
 ```

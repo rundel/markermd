@@ -64,3 +64,7 @@ markermd_project(
 - version:
 
   Character. Config format version.
+
+## Value
+
+A `markermd_project` S7 object.

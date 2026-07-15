@@ -41,7 +41,10 @@ mark(path, template = NULL, use_qmd = TRUE, ...)
 
 ## Value
 
-Launches Shiny application
+The value returned by
+[`shiny::runApp()`](https://rdrr.io/pkg/shiny/man/runApp.html) when the
+app exits; called for its side effect of running the marking
+application.
 
 ## Examples
 

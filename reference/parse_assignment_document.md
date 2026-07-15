@@ -15,6 +15,10 @@ parse_assignment_document(file_path)
 
   Character. Path to the assignment file
 
+## Value
+
+A q2r `pandoc` AST object for the parsed document.
+
 ## Details
 
 Parse diagnostics are surfaced rather than stripped: error-kind

@@ -32,3 +32,7 @@ markermd_rubric_item(
 - selected:
 
   Logical. Whether this item is currently selected
+
+## Value
+
+A `markermd_rubric_item` S7 object.

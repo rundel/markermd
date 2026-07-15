@@ -29,3 +29,12 @@ write_template_yaml(template, path, source_path = NULL)
 ## Value
 
 The output `path`, invisibly.
+
+## Examples
+
+``` r
+if (FALSE) { # \dontrun{
+tmpl = read_template_yaml("hw01-template.yaml")
+write_template_yaml(tmpl, "hw01-template-copy.yaml")
+} # }
+```

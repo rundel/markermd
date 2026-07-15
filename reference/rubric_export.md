@@ -38,3 +38,14 @@ The output `path`, invisibly.
 
 [`rubric_import()`](https://rundel.github.io/markermd/reference/rubric_import.md),
 [`template_export()`](https://rundel.github.io/markermd/reference/template_export.md)
+
+## Examples
+
+``` r
+if (FALSE) { # \dontrun{
+rubric_export("hw01-rubric.yaml", project = "hw01")
+
+# Export only some questions
+rubric_export("hw01-q1.yaml", project = "hw01", question = "Question 1")
+} # }
+```

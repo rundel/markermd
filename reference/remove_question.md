@@ -17,3 +17,8 @@ remove_question(tmpl, id)
 - id:
 
   Integer question ID to remove
+
+## Value
+
+The `markermd_template` object without the matching question (returned
+unchanged, with a warning, when `id` is not found).

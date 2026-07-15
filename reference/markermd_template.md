@@ -26,3 +26,7 @@ markermd_template(
 - metadata:
 
   template_metadata. Template metadata
+
+## Value
+
+A `markermd_template` S7 object.

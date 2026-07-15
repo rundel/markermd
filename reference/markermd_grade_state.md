@@ -36,3 +36,7 @@ markermd_grade_state(
 - bound_below_max:
 
   Logical. Whether to enforce score \<= maximum
+
+## Value
+
+A `markermd_grade_state` S7 object.

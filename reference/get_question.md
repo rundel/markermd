@@ -17,3 +17,8 @@ get_question(tmpl, id)
 - id:
 
   Integer question ID
+
+## Value
+
+The matching `markermd_question` object, or `NULL` when `id` is not
+found.

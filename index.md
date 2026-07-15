@@ -1,6 +1,7 @@
 # markermd
 
 [![R-CMD-check](https://github.com/rundel/markermd/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/rundel/markermd/actions/workflows/R-CMD-check.yaml)
+[![pkgdown](https://img.shields.io/badge/docs-pkgdown-blue.svg)](https://rundel.github.io/markermd/)
 
 markermd is a Shiny-based grading environment for assignments submitted
 as git repositories containing Quarto (`.qmd`) or R Markdown (`.Rmd`)

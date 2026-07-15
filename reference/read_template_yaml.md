@@ -30,3 +30,21 @@ read_template_yaml(path, assignment = NULL, require_ast = FALSE)
 ## Value
 
 A `markermd_template` object.
+
+## Examples
+
+``` r
+path = system.file(
+  "examples/test_assignment/markermd-template.yaml",
+  package = "markermd"
+)
+read_template_yaml(path)
+#> Markermd template with 4 questions
+#> Questions:
+#>   - Q1 (1 section, 1 rule)
+#>   - Q2 (1 section, 2 rules)
+#>   - Q3 (1 section, 2 rules)
+#>   - Q4 (1 section, 2 rules)
+#> 
+#> Original AST: 17 nodes 
+```

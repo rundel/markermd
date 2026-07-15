@@ -82,3 +82,14 @@ import itself is a single transaction.
 [`read_marks_yaml()`](https://rundel.github.io/markermd/reference/read_marks_yaml.md),
 [`validate_marks_file()`](https://rundel.github.io/markermd/reference/validate_marks_file.md),
 [`rubric_import()`](https://rundel.github.io/markermd/reference/rubric_import.md)
+
+## Examples
+
+``` r
+if (FALSE) { # \dontrun{
+marks_import("hw01-marks.yaml", project = "hw01")
+
+# Re-mark pairs that already have grading activity
+marks_import("hw01-marks.yaml", project = "hw01", overwrite = TRUE)
+} # }
+```

@@ -23,3 +23,11 @@ template_export(path, project = ".")
 ## Value
 
 The output `path`, invisibly.
+
+## Examples
+
+``` r
+if (FALSE) { # \dontrun{
+template_export("hw01-template.yaml", project = "hw01")
+} # }
+```

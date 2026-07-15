@@ -17,3 +17,7 @@ add_question(tmpl, q)
 - q:
 
   question object
+
+## Value
+
+The `markermd_template` object with `q` appended to its questions.

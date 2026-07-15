@@ -15,3 +15,7 @@ markermd_node_selection(node_ids = character(0))
 - node_ids:
 
   Character vector of document-unique node ids (header or div ids)
+
+## Value
+
+A `markermd_node_selection` S7 object.

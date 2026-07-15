@@ -38,3 +38,7 @@ markermd_question(
   List. Filter groups for this question as markermd_filter_group
   objects. Conditions within a group are ANDed, groups are ORed; filters
   narrow the question's node set before rules evaluate.
+
+## Value
+
+A `markermd_question` S7 object.

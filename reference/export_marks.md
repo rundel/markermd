@@ -29,3 +29,11 @@ Invisibly, a list with elements `scores` (the CSV path) and `comments`
 
 [`export_scores()`](https://rundel.github.io/markermd/reference/export_scores.md),
 [`export_comments()`](https://rundel.github.io/markermd/reference/export_comments.md)
+
+## Examples
+
+``` r
+if (FALSE) { # \dontrun{
+export_marks("hw01")
+} # }
+```

@@ -77,3 +77,15 @@ cannot believe a write happened when it was ignored.
 
 [`marks_import()`](https://rundel.github.io/markermd/reference/marks_import.md),
 [`marks_export()`](https://rundel.github.io/markermd/reference/marks_export.md)
+
+## Examples
+
+``` r
+if (FALSE) { # \dontrun{
+marks_set("student1-hw01", "Question 2",
+  items = "Looks good",
+  private_comment = "Quartiles and summary statistics all present.",
+  project = "hw01"
+)
+} # }
+```

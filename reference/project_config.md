@@ -20,3 +20,36 @@ project_config(path = ".")
 ## Value
 
 A `markermd_project` object.
+
+## Examples
+
+``` r
+src = system.file("examples/test_assignment", package = "markermd")
+project = fs::dir_copy(src, fs::file_temp("markermd_example_"))
+init_project(project)
+#> ✔ Initialized markermd project at /tmp/RtmpHKtQ5Y/markermd_example_38005b599ca4
+#> • database: .markermd/markermd.sqlite (created)
+#> • skills: markermd-apply-rubric, markermd-scaffold-rubric,
+#>   markermd-scaffold-template (.claude/skills/)
+#> • repos: repos/
+#> • comments: not found
+#> • key: hw3-key
+#> • artifacts: html
+
+project_config(project)
+#> 
+#> ── markermd project ────────────────────────────────────────────────────────────
+#> root: /tmp/RtmpHKtQ5Y/markermd_example_38005b599ca4
+#> version: 1.0
+#> created: 2026-07-15 10:39:06
+#> updated: 2026-07-15 10:39:06
+#> 
+#> ── Locations ──
+#> 
+#> • repos: repos (5 repos)
+#> • comments: not found
+#> • key: hw3-key (present)
+#> • artifacts: html
+#> • database: .markermd/markermd.sqlite (present)
+#> • template: not set
+```

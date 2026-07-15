@@ -35,6 +35,10 @@ markermd_filter_condition(
 
   Logical. When TRUE the predicate is negated (logical NOT).
 
+## Value
+
+A `markermd_filter_condition` S7 object.
+
 ## Examples
 
 ``` r

@@ -19,7 +19,7 @@ heuristics when scaffolding a template."></head><body>
 
     <a class="navbar-brand me-2" href="../index.html">markermd</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.0.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -28,8 +28,10 @@ heuristics when scaffolding a template."></head><body>
 
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto"><li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
+<li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
+<li class="nav-item"><a class="external-link nav-link" href="https://github.com/rundel/markermd/" aria-label="GitHub"><span class="fa fab fa-github fa-lg"></span></a></li>
       </ul></div>
 
 
@@ -39,7 +41,7 @@ heuristics when scaffolding a template."></head><body>
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>Outline the gradable sections of an assignment</h1>
-
+      <small class="dont-index">Source: <a href="https://github.com/rundel/markermd/blob/main/R/template-scaffold.R" class="external-link"><code>R/template-scaffold.R</code></a></small>
       <div class="d-none name"><code>assignment_outline.Rd</code></div>
     </div>
 
@@ -81,6 +83,30 @@ content counts <code>n_chunk</code>, <code>n_code_block</code>, <code>n_markdown
 resolved source file is attached as the <code>"source_file"</code> attribute.</p>
     </div>
 
+    <div class="section level2">
+    <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="va">key</span> <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"examples/test_assignment/hw3-key"</span>, package <span class="op">=</span> <span class="st">"markermd"</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="fu">assignment_outline</span><span class="op">(</span><span class="va">key</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>      type                             id level                           title</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 1 heading                   introduction     1                    Introduction</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 2 heading     question-1-understanding-r     2     Question 1: Understanding R</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 3 heading   question-2-basic-programming     2   Question 2: Basic Programming</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 4 heading  question-3-data-visualization     2  Question 3: Data Visualization</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 5 heading question-4-species-comparisons     2 Question 4: Species Comparisons</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   n_subsections n_chunk n_code_block n_markdown n_list n_table n_div n_other</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 1             4       3            0          9      0       0     0       0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 2             0       0            0          2      0       0     0       0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 3             0       1            0          2      0       0     0       0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 4             0       1            0          2      0       0     0       0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 5             0       1            0          2      0       0     0       0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   n_content</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 1        12</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 2         2</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 3         3</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 4         3</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 5         3</span>
+</code></pre></div>
+    </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside></div>
 
@@ -90,7 +116,7 @@ resolved source file is attached as the <code>"source_file"</code> attribute.</p
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
     </footer></div>

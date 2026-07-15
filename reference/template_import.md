@@ -27,3 +27,11 @@ template_import(path, project = ".")
 ## Value
 
 The imported `markermd_template` object, invisibly.
+
+## Examples
+
+``` r
+if (FALSE) { # \dontrun{
+template_import("hw01-template.yaml", project = "hw01")
+} # }
+```

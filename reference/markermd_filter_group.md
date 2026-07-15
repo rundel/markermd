@@ -21,3 +21,7 @@ markermd_filter_group(conditions = list(), negate = FALSE)
 
   Logical. When TRUE the whole group's predicate is negated (logical NOT
   around the ANDed conditions).
+
+## Value
+
+A `markermd_filter_group` S7 object.

@@ -60,3 +60,14 @@ project's stored template; mismatches abort before anything is written.
 [`rubric_export()`](https://rundel.github.io/markermd/reference/rubric_export.md),
 [`read_rubric_yaml()`](https://rundel.github.io/markermd/reference/read_rubric_yaml.md),
 [`validate_rubric_file()`](https://rundel.github.io/markermd/reference/validate_rubric_file.md)
+
+## Examples
+
+``` r
+if (FALSE) { # \dontrun{
+rubric_import("hw01-rubric.yaml", project = "hw01")
+
+# Replace each affected question's existing items
+rubric_import("hw01-rubric.yaml", project = "hw01", mode = "replace")
+} # }
+```
