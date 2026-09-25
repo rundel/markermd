@@ -20,15 +20,25 @@ mark_rubric_item_hotkey_btn = function(id, rubric_item) {
   ns = shiny::NS(id)
   has_hotkey = !is.na(rubric_item@hotkey)
 
+  # Sized explicitly in every dimension, min and max included. The uiOutput
+  # wrapper this renders into is display: contents, so the button itself is
+  # the flex item in the item row and a long description used to squeeze it
+  # (flex items shrink below a plain width, down to the label's width);
+  # min-width pins it. Centred with line-height rather than flex, since
+  # browsers disagree about flex layout inside a <button>.
   shiny::actionButton(
     ns("hotkey_btn"),
     label = if (has_hotkey) as.character(rubric_item@hotkey %% 10) else "",
     class = paste(
       if (rubric_item@selected) "btn-success" else "btn-outline-secondary",
-      "btn-sm d-flex align-items-center justify-content-center"
+      "btn-sm"
     ),
     style = paste0(
-      "font-size: 10px; padding: 0; width: 28px; height: 28px;",
+      "display: inline-block; box-sizing: border-box; ",
+      "width: 28px; min-width: 28px; max-width: 28px; ",
+      "height: 28px; min-height: 28px; max-height: 28px; ",
+      "padding: 0; margin: 0; line-height: 26px; text-align: center; ",
+      "font-size: 10px; vertical-align: top;",
       if (!has_hotkey) " border-style: dashed;" else ""
     ),
     title = if (has_hotkey) NULL else "No hotkey: click to toggle"
@@ -82,7 +92,10 @@ mark_rubric_item_ui = function(id, rubric_item) {
     # Rubric item content: hotkey button beside a tight points/description stack
     shiny::div(
       class = "d-flex align-items-start gap-2",
-      # Hotkey button (re-rendered reactively to reflect selection state)
+      # Hotkey button (re-rendered reactively to reflect selection state).
+      # The output wrapper is display: contents, so flex-shrink-0 here does
+      # nothing; the button carries its own fixed size (see
+      # mark_rubric_item_hotkey_btn())
       shiny::uiOutput(ns("hotkey_btn_ui"), class = "flex-shrink-0"),
       shiny::div(
         class = "flex-grow-1",

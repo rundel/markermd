@@ -157,8 +157,10 @@ mark_content_ui = function(id) {
               width = "auto"
             )
           ),
+          # Same fixed width as the rubric pane's question selector so the two
+          # headers' prev/select/next controls line up
           shiny::div(
-            style = "min-width: 200px; display: flex; align-items: center; gap: 5px;",
+            style = "width: 220px; display: flex; align-items: center; gap: 5px;",
             bslib::tooltip(
               shiny::actionButton(
                 ns("repo_prev_btn"),

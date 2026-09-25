@@ -113,8 +113,10 @@ mark_rubric_ui = function(id) {
             button_title = "Import / Export rubric"
           )
         ),
+        # Same fixed width as the content pane's repo selector so the two
+        # headers' prev/select/next controls line up
         shiny::div(
-          style = "min-width: 150px; display: flex; align-items: center; gap: 5px;",
+          style = "width: 220px; display: flex; align-items: center; gap: 5px;",
           bslib::tooltip(
             shiny::actionButton(
               ns("question_prev_btn"),
@@ -1096,12 +1098,12 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
     # Return reactive values for external use
     return(list(
       selected_question = shiny::reactive(input$question_select),
-      selected_content_repo = selected_repo,
-      grading_data_version = shiny::reactive(grading_data_version()),
       # Programmatic question selection (the Scores tab's click-through)
       select_question = function(question_name) {
         shiny::updateSelectInput(session, "question_select", selected = question_name)
       },
+      selected_content_repo = selected_repo,
+      grading_data_version = shiny::reactive(grading_data_version()),
       question_grade_servers = question_grade_servers,
       current_grade = shiny::reactive({
         shiny::req(input$question_select)

@@ -411,3 +411,40 @@ test_that("the Validation tab follows the app-wide repo selection and the table 
   app$wait_for_idle()
   expect_equal(app$get_value(input = "content_module-content_repo_select"), "student2-average")
 })
+
+
+test_that("a rubric item's toggle button keeps its size under a long description", {
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
+  root = mg_make_fixture()
+  app = new_app_driver(markermd:::mark_app(root), name = "mark_item_button_size")
+  app$set_inputs(main_navbar = "rubric")
+  app$wait_for_idle()
+
+  app$click("rubric_module-add_item")
+  app$wait_for_idle()
+  app$click("rubric_module-add_item")
+  app$wait_for_idle()
+  # The uiOutput wrapper is display: contents, so the button is the flex
+  # item; a description far wider than the pane used to squeeze it
+  app$run_js(glue::glue(
+    "var d = document.getElementById('rubric_module-item_1-description_text');
+     d.innerText = '<<strrep('long description ', 20)>>';
+     d.dispatchEvent(new Event('input'));",
+    .open = "<<", .close = ">>"
+  ))
+  app$wait_for_idle()
+
+  size = function(item) {
+    app$get_js(glue::glue(
+      "(function() {
+        var r = document.getElementById('rubric_module-<<item>>-hotkey_btn').getBoundingClientRect();
+        return Math.round(r.width) + 'x' + Math.round(r.height);
+      })()",
+      .open = "<<", .close = ">>"
+    ))
+  }
+  expect_equal(size("item_0"), "28x28")
+  expect_equal(size("item_1"), "28x28")
+})
