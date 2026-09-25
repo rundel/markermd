@@ -4,14 +4,19 @@
 \alias{init_project}
 \title{Initialize a markermd grading project}
 \usage{
-init_project(path, agents = c("claude", "codex"))
+init_project(path, agents = c("claude", "codex"), instructions = TRUE)
 }
 \arguments{
 \item{path}{Path to the project directory.}
 
 \item{agents}{Which agents' skill sets to install: \code{"claude"} (into
 \verb{<path>/.claude/skills/}), \code{"codex"} (into \verb{<path>/.agents/skills/}), or
-both, the default.}
+both, the default. The same selection decides which instructions files
+are written.}
+
+\item{instructions}{Whether to write the selected agents' project
+instructions files (\code{CLAUDE.md} / \code{AGENTS.md}) at the project root when
+they do not already exist. Defaults to \code{TRUE}.}
 }
 \value{
 A \code{markermd_project} object, invisibly.
@@ -25,7 +30,12 @@ at the project root holding the SQLite grading database and a \code{config.yml}
 recording the project's file locations, and installs the bundled agent
 skills so they are discoverable from the project: the Claude Code set into
 \verb{<path>/.claude/skills/} and the Codex set into \verb{<path>/.agents/skills/}
-(see \code{agents}).
+(see \code{agents}). It also writes each selected agent's project instructions
+file at the project root (\code{CLAUDE.md} for Claude Code, \code{AGENTS.md} for
+Codex) describing the project layout, the grading workflow and skills, and
+the rules an agent must follow when working with student submissions. An
+existing instructions file is never overwritten, so it can be customized
+freely; pass \code{instructions = FALSE} to skip this step.
 }
 \details{
 The key (solution) repository is detected as the top-level git repository
@@ -38,9 +48,10 @@ that are not git repositories are recorded as artifact directories.
 
 Re-running \code{init_project()} on an already-initialized directory updates it in
 place: the existing grading database (including any stored grading template)
-is preserved, the skills are refreshed to the packaged version, the key and
-artifact directories are re-scanned, and a previously configured key is kept
-(or cleared if it no longer exists).
+is preserved, the skills are refreshed to the packaged version, existing
+instructions files are left untouched, the key and artifact directories are
+re-scanned, and a previously configured key is kept (or cleared if it no
+longer exists).
 }
 \examples{
 \dontrun{

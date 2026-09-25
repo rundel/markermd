@@ -98,10 +98,12 @@ assignment_outline = function(assignment_path, filename = "*.[Rq]md") {
 #' `<project>/.claude/skills/`, or the Codex set, installed into
 #' `<project>/.agents/skills/`. Both follow the Agent Skills format (a
 #' `SKILL.md` per skill) and share skill names, differing only in
-#' agent-specific wording and metadata. Copy a skill's sub-directory into the
-#' per-user directory (`~/.claude/skills/` or `~/.agents/skills/`) to make it
-#' available outside a project. See the README in the `skills` directory for
-#' details.
+#' agent-specific wording and metadata. The root of each set also holds that
+#' agent's project instructions file (`CLAUDE.md` or `AGENTS.md`), which
+#' [init_project()] copies to the project root when none exists there. Copy a
+#' skill's sub-directory into the per-user directory (`~/.claude/skills/` or
+#' `~/.agents/skills/`) to make it available outside a project. See the README
+#' in the `skills` directory for details.
 #'
 #' @param agent Which set: `"claude"` (the default) or `"codex"`.
 #' @return Character path to the installed skills directory for that agent.

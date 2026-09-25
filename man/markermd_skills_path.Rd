@@ -18,8 +18,10 @@ the package: the Claude Code set, which \code{\link[=init_project]{init_project(
 \verb{<project>/.claude/skills/}, or the Codex set, installed into
 \verb{<project>/.agents/skills/}. Both follow the Agent Skills format (a
 \code{SKILL.md} per skill) and share skill names, differing only in
-agent-specific wording and metadata. Copy a skill's sub-directory into the
-per-user directory (\verb{~/.claude/skills/} or \verb{~/.agents/skills/}) to make it
-available outside a project. See the README in the \code{skills} directory for
-details.
+agent-specific wording and metadata. The root of each set also holds that
+agent's project instructions file (\code{CLAUDE.md} or \code{AGENTS.md}), which
+\code{\link[=init_project]{init_project()}} copies to the project root when none exists there. Copy a
+skill's sub-directory into the per-user directory (\verb{~/.claude/skills/} or
+\verb{~/.agents/skills/}) to make it available outside a project. See the README
+in the \code{skills} directory for details.
 }

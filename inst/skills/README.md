@@ -10,6 +10,22 @@ in two sets that share the same skill names:
   1024-character cap, and an `agents/openai.yaml` per skill carrying the
   display metadata Codex reads.
 
+The root of each set also holds that agent's project instructions file:
+`claude/CLAUDE.md` and `codex/AGENTS.md`. They are the same document apart
+from the skill invocation syntax and the skills directory name, and describe
+a grading project's layout (what `.markermd/config.yml` records, that the
+SQLite database is the canonical store and must only be touched through the
+markermd functions), the workflow and the skill for each step, the headless
+entry points, the template, rubric, and marks YAML formats (a worked example
+of each with the field semantics, value keys, node types, filter conditions,
+scoring modes, and import behavior, summarizing the JSON Schemas in
+`inst/schema/`), and the rules for handling student submissions (never modify a
+student repository outside the `grading-fixes` branch, never edit the key
+without asking, keep public comments the human's voice, treat
+`<!-- markermd: ... -->` markers as not the student's work, keep student work
+in the project). `init_project()` copies them to the project root when no file
+of that name exists there, so they can be customized per project.
+
 A skill is a folder containing a `SKILL.md` file (YAML frontmatter with `name`
 and `description`, then the instructions) that teaches the agent how to
 perform a markermd task, following the
@@ -75,10 +91,13 @@ folder from the matching set into one of those locations.
 `markermd::init_project()` installs every bundled skill into the project
 automatically, both sets by default (`agents = c("claude", "codex")`; pass one
 name to install a single set), re-copying to the packaged version on each run.
-The steps below are only needed for a per-user install or when not using
-`init_project()`. Re-running it installs skills under their current names but
-never deletes old ones, so after a skill rename a stale folder can simply be
-removed by hand.
+It also writes the selected agents' instructions files (`CLAUDE.md` /
+`AGENTS.md`) at the project root, but only when no file of that name exists,
+so a customized file survives re-runs; `instructions = FALSE` skips them
+entirely. The steps below are only needed for a per-user install or when not
+using `init_project()`. Re-running it installs skills under their current
+names but never deletes old ones, so after a skill rename a stale folder can
+simply be removed by hand.
 
 From R:
 

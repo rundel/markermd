@@ -62,7 +62,8 @@ hw01/
 library(markermd)
 
 # One-time setup: writes .markermd/config.yml, creates the grading
-# database, and installs the bundled agent skills
+# database, installs the bundled agent skills, and writes CLAUDE.md /
+# AGENTS.md project instructions for them
 init_project("hw01")
 
 # Author the grading template (questions + validation rules)
@@ -155,6 +156,8 @@ export_marks("hw01")
 - `markermd-fix-parsing`: repairs student documents that the strict q2r parser rejects, making the smallest possible edits on a `grading-fixes` branch in each repository so the original submission stays intact, and flags any substantive change in the document.
 - `markermd-scaffold-rubric`: drafts per-question rubric items and scoring from the key, optionally sampling student submissions to anticipate common mistakes.
 - `markermd-apply-rubric`: applies the stored rubric to every student repository as a first-pass machine grading, recording its reasoning as private notes for human review in `mark()`.
+
+`init_project()` also writes a project instructions file for each selected agent at the project root (`CLAUDE.md` for Claude Code, `AGENTS.md` for Codex) describing the project layout, the workflow and skills, the headless entry points, the template, rubric, and marks YAML formats, and the rules for working with student submissions. An existing file is never overwritten, so it can be customized per project, and `instructions = FALSE` skips it.
 
 See `inst/skills/README.md` for details and per-user installation.
 

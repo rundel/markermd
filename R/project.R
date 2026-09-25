@@ -2,9 +2,10 @@
 #
 # init_project() bootstraps a grading project: it keeps all markermd state under
 # a single .markermd/ directory at the project root (the SQLite grading DB and a
-# YAML config), and installs the bundled agent skills into the project's
+# YAML config), installs the bundled agent skills into the project's
 # .claude/skills/ (Claude Code) and .agents/skills/ (Codex) so they are
-# discoverable. project_config()/project_sitrep()
+# discoverable, and writes each agent's project instructions file (CLAUDE.md /
+# AGENTS.md) at the root when none exists. project_config()/project_sitrep()
 # read and report that state; project_set() edits it.
 
 # Absolute path to a project's config file.
@@ -138,6 +139,41 @@ install_project_skills = function(path, agents = c("claude", "codex")) {
   installed
 }
 
+# Project instructions file each supported agent reads from the project root
+#
+# agent: "claude" or "codex"
+
+agent_instructions_file = function(agent) {
+  c(claude = "CLAUDE.md", codex = "AGENTS.md")[[agent]]
+}
+
+# Copy each requested agent's bundled project instructions file (CLAUDE.md for
+# Claude Code, AGENTS.md for Codex, shipped at the root of that agent's skill
+# set) to the project root. An existing file is never overwritten: it is the
+# user's to customize, so a re-run keeps it as is.
+#
+# path: project root
+# agents: character vector of agents to install for ("claude", "codex")
+# Returns: character vector named by agent, "created" or "kept" per file
+
+install_project_instructions = function(path, agents = c("claude", "codex")) {
+  status = character(0)
+  for (agent in agents) {
+    src = fs::path(markermd_skills_path(agent), agent_instructions_file(agent))
+    if (!fs::file_exists(src)) {
+      next
+    }
+    dest = fs::path(path, agent_instructions_file(agent))
+    if (fs::file_exists(dest)) {
+      status[[agent]] = "kept"
+    } else {
+      fs::file_copy(src, dest)
+      status[[agent]] = "created"
+    }
+  }
+  status
+}
+
 # NULL -> NA_character_, otherwise coerce to character. Used when reading
 # optional path fields out of a parsed config list.
 #
@@ -252,7 +288,12 @@ write_project_config = function(project) {
 #' recording the project's file locations, and installs the bundled agent
 #' skills so they are discoverable from the project: the Claude Code set into
 #' `<path>/.claude/skills/` and the Codex set into `<path>/.agents/skills/`
-#' (see `agents`).
+#' (see `agents`). It also writes each selected agent's project instructions
+#' file at the project root (`CLAUDE.md` for Claude Code, `AGENTS.md` for
+#' Codex) describing the project layout, the grading workflow and skills, and
+#' the rules an agent must follow when working with student submissions. An
+#' existing instructions file is never overwritten, so it can be customized
+#' freely; pass `instructions = FALSE` to skip this step.
 #'
 #' The key (solution) repository is detected as the top-level git repository
 #' (student repositories live under `repos/`); when several top-level repos
@@ -264,14 +305,19 @@ write_project_config = function(project) {
 #'
 #' Re-running `init_project()` on an already-initialized directory updates it in
 #' place: the existing grading database (including any stored grading template)
-#' is preserved, the skills are refreshed to the packaged version, the key and
-#' artifact directories are re-scanned, and a previously configured key is kept
-#' (or cleared if it no longer exists).
+#' is preserved, the skills are refreshed to the packaged version, existing
+#' instructions files are left untouched, the key and artifact directories are
+#' re-scanned, and a previously configured key is kept (or cleared if it no
+#' longer exists).
 #'
 #' @param path Path to the project directory.
 #' @param agents Which agents' skill sets to install: `"claude"` (into
 #'   `<path>/.claude/skills/`), `"codex"` (into `<path>/.agents/skills/`), or
-#'   both, the default.
+#'   both, the default. The same selection decides which instructions files
+#'   are written.
+#' @param instructions Whether to write the selected agents' project
+#'   instructions files (`CLAUDE.md` / `AGENTS.md`) at the project root when
+#'   they do not already exist. Defaults to `TRUE`.
 #'
 #' @return A `markermd_project` object, invisibly.
 #' @export
@@ -281,8 +327,11 @@ write_project_config = function(project) {
 #' ghclass::org_grade_assignment("hw01", org = "my-course", repo_filter = "hw01-")
 #' init_project("hw01")
 #' }
-init_project = function(path, agents = c("claude", "codex")) {
+init_project = function(path, agents = c("claude", "codex"), instructions = TRUE) {
   agents = match.arg(agents, several.ok = TRUE)
+  if (!rlang::is_bool(instructions)) {
+    cli::cli_abort("{.arg instructions} must be {.code TRUE} or {.code FALSE}.")
+  }
   if (!fs::dir_exists(path)) {
     cli::cli_abort("{.arg path} does not exist or is not a directory: {.path {path}}")
   }
@@ -326,6 +375,18 @@ init_project = function(path, agents = c("claude", "codex")) {
   }, character(1))
   names(skills_lines) = rep("*", length(skills_lines))
 
+  instructions_status = if (instructions) install_project_instructions(root, agents) else character(0)
+  instructions_txt = if (length(instructions_status)) {
+    paste(
+      glue::glue("{vapply(names(instructions_status), agent_instructions_file, character(1))} ({instructions_status})"),
+      collapse = ", "
+    )
+  } else if (instructions) {
+    "none"
+  } else {
+    "skipped"
+  }
+
   project = markermd_project(
     root = root,
     repos = if (has_repos) "repos" else NA_character_,
@@ -346,6 +407,7 @@ init_project = function(path, agents = c("claude", "codex")) {
   cli::cli_bullets(c(
     "*" = "database: {.path {project@database}} ({if (is.null(prior)) 'created' else 'preserved'})",
     skills_lines,
+    "*" = "instructions: {instructions_txt}",
     "*" = "repos: {if (has_repos) 'repos/' else 'not found'}",
     "*" = "comments: {if (has_comments) 'comments/' else 'not found'}",
     "*" = "key: {if (is.na(key)) 'not found' else key}",

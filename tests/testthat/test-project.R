@@ -155,6 +155,9 @@ test_that("init_project installs both bundled skill sets without flattening", {
   }
   expect_false(fs::file_exists(fs::path(d, ".claude/skills/SKILL.md")))
   expect_false(fs::file_exists(fs::path(d, ".agents/skills/SKILL.md")))
+  expect_true(fs::file_exists(fs::path(d, "CLAUDE.md")))
+  expect_true(fs::file_exists(fs::path(d, "AGENTS.md")))
+  expect_false(fs::file_exists(fs::path(d, ".claude/CLAUDE.md")))
 })
 
 
@@ -165,7 +168,57 @@ test_that("init_project installs only the requested agents' skills", {
 
   expect_false(fs::dir_exists(fs::path(d, ".claude/skills")))
   expect_true(fs::file_exists(fs::path(d, ".agents/skills/markermd-fix-parsing/SKILL.md")))
+  expect_false(fs::file_exists(fs::path(d, "CLAUDE.md")))
+  expect_true(fs::file_exists(fs::path(d, "AGENTS.md")))
   expect_error(init_project(d, agents = "cursor"), "should be one of")
+})
+
+
+test_that("init_project never overwrites an existing instructions file", {
+  skip_if(!fs::dir_exists(markermd:::markermd_skills_path("claude")), "bundled skills not found")
+  d = make_fake_project()
+  writeLines("# my notes", fs::path(d, "CLAUDE.md"))
+  init_project(d)
+
+  expect_equal(readLines(fs::path(d, "CLAUDE.md")), "# my notes")
+  expect_equal(
+    readLines(fs::path(d, "AGENTS.md")),
+    readLines(fs::path(markermd:::markermd_skills_path("codex"), "AGENTS.md"))
+  )
+
+  init_project(d)
+  expect_equal(readLines(fs::path(d, "CLAUDE.md")), "# my notes")
+})
+
+
+test_that("init_project(instructions = FALSE) skips the instructions files", {
+  skip_if(!fs::dir_exists(markermd:::markermd_skills_path("claude")), "bundled skills not found")
+  d = make_fake_project()
+  init_project(d, instructions = FALSE)
+
+  expect_false(fs::file_exists(fs::path(d, "CLAUDE.md")))
+  expect_false(fs::file_exists(fs::path(d, "AGENTS.md")))
+  expect_true(fs::file_exists(fs::path(d, ".claude/skills/markermd-fix-parsing/SKILL.md")))
+  expect_error(init_project(d, instructions = NA), "instructions")
+})
+
+
+test_that("each bundled skill set ships its agent's project instructions file", {
+  skip_if(!fs::dir_exists(markermd:::markermd_skills_path("claude")), "bundled skills not found")
+  claude_md = fs::path(markermd:::markermd_skills_path("claude"), "CLAUDE.md")
+  agents_md = fs::path(markermd:::markermd_skills_path("codex"), "AGENTS.md")
+  expect_true(fs::file_exists(claude_md))
+  expect_true(fs::file_exists(agents_md))
+
+  for (skill in bundled_skill_names) {
+    expect_true(any(grepl(paste0("/", skill), readLines(claude_md), fixed = TRUE)))
+    expect_true(any(grepl(paste0("$", skill), readLines(agents_md), fixed = TRUE)))
+  }
+  for (f in c(claude_md, agents_md)) {
+    for (schema in c("markermd-template.json", "markermd-rubric.json", "markermd-marks.json")) {
+      expect_true(any(grepl(schema, readLines(f), fixed = TRUE)))
+    }
+  }
 })
 
 
