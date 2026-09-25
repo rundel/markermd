@@ -1,6 +1,6 @@
 ---
 name: markermd-apply-rubric
-description: Apply a markermd project's stored grading rubric to the student repositories headlessly, as a first-pass machine grading for human review. Reads each repository's per-question sections, decides which rubric items apply (matching item descriptions verbatim), records the reasoning as private notes, writes a marks YAML, validates it against the bundled JSON Schema, and imports it into the project's grading database with marks_import() for review in mark(). Use when a user wants to grade, mark, pre-grade, or apply the rubric to student repos in a markermd project created with markermd::init_project() / ghclass::org_grade_assignment().
+description: Apply a markermd project's stored grading rubric to the student repositories headlessly, as a first-pass machine grading for human review. Reads each repository's per-question sections, decides which rubric items apply (matching item descriptions verbatim; every applicable item of a capped group, at most one tier of an exclusive group), records the reasoning as private notes, writes a marks YAML, validates it against the bundled JSON Schema, and imports it into the project's grading database with marks_import() for review in mark(). Use when a user wants to grade, mark, pre-grade, or apply the rubric to student repos in a markermd project created with markermd::init_project() / ghclass::org_grade_assignment().
 ---
 
 # Apply a markermd rubric to the student repositories
@@ -252,9 +252,11 @@ Work pair by pair against step 3's item lists:
 - In a capped group (one with a `floor` or `ceiling`), select every item
   that applies and never pre-apply the cap by leaving some out: the bound
   does the arithmetic, and the selections are the record of what was wrong.
-  In an exclusive group select at most one item, the tier that fits the
-  evidence; `marks_import()` rejects a pair with two items of an exclusive
-  group.
+- In an exclusive group select at most one item, the tier the evidence
+  supports; when the answer falls between two tiers, take the milder one
+  and say so in the private note. `marks_import()` aborts the whole import
+  when any pair selects two items of an exclusive group, so check every
+  pair for this before writing the file.
 - For every pair, draft a one-to-three sentence `private_comment` recording
   the evidence: what you saw in the answer that justifies the selections (or
   the clean pass), citing the relevant function/value/line. State the
@@ -308,8 +310,11 @@ Show the marks YAML written in step 8 (print the file's contents; for a large
 class show it repo by repo rather than eliding entries), followed by a
 per-repository summary: for each question, the selected item descriptions (or
 "none apply") and the implied score arithmetic from the scoring mode (e.g.
-"Q1: -5, -1 -> 4/10"; a capped group's items count together, clamped to
-its floor or ceiling). Flag any pairs where you were uncertain. Then ask
+"Q1: -5, -1 -> 4/10", or with a capped group "Q1: -5, Examples -1 -1 -1 ->
+-2 at the floor -> 3/10"): a capped group's selected items count together,
+clamped to the group's floor or ceiling before the question's own bounds,
+and an exclusive group contributes its one selected tier. Flag any pairs
+where you were uncertain. Then ask
 explicitly whether to import these marks. Never run `marks_import()` without
 an explicit yes; if the user adjusts anything, update the file and show the
 affected entries again before asking.
@@ -355,8 +360,9 @@ and that their selections were reviewed here before import. Then direct them to 
 markermd::mark("<root>")
 ```
 
-Point out that the marked selections appear pre-toggled in the Rubric pane,
-the reasoning is in the private-notes box under the public comment (private
+Point out that the marked selections appear pre-toggled in the Rubric pane
+(a group's header shows its subtotal and flags a bound that was hit), the
+reasoning is in the private-notes box under the public comment (private
 notes are never shared with students), correct answers were registered
 through each question's confirmation item so they count as graded, and any
 `items: []` fallback pairs still show as ungraded until they confirm them.

@@ -1,6 +1,6 @@
 ---
 name: markermd-scaffold-rubric
-description: Scaffold a markermd grading rubric (per-question rubric items plus scoring setup, as YAML) for an initialized markermd project that already has a stored grading template. Asks whether to work through the questions all at once or one at a time (showing and importing each question's proposed items before moving to the next), and whether to base the rubric on the key (solution) repository alone or on the key plus the student repositories (sampling submissions to anticipate common mistakes); asks for the assignment's total points and how to distribute them across questions (proposing equal, content-weighted, and assignment-stated splits); drafts concrete key-derived rubric items for each question, validates the YAML against the bundled JSON Schema, and imports it with rubric_import(). Use when a user wants to bootstrap, scaffold, or generate a markermd rubric for a project created with markermd::init_project() / ghclass::org_grade_assignment().
+description: Scaffold a markermd grading rubric (per-question rubric items plus scoring setup, as YAML) for an initialized markermd project that already has a stored grading template. Asks whether to work through the questions all at once or one at a time (confirming and importing each question before the next), and whether to base the rubric on the key (solution) repository alone or on the key plus the student repositories (sampling submissions to anticipate common mistakes); asks for the assignment's total points and how to distribute them across questions (proposing equal, content-weighted, and assignment-stated splits); drafts concrete key-derived rubric items for each question, with capped groups for items that stack and exclusive groups for severity tiers, validates the YAML against the bundled JSON Schema, and imports it with rubric_import(). Use when a user wants to bootstrap, scaffold, or generate a markermd rubric for a project created with markermd::init_project() / ghclass::org_grade_assignment().
 ---
 
 # Scaffold a markermd grading rubric
@@ -273,6 +273,13 @@ A mistake observed in two or more sampled repos is a candidate deduction item.
 Phrase it generically -- never quote or identify a specific student or
 repository.
 
+Also record how the observed mistakes relate to each other, because that
+decides the grouping in step 7: several small omissions of one kind in the
+same answer (missing examples, missing pieces of documentation, leftover
+debug output) are a category that stacks and belongs in a capped group, and
+one shortfall seen at different depths across repos (a write-up absent in
+some, cursory in others) is a pair of severity tiers for an exclusive group.
+
 If subagents do this reading, they run on the model the user chose in step 3
 and report per-question observations back; the drafting of items from those
 observations stays in this session.
@@ -346,19 +353,27 @@ only enforced by grader discipline. Put such items in a group:
 
 - A **capped group** carries a `floor` (deduction mode: the most the group
   can take off together) or a `ceiling` (additive mode: the most it can
-  earn together). Choose the bound from the question's weight: roughly
-  15-20 percent of `total_score` for the examples category, less for style
-  and debug output, and about the weight of the element for documentation
-  or a write-up. The grader still selects every defect that applies; the
-  bound does the proportionality, and the record of what was wrong stays
-  complete.
+  earn together). Its items keep their standalone points; the bound, not
+  the item points, does the proportioning. Choose the bound from the
+  question's weight: roughly 15-20 percent of `total_score` for the
+  examples category, less for style and debug output, and about the weight
+  of the element for documentation or a write-up. Then size it so it can
+  bind: its magnitude at least the largest single item in the group (so one
+  defect on its own is never trimmed) and less than the sum of the group's
+  items (otherwise the cap never applies and the group is pointless). The
+  grader still selects every defect that applies, and the record of what
+  was wrong stays complete.
 - An **exclusive group** (`exclusive: true`) holds severity tiers of one
   problem ("write-up absent" versus "write-up partial", "comparison missing"
   versus "comparison superficial"): at most one of its items can be
-  selected. Use it instead of two separate items plus an informal rule.
-- Do not group the confirmation item or the core correctness checks, and
-  keep them ahead of any group: hotkeys follow the flat position, so the
-  most-used items should hold the first keys. A group is only worth
+  selected, so it needs no bound. Use it instead of two separate items plus
+  an informal rule. Give each tier its own points, and put the tier graders
+  will pick most often first.
+- Keep the confirmation item, the "not attempted" catch-all and the core
+  correctness checks ungrouped and ahead of any group: each is a distinct
+  defect whose full points should apply (a cap would soften it), and the
+  first hotkeys belong to the most-used items. Group only items of one
+  category that stack, or the tiers of one problem. A group is only worth
   creating for two or more items; one level of grouping only, since
   groups cannot nest.
 - A group's `group` label is shown to the grader and, only when feedback
@@ -419,8 +434,8 @@ Rules and constraints:
   `items`, and optionally `floor` (a number `<= 0`), `ceiling` (a number
   `>= 0`) and `exclusive` (a boolean). Groups cannot nest, and item
   descriptions stay unique across the whole question, groups included.
-  Use `format_version: "1.1"` when the file has a group (`"1.0"` files
-  cannot carry one).
+  Write `format_version: "1.1"` whenever the file has a group; `"1.0"` is
+  the version for a file without groups (both are read).
 - `scoring` is optional per question; when omitted the project's existing
   scoring settings are left unchanged. In this skill, always emit `scoring`
   for every question, using the step 5 totals.
@@ -458,7 +473,11 @@ If any question already has items, **ask the user** which import mode to use:
 - `append` (the default): the file's items are added after each question's
   existing items. A group whose label matches an existing group of the
   question is merged into it (its items appended to that group, its bounds
-  overwriting the stored ones); a new label creates a new group.
+  overwriting the stored ones); a new label creates a new group. So when
+  the export shows existing groups, reuse a label only to add to that group
+  and pick a new label to keep the new items apart. Making an existing group
+  exclusive while some repository has two of its items selected aborts the
+  import, listing the repositories.
 - `replace`: each affected question's existing items and groups are deleted
   first -- along with **all recorded selections of those items, for every
   repository**. This cannot be undone, so say so explicitly when offering
@@ -474,10 +493,11 @@ Skip this step if the user chose one question at a time (step 10).
 
 Show the complete draft: for each question, its name, total (from the step 5
 distribution), and mode, and every item in order with its points and full
-description. Never summarize or elide items; the user must see exactly what
-would be imported. Ask the user to confirm or adjust (item wording, points
-magnitudes, items to add, drop, or reorder). Do not write any files until the
-user confirms.
+description, with each group shown as a labelled section carrying its
+floor, ceiling or exclusive flag. Never summarize or elide items; the user
+must see exactly what would be imported. Ask the user to confirm or adjust
+(item wording, points magnitudes, group bounds, items to add, drop, reorder,
+group or ungroup). Do not write any files until the user confirms.
 
 Then write the full rubric YAML and validate it (step 8). Importing is a
 separate decision from drafting: show the user the final rubric YAML exactly
@@ -505,9 +525,12 @@ Work through the template's questions in order. For each question:
    is done once up front, not redone per question).
 2. Show the question's complete proposed entry: its name, total (from the
    step 5 distribution), and mode, and every item in order with its points
-   and full description. Never summarize or elide items.
-3. Ask the user to confirm or adjust (item wording, points magnitudes, items
-   to add, drop, or reorder), iterating until they confirm. This confirmation
+   and full description, with each group shown as a labelled section
+   carrying its floor, ceiling or exclusive flag. Never summarize or elide
+   items.
+3. Ask the user to confirm or adjust (item wording, points magnitudes, group
+   bounds, items to add, drop, reorder, group or ungroup), iterating until
+   they confirm. This confirmation
    is the explicit yes that authorizes importing this question; never import
    without it.
 4. Add the confirmed question to `<root>/markermd-rubric.yaml` -- on the
@@ -536,8 +559,9 @@ items).
 ### 11. Report
 
 Summarize for the user: the basis (key only vs key + repos) and grading mode
-chosen, the assignment's total points, each imported question's total and
-item count, and that the rubric was written to `<root>/markermd-rubric.yaml`
+chosen, the assignment's total points, each imported question's total, item
+count and groups (label and bound or exclusive flag), and that the rubric
+was written to `<root>/markermd-rubric.yaml`
 and imported into the project database (in the question-at-a-time workflow,
 also list any questions left for later). If subagents read the student
 repositories, say which model they ran on. Then tell them to start grading,

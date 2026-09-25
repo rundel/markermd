@@ -190,8 +190,8 @@ questions:
   question's scoring mode and bounds apply, so a group with nothing selected
   contributes zero and a capped group lets the grader record every defect
   without the deductions stacking past the cap. An exclusive group allows at
-  most one selected item (severity tiers); `marks_import()` rejects a pair
-  that selects two. Groups cannot nest. A file without groups is written as
+  most one selected item (severity tiers); `marks_import()` aborts when a
+  pair selects two. Groups cannot nest. A file without groups is written as
   `format_version: "1.0"`, and both versions are read. Group labels reach
   students only when `export_comments(group_headings = TRUE)` is used.
 - Import with `rubric_import(path, project, mode = "append")`, which adds the

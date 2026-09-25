@@ -58,7 +58,8 @@ description.
 - `markermd-apply-rubric`: apply the stored rubric to the student repositories
   as a first-pass machine grading. It reads each repository's per-question
   sections, selects the rubric items that apply (matching descriptions
-  verbatim), records its reasoning as private notes (never shared with
+  verbatim; every applicable item of a capped group, at most one tier of an
+  exclusive group), records its reasoning as private notes (never shared with
   students), and imports the result with `marks_import()` for human review in
   `mark()`. Pairs that already have grading activity are skipped by default.
 - `markermd-fix-parsing`: repair student documents that markermd's strict
