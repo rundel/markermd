@@ -16,6 +16,10 @@
 # file. A file without groups is written as format 1.0 so it still loads in
 # older markermd; the reader accepts both.
 #
+# Format 1.2 adds `optional` to a question's scoring (see
+# markermd_grade_state). It is only written when TRUE, and a file is only
+# stamped 1.2 when some question is optional.
+#
 # There is no S7 container class for a whole rubric; the in-memory exchange
 # representation used by read_rubric_yaml() / write_rubric_yaml() is a plain
 # list in which the items stay flat, in display order, with each item's
@@ -38,7 +42,7 @@
 # Current rubric YAML format version
 
 markermd_rubric_version = function() {
-  "1.1"
+  "1.2"
 }
 
 # markermd_rubric_item -> plain list. Hotkey, group and selection state are
@@ -114,17 +118,22 @@ rubric_group_from_list = function(x) {
 }
 
 # markermd_grade_state -> plain list. current_score is runtime state and is
-# never serialized.
+# never serialized; optional is only written when TRUE, so a rubric without
+# optional questions serializes exactly as before.
 #
 # grade_state: markermd_grade_state S7 object
 
 scoring_to_list = function(grade_state) {
-  list(
+  out = list(
     total_score = clean_number(grade_state@total_score),
     grading_mode = grade_state@grading_mode,
     bound_above_zero = grade_state@bound_above_zero,
     bound_below_max = grade_state@bound_below_max
   )
+  if (grade_state@optional) {
+    out$optional = TRUE
+  }
+  out
 }
 
 # plain list -> markermd_grade_state. Omitted fields fall back to the class
@@ -132,13 +141,14 @@ scoring_to_list = function(grade_state) {
 # table column is NOT NULL) and is recomputed from live selections by the app.
 #
 # x: List with total_score and optionally grading_mode / bound_above_zero /
-#   bound_below_max
+#   bound_below_max / optional
 
 scoring_from_list = function(x) {
   args = list(total_score = as.numeric(x$total_score))
   if (!is.null(x$grading_mode)) args$grading_mode = as.character(x$grading_mode)
   if (!is.null(x$bound_above_zero)) args$bound_above_zero = as.logical(x$bound_above_zero)
   if (!is.null(x$bound_below_max)) args$bound_below_max = as.logical(x$bound_below_max)
+  if (!is.null(x$optional)) args$optional = as.logical(x$optional)
 
   mode = if (is.null(args$grading_mode)) "positive" else args$grading_mode
   args$current_score = if (identical(mode, "negative")) args$total_score else 0
@@ -259,10 +269,10 @@ rubric_question_from_list = function(x) {
 }
 
 # Exchange-list rubric -> plain list ready for yaml::write_yaml. The written
-# format_version is the lowest that can represent the content: "1.1" when
-# any question has a group with items, otherwise "1.0" (so a file without
-# groups still loads in older markermd); the exchange list's own
-# format_version is informational.
+# format_version is the lowest that can represent the content: "1.2" when
+# any question is optional, "1.1" when any question has a group with items,
+# otherwise "1.0" (so a file without these still loads in older markermd);
+# the exchange list's own format_version is informational.
 #
 # rubric: Exchange list with format_version and questions
 
@@ -271,8 +281,11 @@ rubric_to_list = function(rubric) {
   has_groups = any(vapply(questions, function(question) {
     any(vapply(question$items, is_rubric_group_entry, logical(1)))
   }, logical(1)))
+  has_optional = any(vapply(questions, function(question) {
+    isTRUE(question$scoring$optional)
+  }, logical(1)))
   list(
-    format_version = if (has_groups) "1.1" else "1.0",
+    format_version = if (has_optional) "1.2" else if (has_groups) "1.1" else "1.0",
     questions = questions
   )
 }

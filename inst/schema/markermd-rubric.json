@@ -2,14 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://rundel.github.io/markermd/schema/markermd-rubric.json",
   "title": "markermd grading rubric",
-  "description": "A markermd grading rubric: per-question rubric items and scoring setup used while marking in mark(). Contains no per-student grading data. A file may cover a single question or every question in a project. Format 1.1 adds item groups: an entry of a question's items list may be a group whose combined points are bounded by a floor and/or ceiling, or which allows only one selected item.",
+  "description": "A markermd grading rubric: per-question rubric items and scoring setup used while marking in mark(). Contains no per-student grading data. A file may cover a single question or every question in a project. Format 1.1 adds item groups: an entry of a question's items list may be a group whose combined points are bounded by a floor and/or ceiling, or which allows only one selected item. Format 1.2 adds optional questions (scoring.optional).",
   "type": "object",
   "required": ["format_version", "questions"],
   "additionalProperties": false,
   "properties": {
     "format_version": {
       "type": "string",
-      "description": "Rubric format version: \"1.0\" (items only) or \"1.1\" (items and groups)."
+      "description": "Rubric format version: \"1.0\" (items only), \"1.1\" (items and groups), or \"1.2\" (adds optional questions)."
     },
     "questions": {
       "type": "array",
@@ -65,6 +65,10 @@
         "bound_below_max": {
           "type": "boolean",
           "description": "When true the computed score is clamped to be <= total_score."
+        },
+        "optional": {
+          "type": "boolean",
+          "description": "When true a repository with nothing recorded for the question counts as graded and scores as if no item were selected (0 in positive mode, total_score in negative mode) instead of being left ungraded. Meant for a document-level question that applies to only some submissions. Added in format 1.2; defaults to false."
         }
       }
     },

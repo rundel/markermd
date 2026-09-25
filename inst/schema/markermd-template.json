@@ -9,7 +9,7 @@
   "properties": {
     "format_version": {
       "type": "string",
-      "description": "Template format version (e.g. \"3.0\")."
+      "description": "Template format version (e.g. \"3.0\", or \"3.1\" when a question has scope: document)."
     },
     "source": {
       "type": "object",
@@ -89,6 +89,11 @@
           "minLength": 1,
           "description": "Unique question display name."
         },
+        "scope": {
+          "type": "string",
+          "enum": ["sections", "document"],
+          "description": "What the question covers: \"sections\" (the default) targets the headings/divs in node_ids; \"document\" covers the whole document (the YAML header, render settings, and other issues that belong to no single question) and must not have node_ids. Its filters and rules, if any, evaluate against the whole document. Added in format 3.1."
+        },
         "node_ids": {
           "type": "array",
           "uniqueItems": true,
@@ -108,6 +113,13 @@
           "type": "number",
           "description": "Deprecated per-question points. Scoring moved into the rubric; accepted for backward compatibility with older templates and ignored on load."
         }
+      },
+      "if": {
+        "properties": { "scope": { "const": "document" } },
+        "required": ["scope"]
+      },
+      "then": {
+        "properties": { "node_ids": { "maxItems": 0 } }
       }
     },
     "rule": {

@@ -1093,7 +1093,7 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
     # Graded (question, repo) pairs re-read from the database after each write
     graded_pairs_r = shiny::reactive({
       grading_data_version()
-      graded_question_pairs(root)
+      graded_question_pairs(root, repos)
     })
 
     # Which questions count as graded for the current repo

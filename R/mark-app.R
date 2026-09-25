@@ -563,7 +563,7 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
         ))
       }
       question_names = template_question_names(template_obj)
-      graded_pairs = graded_question_pairs(root)
+      graded_pairs = graded_question_pairs(root, repo_list)
       score_data = collect_score_data(root, question_names, repo_list)
       scores = build_scores_table_data(score_data, question_names, repo_list)
       list(

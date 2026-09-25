@@ -7,11 +7,17 @@
 #' @name template_classes
 NULL
 
-# Current template format version. Bumped whenever the persisted template shape
-# changes incompatibly (e.g. node-selection representation, rule vocabulary).
-# assert_template_compatible() rejects templates older than this.
+# Current template format version. The major version is bumped whenever the
+# persisted template shape changes incompatibly (e.g. node-selection
+# representation, rule vocabulary); assert_template_compatible() rejects
+# templates older than markermd_template_min_version(). Minor versions add
+# optional fields: 3.1 adds a question's `scope`. A template is written with
+# the lowest version that can represent it (template_format_version()), so
+# one without document-scope questions still loads in older markermd.
 
-markermd_template_version = function() "3.0"
+markermd_template_version = function() "3.1"
+
+markermd_template_min_version = function() "3.0"
 
 #' @title Node Selection for Questions
 #' @description S7 class representing the headings and id'd divs a template
@@ -52,6 +58,12 @@ markermd_node_selection = S7::new_class(
 #' @param filters List. Filter groups for this question as markermd_filter_group
 #'   objects. Conditions within a group are ANDed, groups are ORed; filters
 #'   narrow the question's node set before rules evaluate.
+#' @param scope Character. `"sections"` (the default) for a question that
+#'   targets the selected headings and divs, or `"document"` for a question
+#'   about the document as a whole (the YAML header, render settings, and
+#'   other issues that belong to no single question). A document-scope
+#'   question selects no nodes; its filters and rules, if any, evaluate
+#'   against the whole document.
 #' @return A `markermd_question` S7 object.
 #' @export
 markermd_question = S7::new_class(
@@ -110,10 +122,40 @@ markermd_question = S7::new_class(
         }
         NULL
       }
+    ),
+    scope = S7::new_property(
+      S7::class_character,
+      default = quote("sections"),
+      validator = function(value) {
+        if (length(value) != 1 || is.na(value) || !value %in% markermd_question_scopes()) {
+          return(paste0("@scope must be one of ", paste0("'", markermd_question_scopes(), "'", collapse = ", ")))
+        }
+        NULL
+      }
     )
   ),
+  validator = function(self) {
+    if (self@scope == "document" && length(self@selected_nodes@node_ids) > 0) {
+      return("A document-scope question cannot select nodes; it covers the whole document")
+    }
+    NULL
+  },
   package = "markermd"
 )
+
+# Question scopes: "sections" targets the selected headings/divs; "document"
+# covers the whole document (issues such as the YAML header or render settings
+# that belong to no single question) and never selects nodes.
+
+markermd_question_scopes = function() c("sections", "document")
+
+# TRUE when a question covers the whole document rather than selected sections
+#
+# question: markermd_question S7 object
+
+is_document_question = function(question) {
+  identical(question@scope, "document")
+}
 
 #' @title Template Metadata
 #' @description S7 class representing template creation and modification metadata
@@ -387,6 +429,11 @@ markermd_rubric_group = S7::new_class(
 #' @param grading_mode Character. Either "positive" or "negative" grading
 #' @param bound_above_zero Logical. Whether to enforce score >= 0
 #' @param bound_below_max Logical. Whether to enforce score <= maximum
+#' @param optional Logical. Whether the question is optional: a submission
+#'   with nothing recorded for it counts as graded and scores as if no rubric
+#'   item were selected (its starting score, 0 in positive mode or
+#'   `total_score` in negative mode), instead of being left ungraded. Meant
+#'   for a document-level question that only applies to some submissions.
 #' @return A `markermd_grade_state` S7 object.
 #' @export
 markermd_grade_state = S7::new_class(
@@ -444,6 +491,16 @@ markermd_grade_state = S7::new_class(
       validator = function(value) {
         if (length(value) != 1) {
           return("bound_below_max must be a single logical value")
+        }
+        return(NULL)
+      }
+    ),
+    optional = S7::new_property(
+      S7::class_logical,
+      default = quote(FALSE),
+      validator = function(value) {
+        if (length(value) != 1 || is.na(value)) {
+          return("optional must be a single TRUE or FALSE")
         }
         return(NULL)
       }

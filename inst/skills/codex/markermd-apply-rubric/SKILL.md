@@ -230,6 +230,16 @@ For every in-scope repository under `<root>/<paths.repos>`:
 - Read the question's full answer: prose, code, and (when the repo has
   rendered output) results. Judge what the student actually did, not how it
   is formatted.
+- When the template has a document-scope question (`scope: document`, no
+  `node_ids`), read the document as a whole for it, once per repo: the YAML
+  header and render settings, global chunk options, and whether the
+  document renders. A problem found there is recorded only under that
+  question; grade the other questions on their merits as if the document
+  rendered, without deducting again for its consequences (missing output, a
+  table that never builds). If the template has no such question and you
+  find a problem of this kind, do not spread it across questions: leave it
+  unselected, note it in the private notes of the affected pairs, and
+  report it (step 11) so the user can add a document question.
 
 ### 7. Decide which items apply to each (repository, question) pair
 
@@ -239,7 +249,9 @@ Work pair by pair against step 3's item lists:
   present in the answer. When none of the defect items apply, select the
   question's confirmation item ("Looks good") so the pair is recorded as
   graded; fall back to `items: []` only when the question has no
-  confirmation item.
+  confirmation item. An optional question (`optional: true` in its scoring,
+  typically the document question) already counts as graded with nothing
+  selected, so omit its pairs from the marks file when nothing applies.
 - **Additive mode** (`positive`): select the items whose achievement the
   answer earns; a fully correct answer gets the full-credit confirmation item
   alone. An answer that earns nothing gets `items: []` and a private note
@@ -366,4 +378,12 @@ reasoning is in the private-notes box under the public comment (private
 notes are never shared with students), correct answers were registered
 through each question's confirmation item so they count as graded, and any
 `items: []` fallback pairs still show as ungraded until they confirm them.
+Report any document-level problem found in a project without a document
+question (step 6), with the repos it affects.
+
+Whenever a later `rubric_import(mode = "replace")` deletes items, a pair
+whose only selections were among them is left with none and turns
+ungraded. After such a change, list the pairs of non-optional questions
+with no selection (`marks_export()`), and where no defect remains record
+the confirmation item for them with `marks_import(overwrite = TRUE)`.
 These are machine suggestions: the human review is the grading.

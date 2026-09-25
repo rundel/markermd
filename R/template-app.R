@@ -255,16 +255,19 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     
     # Add a new question to the modules list
     #
-    add_new_question = function() {
+    # scope: "sections" for a question over selected headings/divs, or
+    #   "document" for a document-level question (see markermd_question)
+    add_new_question = function(scope = "sections") {
       next_id = last_question_id() + 1
       last_question_id(next_id)
 
       # Create initial question object
       initial_question = markermd_question(
         id = as.integer(next_id),
-        name = paste("Question", next_id),
+        name = if (scope == "document") "Document" else paste("Question", next_id),
         selected_nodes = markermd_node_selection(),
-        rules = list()
+        rules = list(),
+        scope = scope
       )
 
       # Create question module
@@ -460,6 +463,16 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
             "Add Question",
             icon = shiny::icon("plus"),
             class = "btn-outline-primary btn-sm"
+          ),
+          # A document-level question grades what belongs to no single
+          # question (the YAML header, render settings); add one only when a
+          # submission needs it
+          shiny::actionButton(
+            "add_document_question",
+            "Add Document Question",
+            icon = shiny::icon("file-lines"),
+            class = "btn-outline-secondary btn-sm ms-1",
+            title = "Add a question covering the whole document (YAML header, render settings, and other issues that belong to no single question)"
           )
         )
       )
@@ -545,6 +558,11 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       add_new_question()
     }) |>
       shiny::bindEvent(input$add_question)
+
+    shiny::observe({
+      add_new_question(scope = "document")
+    }) |>
+      shiny::bindEvent(input$add_document_question)
 
     # Reorder a question one position up or down. The modules list order is
     # the saved template order; the DOM wrapper is moved in place because

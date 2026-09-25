@@ -97,17 +97,22 @@ filter_group_from_list = function(x) {
 # markermd_question -> plain list. node_ids is emitted as a list so a single
 # id still serializes as a YAML sequence rather than a scalar. filters is only
 # emitted when at least one group has conditions, so filter-less templates
-# serialize exactly as before.
+# serialize exactly as before. scope is only emitted for a document-scope
+# question (which has no node_ids to write).
 #
 # question: markermd_question S7 object
 
 question_to_list = function(question) {
   out = list(
     id = as.integer(question@id),
-    name = question@name,
-    node_ids = as.list(question@selected_nodes@node_ids),
-    rules = lapply(question@rules, rule_to_list)
+    name = question@name
   )
+  if (is_document_question(question)) {
+    out$scope = "document"
+  } else {
+    out$node_ids = as.list(question@selected_nodes@node_ids)
+  }
+  out$rules = lapply(question@rules, rule_to_list)
 
   groups = Filter(function(g) length(g@conditions) > 0, question@filters)
   if (length(groups) > 0) {
@@ -119,7 +124,7 @@ question_to_list = function(question) {
 
 # plain list -> markermd_question
 #
-# x: List with id, name, node_ids, rules and optionally filters
+# x: List with id, name, node_ids, rules and optionally filters and scope
 
 question_from_list = function(x) {
   node_ids = if (is.null(x$node_ids)) character(0) else as.character(unlist(x$node_ids))
@@ -135,6 +140,9 @@ question_from_list = function(x) {
     rules = rules,
     filters = filters
   )
+  if (!is.null(x$scope)) {
+    args$scope = as.character(x$scope)
+  }
 
   do.call(markermd_question, args)
 }
@@ -178,6 +186,18 @@ metadata_from_list = function(x, version, total_nodes) {
   do.call(markermd_metadata, args)
 }
 
+# The lowest template format version that can represent a template: "3.1"
+# when any question is document-scope, otherwise "3.0" (so the file still
+# loads in older markermd). The version recorded in the template's metadata
+# is informational.
+#
+# template: markermd_template S7 object
+
+template_format_version = function(template) {
+  has_document = any(vapply(template@questions, is_document_question, logical(1)))
+  if (has_document) "3.1" else markermd_template_min_version()
+}
+
 # markermd_template -> plain list ready for yaml::write_yaml. The assignment
 # document is referenced by source_path rather than embedded; the AST itself
 # is not serialized.
@@ -186,7 +206,7 @@ metadata_from_list = function(x, version, total_nodes) {
 # source_path: Path to the assignment document, recorded under source.path
 
 template_to_list = function(template, source_path = NULL) {
-  out = list(format_version = template@metadata@version)
+  out = list(format_version = template_format_version(template))
 
   if (!is.null(source_path)) {
     out$source = list(path = source_path)

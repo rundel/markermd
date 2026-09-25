@@ -421,8 +421,8 @@ test_that("read_rubric_yaml rejects nested groups, duplicate labels, bad bounds 
   ))
   expect_error(read_rubric_yaml(cross), "duplicate rubric item descriptions")
 
-  # a 1.2 file is refused
-  too_new = rg_write_yaml(c("format_version: '1.2'", "questions: []"))
+  # a file newer than this markermd understands is refused
+  too_new = rg_write_yaml(c("format_version: '9.9'", "questions: []"))
   expect_error(read_rubric_yaml(too_new), "newer")
 
   # the writer refuses a group whose items are not contiguous, or unknown
@@ -596,7 +596,7 @@ test_that("a schema-version-2 database gains items.group_id and the item_groups 
   expect_length(markermd:::load_item_groups(dir, "Q1"), 0)
 
   markermd:::with_database(dir, function(conn) {
-    expect_equal(markermd:::get_metadata(conn, "schema_version"), "3")
+    expect_equal(markermd:::get_metadata(conn, "schema_version"), markermd:::markermd_db_version())
     expect_true("group_id" %in% DBI::dbListFields(conn, "items"))
     expect_true(DBI::dbExistsTable(conn, "item_groups"))
   })

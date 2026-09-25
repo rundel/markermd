@@ -17,7 +17,8 @@ db_row_to_grade_state = function(settings_row) {
     total_score = settings_row$total_score[1], 
     grading_mode = settings_row$grading_mode[1],
     bound_above_zero = as.logical(settings_row$bound_above_zero[1]),
-    bound_below_max = as.logical(settings_row$bound_below_max[1])
+    bound_below_max = as.logical(settings_row$bound_below_max[1]),
+    optional = isTRUE(as.logical(settings_row$optional[1]))
   )
 }
 
@@ -755,12 +756,18 @@ apply_marks_import = function(collection_path, plan) {
 # A question/repo pair is graded if it has a selected rubric item (using the
 # most recent grade per item, by autoincrement id since timestamps can tie
 # within a second) or a non-empty most recent comment. Two grouped queries
-# cover all pairs at once rather than running a query per pair.
+# cover all pairs at once rather than running a query per pair. When
+# assignment_repos is given, every pair of an optional question (see
+# markermd_grade_state) with one of those repos also counts as graded: an
+# optional question with nothing recorded scores as if no item were selected.
 #
 # collection_path: Path to collection directory
+# assignment_repos: Optional character vector of repository names whose
+#   optional-question pairs count as graded; NULL leaves them out (callers
+#   that do not know the repositories see only recorded grading)
 # Returns: Data frame with question_name and assignment_repo columns
 
-graded_question_pairs = function(collection_path) {
+graded_question_pairs = function(collection_path, assignment_repos = NULL) {
   with_database(collection_path, function(conn) {
     # Pairs with a selected rubric item among the most recent grade per item
     latest_grades = load_most_recent_grades(conn)
@@ -775,8 +782,33 @@ graded_question_pairs = function(collection_path) {
       , c("question_name", "assignment_repo"), drop = FALSE
     ]
 
-    unique(rbind(selected_pairs, comment_pairs))
+    pairs = rbind(selected_pairs, comment_pairs)
+
+    if (length(assignment_repos) > 0) {
+      settings = load_all_settings(conn)
+      optional_questions = settings$question_name[is_true_flag(settings$optional)]
+      if (length(optional_questions) > 0) {
+        pairs = rbind(pairs, expand.grid(
+          question_name = optional_questions,
+          assignment_repo = assignment_repos,
+          stringsAsFactors = FALSE
+        ))
+      }
+    }
+
+    unique(pairs)
   })
+}
+
+# Elementwise TRUE test for an integer/logical column that may be absent
+# (NULL) or contain NA, as settings$optional does in a database the
+# optional-question migration has not yet touched
+#
+# x: Vector to test (may be NULL)
+
+is_true_flag = function(x) {
+  if (is.null(x)) return(logical(0))
+  !is.na(x) & as.logical(x)
 }
 
 # All (question, repo) pairs that have any grading activity
@@ -838,7 +870,7 @@ collect_score_data = function(collection_path, question_names, assignment_repos)
       grades = load_most_recent_grades(conn)
     )
   })
-  graded = graded_question_pairs(collection_path)
+  graded = graded_question_pairs(collection_path, assignment_repos)
   # Unit-separator join so a name containing spaces cannot collide across pairs.
   graded_keys = paste(graded$question_name, graded$assignment_repo, sep = "\x1f")
 
@@ -892,7 +924,8 @@ collect_score_data = function(collection_path, question_names, assignment_repos)
 # collection_path: Path to collection directory
 # question_names: Character vector of question names
 # assignment_repos: Character vector of assignment repository names
-# graded_pairs: Optional precomputed graded_question_pairs() result, so callers
+# graded_pairs: Optional precomputed graded_question_pairs() result (given the
+#   same repositories, so optional questions count), so callers
 #   that already hold the pairs avoid a second set of queries
 # Returns: Named integer vector keyed by repo with graded question counts
 
@@ -902,7 +935,7 @@ calculate_grading_progress = function(collection_path, question_names, assignmen
   }
 
   if (is.null(graded_pairs)) {
-    graded_pairs = graded_question_pairs(collection_path)
+    graded_pairs = graded_question_pairs(collection_path, assignment_repos)
   }
 
   graded_pairs = graded_pairs[

@@ -125,6 +125,12 @@ questions:
   kind or list of kinds), `has class` / `has id` / `has engine` (exact
   match), `has text` (regular expression), `has label` (glob on the chunk
   label), or `has option` (a Quarto cell option as `key` or `key: value`).
+- A question may instead have `scope: document` and no `node_ids`: it covers
+  the document as a whole (the YAML header, render settings, and other
+  issues that belong to no single question) and any filters and rules it
+  has run against the whole document. A template with such a question is
+  written as `format_version: "3.1"`; `"3.0"` files are still read. Add one
+  only when some submission needs it (see Rules).
 - Import with `template_import(path, project)`; export the stored template
   with `template_export()`. The import re-parses `source.path` but does not
   check that each `node_id` exists; a wrong anchor surfaces as a per-repo
@@ -172,7 +178,11 @@ questions:
   `total_score` and applies the selected, typically negative, points as
   deductions; the default is `positive`), and `bound_above_zero` /
   `bound_below_max` (clamp the score to `[0, total_score]`; both default to
-  true).
+  true), and `optional` (default false): an optional question counts as
+  graded for every repository and scores as if no item were selected until
+  something is recorded, so repositories it does not apply to need no
+  selection. A file with an optional question is written as
+  `format_version: "1.2"`.
 - Each item is `points` plus a `description`. The description is the item's
   identity: non-empty, unique within its question (across all of its
   groups), and copied verbatim wherever the item is referenced. Item order
@@ -230,8 +240,12 @@ repos:
   grader's internal note. Omitting either leaves the stored value unchanged;
   an empty string clears it.
 - A pair counts as graded once it has a selected item or a non-empty public
-  comment. `items: []` with no public comment shows as ungraded in `mark()`
-  until a human confirms it, which is why the confirmation item exists.
+  comment, or when its question is optional. `items: []` with no public
+  comment shows as ungraded in `mark()` until a human confirms it, which is
+  why the confirmation item exists. Deleting rubric items (a
+  `mode = "replace"` import) can leave a pair with no selection, which turns
+  it ungraded; after such a change find those pairs with `marks_export()`
+  and record the confirmation item where no defect remains.
 - Import with `marks_import(path, project, overwrite = FALSE)`. Every
   repository name, question name, and item description is validated before
   anything is written, and the write is one transaction. Pairs that already
@@ -267,6 +281,17 @@ repos:
 - A parse failure is not evidence that a document fails to render: markermd's
   parser is stricter than Quarto. Never fix a parse error by editing the
   template, and never loosen a validation rule just to make a repository pass.
+- A problem whose cause lies outside every question (the YAML header, a
+  render setting such as `engine`, global chunk options, a document that does
+  not render) is recorded once, in a document-scope question, never spread
+  across the questions it affects; those questions are then graded on their
+  merits, as if the document rendered. Add the document question only when
+  some repository has such a problem: template `{name: Document, scope:
+  document}`, rubric scoring `total_score: 0`, `grading_mode: negative`,
+  `bound_above_zero: false`, `optional: true`, so it only ever deducts from
+  the total and unaffected repositories need no selection. A defect inside
+  one question's own chunks (conflict markers, a misplaced fence) stays with
+  that question, and a parse failure is never a document-level issue.
 - Student work is personal data. Keep it in this directory: do not copy it
   elsewhere, send it to other services, or share one student's work with
   another.

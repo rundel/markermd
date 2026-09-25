@@ -225,6 +225,13 @@ mark_grade_ui = function(id, grade_state, capped = 0, breakdown = NULL) {
                 if (grade_state@bound_above_zero) "above_zero",
                 if (grade_state@bound_below_max) "below_max"
               )
+            ),
+            # Optional: an ungraded submission scores as if no item were
+            # selected, for a document-level question most submissions skip
+            shiny::checkboxInput(
+              ns("grade_optional"),
+              "Optional question (ungraded counts as no items selected)",
+              value = grade_state@optional
             )
           )
         )
@@ -343,7 +350,8 @@ mark_grade_server = function(id, initial_grade, ui_ns = NULL, collection_path = 
           total_score = new_total,
           grading_mode = current_grade@grading_mode,
           bound_above_zero = current_grade@bound_above_zero,
-          bound_below_max = current_grade@bound_below_max
+          bound_below_max = current_grade@bound_below_max,
+          optional = current_grade@optional
         )
         
         grade_state(new_grade)
@@ -375,7 +383,8 @@ mark_grade_server = function(id, initial_grade, ui_ns = NULL, collection_path = 
           total_score = current_grade@total_score,
           grading_mode = input$grading_mode,
           bound_above_zero = current_grade@bound_above_zero,
-          bound_below_max = current_grade@bound_below_max
+          bound_below_max = current_grade@bound_below_max,
+          optional = current_grade@optional
         )
         
         grade_state(new_grade)
@@ -405,7 +414,8 @@ mark_grade_server = function(id, initial_grade, ui_ns = NULL, collection_path = 
           total_score = current_grade@total_score,
           grading_mode = current_grade@grading_mode,
           bound_above_zero = new_bound_above_zero,
-          bound_below_max = new_bound_below_max
+          bound_below_max = new_bound_below_max,
+          optional = current_grade@optional
         )
         
         grade_state(new_grade)
@@ -416,6 +426,23 @@ mark_grade_server = function(id, initial_grade, ui_ns = NULL, collection_path = 
         }
       }
     }) |> shiny::bindEvent(input$grade_bounds, ignoreInit = TRUE)
+
+    # Handle the optional toggle
+    shiny::observe({
+      current_grade = grade_state()
+      new_optional = isTRUE(input$grade_optional)
+
+      if (new_optional != current_grade@optional) {
+        new_grade = current_grade
+        new_grade@optional = new_optional
+
+        grade_state(new_grade)
+
+        if (!is.null(collection_path) && !is.null(question_name)) {
+          save_grade_state(collection_path, question_name, new_grade)
+        }
+      }
+    }) |> shiny::bindEvent(input$grade_optional, ignoreInit = TRUE)
 
 
     # Return reactive grade state and update methods for external use

@@ -54,7 +54,10 @@ description.
   (proposing equal, content-weighted, and assignment-stated splits), then
   drafts concrete key-derived items, validates the YAML against the bundled
   schema, and imports it with `rubric_import()`, ready to refine in `mark()`'s
-  Rubric pane.
+  Rubric pane. When the sampled submissions show a problem that belongs to no
+  single question (such as a render setting in the YAML header), it proposes
+  a document-scope question worth 0 points, optional and unbounded below, to
+  record it once as a deduction from the total.
 - `markermd-apply-rubric`: apply the stored rubric to the student repositories
   as a first-pass machine grading. It reads each repository's per-question
   sections, selects the rubric items that apply (matching descriptions
@@ -62,6 +65,8 @@ description.
   exclusive group), records its reasoning as private notes (never shared with
   students), and imports the result with `marks_import()` for human review in
   `mark()`. Pairs that already have grading activity are skipped by default.
+  A document-scope question is read once per repository, and a problem
+  recorded there is not deducted again in the questions it affects.
 - `markermd-fix-parsing`: repair student documents that markermd's strict
   q2r parser rejects (a stray `$` or `{` in prose, an unclosed quote or
   emphasis mark, malformed YAML front matter), so they can be validated and

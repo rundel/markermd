@@ -380,9 +380,16 @@ validate_question_rules = function(repo_ast, question) {
   # Get question AST subset using the shared helper function
   question_ast = get_question_ast(repo_ast, question)
 
-  # Selected nodes (by id) for details display
+  # Selected nodes (by id) for details display; a document-scope question
+  # covers the whole document
   node_ids = question@selected_nodes@node_ids
-  formatted_hierarchies = if (length(node_ids) > 0) paste0("#", node_ids) else character(0)
+  formatted_hierarchies = if (is_document_question(question)) {
+    "(whole document)"
+  } else if (length(node_ids) > 0) {
+    paste0("#", node_ids)
+  } else {
+    character(0)
+  }
 
   # If no rules, consider it a pass. messages/passed stay length-aligned with
   # each other (length 1) even though question@rules is empty, so the mark-side
@@ -397,10 +404,11 @@ validate_question_rules = function(repo_ast, question) {
     ))
   }
 
-  # A question with rules but no selected nodes targets nothing; its rules cannot
-  # pass. Fail them rather than letting get_question_ast()'s empty-selection
-  # fallback evaluate the rules against the whole document.
-  if (length(node_ids) == 0) {
+  # A sections question with rules but no selected nodes targets nothing; its
+  # rules cannot pass. Fail them rather than letting get_question_ast()'s
+  # empty-selection fallback evaluate the rules against the whole document,
+  # which is only intended for a document-scope question.
+  if (length(node_ids) == 0 && !is_document_question(question)) {
     messages = rep("No nodes selected", length(question@rules))
     return(list(
       question_name = question@name,
@@ -451,7 +459,7 @@ assert_template_compatible = function(template) {
   }
 
   version = template@metadata@version
-  if (is.na(version) || utils::compareVersion(version, markermd_template_version()) < 0) {
+  if (is.na(version) || utils::compareVersion(version, markermd_template_min_version()) < 0) {
     cli::cli_abort("This template was created with an older version of markermd and is no longer compatible. Please recreate the template with template().")
   }
   if (utils::compareVersion(version, markermd_template_version()) > 0) {

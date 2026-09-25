@@ -21,8 +21,10 @@ Writes each student repository's public feedback to
 configured comments directory (\verb{comments/} when none is configured; it is
 created when missing). Each graded question appears as a heading, in
 template order, followed by a bulleted markdown list of its selected
-rubric item descriptions and its public comment. Private comments are
-never exported, and a repository with no public feedback gets no file.
+rubric item descriptions and its public comment. Document-scope
+questions (feedback about the document as a whole) come first, ahead of
+the per-question sections. Private comments are never exported, and a
+repository with no public feedback gets no file.
 }
 \details{
 Item groups never change the default output: selected items are listed

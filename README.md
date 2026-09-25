@@ -81,6 +81,8 @@ The template app loads an assignment (a project's key repository, a single `.qmd
 
 ![The template app: document structure tree on the left, questions with their selected sections and validation rules on the right](man/figures/template_screenshot.png)
 
+Some problems belong to no single question: a render setting in the YAML header, global chunk options, a document that does not render. "Add Document Question" creates a document-scope question for them. It selects no sections (its filters and rules, if any, run against the whole document), and is written as `scope: document` in the template YAML (format 3.1). Add one only when a submission needs it. Paired with rubric scoring worth 0 points, marked optional and not bounded below zero, it records such a problem once as a deduction from the total instead of spreading it across the questions it affects.
+
 When the app is opened on an initialized project, saving writes the template directly into the project database, ready for grading.
 
 ## Grading with `mark()`
@@ -139,8 +141,8 @@ When grading is complete, `export_marks()` writes the final hand-off artifacts f
 export_marks("hw01")
 ```
 
-- `export_scores()` writes `scores.csv` to the project root: one row per repository, one column per question, plus a `total` column. Scores are recomputed exactly as `mark()` displays them, passing each question's selected rubric item points (each item group's combined points first clamped to its floor and ceiling) through its grading mode and bounds. Ungraded repository/question pairs export as `NA`, and a repository's total stays `NA` until all of its questions are graded.
-- `export_comments()` writes each repository's student-facing feedback to `comments/<repo>.md` (or the project's configured comments directory). Each graded question appears as a heading, in template order, followed by a bulleted list of its selected rubric item descriptions and public comment. Group bounds are never mentioned; with `group_headings = TRUE` a group's selected items are listed under a subheading carrying its label. Private notes are never exported, and a repository with no public feedback gets no file.
+- `export_scores()` writes `scores.csv` to the project root: one row per repository, one column per question, plus a `total` column. Scores are recomputed exactly as `mark()` displays them, passing each question's selected rubric item points (each item group's combined points first clamped to its floor and ceiling) through its grading mode and bounds. Ungraded repository/question pairs export as `NA`, and a repository's total stays `NA` until all of its questions are graded. A question whose scoring is marked optional (the gear popover's "Optional question", or `optional: true` in the rubric YAML) counts as graded for every repository, scoring as if no item were selected until something is recorded.
+- `export_comments()` writes each repository's student-facing feedback to `comments/<repo>.md` (or the project's configured comments directory). Each graded question appears as a heading, in template order (document-scope questions first), followed by a bulleted list of its selected rubric item descriptions and public comment. Group bounds are never mentioned; with `group_headings = TRUE` a group's selected items are listed under a subheading carrying its label. Private notes are never exported, and a repository with no public feedback gets no file.
 
 ## Agent skills (Claude Code and Codex)
 

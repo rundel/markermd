@@ -386,7 +386,9 @@ it is uncommitted). Explain:
   work.
 - A parse failure here is not evidence that the student's document fails to
   render: markermd's parser is stricter than Quarto 1.x. Judge rendering from
-  the rendered artifact, never from the fact that a repair was needed.
+  the rendered artifact, never from the fact that a repair was needed. In
+  particular a repair is never a document-level problem for a document-scope
+  question to record.
 
 Then point the user at the next step: the `markermd-scaffold-template` skill's
 validation if the template is not yet settled, otherwise

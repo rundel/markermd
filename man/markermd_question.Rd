@@ -9,7 +9,8 @@ markermd_question(
   name = character(0),
   selected_nodes = markermd_node_selection(),
   rules = list(),
-  filters = list()
+  filters = list(),
+  scope = "sections"
 )
 }
 \arguments{
@@ -24,6 +25,13 @@ markermd_question(
 \item{filters}{List. Filter groups for this question as markermd_filter_group
 objects. Conditions within a group are ANDed, groups are ORed; filters
 narrow the question's node set before rules evaluate.}
+
+\item{scope}{Character. \code{"sections"} (the default) for a question that
+targets the selected headings and divs, or \code{"document"} for a question
+about the document as a whole (the YAML header, render settings, and
+other issues that belong to no single question). A document-scope
+question selects no nodes; its filters and rules, if any, evaluate
+against the whole document.}
 }
 \value{
 A \code{markermd_question} S7 object.

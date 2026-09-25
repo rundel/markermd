@@ -22,7 +22,11 @@ S7::method(print, markermd_node_selection) = function(x, ...) {
 
 S7::method(print, markermd_question) = function(x, ...) {
   cat("Question:", x@name, "(ID:", x@id, ")\n")
-  cat("Selected nodes:", length(x@selected_nodes@node_ids), "\n")
+  if (is_document_question(x)) {
+    cat("Scope: whole document\n")
+  } else {
+    cat("Selected nodes:", length(x@selected_nodes@node_ids), "\n")
+  }
   cat("Rules:", length(x@rules), "\n")
   invisible(x)
 }
@@ -43,9 +47,13 @@ S7::method(print, markermd_template) = function(x, ...) {
     for (q in x@questions) {
       section_count = length(q@selected_nodes@node_ids)
       rule_count = length(q@rules)
-      section_text = if (section_count == 1) "section" else "sections"
+      section_text = if (is_document_question(q)) {
+        "whole document"
+      } else {
+        paste(section_count, if (section_count == 1) "section" else "sections")
+      }
       rule_text = if (rule_count == 1) "rule" else "rules"
-      cat("  - ", q@name, " (", section_count, " ", section_text, ", ", rule_count, " ", rule_text, ")\n", sep = "")
+      cat("  - ", q@name, " (", section_text, ", ", rule_count, " ", rule_text, ")\n", sep = "")
     }
   }
   ast_node_count = length(q2r_flatten(x@original_ast))

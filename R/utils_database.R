@@ -11,8 +11,9 @@
 #   2: items.position (explicit display order; see migrate_items_position())
 #   3: items.group_id and the item_groups table (rubric item groups; see
 #      migrate_items_group())
+#   4: settings.optional (optional questions; see migrate_settings_optional())
 
-markermd_db_version = function() "3"
+markermd_db_version = function() "4"
 
 # ORDER BY clause giving a question's rubric items in display order. position
 # is authoritative; a row without one (written before schema version 2 and
@@ -101,6 +102,7 @@ create_tables_if_needed = function(conn) {
         grading_mode TEXT NOT NULL CHECK (grading_mode IN ('positive', 'negative')),
         bound_above_zero INTEGER NOT NULL CHECK (bound_above_zero IN (0, 1)),
         bound_below_max INTEGER NOT NULL CHECK (bound_below_max IN (0, 1)),
+        optional INTEGER NOT NULL DEFAULT 0 CHECK (optional IN (0, 1)),
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )
@@ -234,6 +236,7 @@ create_tables_if_needed = function(conn) {
 
   migrate_items_position(conn)
   migrate_items_group(conn)
+  migrate_settings_optional(conn)
 }
 
 # Schema version 1 -> 2: add items.position to a database created by an
@@ -302,6 +305,35 @@ migrate_items_group = function(conn) {
   invisible(TRUE)
 }
 
+# Schema version 3 -> 4: add settings.optional to a database created by an
+# earlier markermd, then stamp the new schema version. Existing questions
+# become non-optional, so their scores and graded status are unchanged. Same
+# shape as migrate_items_group(). A legacy database that had no settings
+# table gets one with the column from create_tables_if_needed(), so there is
+# nothing to add; it is stamped here all the same, since this is the last
+# migration and the schema is now current.
+#
+# conn: DBI connection object
+
+migrate_settings_optional = function(conn) {
+  if ("optional" %in% DBI::dbListFields(conn, "settings")) {
+    stored = get_metadata(conn, "schema_version")
+    if (!is.null(stored) && utils::compareVersion(stored, "4") < 0) {
+      set_metadata(conn, "schema_version", "4")
+    }
+    return(invisible(FALSE))
+  }
+
+  DBI::dbExecute(conn, "BEGIN IMMEDIATE")
+  if (!"optional" %in% DBI::dbListFields(conn, "settings")) {
+    DBI::dbExecute(conn, "ALTER TABLE settings ADD COLUMN optional INTEGER NOT NULL DEFAULT 0 CHECK (optional IN (0, 1))")
+    set_metadata(conn, "schema_version", "4")
+  }
+  DBI::dbExecute(conn, "COMMIT")
+
+  invisible(TRUE)
+}
+
 # Get current username for database records
 #
 # Returns: Character string with username
@@ -359,14 +391,15 @@ upsert_settings = function(conn, question_name, grade_state) {
   # SELECT-then-write pattern was racy against a concurrent skill writer
   DBI::dbExecute(conn, "
     INSERT INTO settings (question_name, current_score, total_score, grading_mode,
-                          bound_above_zero, bound_below_max, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                          bound_above_zero, bound_below_max, optional, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(question_name) DO UPDATE SET
       current_score = excluded.current_score,
       total_score = excluded.total_score,
       grading_mode = excluded.grading_mode,
       bound_above_zero = excluded.bound_above_zero,
       bound_below_max = excluded.bound_below_max,
+      optional = excluded.optional,
       updated_at = excluded.updated_at
   ", params = list(
     question_name,
@@ -375,6 +408,7 @@ upsert_settings = function(conn, question_name, grade_state) {
     grade_state@grading_mode,
     as.integer(grade_state@bound_above_zero),
     as.integer(grade_state@bound_below_max),
+    as.integer(grade_state@optional),
     timestamp,
     timestamp
   ))

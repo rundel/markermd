@@ -280,9 +280,20 @@ debug output) are a category that stacks and belongs in a capped group, and
 one shortfall seen at different depths across repos (a write-up absent in
 some, cursory in others) is a pair of severity tiers for an exclusive group.
 
+Sort every observed problem by where its cause lies. Most belong to one
+question. A problem whose cause lies outside every question -- a render
+setting in the YAML header (such as `engine: jupyter`, which stops the R
+chunks from running), global chunk options, a document that does not render
+at all -- is document-level: note it once per affected repo and do not
+count its consequences (missing output, a table that never builds) as
+mistakes in the questions it touches. A defect inside one question's own
+chunks (conflict markers, a misplaced fence) stays with that question, even
+when it also breaks rendering, and a parse repair is never document-level.
+
 If subagents do this reading, they run on the model the user chose in step 3
-and report per-question observations back; the drafting of items from those
-observations stays in this session.
+and report per-question observations back, plus any document-level problems
+separately; the drafting of items from those observations stays in this
+session.
 
 ### 7. Draft items and scoring for each question
 
@@ -380,6 +391,32 @@ only enforced by grader discipline. Put such items in a group:
   is exported with group headings, to students, so phrase it as a neutral
   category name ("Examples", "Documentation", "Write-up"), never as a
   grading mechanic.
+
+Document-level problems (key + repos basis only, and only when step 6 found
+at least one): propose adding a document-scope question to hold them, and ask
+the user for each item's deduction. Never spread one such problem across the
+questions it affects. When the user agrees:
+
+- Add the question to the template: export it, append
+  `{id: <next id>, name: Document, scope: document}` to `questions`, and
+  import it again (this touches no rubric items or marks):
+
+  ```
+  Rscript -e 'markermd::template_export("<root>/markermd-template.yaml", "<root>")'
+  # append the Document question to markermd-template.yaml, then
+  Rscript -e 'markermd::template_import("<root>/markermd-template.yaml", "<root>")'
+  ```
+
+- Give it scoring `total_score: 0`, `grading_mode: negative`,
+  `bound_above_zero: false`, `bound_below_max: true`, `optional: true`, so
+  it is outside the step 5 distribution, only ever deducts from the
+  assignment total, and needs no selection in repos it does not apply to.
+- Its items are the observed document-level problems, phrased as feedback
+  (for example "`engine: jupyter` in the YAML header means the R chunks never
+  run when the document renders, so none of the R output appears"). No
+  confirmation item is needed while the question is optional.
+
+Without such problems, add no document question.
 
 ### 8. The rubric YAML: shape, validation, and import mode
 
@@ -560,7 +597,8 @@ items).
 
 Summarize for the user: the basis (key only vs key + repos) and grading mode
 chosen, the assignment's total points, each imported question's total, item
-count and groups (label and bound or exclusive flag), and that the rubric
+count and groups (label and bound or exclusive flag), any document-scope
+question added and the problems it holds, and that the rubric
 was written to `<root>/markermd-rubric.yaml`
 and imported into the project database (in the question-at-a-time workflow,
 also list any questions left for later). If subagents read the student

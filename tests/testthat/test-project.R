@@ -385,7 +385,8 @@ test_that("template_import and template_export round-trip via the database", {
   expect_true(fs::file_exists(out))
 
   raw = yaml::read_yaml(out)
-  expect_equal(raw$format_version, markermd:::markermd_template_version())
+  # written with the lowest version that represents it: no document question
+  expect_equal(raw$format_version, markermd:::markermd_template_min_version())
   expect_equal(raw$source$path, "hw1.qmd")
   expect_equal(length(raw$questions), 1)
 })

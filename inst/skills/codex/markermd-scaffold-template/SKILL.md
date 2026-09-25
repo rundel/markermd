@@ -133,6 +133,11 @@ question; prefer its children.
 Use each chosen section's `id` verbatim as the question's single `node_id`, and
 give the question a short `name` derived from its title (for example `Q1`).
 
+Do not add a document-scope question (`scope: document`) here. It exists for
+problems outside every question, such as a render setting in the YAML header,
+and is added by the rubric skills only once some submission turns out to have
+one; a template that anticipates it gives every project an empty question.
+
 ### 5. Add starter rules (default to code + write-up)
 
 The default expectation is that **every question contains both an executable

@@ -190,8 +190,13 @@ question_server = function(id, ast, initial_question = NULL) {
       n_nodes = length(q@selected_nodes@node_ids)
       n_filters = length(q@filters)
       n_rules = length(q@rules)
+      nodes_text = if (is_document_question(q)) {
+        "Whole document"
+      } else {
+        glue::glue("{n_nodes} node{if (n_nodes == 1) '' else 's'} selected")
+      }
       shiny::span(glue::glue(
-        "{n_nodes} node{if (n_nodes == 1) '' else 's'} selected \u00b7 ",
+        "{nodes_text} \u00b7 ",
         "{n_filters} filter{if (n_filters == 1) '' else 's'} \u00b7 ",
         "{n_rules} rule{if (n_rules == 1) '' else 's'}"
       ))
@@ -222,7 +227,9 @@ question_server = function(id, ast, initial_question = NULL) {
     # number of nodes it covers (the selected heading/div and its descendants).
     output$selected_nodes_display = shiny::renderUI({
       ids = state()@selected_nodes@node_ids
-      if (length(ids) == 0) {
+      if (is_document_question(state())) {
+        shiny::span("Whole document (document-level question)", class = "text-success")
+      } else if (length(ids) == 0) {
         shiny::span("None", class = "text-muted")
       } else {
         tree_items = question_tree_items()
@@ -282,6 +289,15 @@ question_server = function(id, ast, initial_question = NULL) {
       # interaction works in index space), but selections are stored as the
       # nodes' q2r ids (heading or div ids), converted at this boundary.
       add_node = function(node_index) {
+        # A document-scope question covers the whole document and never
+        # selects nodes
+        if (is_document_question(state())) {
+          shiny::showNotification(
+            "This is a document-level question: it covers the whole document, so nodes cannot be selected for it.",
+            type = "message"
+          )
+          return(invisible(NULL))
+        }
         id = node_id_for_index(ast(), node_index)
         if (nchar(id) == 0) {
           return(invisible(NULL))

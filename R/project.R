@@ -608,17 +608,23 @@ template_export = function(path, project = ".") {
 
 # Question names stored in a project, in template order when a template is
 # stored, otherwise the distinct names found in the rubric items table
-# (sorted). Returns a list with names and a had_template flag.
+# (sorted). Returns a list with names, a had_template flag, and document (the
+# names of the template's document-scope questions; empty without a template).
 #
 # root: absolute project root
 
 project_question_names = function(root) {
   template_obj = load_template_from_db(root, base_dir = root)
   if (!is.null(template_obj)) {
-    return(list(names = template_question_names(template_obj), had_template = TRUE))
+    document = Filter(is_document_question, template_obj@questions)
+    return(list(
+      names = template_question_names(template_obj),
+      had_template = TRUE,
+      document = vapply(document, function(q) q@name, character(1))
+    ))
   }
   names = sort(unique(with_database(root, load_all_items)$question_name))
-  list(names = names, had_template = FALSE)
+  list(names = names, had_template = FALSE, document = character(0))
 }
 
 #' Export a project's grading rubric to YAML
@@ -1342,8 +1348,10 @@ export_scores = function(project = ".") {
 #' configured comments directory (`comments/` when none is configured; it is
 #' created when missing). Each graded question appears as a heading, in
 #' template order, followed by a bulleted markdown list of its selected
-#' rubric item descriptions and its public comment. Private comments are
-#' never exported, and a repository with no public feedback gets no file.
+#' rubric item descriptions and its public comment. Document-scope
+#' questions (feedback about the document as a whole) come first, ahead of
+#' the per-question sections. Private comments are never exported, and a
+#' repository with no public feedback gets no file.
 #'
 #' Item groups never change the default output: selected items are listed
 #' as they are and a group's floor or ceiling is never mentioned, in keeping
@@ -1381,7 +1389,12 @@ export_comments = function(project = ".", group_headings = FALSE) {
     cli::cli_abort("No student repositories found under {.path {fs::path(proj@root, proj@repos)}}.")
   }
 
-  question_names = project_question_names(proj@root)$names
+  question_info = project_question_names(proj@root)
+  # Document-level feedback reads first, before the per-question sections
+  question_names = c(
+    intersect(question_info$names, question_info$document),
+    setdiff(question_info$names, question_info$document)
+  )
   if (length(question_names) == 0) {
     cli::cli_abort(c(
       "No questions found in this project.",
