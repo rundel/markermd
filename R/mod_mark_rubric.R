@@ -1098,7 +1098,8 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
     # Return reactive values for external use
     return(list(
       selected_question = shiny::reactive(input$question_select),
-      # Programmatic question selection (the Scores tab's click-through)
+      # Programmatic question selection (the Assignments table's score
+      # click-through)
       select_question = function(question_name) {
         shiny::updateSelectInput(session, "question_select", selected = question_name)
       },

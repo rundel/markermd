@@ -89,13 +89,13 @@ When the app is opened on an initialized project, saving writes the template dir
 
 ### Assignments
 
-The app opens on the Assignments tab, a progress dashboard with one row per repository: links to its folder, GitHub repository, rendered report and source, its validation status, and its grading progress. The table filters by name and by status (failed validation, incomplete, complete), and clicking a repository's validation marker opens it in the Validation tab.
+The app opens on the Assignments tab, one table with a row per repository: links to its folder, GitHub repository, rendered report and source, its validation status, its grading progress, and its score per question and in total, computed from the rubric selections exactly as `export_scores()` would. The class summary is pinned beneath the rows: how many repositories are graded, then the mean, median and standard deviation per question and for the total. The table filters by name and by status (failed validation, incomplete, complete), sorts by any column, and updates as grading proceeds. Clicking a repository's validation marker opens it in the Validation tab, and clicking a score opens that repository and question in the Rubric tab.
 
-![The mark app's Assignments tab: one row per repository with folder, GitHub, report and source links, validation status and grading progress](man/figures/mark_assignments_screenshot.png)
+![The mark app's Assignments tab: one row per repository with folder, GitHub, report and source links, validation status, grading progress and per-question scores, with the class summary pinned beneath](man/figures/mark_assignments_screenshot.png)
 
 ### Validation
 
-The Validation tab checks the selected repository against the template's rules, so structural problems (missing sections, missing chunks, absent content) are visible before any grading starts. Its repository selector stays in step with the rest of the app.
+The Validation tab checks the selected repository against the template's rules, so structural problems (missing sections, missing chunks, absent content) are visible before any grading starts. Its repository selector, whose entries carry each repository's count of passed questions, stays in step with the rest of the app, and a question selector beside it, whose entries carry each question's pass or fail mark for that repository, jumps to a question's results. Each question's results collapse behind their header, and a collapsed question stays collapsed while moving between repositories.
 
 ![The mark app's Validation tab: the selected repository's per-question rule results](man/figures/mark_validation_screenshot.png)
 
@@ -106,12 +106,6 @@ The Rubric tab is where grading happens. The left pane shows the student's rende
 ![The mark app's Rubric tab: rendered report on the left; rubric items with hotkeys, the computed score, and the public and private comment boxes on the right](man/figures/mark_rubric_screenshot.png)
 
 Rubric items can be added, edited, and reordered while grading, and the rubric pane's menu offers YAML import and export for editing the rubric outside the app.
-
-### Scores
-
-The Scores tab shows the grading so far: every repository's score per question and its total, computed from the rubric selections exactly as `export_scores()` would, with summary rows beneath (how many repositories are graded, then the mean, median and standard deviation per question and for the total). The table sorts by any column with the summary rows staying put, pages for large classes, and updates as grading proceeds. Clicking a score opens that repository and question in the Rubric tab.
-
-![The mark app's Scores tab: one row per repository with a column per question and the total, and the graded count, mean, median and standard deviation pinned beneath](man/figures/mark_scores_screenshot.png)
 
 ## Scripting the workflow
 

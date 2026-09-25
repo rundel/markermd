@@ -263,7 +263,8 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
     bslib::nav_spacer(),
     
     # Assignments tab (right aligned): the landing page, one card with the
-    # per-repository progress table (validation status and grading progress)
+    # per-repository table (links, validation status, grading progress and
+    # scores, with the class summary pinned beneath)
     bslib::nav_panel(
       title = "Assignments",
       value = "assignments",
@@ -294,6 +295,14 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
           .repo-table-controls .form-select {
             font-size: 12px; padding-top: 2px; padding-bottom: 2px;
           }
+
+          /* Score cells in the Assignments table read as links on hover;
+             the click is handled by the table onClick. The summary footer
+             stays pinned while the rows scroll (reactable pins the header
+             by itself). */
+          .score-link { cursor: pointer; }
+          .score-link:hover { text-decoration: underline; }
+          #repo_table .rt-tfoot { position: sticky; bottom: 0; z-index: 1; }
 
 
           /* Hide the parse-error slot when empty so the card body flex gap
@@ -329,53 +338,52 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
         
         '))
       ),
-      # Main content area: layout_columns sits directly in the fillable nav
-      # panel so the card takes the viewport height and scrolls internally;
-      # the negative widths centre it so the repository column does not
-      # sprawl across a wide window
-      bslib::layout_columns(
-        col_widths = c(-2, 8, -2),
-        # Repository table card
-        bslib::card(
-          bslib::card_header(
-            class = "bg-light repo-table-controls",
+      # The table card sits directly in the fillable nav panel so it takes
+      # the viewport height and the full width (a long template has many
+      # score columns); the table fills the card body and scrolls inside it
+      # with its header and summary footer pinned
+      bslib::card(
+        bslib::card_header(
+          class = "bg-light repo-table-controls",
+          shiny::div(
+            class = "d-flex justify-content-between align-items-center gap-2 w-100",
+            shiny::span("Assignments"),
             shiny::div(
-              class = "d-flex justify-content-between align-items-center gap-2 w-100",
-              shiny::span("Assignments"),
+              class = "d-flex align-items-center gap-2",
               shiny::div(
-                class = "d-flex align-items-center gap-2",
-                shiny::div(
-                  style = "width: 150px;",
-                  shiny::textInput("repo_filter", NULL, placeholder = "Filter name", width = "100%")
-                ),
-                shiny::div(
-                  style = "width: 170px;",
-                  shiny::selectInput(
-                    "repo_status_filter", NULL,
-                    choices = c(
-                      "All repositories" = "all",
-                      "Failed validation" = "failed",
-                      "Incomplete" = "ungraded",
-                      "Complete" = "graded"
-                    ),
-                    width = "100%",
-                    selectize = FALSE
-                  )
+                style = "width: 150px;",
+                shiny::textInput("repo_filter", NULL, placeholder = "Filter name", width = "100%")
+              ),
+              shiny::div(
+                style = "width: 170px;",
+                shiny::selectInput(
+                  "repo_status_filter", NULL,
+                  choices = c(
+                    "All repositories" = "all",
+                    "Failed validation" = "failed",
+                    "Incomplete" = "ungraded",
+                    "Complete" = "graded"
+                  ),
+                  width = "100%",
+                  selectize = FALSE
                 )
               )
             )
-          ),
-          bslib::card_body(
-            class = "overflow-auto",
-            shiny::uiOutput("repo_table")
           )
+        ),
+        bslib::card_body(
+          class = "p-2",
+          reactable::reactableOutput("repo_table", height = "100%")
         )
       )
     ),
 
     # Validation tab (right aligned): the selected repository's per-question
-    # rule results. Its repo select is kept in step with the app-wide
-    # selection (table click, rubric navigation, score click-through)
+    # rule results. Its repo select, labelled with each repository's count
+    # of passed questions, is kept in step with the app-wide selection (table
+    # clicks, rubric navigation); the question select beside it is a shortcut
+    # that scrolls to a question's card, its labels marking each question's
+    # pass or fail for the current repository
     bslib::nav_panel(
       title = "Validation",
       value = "validation",
@@ -387,10 +395,24 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
             class = "d-flex justify-content-between align-items-center gap-2 w-100",
             shiny::span("Validation"),
             shiny::div(
-              style = "width: 260px;",
-              shiny::selectInput(
-                "validation_repo_select", NULL,
-                choices = repo_list, selected = initial_repo_name, width = "100%"
+              class = "d-flex align-items-center gap-2",
+              shiny::div(
+                style = "width: 260px;",
+                shiny::selectInput(
+                  "validation_repo_select", NULL,
+                  choices = validation_repo_choices(repo_list, validation_results, repo_errors),
+                  selected = initial_repo_name, width = "100%"
+                )
+              ),
+              shiny::div(
+                style = "width: 200px;",
+                mark_validate_question_select_ui(
+                  "explore_module",
+                  validation_question_choices(
+                    if (is.null(template_obj)) character(0) else template_question_names(template_obj),
+                    validation_results[[initial_repo_name]]
+                  )
+                )
               )
             )
           )
@@ -415,14 +437,6 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
         mark_rubric_ui("rubric_module"),
         rubric_hotkeys_js(shiny::NS("rubric_module"), shiny::NS("content_module"))
       )
-    ),
-
-    # Scores tab (right aligned): live per-repository scores and a
-    # per-question summary, recomputed from the database as grading proceeds
-    bslib::nav_panel(
-      title = "Scores",
-      value = "scores",
-      mark_scores_ui("scores_module")
     ),
 
     # Footer with project info
@@ -451,8 +465,8 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
     # The one way to change the app-wide repository selection: the name and
     # the AST (NULL for a repo whose document is missing or failed to parse,
     # so its error shows instead) move together. Used by the table's
-    # validation marker, the Validation tab's select, the rubric's navigation
-    # sync and the Scores tab's click-through.
+    # validation marker and score click-through, the Validation tab's select
+    # and the rubric's navigation sync.
     select_repo = function(repo) {
       if (length(repo) != 1 || !repo %in% repo_list) {
         return(invisible(FALSE))
@@ -484,27 +498,53 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
     # Debounced name filter so the table does not rebuild per keystroke
     repo_name_filter = shiny::debounce(shiny::reactive(input$repo_filter), 300)
 
-    # Create repository table with gt (the data/gt builders live in
-    # utils_mark_table.R). Rendered as static HTML (rather than gt::render_gt)
-    # so the gt_shiny input binding is not registered on the same id as the
-    # output, which would trigger a shared input/output id warning.
-    output$repo_table = shiny::renderUI({
-      # Rebuild only after grading data is actually written (the rubric module
-      # bumps its version on selection, comment, delete, and import writes);
-      # the output is suspended while the Validation tab is hidden, so tabbing
-      # back recomputes at most once
+    # Everything the table reads from the database, computed once per grading
+    # write or visit to the tab: the graded pairs and per-repo progress (which
+    # also drive the status filter), the per-question totals, and the wide
+    # score table with its class summary. The rubric module bumps its version
+    # on selection, comment, delete and import writes; reading
+    # input$main_navbar as well makes a return to the tab recompute, which
+    # picks up a question total edited in the rubric pane (that edit does not
+    # bump the version). The outputs are suspended while the tab is hidden,
+    # so tabbing back recomputes at most once.
+    table_state = shiny::reactive({
       rubric_result$grading_data_version()
+      input$main_navbar
 
-      # Calculate grading progress for all repos at once: one set of queries
-      # feeds the counts, the per-repo ungraded tooltips, and the status filter
-      all_progress = NULL
-      question_names = NULL
-      graded_pairs = NULL
-      if (!is.null(template_obj) && length(template_obj@questions) > 0) {
-        question_names = template_question_names(template_obj)
-        graded_pairs = graded_question_pairs(root)
-        all_progress = calculate_grading_progress(root, question_names, repo_list, graded_pairs = graded_pairs)
+      if (is.null(template_obj) || length(template_obj@questions) == 0) {
+        return(list(
+          question_names = NULL, graded_pairs = NULL, all_progress = NULL,
+          totals = numeric(0), scores = NULL, summary = NULL
+        ))
       }
+      question_names = template_question_names(template_obj)
+      graded_pairs = graded_question_pairs(root)
+      scores = build_scores_table_data(
+        collect_score_data(root, question_names, repo_list),
+        question_names,
+        repo_list
+      )
+      list(
+        question_names = question_names,
+        graded_pairs = graded_pairs,
+        all_progress = calculate_grading_progress(root, question_names, repo_list, graded_pairs = graded_pairs),
+        totals = question_total_scores(root, question_names),
+        scores = scores,
+        summary = build_scores_summary_rows(scores, question_names)
+      )
+    })
+
+    # For shinytest2 assertions on the score columns and their summary
+    shiny::exportTestValues(
+      scores_table = table_state()$scores,
+      scores_summary = table_state()$summary
+    )
+
+    # The Assignments table (the data and reactable builders live in
+    # utils_mark_table.R); the filters narrow the rows server-side, and the
+    # summary footer always covers the whole class
+    output$repo_table = reactable::renderReactable({
+      state = table_state()
 
       visible = filter_repo_table_rows(
         repo_list,
@@ -512,13 +552,9 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
         status_filter = input$repo_status_filter,
         validation_results = validation_results,
         repo_errors = repo_errors,
-        all_progress = all_progress,
-        question_names = question_names
+        all_progress = state$all_progress,
+        question_names = state$question_names
       )
-
-      if (length(visible) == 0) {
-        return(shiny::p("No repositories match the current filters.", class = "text-muted fst-italic m-2"))
-      }
 
       table_data = build_repo_table_data(
         visible = visible,
@@ -530,13 +566,24 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
         validation_results = validation_results,
         template_obj = template_obj,
         repo_errors = repo_errors,
-        all_progress = all_progress,
-        graded_pairs = graded_pairs,
-        question_names = question_names
+        all_progress = state$all_progress,
+        graded_pairs = state$graded_pairs,
+        question_names = state$question_names,
+        scores_table = state$scores
       )
 
-      shiny::HTML(gt::as_raw_html(repo_table_gt(table_data), inline_css = FALSE))
+      repo_table_reactable(table_data, state$summary, state$totals, click_input = "score_clicked")
     })
+
+    # A click on a score cell in the table opens that repository and question
+    # in the Rubric tab. The content module follows current_repo_name and the
+    # rubric module follows the content module.
+    shiny::observe({
+      target = input$score_clicked
+      shiny::req(select_repo(target$repo))
+      rubric_result$select_question(target$question)
+      bslib::nav_select("main_navbar", "rubric")
+    }) |> shiny::bindEvent(input$score_clicked)
 
     # A click on a repo's validation marker in the table opens that repo in
     # the Validation tab
@@ -717,28 +764,6 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       selected_repo = content_result$selected_repo,
       set_repo_labels = content_result$set_repo_labels
     )
-
-    # Scores tab: re-reads the database after each grading write, and on
-    # every visit so a question total edited in the rubric pane shows too
-    scores_result = mark_scores_server(
-      "scores_module", root, template_obj, repo_list,
-      grading_data_version = rubric_result$grading_data_version,
-      refresh = shiny::reactive(input$main_navbar)
-    )
-
-    # A click on a score cell (or repository name) in the Scores tab opens
-    # that repository, and question when one was clicked, in the Rubric tab.
-    # The content module follows current_repo_name and the rubric module
-    # follows the content module.
-    shiny::observe({
-      target = scores_result$score_clicked()
-      shiny::req(select_repo(target$repo))
-      if (!is.null(target$question)) {
-        rubric_result$select_question(target$question)
-      }
-      bslib::nav_select("main_navbar", "rubric")
-    }) |>
-      shiny::bindEvent(scores_result$score_clicked())
 
     # Reverse sync: z/x navigation (or the dropdown) in the Rubric tab moves
     # the app-wide selection too, so the Validation tab stays honest when

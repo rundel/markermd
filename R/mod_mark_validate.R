@@ -1,5 +1,99 @@
 # Shiny module for displaying validation results during marking
 
+# DOM id (before namespacing) of a question's validation card, the target of
+# the question shortcut select. Uses the same sanitisation as the question's
+# tree id prefix in get_question_content().
+#
+# question_name: Character. Question name
+
+question_card_id = function(question_name) {
+  paste0("qcard_", gsub("[^A-Za-z0-9]", "", question_name))
+}
+
+# Choices for the question shortcut select: the question names as values,
+# labelled with a check or cross for the repository's validation status
+# (plain names when the repository has no results, e.g. a parse error)
+#
+# question_names: Character vector of question names in template order
+# results: The repository's per-question validation results, or NULL
+# Returns: Named character vector (labels as names) for selectInput choices
+
+validation_question_choices = function(question_names, results = NULL) {
+  labels = vapply(question_names, function(question_name) {
+    status = results[[question_name]]$status
+    if (is.null(status)) {
+      question_name
+    } else if (identical(status, "pass")) {
+      paste0("\u2713 ", question_name)
+    } else {
+      paste0("\u2717 ", question_name)
+    }
+  }, character(1), USE.NAMES = FALSE)
+  stats::setNames(question_names, labels)
+}
+
+# Choices for the Validation tab's repository select: the repository names
+# as values, labelled with the count of questions that passed validation
+# ("repo (2/3)"), "(error)" for a repository whose document is missing or
+# failed to parse, and the bare name when there is nothing to validate
+#
+# repo_list: Character vector of repository names
+# validation_results: List of per-repo validation results
+# repo_errors: Named list of per-repo missing-document/parse error messages
+# Returns: Named character vector (labels as names) for selectInput choices
+
+validation_repo_choices = function(repo_list, validation_results, repo_errors = list()) {
+  labels = vapply(repo_list, function(repo) {
+    if (!is.null(repo_errors[[repo]])) {
+      return(paste0(repo, " (error)"))
+    }
+    results = validation_results[[repo]]
+    if (is.null(results) || length(results) == 0) {
+      return(repo)
+    }
+    passed = sum(vapply(results, function(q) identical(q$status, "pass"), logical(1)))
+    paste0(repo, " (", passed, "/", length(results), ")")
+  }, character(1), USE.NAMES = FALSE)
+  stats::setNames(repo_list, labels)
+}
+
+# Selectize render functions for the question shortcut select: the leading
+# check or cross of a label is coloured green or red, in the dropdown and in
+# the selected item alike. A custom render must supply selectize's own
+# option / item classes itself (its default templates do), or the entries
+# lose their padding and hover styling. Evaluated by shiny's selectize
+# binding (the I() wrapper marks it as JavaScript).
+
+validation_select_render_js = function() {
+  I("(function() {
+    function render(cls) {
+      return function(item, escape) {
+        var label = item.label, mark = label.charAt(0), color = null;
+        if (mark === '\\u2713') color = 'text-success';
+        else if (mark === '\\u2717') color = 'text-danger';
+        if (color === null) return '<div class=\"' + cls + '\">' + escape(label) + '</div>';
+        return '<div class=\"' + cls + '\"><span class=\"' + color + ' fw-semibold\">' + escape(mark) + '</span>' + escape(label.slice(1)) + '</div>';
+      };
+    }
+    return {option: render('option'), item: render('item')};
+  })()")
+}
+
+# The question shortcut select, placed by the app in the Validation card's
+# header next to the repository select but namespaced to this module, whose
+# server keeps its labels current and scrolls to the chosen question's card
+#
+# id: Character. Module namespace ID
+# choices: Initial choices from validation_question_choices()
+
+mark_validate_question_select_ui = function(id, choices) {
+  ns = shiny::NS(id)
+  shiny::selectizeInput(
+    ns("question_select"), NULL, choices = choices, width = "100%",
+    options = list(render = validation_select_render_js())
+  )
+}
+
 # Creates the content display for a question including tree structure
 #
 # repo_ast: The current document AST
@@ -12,9 +106,10 @@ get_question_content = function(repo_ast, question, session) {
   tree_items = build_ast_tree_structure(question_ast)
   question_id = paste0("q_", gsub("[^A-Za-z0-9]", "", question@name))
 
+  # The card collapses as a whole, so the tree is shown in full rather than
+  # capped in height
   shiny::div(
     class = "mb-1 p-2 bg-light border rounded overflow-auto small",
-    style = "max-height: 160px;",
     render_ast_tree(
       tree_items,
       session$ns,
@@ -72,15 +167,21 @@ create_rule_details = function(question, question_result) {
   shiny::div(rule_items)
 }
 
-# Creates a single question validation card
+# Creates a single question validation card. Its header carries a chevron
+# that collapses or expands the card's body (a Bootstrap collapse, so no
+# server round trip); the body's data-question attribute lets the collapse
+# state be reported back per question.
 #
 # question: The question object
 # question_result: The validation result for this question
 # current_ast: The current document AST
 # session: Shiny session object
+# collapsed: Logical. Whether the card starts collapsed
 
-create_question_card = function(question, question_result, current_ast, session) {
+create_question_card = function(question, question_result, current_ast, session, collapsed = FALSE) {
   question_name = question@name
+  card_id = session$ns(question_card_id(question_name))
+  body_id = paste0(card_id, "_body")
   
   # Overall status styling - only pass/fail states
   status_color = switch(question_result$status,
@@ -103,21 +204,41 @@ create_question_card = function(question, question_result, current_ast, session)
   rule_details = create_rule_details(question, question_result)
   
   # Create question card. mb-0 drops bslib's default 1rem card margin so the
-  # column gap set in the container controls the spacing between cards.
+  # column gap set in the container controls the spacing between cards. The
+  # id is the scroll target of the question shortcut select. wrapper = NULL
+  # keeps the collapsible div a direct child of the card (bslib would
+  # otherwise wrap it in a padded card body of its own).
   bslib::card(
+    id = card_id,
     class = "mb-0",
+    wrapper = NULL,
     bslib::card_header(
       class = "bg-light d-flex align-items-center",
       shiny::span(status_icon, class = "me-2"),
-      shiny::span(question_name, class = "my-0 text-dark fw-semibold")
+      shiny::span(question_name, class = "my-0 text-dark fw-semibold"),
+      shiny::tags$button(
+        type = "button",
+        class = "btn btn-link btn-sm p-0 ms-auto text-reset validation-collapse-toggle",
+        `data-bs-toggle` = "collapse",
+        `data-bs-target` = paste0("#", body_id),
+        `aria-expanded` = if (collapsed) "false" else "true",
+        `aria-controls` = body_id,
+        title = "Collapse or expand",
+        shiny::icon("chevron-down", class = "fa-fw")
+      )
     ),
-    bslib::card_body(
-      class = "pt-2 pb-1",
-      question_nodes_content
-    ),
-    bslib::card_body(
-      class = "pt-0 pb-1",
-      rule_details
+    htmltools::div(
+      id = body_id,
+      class = if (collapsed) "collapse" else "collapse show",
+      `data-question` = question_name,
+      bslib::card_body(
+        class = "pt-2 pb-1",
+        question_nodes_content
+      ),
+      bslib::card_body(
+        class = "pt-0 pb-1",
+        rule_details
+      )
     )
   )
 }
@@ -128,10 +249,49 @@ create_question_card = function(question, question_result, current_ast, session)
 
 mark_validate_ui = function(id) {
   ns = shiny::NS(id)
-  
-  # Scrolling is handled by the enclosing card_body, so no height math here
+
+  # Scrolling is handled by the enclosing card_body, so no height math here.
+  # The script serves the question shortcut select (it scrolls a question's
+  # card into view, expanding it first if collapsed, and retries briefly in
+  # case the results are still being rendered when the message lands) and
+  # reports which cards are collapsed after every toggle, so the render can
+  # keep a question collapsed across repositories.
+  script = glue::glue("
+    Shiny.addCustomMessageHandler('markermd_scroll_to', function(msg) {
+      var attempts = 20;
+      (function tryScroll() {
+        var el = document.getElementById(msg.id);
+        if (el) {
+          var body = el.querySelector('.collapse');
+          if (body && !body.classList.contains('show')) {
+            bootstrap.Collapse.getOrCreateInstance(body).show();
+          }
+          el.scrollIntoView({behavior: 'smooth', block: 'start'});
+        } else if (attempts-- > 0) {
+          setTimeout(tryScroll, 50);
+        }
+      })();
+    });
+    ['shown.bs.collapse', 'hidden.bs.collapse'].forEach(function(type) {
+      document.addEventListener(type, function(event) {
+        var container = document.getElementById('<<ns(\"template_validation\")>>');
+        if (!container || !container.contains(event.target)) return;
+        var collapsed = [];
+        container.querySelectorAll('.collapse:not(.show)').forEach(function(el) {
+          collapsed.push(el.dataset.question);
+        });
+        Shiny.setInputValue('<<ns(\"collapsed_questions\")>>', collapsed);
+      });
+    });
+  ", .open = "<<", .close = ">>")
+
   shiny::div(
     id = ns("template_validation"),
+    shiny::tags$style(shiny::HTML("
+      .validation-collapse-toggle .fa-chevron-down { transition: transform 0.2s ease; }
+      .validation-collapse-toggle[aria-expanded='false'] .fa-chevron-down { transform: rotate(-90deg); }
+    ")),
+    shiny::tags$script(shiny::HTML(script)),
     shiny::uiOutput(ns("template_validation_ui"))
   )
 }
@@ -147,17 +307,42 @@ mark_validate_server = function(id, ast, validation_results = shiny::reactiveVal
   shiny::moduleServer(id, function(input, output, session) {
     
     
+    # Keep the question shortcut select's labels in step with the current
+    # repository's results, preserving the chosen question. Re-sending the
+    # current value does not re-fire the input, so this never scrolls.
+    shiny::observe({
+      shiny::req(template())
+      shiny::updateSelectInput(
+        session, "question_select",
+        choices = validation_question_choices(template_question_names(template()), validation_results()),
+        selected = shiny::isolate(input$question_select)
+      )
+    })
+
+    # Choosing a question scrolls its card into view
+    shiny::observe({
+      session$sendCustomMessage(
+        "markermd_scroll_to",
+        list(id = session$ns(question_card_id(input$question_select)))
+      )
+    }) |> shiny::bindEvent(input$question_select, ignoreInit = TRUE)
+
     output$template_validation_ui = shiny::renderUI({
       shiny::req(template(), validation_results(), ast())
       
       current_validation = validation_results()
       current_template = template()
       current_ast = ast()
-      
+
+      # Questions the user collapsed stay collapsed when the cards are
+      # rebuilt for another repository; isolated so a toggle alone never
+      # re-renders the results
+      collapsed = as.character(unlist(shiny::isolate(input$collapsed_questions)))
       question_cards = lapply(current_template@questions, function(question) {
         create_question_card(
           question, current_validation[[question@name]],
-          current_ast, session
+          current_ast, session,
+          collapsed = question@name %in% collapsed
         )
       })
       

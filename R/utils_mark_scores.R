@@ -1,11 +1,10 @@
-# Score summaries for the marking app's Scores tab
+# Score data for the marking app's Assignments table
 #
-# The data builders take the per-pair scores from collect_score_data() plus
-# each question's maximum points and return plain data frames; the table
-# builder turns those into one interactive (sortable, paged) reactable with
-# the summary statistics pinned beneath the repository rows as
-# column footers, so sorting never moves them. All are pure, so they are
-# unit-tested without a browser; the Shiny wiring lives in mod_mark_scores.R.
+# The builders take the per-pair scores from collect_score_data() plus each
+# question's maximum points and return plain data frames: the wide
+# per-repository score table and the class summary rows, which
+# utils_mark_table.R folds into the Assignments table and pins beneath it as
+# column footers. All are pure, so they are unit-tested without a browser.
 
 # Maximum points per question from the settings table, defaulting like
 # collect_score_data() to 10 when a question has no settings row
@@ -110,43 +109,6 @@ format_points = function(x) {
   as.character(cli::pluralize("{format_score(x)}{cli::qty(x)} pt{?s}"))
 }
 
-# Caption under the score table explaining what the summary rows cover and
-# that score cells open the Rubric tab
-#
-# summary_rows: Data frame from build_scores_summary_rows()
-# n_repos: Number of repositories in the project
-
-scores_caption = function(summary_rows, n_repos) {
-  n_complete = summary_rows$Total[summary_rows$Repository == "Graded"]
-  cli::pluralize(
-    "Summary rows use graded repositories only; the Total column uses the ",
-    "{n_complete} of {n_repos} repositor{?y/ies} with every question graded. ",
-    "Click a score to open that repository and question in the Rubric tab."
-  )
-}
-
-# JavaScript click handler for the score table: a click on a question cell
-# (or the repository name) reports the repo and question to the given Shiny
-# input, as an event so repeated clicks on the same cell fire again. Other
-# columns and the summary footer are ignored.
-#
-# input_id: Namespaced Shiny input id to set
-# question_names: Character vector of the question column ids
-
-scores_click_js = function(input_id, question_names) {
-  reactable::JS(glue::glue("
-    function(rowInfo, column) {
-      var questions = <<jsonlite::toJSON(question_names)>>;
-      var repo = rowInfo.values.Repository;
-      if (column.id === 'Repository') {
-        Shiny.setInputValue('<<input_id>>', {repo: repo, question: null}, {priority: 'event'});
-      } else if (questions.indexOf(column.id) !== -1) {
-        Shiny.setInputValue('<<input_id>>', {repo: repo, question: column.id}, {priority: 'event'});
-      }
-    }
-  ", .open = "<<", .close = ">>"))
-}
-
 # Background tint for a score cell: none at full marks, deepening to a light
 # red at zero, so only shortfalls draw the eye and a fully correct class reads
 # as a plain table
@@ -164,146 +126,4 @@ score_tint = function(value, max_points) {
     return(NULL)
   }
   list(background = paste0("rgba(220, 53, 69, ", round(0.22 * shortfall, 3), ")"))
-}
-
-# Grading progress cell: the count over a thin version of the Validation
-# tab's green progress bar, stacked so the pair fits the column (the count
-# overlaid on the bar, as that tab does, is illegible at this table's size,
-# and side by side it clips)
-#
-# n_graded: Number of graded questions
-# n_questions: Number of questions in the template
-
-graded_progress_cell = function(n_graded, n_questions) {
-  percentage = if (n_questions > 0) round(100 * n_graded / n_questions) else 0
-  htmltools::div(
-    class = "d-inline-flex flex-column align-items-center",
-    style = "line-height: 1.2;",
-    title = glue::glue("{n_graded} of {n_questions} questions graded"),
-    htmltools::span(
-      class = if (n_graded >= n_questions && n_questions > 0) "fw-semibold" else "text-muted",
-      paste0(n_graded, "/", n_questions)
-    ),
-    htmltools::div(
-      class = "progress mt-1",
-      style = "height: 4px; width: 40px;",
-      htmltools::div(
-        class = "progress-bar bg-success",
-        role = "progressbar",
-        style = paste0("width: ", percentage, "%;"),
-        `aria-valuenow` = n_graded,
-        `aria-valuemin` = "0",
-        `aria-valuemax` = n_questions
-      )
-    )
-  )
-}
-
-# The interactive score table: one column per question plus the total and
-# graded count, sortable (ungraded last) with paging for large classes, and
-# the summary rows from build_scores_summary_rows() pinned as
-# column footers so they stay put under any sort order. Columns are sized to
-# their content rather than stretched across the card, headers carry the
-# points on a muted second line, score cells are tinted by their shortfall
-# (score_tint()), totals are bold and the graded count is a progress bar.
-# Question cells and repository names are clickable (class "score-link",
-# styled by the module UI) and report to click_input via scores_click_js().
-#
-# table_data: Data frame from build_scores_table_data()
-# summary_rows: Data frame from build_scores_summary_rows()
-# totals: Named numeric vector of per-question maximum points
-# click_input: Namespaced Shiny input id that clicks report to, or NULL for
-#   a table with no click-through
-
-scores_reactable = function(table_data, summary_rows, totals, click_input = NULL) {
-  question_names = names(totals)
-
-  # Column name on one line, the points (or count) muted beneath
-  column_header = function(name, sub) {
-    htmltools::tagList(
-      htmltools::div(name),
-      htmltools::div(class = "fw-normal text-muted", style = "font-size: 11px;", sub)
-    )
-  }
-
-  # One line per summary row; a blank keeps its line (a no-break space
-  # character, since reactable escapes footer text so an HTML entity would
-  # show literally) so the rows stay aligned across columns
-  footer_lines = function(values, class = NULL) {
-    htmltools::div(class = class, lapply(values, function(value) {
-      htmltools::div(
-        style = "white-space: nowrap;",
-        if (nzchar(value)) value else " "
-      )
-    }))
-  }
-
-  link_class = if (is.null(click_input)) NULL else "score-link"
-
-  score_column = function(column, name, sub, max_points = NA_real_, bold = FALSE, class = NULL) {
-    reactable::colDef(
-      header = function(value) column_header(name, sub),
-      cell = function(value) format_score(value),
-      style = function(value) {
-        c(if (bold) list(fontWeight = "bold"), score_tint(value, max_points))
-      },
-      class = class,
-      footer = footer_lines(format_score(summary_rows[[column]])),
-      sortNALast = TRUE,
-      minWidth = 84
-    )
-  }
-
-  columns = c(
-    list(
-      Repository = reactable::colDef(
-        name = "Repository",
-        align = "left",
-        minWidth = 140,
-        sticky = "left",
-        class = link_class,
-        footer = footer_lines(summary_rows$Repository, class = "text-muted")
-      )
-    ),
-    stats::setNames(
-      lapply(question_names, function(question_name) {
-        score_column(
-          question_name, question_name, format_points(totals[[question_name]]),
-          max_points = totals[[question_name]], class = link_class
-        )
-      }),
-      question_names
-    ),
-    list(
-      Total = score_column("Total", "Total", format_points(sum(totals)), bold = TRUE),
-      Graded = reactable::colDef(
-        header = function(value) column_header("Graded", paste("of", length(question_names))),
-        cell = function(value) graded_progress_cell(value, length(question_names)),
-        align = "center",
-        footer = footer_lines(rep("", nrow(summary_rows))),
-        minWidth = 84
-      )
-    )
-  )
-
-  reactable::reactable(
-    table_data,
-    columns = columns,
-    defaultColDef = reactable::colDef(align = "right", na = ""),
-    onClick = if (is.null(click_input)) NULL else scores_click_js(click_input, question_names),
-    fullWidth = FALSE,
-    sortable = TRUE,
-    highlight = TRUE,
-    compact = TRUE,
-    pagination = TRUE,
-    defaultPageSize = 25,
-    showPageSizeOptions = TRUE,
-    pageSizeOptions = c(10, 25, 50, 100),
-    theme = reactable::reactableTheme(
-      style = list(fontSize = "12px"),
-      cellPadding = "3px 10px",
-      headerStyle = list(fontWeight = "bold"),
-      footerStyle = list(borderTop = "2px solid #dee2e6")
-    )
-  )
 }

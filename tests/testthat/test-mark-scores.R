@@ -1,6 +1,6 @@
-# Coverage for the Scores tab builders (R/utils_mark_scores.R): the wide
-# per-repository table, the summary rows pinned beneath it, the caption, and
-# the interactive reactable they feed.
+# Coverage for the score data builders (R/utils_mark_scores.R) behind the
+# Assignments table: the wide per-repository score table, the summary rows
+# pinned beneath it, and the score formatting helpers.
 
 ms_scores = function() {
   data.frame(
@@ -9,10 +9,6 @@ ms_scores = function() {
     score = c(8, 10, NA, 4.5, NA, NA),
     stringsAsFactors = FALSE
   )
-}
-
-ms_render = function(widget) {
-  as.character(htmltools::renderTags(htmltools::as.tags(widget))$html)
 }
 
 test_that("build_scores_table_data lays out one column per question with totals over graded questions", {
@@ -57,16 +53,6 @@ test_that("build_scores_summary_rows handles nothing graded and no questions", {
   expect_equal(none$Total, c(0, NA, NA, NA))
 })
 
-test_that("scores_caption reports how many repositories the Total statistics cover", {
-  tbl = build_scores_table_data(ms_scores(), c("Q1", "Q2"), c("repoA", "repoB", "repoC"))
-  s = build_scores_summary_rows(tbl, c("Q1", "Q2"))
-  expect_match(
-    as.character(scores_caption(s, 3)),
-    "the Total column uses the 1 of 3 repositories with every question graded",
-    fixed = TRUE
-  )
-})
-
 test_that("format_score and format_points render compactly", {
   expect_equal(format_score(c(10, 7.5, 9.333333, NA)), c("10", "7.5", "9.33", ""))
   expect_equal(format_points(1), "1 pt")
@@ -87,56 +73,4 @@ test_that("score_tint leaves full marks and ungraded cells alone and deepens wit
   expect_match(zero$background, "^rgba\\(220, 53, 69, 0\\.22\\)$")
   # scores below zero are clamped to the deepest tint
   expect_equal(score_tint(-3, 10), zero)
-})
-
-test_that("graded_progress_cell mirrors the Validation tab's bar with the count overlaid", {
-  html = as.character(graded_progress_cell(3L, 4L))
-  expect_match(html, "progress-bar bg-success")
-  expect_match(html, "width: 75%;", fixed = TRUE)
-  expect_match(html, ">3/4<", fixed = TRUE)
-  expect_match(html, "3 of 4 questions graded", fixed = TRUE)
-
-  expect_match(as.character(graded_progress_cell(0L, 0L)), "width: 0%;", fixed = TRUE)
-})
-
-test_that("scores_reactable renders the table with two-line headers and footer rows", {
-  tbl = build_scores_table_data(ms_scores(), c("Q1", "Q2"), c("repoA", "repoB", "repoC"))
-  totals = c(Q1 = 10, Q2 = 5)
-  widget = scores_reactable(tbl, build_scores_summary_rows(tbl, c("Q1", "Q2")), totals)
-  expect_s3_class(widget, "reactable")
-
-  html = ms_render(widget)
-  # the points sit on their own muted line under the column name
-  expect_match(html, "10 pts")
-  expect_match(html, "5 pts")
-  expect_match(html, "15 pts")
-  expect_no_match(html, "Q1 (10 pts)", fixed = TRUE)
-  expect_match(html, "repoC")
-  # the footer carries the statistic labels and values, and blank lines are
-  # padded with a character rather than an entity (reactable escapes footers)
-  expect_match(html, "Median")
-  expect_match(html, "12.5")
-  expect_no_match(html, "&nbsp;", fixed = TRUE)
-  # the graded count renders as the progress bar
-  expect_match(html, "progress-bar bg-success")
-  # without a click input the cells carry no link styling or handler
-  expect_no_match(html, "score-link")
-  expect_no_match(html, "setInputValue")
-})
-
-test_that("scores_reactable wires question cells and repository names to the click input", {
-  tbl = build_scores_table_data(ms_scores(), c("Q1", "Q2"), c("repoA", "repoB", "repoC"))
-  totals = c(Q1 = 10, Q2 = 5)
-  widget = scores_reactable(
-    tbl, build_scores_summary_rows(tbl, c("Q1", "Q2")), totals,
-    click_input = "scores-score_clicked"
-  )
-  html = ms_render(widget)
-  expect_match(html, "score-link")
-  expect_match(html, "scores-score_clicked", fixed = TRUE)
-
-  js = as.character(scores_click_js("scores-score_clicked", c("Q1", "Q2")))
-  expect_match(js, '["Q1","Q2"]', fixed = TRUE)
-  expect_match(js, "column.id === 'Repository'", fixed = TRUE)
-  expect_match(js, "priority: 'event'", fixed = TRUE)
 })

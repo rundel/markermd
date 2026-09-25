@@ -1,13 +1,29 @@
 # Builders and cell renderers for the repository overview table in the
-# marking app. The pure pieces live here (filtering, table-data assembly, gt
-# construction, and the per-cell renderers) so the renderUI in mark-app.R is
-# a thin reactive shell over them.
+# marking app's Assignments tab: one row per repository with its links, its
+# validation status and grading progress, and its per-question scores and
+# total, with the class summary statistics pinned beneath as column footers.
+# The pure pieces live here (filtering, table-data assembly, the reactable
+# construction, and the per-cell renderers) so the render in mark-app.R is a
+# thin reactive shell over them. The score columns and the summary come from
+# the builders in utils_mark_scores.R, which reuse collect_score_data() so
+# the table and export_scores() always agree. The table is a reactable
+# rather than gt because gt's interactive mode cannot pin summary rows under
+# a sortable table.
 
-# Icon tag for the gt cells; the Font Awesome dependency is already on the
+# Icon tag for the table cells; the Font Awesome dependency is already on the
 # page via the static shiny::icon() uses in the rubric tab
 cell_icon = function(name, ...) {
   shiny::icon(name, class = "fa-fw fs-6", ...)
 }
+
+# Classes shared by every icon cell element (button, link or greyed span) so
+# they all occupy the same compact box and sit at the same height: a
+# Bootstrap button carries its own 24px line box and vertical-align: middle,
+# while a link or span sits on the text baseline, so the box is flattened to
+# the icon and everything is aligned middle
+icon_cell_class = "d-inline-flex align-items-center align-middle lh-1"
+icon_button_class = paste("btn btn-link p-0 border-0 text-reset", icon_cell_class)
+icon_muted_class = paste("opacity-25", icon_cell_class)
 
 # Apply the repo-table name and status filters, returning the visible repo
 # names in repo_list order. "failed" counts a repo with a parse/missing-doc
@@ -47,15 +63,40 @@ filter_repo_table_rows = function(repo_list, name_filter, status_filter,
   visible
 }
 
-# Assemble the repo table's display data, one row per visible repo, with the
-# seven display columns as HTML strings. Every action button reports its row
-# index through one shared input per column (priority: 'event' so re-clicking
-# the same row re-fires), keeping the server at one observer per column
-# instead of one per repo. Button ids stay keyed to each repo's position in
-# the FULL repo_list (visible_idx, not seq_along(visible)) so the observers
-# registered over seq_along(repo_list) and the shinyjs active-row mover keep
-# working. Cells are built as htmltools tags (escaping is structural) and
-# rendered to strings at the gt boundary.
+# Sort key for the Validation column: the fraction of the repo's questions
+# that passed, -1 for a repo whose document is missing or failed to parse
+# (below every real result, as the "failed" filter also treats it), and NA
+# when there is nothing to validate
+#
+# repo: Character. Repository name
+# validation_results: List of per-repo validation results
+# repo_errors: Named list of per-repo missing-document/parse error messages
+
+validation_sort_key = function(repo, validation_results, repo_errors) {
+  if (!is.null(repo_errors[[repo]])) {
+    return(-1)
+  }
+  res = validation_results[[repo]]
+  if (is.null(res) || length(res) == 0) {
+    return(NA_real_)
+  }
+  mean(vapply(res, function(q) identical(q$status, "pass"), logical(1)))
+}
+
+# Assemble the repo table's data, one row per visible repo. The link columns
+# (Folder, GitHub, Artifacts, Source) hold their cell HTML directly, since
+# they never sort. Validation and Progress do sort, so they hold a numeric
+# sort key (validation_sort_key(); the graded-question count) and their
+# rendered HTML sits in the hidden Validation_html / Progress_html columns
+# that the table's cell renderers read. The per-question score columns and
+# Total are copied from scores_table when the template has questions.
+# Every action button reports its row index through one shared input per
+# column (priority: 'event' so re-clicking the same row re-fires), keeping
+# the server at one observer per column instead of one per repo. Button ids
+# stay keyed to each repo's position in the FULL repo_list (visible_idx, not
+# seq_along(visible)) so the observers registered over repo_list keep
+# working under any filter. Cells are built as htmltools tags (escaping is
+# structural) and rendered to strings here.
 #
 # visible: Character vector of visible repo names (filter_repo_table_rows())
 # visible_idx: Integer vector. match(visible, repo_list)
@@ -69,169 +110,285 @@ filter_repo_table_rows = function(repo_list, name_filter, status_filter,
 # all_progress: Named vector of graded-question counts per repo, or NULL
 # graded_pairs: Precomputed graded_question_pairs() result
 # question_names: Character vector of question names from the template
+# scores_table: Data frame from build_scores_table_data() covering every
+#   repo (Repository, one column per question, Total, Graded), or NULL when
+#   the template has no questions
 
 build_repo_table_data = function(visible, visible_idx, repo_list, collection,
                                  artifact_paths, repo_to_github,
                                  validation_results, template_obj, repo_errors,
-                                 all_progress, graded_pairs, question_names) {
-  # Repository names stay plain text (gt escapes them, so a directory name
-  # cannot inject markup); the row's links live in the icon cells and the
-  # validation marker
+                                 all_progress, graded_pairs, question_names,
+                                 scores_table = NULL) {
+  # Repository names stay plain text (reactable escapes them, so a directory
+  # name cannot inject markup); the row's links live in the icon cells and
+  # the validation marker
   repo_df = data.frame(
     Repository = visible,
-    stringsAsFactors = FALSE
+    stringsAsFactors = FALSE,
+    check.names = FALSE
   )
 
-  repo_df$Folder = sapply(visible_idx, function(i) {
+  repo_df$Folder = vapply(visible_idx, function(i) {
     as.character(htmltools::tags$button(
       onclick = paste0("Shiny.setInputValue('folder_clicked', ", i, ", {priority: 'event'})"),
-      class = "btn btn-link p-0 border-0 text-reset",
+      class = icon_button_class,
       title = "Open folder",
       cell_icon("folder-open")
     ))
-  })
+  }, character(1))
 
-  repo_df$GitHub = sapply(visible, function(repo) {
+  repo_df$GitHub = vapply(visible, function(repo) {
     if (repo %in% names(repo_to_github)) {
       github_url = paste0("https://github.com/", repo_to_github[[repo]])
       as.character(htmltools::a(
         href = github_url,
         target = "_blank",
-        class = "text-reset text-decoration-none",
+        class = paste("text-reset text-decoration-none", icon_cell_class),
         title = "Open on GitHub",
         cell_icon("github")
       ))
     } else {
       as.character(htmltools::span(
-        class = "opacity-25",
+        class = icon_muted_class,
         title = "No GitHub repository",
         cell_icon("github")
       ))
     }
-  })
+  }, character(1), USE.NAMES = FALSE)
 
   # Artifact column: clickable icons for repos with a local report
-  repo_df$Artifacts = sapply(visible_idx, function(i) {
+  repo_df$Artifacts = vapply(visible_idx, function(i) {
     repo = repo_list[i]
     if (!is.na(artifact_paths[[repo]])) {
-      # Has a resolved local report - clickable file icon
       as.character(htmltools::tags$button(
         onclick = paste0("Shiny.setInputValue('artifact_clicked', ", i, ", {priority: 'event'})"),
-        class = "btn btn-link p-0 border-0 text-reset",
+        class = icon_button_class,
         title = "View artifact",
         cell_icon("file")
       ))
     } else {
-      # No report found - greyed out unclickable icon
       as.character(htmltools::span(
-        class = "opacity-25",
+        class = icon_muted_class,
         title = "No artifact available",
         cell_icon("file")
       ))
     }
-  })
+  }, character(1))
 
   # Source code column: clickable file-code icons; repos without a matching
   # document get a greyed-out marker instead of a dead button
   repos_with_doc = collection$repo
-  repo_df$Source = sapply(visible_idx, function(i) {
+  repo_df$Source = vapply(visible_idx, function(i) {
     repo = repo_list[i]
     if (!repo %in% repos_with_doc) {
       return(as.character(htmltools::span(
-        class = "opacity-25",
+        class = icon_muted_class,
         title = "No document found",
         cell_icon("file-code")
       )))
     }
     as.character(htmltools::tags$button(
       onclick = paste0("Shiny.setInputValue('source_clicked', ", i, ", {priority: 'event'})"),
-      class = "btn btn-link p-0 border-0 text-reset",
+      class = icon_button_class,
       title = "View source code",
       cell_icon("file-code")
     ))
-  })
+  }, character(1))
 
-  repo_df$Validation = purrr::map_chr(seq_along(visible), function(k) {
+  repo_df$Validation = vapply(
+    visible, validation_sort_key,
+    numeric(1), USE.NAMES = FALSE,
+    validation_results = validation_results, repo_errors = repo_errors
+  )
+  repo_df$Validation_html = purrr::map_chr(seq_along(visible), function(k) {
     validation_status_cell(
       visible[k], validation_results, template_obj, repo_errors,
       row_index = visible_idx[k]
     )
   })
 
-  repo_df$Grading = sapply(
+  repo_df$Progress = if (is.null(all_progress)) {
+    rep(NA_integer_, length(visible))
+  } else {
+    as.integer(unname(all_progress[visible]))
+  }
+  repo_df$Progress_html = vapply(
     visible, grading_progress_cell,
+    character(1), USE.NAMES = FALSE,
     template_obj = template_obj, all_progress = all_progress,
     graded_pairs = graded_pairs, question_names = question_names
   )
 
-  repo_df[, c("Repository", "Folder", "GitHub", "Artifacts", "Source", "Validation", "Grading"), drop = FALSE]
+  if (!is.null(scores_table) && length(question_names) > 0) {
+    rows = match(visible, scores_table$Repository)
+    for (column in c(question_names, "Total")) {
+      repo_df[[column]] = scores_table[[column]][rows]
+    }
+  }
+
+  rownames(repo_df) = NULL
+  repo_df
 }
 
-# Build the styled gt table from the repo table data
+# JavaScript click handler for the table: a click on a question's score cell
+# reports the repo and question to the given Shiny input, as an event so
+# repeated clicks on the same cell fire again. Every other column (the link
+# buttons handle their own clicks) and the summary footer are ignored.
+#
+# input_id: Shiny input id to set
+# question_names: Character vector of the question column ids
+
+repo_table_click_js = function(input_id, question_names) {
+  reactable::JS(glue::glue("
+    function(rowInfo, column) {
+      var questions = <<jsonlite::toJSON(question_names)>>;
+      if (questions.indexOf(column.id) !== -1) {
+        Shiny.setInputValue('<<input_id>>', {repo: rowInfo.values.Repository, question: column.id}, {priority: 'event'});
+      }
+    }
+  ", .open = "<<", .close = ">>"))
+}
+
+# The interactive Assignments table: the repository with its link buttons,
+# validation marker and progress bar, then one score column per question and
+# the total, sortable (ungraded last) with the summary rows from
+# build_scores_summary_rows() pinned as column footers so they stay put
+# under any sort order. The table fills its container and scrolls inside it
+# with the header and footer sticky; every cell is vertically centred so the
+# icon buttons, progress bars and text line up; the Repository column absorbs
+# the width the fixed-size columns leave, up to a cap that keeps the link
+# icons near the name on a wide window. Score headers carry the points on a muted
+# second line, score cells are tinted by their shortfall (score_tint()) and
+# are clickable (class "score-link", styled by the app) when click_input is
+# given; totals are bold. Without questions there are no score columns,
+# footers or click handler.
 #
 # table_data: Data frame from build_repo_table_data()
+# summary_rows: Data frame from build_scores_summary_rows(), or NULL
+# totals: Named numeric vector of per-question maximum points (empty when
+#   the template has no questions)
+# click_input: Shiny input id that score clicks report to, or NULL for a
+#   table with no click-through
 
-repo_table_gt = function(table_data) {
-  gt_table = gt::gt(table_data) |>
-    gt::fmt_markdown(columns = .data$Folder) |>
-    gt::fmt_markdown(columns = .data$GitHub) |>
-    gt::fmt_markdown(columns = .data$Artifacts) |>
-    gt::fmt_markdown(columns = .data$Source) |>
-    gt::fmt_markdown(columns = .data$Grading) |>
-    gt::fmt_markdown(columns = .data$Validation) |>
-    gt::cols_label(
-      Repository = "Repository",
-      Folder = "", GitHub = "", Artifacts = "", Source = "",
-      Validation = "Validation", Grading = "Progress"
-    ) |>
-    # Icon and validation columns hold fixed-size content, so they get
-    # fixed widths; Repository is left unspecified so it absorbs all
-    # remaining width (table-layout is fixed), keeping the icon cluster
-    # tight at any viewport size.
-    gt::cols_width(
-      Folder ~ gt::px(32),
-      GitHub ~ gt::px(32),
-      Artifacts ~ gt::px(32),
-      Source ~ gt::px(32),
-      Validation ~ gt::px(80),
-      Grading ~ gt::pct(24)
-    ) |>
-    gt::cols_align(align = "center", columns = .data$Validation)
+repo_table_reactable = function(table_data, summary_rows, totals, click_input = NULL) {
+  question_names = names(totals)
+  has_scores = length(question_names) > 0 && !is.null(summary_rows)
 
-  gt_table |>
-    gt::tab_options(
-      table.width = gt::pct(100),
-      table.font.size = "12px",  # Smaller font size
-      data_row.padding = "2px",
-      data_row.padding.horizontal = "6px",
-      column_labels.hidden = FALSE,  # Show column headers
-      table.border.top.style = "none",
-      table.border.bottom.style = "none",
-      table.border.left.style = "none",
-      table.border.right.style = "none"
-    ) |>
-    gt::opt_css(
-      css = "
-      .gt_table {
-        border: none !important;
-      }
-      .gt_col_heading {
-        font-size: 11px !important;
-        font-weight: bold !important;
-        padding: 4px 6px !important;
-      }
-      /* Gutter between the repo name and the icon cluster: scales with
-         the table width but is capped so wide windows stay together */
-      .gt_table td:first-child {
-        padding-right: clamp(8px, 3%, 24px) !important;
-      }
-      "
+  # Column name on one line, the points muted beneath
+  column_header = function(name, sub) {
+    htmltools::tagList(
+      htmltools::div(name),
+      htmltools::div(class = "fw-normal text-muted", style = "font-size: 11px;", sub)
     )
+  }
+
+  # One line per summary row; a blank keeps its line (a no-break space
+  # character, since reactable escapes footer text so an HTML entity would
+  # show literally) so the rows stay aligned across columns
+  footer_lines = function(values, class = NULL) {
+    htmltools::div(class = class, lapply(values, function(value) {
+      htmltools::div(
+        style = "white-space: nowrap;",
+        if (nzchar(value)) value else " "
+      )
+    }))
+  }
+  blank_footer = if (has_scores) footer_lines(rep("", nrow(summary_rows))) else NULL
+
+  link_class = if (is.null(click_input)) NULL else "score-link"
+
+  icon_column = function() {
+    reactable::colDef(
+      name = "", html = TRUE, sortable = FALSE, align = "center", width = 36,
+      footer = blank_footer
+    )
+  }
+
+  # A sortable column whose cell is pre-rendered HTML in a hidden column
+  html_column = function(html_column, name, width) {
+    reactable::colDef(
+      name = name,
+      cell = function(value, index) table_data[[html_column]][index],
+      html = TRUE, align = "center", width = width, sortNALast = TRUE,
+      footer = blank_footer
+    )
+  }
+
+  score_column = function(column, name, sub, max_points = NA_real_, bold = FALSE, class = NULL) {
+    reactable::colDef(
+      header = function(value) column_header(name, sub),
+      cell = function(value) format_score(value),
+      style = function(value) {
+        c(if (bold) list(fontWeight = "bold"), score_tint(value, max_points))
+      },
+      class = class,
+      footer = footer_lines(format_score(summary_rows[[column]])),
+      sortNALast = TRUE,
+      minWidth = 84,
+      maxWidth = 120
+    )
+  }
+
+  columns = c(
+    list(
+      Repository = reactable::colDef(
+        name = "Repository",
+        align = "left",
+        minWidth = 140,
+        maxWidth = 400,
+        sticky = "left",
+        footer = if (has_scores) footer_lines(summary_rows$Repository, class = "text-muted")
+      ),
+      Folder = icon_column(),
+      GitHub = icon_column(),
+      Artifacts = icon_column(),
+      Source = icon_column(),
+      Validation = html_column("Validation_html", "Validation", 80),
+      Progress = html_column("Progress_html", "Progress", 88),
+      Validation_html = reactable::colDef(show = FALSE),
+      Progress_html = reactable::colDef(show = FALSE)
+    ),
+    if (has_scores) {
+      c(
+        stats::setNames(
+          lapply(question_names, function(question_name) {
+            score_column(
+              question_name, question_name, format_points(totals[[question_name]]),
+              max_points = totals[[question_name]], class = link_class
+            )
+          }),
+          question_names
+        ),
+        list(Total = score_column("Total", "Total", format_points(sum(totals)), bold = TRUE))
+      )
+    }
+  )
+
+  reactable::reactable(
+    table_data,
+    columns = columns,
+    defaultColDef = reactable::colDef(align = "right", na = "", vAlign = "center"),
+    onClick = if (has_scores && !is.null(click_input)) repo_table_click_js(click_input, question_names),
+    fullWidth = TRUE,
+    height = "100%",
+    sortable = TRUE,
+    highlight = TRUE,
+    compact = TRUE,
+    pagination = FALSE,
+    language = reactable::reactableLang(noData = "No repositories match the current filters."),
+    theme = reactable::reactableTheme(
+      backgroundColor = "#fff",
+      style = list(fontSize = "12px"),
+      cellPadding = "3px 8px",
+      headerStyle = list(fontWeight = "bold"),
+      footerStyle = list(borderTop = "2px solid #dee2e6")
+    )
+  )
 }
 
 # Cell renderers
 #
-# Each returns the HTML string for one repository's cell in a gt column.
+# Each returns the HTML string for one repository's cell in a table column.
 
 # Validation summary cell: pass/fail count with a tooltip listing failures,
 # or a warning marker when the repo's document is missing or failed to parse
@@ -249,7 +406,7 @@ validation_status_cell = function(repo, validation_results, template_obj, repo_e
     if (!is.null(row_index)) {
       tag = htmltools::tags$button(
         onclick = paste0("Shiny.setInputValue('validation_clicked', ", row_index, ", {priority: 'event'})"),
-        class = "btn btn-link p-0 border-0 text-reset",
+        class = icon_button_class,
         tag
       )
     }
@@ -298,7 +455,7 @@ validation_status_cell = function(repo, validation_results, template_obj, repo_e
   if (fail_count > 0) {
     if (length(failed_questions) > 0) {
       tooltip_parts = c(tooltip_parts, "Failed validation:")
-      tooltip_parts = c(tooltip_parts, paste("\u2022", failed_questions))
+      tooltip_parts = c(tooltip_parts, paste("•", failed_questions))
     }
   } else {
     tooltip_parts = paste("All", total_count, "validation rules passed")
@@ -370,7 +527,7 @@ grading_progress_cell = function(repo, template_obj, all_progress, graded_pairs,
   } else {
     if (length(ungraded_questions) > 0) {
       tooltip_parts = c(tooltip_parts, "Ungraded questions:")
-      tooltip_parts = c(tooltip_parts, paste("\u2022", ungraded_questions))
+      tooltip_parts = c(tooltip_parts, paste("•", ungraded_questions))
     }
   }
 

@@ -34,7 +34,6 @@ Imports:
     htmltools,
     bslib,
     fs,
-    gt,
     reactable,
     purrr,
     glue,
