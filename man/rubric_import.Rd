@@ -29,7 +29,9 @@ The parsed rubric list, invisibly.
 \description{
 Reads a rubric YAML file (see \code{\link[=rubric_export]{rubric_export()}} for the format) and applies
 it to the project's grading database. Item order in the file determines
-display order and keyboard hotkeys. This is the inverse of \code{\link[=rubric_export]{rubric_export()}}.
+display order and keyboard hotkeys (the first ten items of a question get
+the keys 1-9 and 0; any further items are toggled by clicking, with no
+limit on their number). This is the inverse of \code{\link[=rubric_export]{rubric_export()}}.
 }
 \details{
 With \code{mode = "append"} (the default) the file's items are added after each

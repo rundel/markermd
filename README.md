@@ -94,7 +94,7 @@ The Validation tab checks every repository against the template's rules, so stru
 
 ### Rubric
 
-The Rubric tab is where grading happens. The left pane shows the student's rendered report or source; the right pane shows the current question's rubric. Items toggle by click or number-key hotkey, and the score follows from the question's scoring setup (additive or deduction mode, with optional clamping between zero and the question total; clicking the score display edits the total, and the gear popover holds the mode and bounds). Below the items are two comment boxes: a public, student-facing comment (which also marks the question as graded) and private notes that are never shared with students. Every action autosaves to the project database.
+The Rubric tab is where grading happens. The left pane shows the student's rendered report or source; the right pane shows the current question's rubric. Items toggle by click or number-key hotkey (the first ten items of a question get the keys 1-9 and 0; there is no limit on items, and any beyond the tenth toggle by click), and the score follows from the question's scoring setup (additive or deduction mode, with optional clamping between zero and the question total; clicking the score display edits the total, and the gear popover holds the mode and bounds). Below the items are two comment boxes: a public, student-facing comment (which also marks the question as graded) and private notes that are never shared with students. Every action autosaves to the project database.
 
 ![The mark app's Rubric tab: rendered report on the left; rubric items with hotkeys, the computed score, and the public and private comment boxes on the right](man/figures/mark_rubric_screenshot.png)
 

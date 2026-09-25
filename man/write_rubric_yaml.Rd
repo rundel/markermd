@@ -21,8 +21,8 @@ The output \code{path}, invisibly.
 Serializes a rubric (one or more questions' rubric items plus optional
 scoring setup) to a human-readable, schema-validatable YAML file. Items are
 written in display order; order is meaningful, as the first ten items are
-bound to keyboard hotkeys on import. No per-repository grading data is
-written.
+bound to keyboard hotkeys on import and any further items (there is no
+limit) are toggled by clicking. No per-repository grading data is written.
 }
 \seealso{
 \code{\link[=read_rubric_yaml]{read_rubric_yaml()}}, \code{\link[=rubric_export]{rubric_export()}}, \code{\link[=rubric_import]{rubric_import()}}

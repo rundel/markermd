@@ -183,9 +183,9 @@ collect_marks_data = function(collection_path, repo_names = NULL, question_names
       grades = load_most_recent_grades(conn),
       comments = load_most_recent_comments(conn),
       private_comments = load_most_recent_private_comments(conn),
-      items = DBI::dbGetQuery(conn, "
+      items = DBI::dbGetQuery(conn, paste0("
         SELECT question_name, item_id, description FROM items
-        ORDER BY question_name, (hotkey IS NULL), hotkey, id")
+        ORDER BY question_name, ", items_display_order_sql))
     )
   })
 

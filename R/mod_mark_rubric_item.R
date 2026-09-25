@@ -6,23 +6,32 @@
 POINTS_POSITIVE_COLOR = "#28a745"
 POINTS_NEGATIVE_COLOR = "#dc3545"
 
-# Builds the hotkey action button for a rubric item, applying the
-# selected-state styling (green when selected, outline otherwise)
+# Builds the toggle button for a rubric item, applying the selected-state
+# styling (green when selected, outline otherwise). The first ten items show
+# their hotkey (1-9, then 0); items past the tenth have none, so their button
+# is blank with a dashed outline and a tooltip, and is toggled by clicking.
+# The number-key handler (rubric_hotkeys_js) matches buttons by this label,
+# so a blank button is never reached from the keyboard.
 #
 # id: Character. Module namespace ID
 # rubric_item: markermd_rubric_item S7 object containing item properties
 
 mark_rubric_item_hotkey_btn = function(id, rubric_item) {
   ns = shiny::NS(id)
+  has_hotkey = !is.na(rubric_item@hotkey)
 
   shiny::actionButton(
     ns("hotkey_btn"),
-    label = if (is.na(rubric_item@hotkey)) "" else as.character(rubric_item@hotkey %% 10),
+    label = if (has_hotkey) as.character(rubric_item@hotkey %% 10) else "",
     class = paste(
       if (rubric_item@selected) "btn-success" else "btn-outline-secondary",
       "btn-sm d-flex align-items-center justify-content-center"
     ),
-    style = "font-size: 10px; padding: 0; width: 28px; height: 28px;"
+    style = paste0(
+      "font-size: 10px; padding: 0; width: 28px; height: 28px;",
+      if (!has_hotkey) " border-style: dashed;" else ""
+    ),
+    title = if (has_hotkey) NULL else "No hotkey: click to toggle"
   )
 }
 

@@ -21,7 +21,20 @@ db_row_to_grade_state = function(settings_row) {
   )
 }
 
-# Convert database items row to markermd_rubric_item S7 object
+# Hotkey for a rubric item at a given display position: positions 1-10 map to
+# hotkeys 1-10 (shown as 1-9 and 0), anything past the tenth has none and is
+# toggled by clicking. There is no limit on the number of items.
+#
+# position: Integer display position (1-based); NA gives NA
+
+position_hotkey = function(position) {
+  position = as.integer(position)
+  if (length(position) != 1 || is.na(position) || position > 10L) NA_integer_ else position
+}
+
+# Convert database items row to markermd_rubric_item S7 object. The hotkey is
+# derived from the row's display position; a row without one (see
+# items_display_order_sql) falls back to its stored hotkey column.
 #
 # items_row: Single row data frame from items table
 # selected: Logical indicating if item is selected (not stored in database)
@@ -31,9 +44,18 @@ db_row_to_rubric_item = function(items_row, selected = FALSE) {
   if (nrow(items_row) == 0) {
     return(NULL)
   }
-  
+
+  position = items_row$position[1]
+  hotkey = if (!is.null(position) && !is.na(position)) {
+    position_hotkey(position)
+  } else if (is.na(items_row$hotkey[1])) {
+    NA_integer_
+  } else {
+    as.integer(items_row$hotkey[1])
+  }
+
   markermd_rubric_item(
-    hotkey = if (is.na(items_row$hotkey[1])) NA_integer_ else as.integer(items_row$hotkey[1]),
+    hotkey = hotkey,
     points = items_row$points[1],
     description = items_row$description[1],
     selected = selected
@@ -67,20 +89,25 @@ save_rubric_item = function(collection_path, question_name, item_id, rubric_item
   })
 }
 
-# Save several rubric items for one question atomically, so a renumbering
-# (move/delete rewrites every hotkey) cannot be half-persisted and pays one
-# connection rather than one per item
+# Save a question's rubric items in display order, atomically: the list order
+# becomes each item's stored position (and the hotkey it implies), so a
+# renumbering after a move or delete cannot be half-persisted, and it pays one
+# connection rather than one per item. This is the app's only writer of
+# display order.
 #
 # collection_path: Path to collection directory
 # question_name: Character string
-# items: Named list of markermd_rubric_item S7 objects keyed by item_id
+# items: Named list of markermd_rubric_item S7 objects keyed by item_id, in
+#   display order
 
 save_rubric_items = function(collection_path, question_name, items) {
   with_database(collection_path, function(conn) {
     DBI::dbBegin(conn)
     tryCatch({
-      for (item_id in names(items)) {
-        upsert_items(conn, question_name, item_id, items[[item_id]])
+      for (i in seq_along(items)) {
+        item = items[[i]]
+        item@hotkey = position_hotkey(i)
+        upsert_items(conn, question_name, names(items)[i], item, position = i)
       }
       DBI::dbCommit(conn)
     }, error = function(e) {
@@ -171,13 +198,10 @@ load_grade_state = function(collection_path, question_name) {
 
 load_rubric_items = function(collection_path, question_name) {
   with_database(collection_path, function(conn) {
-    # The move/delete handlers keep hotkey == display position (1-10, NA
-    # beyond), so ordering by hotkey reproduces the arrangement the grader
-    # left; un-hotkeyed items keep insertion order at the tail
-    items_data = DBI::dbGetQuery(conn, "
+    items_data = DBI::dbGetQuery(conn, paste0("
       SELECT * FROM items WHERE question_name = ?
-      ORDER BY (hotkey IS NULL), hotkey, id
-    ", params = list(question_name))
+      ORDER BY ", items_display_order_sql
+    ), params = list(question_name))
     
     if (nrow(items_data) == 0) {
       return(list())
@@ -311,8 +335,10 @@ initialize_database_state = function(collection_path, template_obj) {
 }
 
 # Rubric items for one question out of a full items-table data frame, as a
-# named list of markermd_rubric_item in display order (hotkey slots first,
-# un-hotkeyed items by insertion id at the tail) matching load_rubric_items()
+# named list of markermd_rubric_item in display order, matching
+# load_rubric_items(). This is the R-side twin of items_display_order_sql:
+# position first, then the legacy hotkey / insertion-id fallback for rows
+# without one (order() already sorts NA last within each key).
 #
 # items_df: Data frame of items rows (see load_all_items())
 # question_name: Character string
@@ -323,8 +349,7 @@ items_df_to_rubric_list = function(items_df, question_name) {
     return(list())
   }
 
-  hotkey_rank = ifelse(is.na(rows$hotkey), Inf, rows$hotkey)
-  rows = rows[order(hotkey_rank, rows$id), , drop = FALSE]
+  rows = rows[order(rows$position, rows$hotkey, rows$id), , drop = FALSE]
 
   items = list()
   for (i in seq_len(nrow(rows))) {
@@ -365,8 +390,9 @@ next_item_ids = function(existing_ids, n) {
 # Mode "append" keeps each question's existing items and adds the file's items
 # after them; "replace" deletes the existing items first, which also removes
 # their per-repo grade-selection events (delete_item_records). In both modes
-# the combined item list is renumbered to hotkeys 1-10 by display position (NA
-# beyond ten), preserving the load_rubric_items() ordering invariant. Fresh
+# the combined item list is written back with contiguous display positions
+# (kept items first, in their current order, then the file's items in file
+# order) and the hotkeys those positions imply (1-10, NA beyond). Fresh
 # item ids are minted avoiding every id in the database (across all questions,
 # since the mark app's module-id namespace is shared) plus any reserved_ids
 # the caller has ever bound.
@@ -392,10 +418,10 @@ apply_rubric_import = function(collection_path, rubric, mode, reserved_ids = cha
       for (question in rubric$questions) {
         question_name = question$name
 
-        existing = DBI::dbGetQuery(conn, "
+        existing = DBI::dbGetQuery(conn, paste0("
           SELECT * FROM items WHERE question_name = ?
-          ORDER BY (hotkey IS NULL), hotkey, id
-        ", params = list(question_name))
+          ORDER BY ", items_display_order_sql
+        ), params = list(question_name))
         n_existing = nrow(existing)
 
         if (identical(mode, "replace")) {
@@ -407,15 +433,20 @@ apply_rubric_import = function(collection_path, rubric, mode, reserved_ids = cha
 
         kept_ids = existing$item_id
 
-        # Renumber kept items whose stored hotkey does not match their display
-        # position (only possible when the database had non-contiguous hotkeys)
+        # Rewrite kept items whose stored position or hotkey does not match
+        # their display position (a database with gaps, or rows that predate
+        # the position column); hotkey_changes reports only the visible part
         hotkey_changes = integer(0)
         for (i in seq_along(kept_ids)) {
-          hotkey = if (i <= 10) as.integer(i) else NA_integer_
-          if (!identical(as.integer(existing$hotkey[i]), hotkey)) {
+          hotkey = position_hotkey(i)
+          stored_hotkey = as.integer(existing$hotkey[i])
+          stored_position = as.integer(existing$position[i])
+          if (!identical(stored_hotkey, hotkey) || !identical(stored_position, i)) {
             item = db_row_to_rubric_item(existing[i, ])
             item@hotkey = hotkey
-            upsert_items(conn, question_name, kept_ids[i], item)
+            upsert_items(conn, question_name, kept_ids[i], item, position = i)
+          }
+          if (!identical(stored_hotkey, hotkey)) {
             hotkey_changes[kept_ids[i]] = hotkey
           }
         }
@@ -426,12 +457,14 @@ apply_rubric_import = function(collection_path, rubric, mode, reserved_ids = cha
 
         new_items = lapply(seq_along(question$items), function(j) {
           item = question$items[[j]]
-          pos = length(kept_ids) + j
-          item@hotkey = if (pos <= 10) as.integer(pos) else NA_integer_
+          item@hotkey = position_hotkey(length(kept_ids) + j)
           item
         })
         for (j in seq_along(new_items)) {
-          upsert_items(conn, question_name, new_ids[j], new_items[[j]])
+          upsert_items(
+            conn, question_name, new_ids[j], new_items[[j]],
+            position = length(kept_ids) + j
+          )
         }
 
         if (!is.null(question$scoring)) {

@@ -4,7 +4,8 @@
 # JSON Schema (inst/schema/markermd-rubric.json). A file holds one or more
 # questions, each with its rubric items in display order plus an optional
 # scoring setup. Item order is canonical: hotkeys are not serialized and are
-# reassigned 1-10 by position on import (NA beyond ten). Item ids are an
+# reassigned by position on import (1-10 for the first ten items, NA beyond;
+# there is no limit on the number of items). Item ids are an
 # app/database implementation detail and are likewise never serialized; fresh
 # ids are minted on import. No per-repository grading data (selections,
 # comments, scores) is ever written.
@@ -102,8 +103,9 @@ rubric_question_to_list = function(question) {
   out
 }
 
-# plain list -> exchange-list question entry, assigning hotkeys 1-10 by item
-# position (NA beyond ten) to match the mark app's renumbering invariant.
+# plain list -> exchange-list question entry, assigning hotkeys by item
+# position (position_hotkey(): 1-10, NA beyond ten) to match the mark app's
+# renumbering invariant.
 #
 # x: List with name, optionally scoring, and items
 
@@ -115,8 +117,7 @@ rubric_question_from_list = function(x) {
 
   items_in = if (is.null(x$items)) list() else x$items
   items = lapply(seq_along(items_in), function(i) {
-    hotkey = if (i <= 10) as.integer(i) else NA_integer_
-    rubric_item_from_list(items_in[[i]], hotkey)
+    rubric_item_from_list(items_in[[i]], position_hotkey(i))
   })
 
   # Descriptions are the cross-format identity key used by the marks layer, so
@@ -220,8 +221,8 @@ collect_rubric_data = function(collection_path, question_names) {
 #' Serializes a rubric (one or more questions' rubric items plus optional
 #' scoring setup) to a human-readable, schema-validatable YAML file. Items are
 #' written in display order; order is meaningful, as the first ten items are
-#' bound to keyboard hotkeys on import. No per-repository grading data is
-#' written.
+#' bound to keyboard hotkeys on import and any further items (there is no
+#' limit) are toggled by clicking. No per-repository grading data is written.
 #'
 #' @param rubric A rubric list as returned by [read_rubric_yaml()] or
 #'   [rubric_export()]: `format_version` plus a `questions` list whose entries
@@ -263,9 +264,10 @@ write_rubric_yaml = function(rubric, path) {
 #'
 #' Parses a rubric YAML file into the rubric list structure used by
 #' [rubric_import()] and [write_rubric_yaml()]. Item order in the file
-#' determines display order and keyboard hotkeys (1-10 by position, none
-#' beyond ten). Validation is performed by the S7 constructors as items are
-#' built.
+#' determines display order and keyboard hotkeys: the first ten items of a
+#' question get the keys 1-9 and 0, and any further items have no hotkey and
+#' are toggled by clicking in [mark()]. There is no limit on the number of
+#' items. Validation is performed by the S7 constructors as items are built.
 #'
 #' @param path Path to a rubric `.yaml`/`.yml` file.
 #'

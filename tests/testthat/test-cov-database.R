@@ -23,7 +23,9 @@ cdb_insert_grade_row = function(dir, id, question, repo, item, selected, ts) {
 }
 
 # Insert an items row directly, bypassing the markermd_rubric_item S7 validator
-# so we can seed hotkeys the validator would reject (non-contiguous, >10).
+# so we can seed hotkeys the validator would reject (non-contiguous, >10). The
+# row gets no position, which also exercises the legacy-order fallback for
+# rows that predate the position column.
 #
 # dir: project root
 # question/item: identifiers
@@ -122,8 +124,9 @@ test_that("apply_rubric_import renumbers kept items to 1..10 then NA in append m
 
   # Seed 11 kept items with hotkeys the S7 validator would reject: a
   # non-contiguous gap (5,9) at the head and hotkeys clamped at 10 / dropped to
-  # NA past ten. Display order is ORDER BY (hotkey IS NULL), hotkey, id, so:
-  #   keep_a(5), keep_b(9), keep_c(10), keep_d..keep_j (NA, insertion order)
+  # NA past ten, and no stored positions. Rows without a position fall back to
+  # the legacy order (hotkey slots first, then insertion id), so:
+  #   keep_a(5), keep_b(9), keep_c(10), keep_d..keep_k (NA, insertion order)
   cdb_insert_item_row(dir, "Q1", "keep_a", 5L, -1, "a")
   cdb_insert_item_row(dir, "Q1", "keep_b", 9L, -1, "b")
   cdb_insert_item_row(dir, "Q1", "keep_c", 10L, -1, "c")
@@ -152,6 +155,14 @@ test_that("apply_rubric_import renumbers kept items to 1..10 then NA in append m
   )
   new_ids = summaries[["Q1"]]$new_ids
   expect_equal(tail(names(items), 2L), new_ids)
+
+  # every row now carries its display position, so the order no longer
+  # depends on insertion ids
+  positions = markermd:::with_database(dir, function(conn) {
+    DBI::dbGetQuery(conn, "SELECT item_id, position FROM items WHERE question_name = 'Q1' ORDER BY position")
+  })
+  expect_equal(positions$item_id, names(items))
+  expect_equal(positions$position, 1:13)
 
   # hotkey_changes names every kept item whose stored hotkey did not already
   # equal its display position. keep_a was 5 -> 1, keep_b 9 -> 2, keep_c 10 -> 3,

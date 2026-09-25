@@ -11,8 +11,9 @@ markermd grades each question against a rubric: a flat list of rubric items,
 where each item is a point value plus a feedback description that the grader
 toggles on or off per student, and a scoring setup (`total_score`, a
 `grading_mode` of `positive` or `negative`, and score bounds). Item order is
-the display order, and the first ten items per question are bound to the
-keyboard hotkeys 1-9 and 0, so the most-used items belong first. The canonical
+the display order; the first ten items per question are bound to the keyboard
+hotkeys 1-9 and 0 and any further items are toggled by clicking (there is no
+limit on the number of items), so the most-used items belong first. The canonical
 store for the rubric is the project's grading database
 (`.markermd/markermd.sqlite`); YAML (`format_version: "1.0"`) is the
 human-authorable import/export format, with the full JSON Schema bundled at
@@ -303,10 +304,10 @@ class, which is also why it belongs first, on hotkey 1.
 
 Guidelines:
 
-- **Order matters.** Items are displayed in file order and the first ten get
-  hotkeys 1-9 and 0, so put the most-expected items first: the confirmation
-  item, then core correctness checks (from the key) before secondary ones
-  (labels, write-up quality).
+- **Order matters.** Items are displayed in file order; the first ten get
+  hotkeys 1-9 and 0 and any further items are toggled by clicking, so put the
+  most-expected items first: the confirmation item, then core correctness
+  checks (from the key) before secondary ones (labels, write-up quality).
 - **Deduction mode** (`negative`): describe the defect; points are negative
   and scaled to severity relative to `total_score`. For a 10-point question,
   roughly: a catch-all "Question not attempted" at `-total_score`; a
@@ -323,7 +324,10 @@ Guidelines:
 - Do not put point values inside the description text (the app displays the
   points alongside).
 - About **3-7 items per question** (including the confirmation item) is right
-  for a scaffold; never more than 10 (the hotkey limit).
+  for a scaffold. There is no hard limit: items past the tenth are toggled by
+  clicking rather than by hotkey, so keep the ten most-used items first and go
+  beyond ten only when the observed mistakes warrant it (a tail of rare
+  deductions after the core items is fine).
 - With the key + repos basis, add items only for mistakes actually observed in
   step 6 beyond the key-derived core checks -- do not pad with hypotheticals.
 
@@ -358,7 +362,8 @@ Rules and constraints:
 - `name` values must match the stored template's question names exactly
   (step 2).
 - There are **no item ids and no hotkeys** in the YAML: item order is the
-  binding (positions 1-10 become the hotkeys on import).
+  binding (positions 1-10 become the hotkeys on import; later positions have
+  none).
 - `scoring` is optional per question; when omitted the project's existing
   scoring settings are left unchanged. In this skill, always emit `scoring`
   for every question, using the step 5 totals.
@@ -483,7 +488,7 @@ markermd::mark("<root>")
 ```
 
 Point out that the Rubric pane shows the items with their hotkeys (the first
-ten per question, in order), that items can be edited, reordered, and added
-while grading, and that the pane's menu offers the same YAML import/export for
-later round trips. Remind them the scaffold is a starting point: real
+ten per question, in order; any further items are toggled by clicking), that
+items can be edited, reordered, and added while grading, and that the pane's
+menu offers the same YAML import/export for later round trips. Remind them the scaffold is a starting point: real
 submissions will suggest items no one anticipated.

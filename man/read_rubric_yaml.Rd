@@ -17,9 +17,10 @@ A rubric list: \code{format_version} plus \code{questions}, each with \code{name
 \description{
 Parses a rubric YAML file into the rubric list structure used by
 \code{\link[=rubric_import]{rubric_import()}} and \code{\link[=write_rubric_yaml]{write_rubric_yaml()}}. Item order in the file
-determines display order and keyboard hotkeys (1-10 by position, none
-beyond ten). Validation is performed by the S7 constructors as items are
-built.
+determines display order and keyboard hotkeys: the first ten items of a
+question get the keys 1-9 and 0, and any further items have no hotkey and
+are toggled by clicking in \code{\link[=mark]{mark()}}. There is no limit on the number of
+items. Validation is performed by the S7 constructors as items are built.
 }
 \seealso{
 \code{\link[=write_rubric_yaml]{write_rubric_yaml()}}, \code{\link[=rubric_import]{rubric_import()}}, \code{\link[=validate_rubric_file]{validate_rubric_file()}}

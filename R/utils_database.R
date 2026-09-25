@@ -5,8 +5,20 @@
 # Current grading-database schema version. Bumped whenever the SQLite schema
 # changes incompatibly. assert_db_compatible() rejects a database written by a
 # newer markermd than this.
+#
+# History:
+#   1: initial schema
+#   2: items.position (explicit display order; see migrate_items_position())
 
-markermd_db_version = function() "1"
+markermd_db_version = function() "2"
+
+# ORDER BY clause giving a question's rubric items in display order. position
+# is authoritative; a row without one (written before schema version 2 and
+# not yet migrated, or inserted directly) falls back to the legacy rule those
+# versions used, hotkey slots first then insertion order, so it still lands
+# where it used to be displayed rather than sorting first as a bare NULL.
+
+items_display_order_sql = "(position IS NULL), position, (hotkey IS NULL), hotkey, id"
 
 # Reject a database written by a newer markermd than this one.
 #
@@ -93,7 +105,10 @@ create_tables_if_needed = function(conn) {
     ")
   }
   
-  # Items table - stores markermd_rubric_item properties (without selected state)
+  # Items table - stores markermd_rubric_item properties (without selected
+  # state). position is the 1-based display order within the question and the
+  # only ordering key; hotkey is derived from it (position <= 10) and kept in
+  # the row so the table reads sensibly by hand.
   if (!DBI::dbExistsTable(conn, "items")) {
     DBI::dbExecute(conn, "
       CREATE TABLE items (
@@ -101,6 +116,7 @@ create_tables_if_needed = function(conn) {
         question_name TEXT NOT NULL,
         item_id TEXT NOT NULL,
         hotkey INTEGER,
+        position INTEGER,
         points REAL NOT NULL,
         description TEXT NOT NULL,
         created_at TEXT NOT NULL,
@@ -185,6 +201,49 @@ create_tables_if_needed = function(conn) {
 
     set_metadata(conn, "schema_version", markermd_db_version())
   }
+
+  migrate_items_position(conn)
+}
+
+# Schema version 1 -> 2: add items.position to a database created by an
+# earlier markermd and backfill it from the order those versions displayed
+# (hotkey slots first, un-hotkeyed items by insertion id), then stamp the new
+# schema version. Before this column existed, items past the tenth all shared
+# a NULL hotkey, so any reordering among them was lost on reload; the backfill
+# freezes whatever order the database currently shows. Runs on first touch of
+# each database per session (via create_tables_if_needed) and is a no-op once
+# the column exists. The check and the ALTER run under an immediate
+# transaction so two processes opening the same legacy database cannot both
+# try to add the column.
+#
+# conn: DBI connection object
+
+migrate_items_position = function(conn) {
+  if ("position" %in% DBI::dbListFields(conn, "items")) {
+    return(invisible(FALSE))
+  }
+
+  DBI::dbExecute(conn, "BEGIN IMMEDIATE")
+  if (!"position" %in% DBI::dbListFields(conn, "items")) {
+    DBI::dbExecute(conn, "ALTER TABLE items ADD COLUMN position INTEGER")
+    DBI::dbExecute(conn, "
+      UPDATE items SET position = (
+        SELECT ranked.position FROM (
+          SELECT id,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY question_name
+                   ORDER BY (hotkey IS NULL), hotkey, id
+                 ) AS position
+          FROM items
+        ) AS ranked
+        WHERE ranked.id = items.id
+      )
+    ")
+    set_metadata(conn, "schema_version", markermd_db_version())
+  }
+  DBI::dbExecute(conn, "COMMIT")
+
+  invisible(TRUE)
 }
 
 # Get current username for database records
@@ -271,17 +330,28 @@ upsert_settings = function(conn, question_name, grade_state) {
 # question_name: Character string
 # item_id: Character string
 # rubric_item: markermd_rubric_item S7 object
+# position: Integer display position within the question, or NULL to leave
+#   ordering alone: a new row is appended after the question's last positioned
+#   item and an existing row keeps its stored position. Callers that reorder
+#   (save_rubric_items, apply_rubric_import) pass it explicitly; edits to a
+#   single item's points or description do not need to know it.
 
-upsert_items = function(conn, question_name, item_id, rubric_item) {
+upsert_items = function(conn, question_name, item_id, rubric_item, position = NULL) {
   timestamp = get_current_timestamp()
+  position = if (is.null(position)) NA_integer_ else as.integer(position)
 
   # Single atomic statement (created_at is preserved on update); the previous
   # SELECT-then-write pattern was racy against a concurrent skill writer
   DBI::dbExecute(conn, "
-    INSERT INTO items (question_name, item_id, hotkey, points, description, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO items (question_name, item_id, hotkey, position, points, description, created_at, updated_at)
+    VALUES (
+      ?, ?, ?,
+      COALESCE(?, (SELECT COALESCE(MAX(position), 0) + 1 FROM items WHERE question_name = ?)),
+      ?, ?, ?, ?
+    )
     ON CONFLICT(question_name, item_id) DO UPDATE SET
       hotkey = excluded.hotkey,
+      position = COALESCE(?, items.position),
       points = excluded.points,
       description = excluded.description,
       updated_at = excluded.updated_at
@@ -289,10 +359,13 @@ upsert_items = function(conn, question_name, item_id, rubric_item) {
     question_name,
     item_id,
     if (is.na(rubric_item@hotkey)) NA_integer_ else rubric_item@hotkey,
+    position,
+    question_name,
     rubric_item@points,
     rubric_item@description,
     timestamp,
-    timestamp
+    timestamp,
+    position
   ))
 }
 

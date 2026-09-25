@@ -262,3 +262,67 @@ test_that("navigation hotkeys move repos (z/x), questions (,/.), and the html to
   press("h")
   expect_false(app$get_value(input = "content_module-html_toggle"))
 })
+
+
+test_that("items past the tenth have no hotkey, toggle by click, and keep their order", {
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
+  root = mg_make_fixture()
+  # Seed eleven items headlessly so the app opens with an un-hotkeyed tail
+  markermd:::save_rubric_items(root, "Q2", setNames(lapply(1:11, function(i) {
+    markermd::markermd_rubric_item(markermd:::position_hotkey(i), -1, LETTERS[i])
+  }), paste0("item_", 0:10)))
+
+  app = new_app_driver(markermd:::mark_app(root), name = "mark_item_eleven")
+  app$set_inputs(main_navbar = "rubric")
+  app$wait_for_idle()
+
+  label = function(item) {
+    trimws(app$get_js(sprintf(
+      "document.getElementById('rubric_module-%s-hotkey_btn').textContent", item
+    )))
+  }
+  selected = function(item) {
+    app$get_js(sprintf(
+      "document.getElementById('rubric_module-%s-hotkey_btn').classList.contains('btn-success')", item
+    ))
+  }
+  press = function(key) {
+    app$run_js(glue::glue(
+      "document.dispatchEvent(new KeyboardEvent('keydown', {key: '<<key>>'}));",
+      .open = "<<", .close = ">>"
+    ))
+    app$wait_for_idle()
+  }
+
+  expect_equal(label("item_0"), "1")
+  expect_equal(label("item_9"), "0")
+  expect_equal(label("item_10"), "")
+
+  # the eleventh item is reachable by clicking ...
+  app$click("rubric_module-item_10-hotkey_btn")
+  app$wait_for_idle()
+  expect_true(selected("item_10"))
+
+  # ... but not from the keyboard: 1 toggles the first item and 0 the tenth
+  press("1")
+  expect_true(selected("item_0"))
+  press("0")
+  expect_true(selected("item_9"))
+  expect_true(selected("item_10"))
+
+  # Add Item appends a twelfth, also without a hotkey
+  app$click("rubric_module-add_item")
+  app$wait_for_idle()
+  ids = app$get_values(export = TRUE)$export[["rubric_module-rubric_item_ids"]]
+  expect_length(ids, 12)
+  expect_equal(label(ids[12]), "")
+
+  # moving the twelfth above the eleventh is persisted in that order
+  app$click(paste0("rubric_module-", ids[12], "-move_up_btn"))
+  app$wait_for_idle()
+  items = markermd:::load_rubric_items(root, "Q2")
+  expect_equal(names(items)[11:12], c(ids[12], "item_10"))
+  expect_equal(unname(purrr::map_int(items, ~ .x@hotkey)), c(1:10, NA, NA))
+})

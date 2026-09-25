@@ -614,7 +614,9 @@ rubric_export = function(path, project = ".", question = NULL) {
 #'
 #' Reads a rubric YAML file (see [rubric_export()] for the format) and applies
 #' it to the project's grading database. Item order in the file determines
-#' display order and keyboard hotkeys. This is the inverse of [rubric_export()].
+#' display order and keyboard hotkeys (the first ten items of a question get
+#' the keys 1-9 and 0; any further items are toggled by clicking, with no
+#' limit on their number). This is the inverse of [rubric_export()].
 #'
 #' @details
 #' With `mode = "append"` (the default) the file's items are added after each

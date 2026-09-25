@@ -34,7 +34,7 @@
         "items": {
           "type": "array",
           "items": { "$ref": "#/$defs/item" },
-          "description": "Rubric items in display order. Order is meaningful: the first ten items are bound to keyboard hotkeys 1-9 and 0."
+          "description": "Rubric items in display order. There is no limit on the number of items. Order is meaningful: the first ten items are bound to keyboard hotkeys 1-9 and 0, and any further items are toggled by clicking."
         }
       }
     },

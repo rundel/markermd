@@ -13,7 +13,9 @@ markermd_rubric_item(
 }
 \arguments{
 \item{hotkey}{Integer. Hotkey number (1-10) for keyboard selection, or NA for
-items past the first ten (which have no hotkey)}
+items past the first ten, which have no hotkey and are toggled by
+clicking. A question may hold any number of items; the hotkey follows
+from an item's display position (1-10 for the first ten, NA beyond).}
 
 \item{points}{Numeric. Point value for this rubric item}
 
