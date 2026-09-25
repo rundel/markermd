@@ -9,7 +9,8 @@ project_set(
   repos = NULL,
   comments = NULL,
   template = NULL,
-  key = NULL
+  key = NULL,
+  artifacts = NULL
 )
 }
 \arguments{
@@ -26,6 +27,10 @@ clear the stored template. See also \code{\link[=template_import]{template_impor
 
 \item{key}{Root-relative key (solution) repository directory to record. Warns
 if it does not exist. Pass \code{NA} to clear a previously configured key.}
+
+\item{artifacts}{Character vector of root-relative directories holding the
+students' rendered reports, replacing the recorded list. Warns for any
+that does not exist. Pass \code{NA} or \code{character(0)} to record none.}
 }
 \value{
 The updated \code{markermd_project} object, invisibly.
@@ -40,5 +45,8 @@ relative to the project root.
 # Record the key repository and store a template from YAML
 project_set("hw01", key = "hw01-key")
 project_set("hw01", template = "hw01-template.yaml")
+
+# Record the directories of rendered reports
+project_set("hw01", artifacts = c("html", "md"))
 }
 }

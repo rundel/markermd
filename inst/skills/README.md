@@ -101,8 +101,9 @@ automatically, both sets by default (`agents = c("claude", "codex")`; pass one
 name to install a single set), re-copying to the packaged version on each run.
 It also writes the selected agents' instructions files (`CLAUDE.md` /
 `AGENTS.md`) at the project root, but only when no file of that name exists,
-so a customized file survives re-runs; `instructions = FALSE` skips them
-entirely. The steps below are only needed for a per-user install or when not
+so a customized file survives re-runs; `overwrite_instructions = TRUE`
+replaces them with the packaged versions and `instructions = FALSE` skips
+them entirely. The steps below are only needed for a per-user install or when not
 using `init_project()`. Re-running it installs skills under their current
 names but never deletes old ones, so after a skill rename a stale folder can
 simply be removed by hand.

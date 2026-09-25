@@ -149,14 +149,16 @@ agent_instructions_file = function(agent) {
 
 # Copy each requested agent's bundled project instructions file (CLAUDE.md for
 # Claude Code, AGENTS.md for Codex, shipped at the root of that agent's skill
-# set) to the project root. An existing file is never overwritten: it is the
-# user's to customize, so a re-run keeps it as is.
+# set) to the project root. An existing file is the user's to customize, so it
+# is kept unless overwrite is TRUE.
 #
 # path: project root
 # agents: character vector of agents to install for ("claude", "codex")
-# Returns: character vector named by agent, "created" or "kept" per file
+# overwrite: replace an existing file with the packaged version
+# Returns: character vector named by agent, "created", "kept" or
+#   "overwritten" per file
 
-install_project_instructions = function(path, agents = c("claude", "codex")) {
+install_project_instructions = function(path, agents = c("claude", "codex"), overwrite = FALSE) {
   status = character(0)
   for (agent in agents) {
     src = fs::path(markermd_skills_path(agent), agent_instructions_file(agent))
@@ -164,7 +166,10 @@ install_project_instructions = function(path, agents = c("claude", "codex")) {
       next
     }
     dest = fs::path(path, agent_instructions_file(agent))
-    if (fs::file_exists(dest)) {
+    if (fs::file_exists(dest) && overwrite) {
+      fs::file_copy(src, dest, overwrite = TRUE)
+      status[[agent]] = "overwritten"
+    } else if (fs::file_exists(dest)) {
       status[[agent]] = "kept"
     } else {
       fs::file_copy(src, dest)
@@ -292,23 +297,29 @@ write_project_config = function(project) {
 #' file at the project root (`CLAUDE.md` for Claude Code, `AGENTS.md` for
 #' Codex) describing the project layout, the grading workflow and skills, and
 #' the rules an agent must follow when working with student submissions. An
-#' existing instructions file is never overwritten, so it can be customized
-#' freely; pass `instructions = FALSE` to skip this step.
+#' existing instructions file is kept, so it can be customized freely, unless
+#' `overwrite_instructions = TRUE`; pass `instructions = FALSE` to skip this
+#' step.
 #'
 #' The key (solution) repository is detected as the top-level git repository
 #' (student repositories live under `repos/`); when several top-level repos
 #' exist, the one whose name contains "key" is used. When no top-level git
 #' repository exists (a copied or unpacked layout, such as the bundled example
 #' project), a directory whose name contains "key" and that holds an assignment
-#' document (`.qmd`/`.Rmd`) is used instead. Remaining top-level directories
-#' that are not git repositories are recorded as artifact directories.
+#' document (`.qmd`/`.Rmd`) is used instead. On the first run the remaining
+#' top-level directories that are not git repositories are recorded as
+#' artifact directories.
 #'
 #' Re-running `init_project()` on an already-initialized directory updates it in
 #' place: the existing grading database (including any stored grading template)
 #' is preserved, the skills are refreshed to the packaged version, existing
-#' instructions files are left untouched, the key and artifact directories are
-#' re-scanned, and a previously configured key is kept (or cleared if it no
-#' longer exists).
+#' instructions files are left untouched (unless `overwrite_instructions =
+#' TRUE`), and a previously configured key is kept (or cleared if it no longer
+#' exists). The configured artifact directories are kept too, minus any that
+#' no longer exist: top-level directories created since (working notes,
+#' backups) are listed but not added, so add one with
+#' `project_set(artifacts = )`, or pass `rescan_artifacts = TRUE` to rebuild
+#' the list from every non-repository top-level directory as on the first run.
 #'
 #' @param path Path to the project directory.
 #' @param agents Which agents' skill sets to install: `"claude"` (into
@@ -318,6 +329,13 @@ write_project_config = function(project) {
 #' @param instructions Whether to write the selected agents' project
 #'   instructions files (`CLAUDE.md` / `AGENTS.md`) at the project root when
 #'   they do not already exist. Defaults to `TRUE`.
+#' @param overwrite_instructions Whether to replace existing instructions
+#'   files with the packaged versions, discarding any local edits to them (for
+#'   example to pick up the instructions shipped with a newer markermd).
+#'   Defaults to `FALSE`; has no effect when `instructions = FALSE`.
+#' @param rescan_artifacts Whether a re-run rebuilds the artifact directory
+#'   list from every non-repository top-level directory instead of keeping the
+#'   configured one. Defaults to `FALSE`; the first run always scans.
 #'
 #' @return A `markermd_project` object, invisibly.
 #' @export
@@ -327,10 +345,13 @@ write_project_config = function(project) {
 #' ghclass::org_grade_assignment("hw01", org = "my-course", repo_filter = "hw01-")
 #' init_project("hw01")
 #' }
-init_project = function(path, agents = c("claude", "codex"), instructions = TRUE) {
+init_project = function(path, agents = c("claude", "codex"), instructions = TRUE,
+                        overwrite_instructions = FALSE, rescan_artifacts = FALSE) {
   agents = match.arg(agents, several.ok = TRUE)
-  if (!rlang::is_bool(instructions)) {
-    cli::cli_abort("{.arg instructions} must be {.code TRUE} or {.code FALSE}.")
+  for (arg in c("instructions", "overwrite_instructions", "rescan_artifacts")) {
+    if (!rlang::is_bool(get(arg))) {
+      cli::cli_abort("{.arg {arg}} must be {.code TRUE} or {.code FALSE}.")
+    }
   }
   if (!fs::dir_exists(path)) {
     cli::cli_abort("{.arg path} does not exist or is not a directory: {.path {path}}")
@@ -360,7 +381,19 @@ init_project = function(path, agents = c("claude", "codex"), instructions = TRUE
     key = detect_keyish_dir(root, candidates[!is_repo])
   }
 
-  artifacts = candidates[!is_repo]
+  # The first run (or a rescan) records every non-repo top-level directory as
+  # an artifact directory. Otherwise the configured list is authoritative,
+  # minus directories that no longer exist, and directories that appeared
+  # since are reported rather than added, so working folders such as notes
+  # or backups stay out of it.
+  scanned = candidates[!is_repo]
+  unlisted = character(0)
+  if (is.null(prior) || rescan_artifacts) {
+    artifacts = scanned
+  } else {
+    artifacts = prior@artifacts[fs::dir_exists(fs::path(root, prior@artifacts))]
+    unlisted = setdiff(scanned, c(artifacts, key))
+  }
   if (!is.na(key)) {
     artifacts = setdiff(artifacts, key)
   }
@@ -375,7 +408,11 @@ init_project = function(path, agents = c("claude", "codex"), instructions = TRUE
   }, character(1))
   names(skills_lines) = rep("*", length(skills_lines))
 
-  instructions_status = if (instructions) install_project_instructions(root, agents) else character(0)
+  instructions_status = if (instructions) {
+    install_project_instructions(root, agents, overwrite = overwrite_instructions)
+  } else {
+    character(0)
+  }
   instructions_txt = if (length(instructions_status)) {
     paste(
       glue::glue("{vapply(names(instructions_status), agent_instructions_file, character(1))} ({instructions_status})"),
@@ -413,6 +450,11 @@ init_project = function(path, agents = c("claude", "codex"), instructions = TRUE
     "*" = "key: {if (is.na(key)) 'not found' else key}",
     "*" = "artifacts: {if (length(artifacts)) paste(artifacts, collapse = ', ') else 'none'}"
   ))
+  if (length(unlisted) > 0) {
+    cli::cli_bullets(c(
+      "i" = "Not recorded as artifact directories: {.path {unlisted}}. Add one with {.code project_set(artifacts = )} or rescan with {.code init_project(rescan_artifacts = TRUE)}."
+    ))
+  }
 
   invisible(project)
 }
@@ -485,6 +527,9 @@ project_sitrep = function(path = ".") {
 #'   clear the stored template. See also [template_import()].
 #' @param key Root-relative key (solution) repository directory to record. Warns
 #'   if it does not exist. Pass `NA` to clear a previously configured key.
+#' @param artifacts Character vector of root-relative directories holding the
+#'   students' rendered reports, replacing the recorded list. Warns for any
+#'   that does not exist. Pass `NA` or `character(0)` to record none.
 #'
 #' @return The updated `markermd_project` object, invisibly.
 #' @export
@@ -494,8 +539,12 @@ project_sitrep = function(path = ".") {
 #' # Record the key repository and store a template from YAML
 #' project_set("hw01", key = "hw01-key")
 #' project_set("hw01", template = "hw01-template.yaml")
+#'
+#' # Record the directories of rendered reports
+#' project_set("hw01", artifacts = c("html", "md"))
 #' }
-project_set = function(path = ".", repos = NULL, comments = NULL, template = NULL, key = NULL) {
+project_set = function(path = ".", repos = NULL, comments = NULL, template = NULL, key = NULL,
+                       artifacts = NULL) {
   project = project_config(path)
 
   if (!is.null(repos)) {
@@ -534,6 +583,18 @@ project_set = function(path = ".", repos = NULL, comments = NULL, template = NUL
       }
       project@key = rel
     }
+  }
+  if (!is.null(artifacts)) {
+    rel = if (is_clear_sentinel(artifacts)) character(0) else as.character(artifacts)
+    if (anyNA(rel) || any(!nzchar(rel))) {
+      cli::cli_abort("{.arg artifacts} must be directory names, or {.code NA} to record none.")
+    }
+    rel = unique(sub("/+$", "", rel))
+    missing = rel[!fs::dir_exists(fs::path(project@root, rel))]
+    if (length(missing) > 0) {
+      cli::cli_warn("Artifact director{?y/ies} {.path {missing}} do{?es/} not exist under the project root; recording anyway.")
+    }
+    project@artifacts = rel
   }
 
   project = write_project_config(project)

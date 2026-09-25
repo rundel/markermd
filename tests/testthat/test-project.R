@@ -507,3 +507,59 @@ test_that("parse_project errors when repos is unconfigured", {
   suppressWarnings(init_project(d))
   expect_error(parse_project(d), "No repos directory")
 })
+
+
+test_that("re-init keeps the configured artifacts and reports new directories", {
+  d = make_fake_project()
+  init_project(d)
+  expect_equal(project_config(d)@artifacts, "html")
+
+  dir.create(file.path(d, "notes"))
+  dir.create(file.path(d, "md"))
+  expect_message(p <- init_project(d), "Not recorded as artifact directories")
+  expect_equal(p@artifacts, "html")
+
+  # a configured directory that disappeared is dropped
+  project_set(d, artifacts = c("html", "md"))
+  fs::dir_delete(fs::path(d, "md"))
+  expect_equal(suppressMessages(init_project(d))@artifacts, "html")
+
+  # rescan rebuilds the list from every non-repo top-level directory
+  p = suppressMessages(init_project(d, rescan_artifacts = TRUE))
+  expect_setequal(p@artifacts, c("html", "notes"))
+  expect_error(init_project(d, rescan_artifacts = NA), "rescan_artifacts")
+})
+
+
+test_that("project_set records, normalizes and clears artifact directories", {
+  d = make_fake_project()
+  init_project(d)
+  dir.create(file.path(d, "md"))
+
+  p = project_set(d, artifacts = c("html/", "md", "md"))
+  expect_equal(p@artifacts, c("html", "md"))
+  expect_equal(project_config(d)@artifacts, c("html", "md"))
+
+  expect_warning(project_set(d, artifacts = "nope"), "does not exist")
+  expect_equal(project_config(d)@artifacts, "nope")
+
+  expect_equal(project_set(d, artifacts = NA)@artifacts, character(0))
+  expect_equal(project_set(d, artifacts = character(0))@artifacts, character(0))
+  expect_error(project_set(d, artifacts = ""), "directory names")
+})
+
+
+test_that("init_project(overwrite_instructions = TRUE) replaces edited instructions files", {
+  skip_if(!fs::dir_exists(markermd:::markermd_skills_path("claude")), "bundled skills not found")
+  d = make_fake_project()
+  writeLines("# my notes", fs::path(d, "CLAUDE.md"))
+  init_project(d)
+  expect_equal(readLines(fs::path(d, "CLAUDE.md")), "# my notes")
+
+  expect_message(init_project(d, overwrite_instructions = TRUE), "overwritten")
+  expect_equal(
+    readLines(fs::path(d, "CLAUDE.md")),
+    readLines(fs::path(markermd:::markermd_skills_path("claude"), "CLAUDE.md"))
+  )
+  expect_error(init_project(d, overwrite_instructions = "yes"), "overwrite_instructions")
+})

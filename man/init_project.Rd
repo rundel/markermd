@@ -4,7 +4,13 @@
 \alias{init_project}
 \title{Initialize a markermd grading project}
 \usage{
-init_project(path, agents = c("claude", "codex"), instructions = TRUE)
+init_project(
+  path,
+  agents = c("claude", "codex"),
+  instructions = TRUE,
+  overwrite_instructions = FALSE,
+  rescan_artifacts = FALSE
+)
 }
 \arguments{
 \item{path}{Path to the project directory.}
@@ -17,6 +23,15 @@ are written.}
 \item{instructions}{Whether to write the selected agents' project
 instructions files (\code{CLAUDE.md} / \code{AGENTS.md}) at the project root when
 they do not already exist. Defaults to \code{TRUE}.}
+
+\item{overwrite_instructions}{Whether to replace existing instructions
+files with the packaged versions, discarding any local edits to them (for
+example to pick up the instructions shipped with a newer markermd).
+Defaults to \code{FALSE}; has no effect when \code{instructions = FALSE}.}
+
+\item{rescan_artifacts}{Whether a re-run rebuilds the artifact directory
+list from every non-repository top-level directory instead of keeping the
+configured one. Defaults to \code{FALSE}; the first run always scans.}
 }
 \value{
 A \code{markermd_project} object, invisibly.
@@ -34,8 +49,9 @@ skills so they are discoverable from the project: the Claude Code set into
 file at the project root (\code{CLAUDE.md} for Claude Code, \code{AGENTS.md} for
 Codex) describing the project layout, the grading workflow and skills, and
 the rules an agent must follow when working with student submissions. An
-existing instructions file is never overwritten, so it can be customized
-freely; pass \code{instructions = FALSE} to skip this step.
+existing instructions file is kept, so it can be customized freely, unless
+\code{overwrite_instructions = TRUE}; pass \code{instructions = FALSE} to skip this
+step.
 }
 \details{
 The key (solution) repository is detected as the top-level git repository
@@ -43,15 +59,19 @@ The key (solution) repository is detected as the top-level git repository
 exist, the one whose name contains "key" is used. When no top-level git
 repository exists (a copied or unpacked layout, such as the bundled example
 project), a directory whose name contains "key" and that holds an assignment
-document (\code{.qmd}/\code{.Rmd}) is used instead. Remaining top-level directories
-that are not git repositories are recorded as artifact directories.
+document (\code{.qmd}/\code{.Rmd}) is used instead. On the first run the remaining
+top-level directories that are not git repositories are recorded as
+artifact directories.
 
 Re-running \code{init_project()} on an already-initialized directory updates it in
 place: the existing grading database (including any stored grading template)
 is preserved, the skills are refreshed to the packaged version, existing
-instructions files are left untouched, the key and artifact directories are
-re-scanned, and a previously configured key is kept (or cleared if it no
-longer exists).
+instructions files are left untouched (unless \code{overwrite_instructions = TRUE}), and a previously configured key is kept (or cleared if it no longer
+exists). The configured artifact directories are kept too, minus any that
+no longer exist: top-level directories created since (working notes,
+backups) are listed but not added, so add one with
+\code{project_set(artifacts = )}, or pass \code{rescan_artifacts = TRUE} to rebuild
+the list from every non-repository top-level directory as on the first run.
 }
 \examples{
 \dontrun{

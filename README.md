@@ -73,7 +73,7 @@ template("hw01")
 mark("hw01")
 ```
 
-`init_project()` detects the key repository and artifact directories, records everything in `hw01/.markermd/config.yml`, and creates the SQLite database that stores the template, rubric, and all grading. `project_sitrep()` prints an overview of a project's configuration at any point.
+`init_project()` detects the key repository and artifact directories, records everything in `hw01/.markermd/config.yml`, and creates the SQLite database that stores the template, rubric, and all grading. `project_sitrep()` prints an overview of a project's configuration at any point, and `project_set()` changes it (including `artifacts =`, the directories of rendered reports). Re-running `init_project()` keeps the configured artifact directories rather than adding every new top-level folder; `rescan_artifacts = TRUE` rebuilds the list.
 
 ## Template creation with `template()`
 
@@ -153,7 +153,7 @@ export_marks("hw01")
 - `markermd-scaffold-rubric`: drafts per-question rubric items and scoring from the key, optionally sampling student submissions to anticipate common mistakes.
 - `markermd-apply-rubric`: applies the stored rubric to every student repository as a first-pass machine grading, recording its reasoning as private notes for human review in `mark()`.
 
-`init_project()` also writes a project instructions file for each selected agent at the project root (`CLAUDE.md` for Claude Code, `AGENTS.md` for Codex) describing the project layout, the workflow and skills, the headless entry points, the template, rubric, and marks YAML formats, and the rules for working with student submissions. An existing file is never overwritten, so it can be customized per project, and `instructions = FALSE` skips it.
+`init_project()` also writes a project instructions file for each selected agent at the project root (`CLAUDE.md` for Claude Code, `AGENTS.md` for Codex) describing the project layout, the workflow and skills, the headless entry points, the template, rubric, and marks YAML formats, and the rules for working with student submissions. An existing file is kept, so it can be customized per project, unless `overwrite_instructions = TRUE` replaces it with the packaged version (to pick up a newer markermd's instructions); `instructions = FALSE` skips it.
 
 See `inst/skills/README.md` for details and per-user installation.
 
