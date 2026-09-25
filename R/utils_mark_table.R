@@ -69,17 +69,16 @@ filter_repo_table_rows = function(repo_list, name_filter, status_filter,
 # all_progress: Named vector of graded-question counts per repo, or NULL
 # graded_pairs: Precomputed graded_question_pairs() result
 # question_names: Character vector of question names from the template
-# active_row: Integer. The selected repo's position in repo_list, baked in as
-#   the initial .active class (later selections toggle it via shinyjs)
 
 build_repo_table_data = function(visible, visible_idx, repo_list, collection,
                                  artifact_paths, repo_to_github,
                                  validation_results, template_obj, repo_errors,
-                                 all_progress, graded_pairs, question_names,
-                                 active_row) {
+                                 all_progress, graded_pairs, question_names) {
+  # Repository names stay plain text (gt escapes them, so a directory name
+  # cannot inject markup); the row's links live in the icon cells and the
+  # validation marker
   repo_df = data.frame(
     Repository = visible,
-    OriginalName = visible,  # Store original names for button creation
     stringsAsFactors = FALSE
   )
 
@@ -152,33 +151,18 @@ build_repo_table_data = function(visible, visible_idx, repo_list, collection,
     ))
   })
 
-  repo_df$Validation = sapply(
-    visible, validation_status_cell,
-    validation_results = validation_results, template_obj = template_obj,
-    repo_errors = repo_errors
-  )
+  repo_df$Validation = purrr::map_chr(seq_along(visible), function(k) {
+    validation_status_cell(
+      visible[k], validation_results, template_obj, repo_errors,
+      row_index = visible_idx[k]
+    )
+  })
 
   repo_df$Grading = sapply(
     visible, grading_progress_cell,
     template_obj = template_obj, all_progress = all_progress,
     graded_pairs = graded_pairs, question_names = question_names
   )
-
-  # Clickable repository names; the active-selection highlight is baked into
-  # the class and subsequently moved via shinyjs (see mark-app.R)
-  repo_df$Repository = purrr::map_chr(seq_along(visible), function(k) {
-    i = visible_idx[k]
-    active_class = if (i == active_row) " active" else ""
-
-    # Just show the repo name - no GitHub icon here; htmltools escapes it,
-    # so a directory name cannot inject markup into the table
-    as.character(htmltools::tags$button(
-      onclick = paste0("Shiny.setInputValue('repo_select_clicked', ", i, ", {priority: 'event'})"),
-      class = paste0("repo-select-btn", active_class),
-      `data-row` = i,
-      visible[k]
-    ))
-  })
 
   repo_df[, c("Repository", "Folder", "GitHub", "Artifacts", "Source", "Validation", "Grading"), drop = FALSE]
 }
@@ -189,7 +173,6 @@ build_repo_table_data = function(visible, visible_idx, repo_list, collection,
 
 repo_table_gt = function(table_data) {
   gt_table = gt::gt(table_data) |>
-    gt::fmt_markdown(columns = .data$Repository) |>
     gt::fmt_markdown(columns = .data$Folder) |>
     gt::fmt_markdown(columns = .data$GitHub) |>
     gt::fmt_markdown(columns = .data$Artifacts) |>
@@ -257,12 +240,26 @@ repo_table_gt = function(table_data) {
 # validation_results: List of per-repo validation results
 # template_obj: markermd_template object, or NULL
 # repo_errors: Named list of per-repo missing-document/parse error messages
+# row_index: Integer. The repo's position in repo_list; when given, the
+#   marker becomes a button that opens the repo in the Validation tab (the
+#   validation_clicked input in mark-app.R). NULL renders the bare marker.
 
-validation_status_cell = function(repo, validation_results, template_obj, repo_errors = list()) {
+validation_status_cell = function(repo, validation_results, template_obj, repo_errors = list(), row_index = NULL) {
+  as_cell = function(tag) {
+    if (!is.null(row_index)) {
+      tag = htmltools::tags$button(
+        onclick = paste0("Shiny.setInputValue('validation_clicked', ", row_index, ", {priority: 'event'})"),
+        class = "btn btn-link p-0 border-0 text-reset",
+        tag
+      )
+    }
+    as.character(tag)
+  }
+
   err = repo_errors[[repo]]
   if (!is.null(err)) {
     first_line = strsplit(err, "\n")[[1]][1]
-    return(as.character(htmltools::span(
+    return(as_cell(htmltools::span(
       class = "text-danger",
       title = first_line,
       shiny::icon("triangle-exclamation")
@@ -314,7 +311,7 @@ validation_status_cell = function(repo, validation_results, template_obj, repo_e
 
   if (fail_count == 0) {
     # All passed
-    as.character(htmltools::span(
+    as_cell(htmltools::span(
       class = "text-success",
       title = tooltip_text,
       shiny::icon("circle-check"),
@@ -322,7 +319,7 @@ validation_status_cell = function(repo, validation_results, template_obj, repo_e
     ))
   } else {
     # Has failures (including errors)
-    as.character(htmltools::span(
+    as_cell(htmltools::span(
       class = "text-danger",
       title = tooltip_text,
       shiny::icon("circle-xmark"),

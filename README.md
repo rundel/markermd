@@ -86,11 +86,17 @@ When the app is opened on an initialized project, saving writes the template dir
 
 `mark()` opens an initialized project and sources everything from it: the student repositories, the stored template, the grading database, and each repository's rendered reports.
 
+### Assignments
+
+The app opens on the Assignments tab, a progress dashboard with one row per repository: links to its folder, GitHub repository, rendered report and source, its validation status, and its grading progress. The table filters by name and by status (failed validation, incomplete, complete), and clicking a repository's validation marker opens it in the Validation tab.
+
+![The mark app's Assignments tab: one row per repository with folder, GitHub, report and source links, validation status and grading progress](man/figures/mark_assignments_screenshot.png)
+
 ### Validation
 
-The Validation tab checks every repository against the template's rules, so structural problems (missing sections, missing chunks, absent content) are visible before any grading starts. The assignment table tracks per-repository validation status and grading progress.
+The Validation tab checks the selected repository against the template's rules, so structural problems (missing sections, missing chunks, absent content) are visible before any grading starts. Its repository selector stays in step with the rest of the app.
 
-![The mark app's Validation tab: assignment table with validation status and grading progress on the left, the selected repository's per-question rule results on the right](man/figures/mark_validation_screenshot.png)
+![The mark app's Validation tab: the selected repository's per-question rule results](man/figures/mark_validation_screenshot.png)
 
 ### Rubric
 

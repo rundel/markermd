@@ -192,7 +192,7 @@ test_that("the assignments-table status filter narrows the repo list", {
   markermd:::save_comment(root, "Q3", "student1-excellent", "ok")
 
   app = new_app_driver(markermd:::mark_app(root), name = "mark_status_filter")
-  app$wait_for_idle()  # default tab is "validation", where the table lives
+  app$wait_for_idle()  # default tab is "assignments", where the table lives
 
   table_has = function(repo) grepl(repo, app$get_html("#repo_table"), fixed = TRUE)
 
@@ -325,4 +325,33 @@ test_that("items past the tenth have no hotkey, toggle by click, and keep their 
   items = markermd:::load_rubric_items(root, "Q2")
   expect_equal(names(items)[11:12], c(ids[12], "item_10"))
   expect_equal(unname(purrr::map_int(items, ~ .x@hotkey)), c(1:10, NA, NA))
+})
+
+
+
+
+test_that("the Validation tab follows the app-wide repo selection and the table opens it", {
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
+  root = mg_make_fixture()
+  app = new_app_driver(markermd:::mark_app(root), name = "mark_validation_tab")
+  app$wait_for_idle()
+
+  # The landing tab holds the table, whose validation markers are buttons
+  expect_equal(app$get_value(input = "main_navbar"), "assignments")
+  expect_match(app$get_html("#repo_table"), "validation_clicked(&#39;|'), 3,")
+
+  # Clicking the third repo's marker opens it in the Validation tab
+  app$run_js("Shiny.setInputValue('validation_clicked', 3, {priority: 'event'})")
+  app$wait_for_idle()
+  expect_equal(app$get_value(input = "main_navbar"), "validation")
+  expect_equal(app$get_value(input = "validation_repo_select"), "student3-poor")
+  expect_equal(app$get_value(input = "content_module-content_repo_select"), "student3-poor")
+  expect_match(app$get_html("#explore_module-template_validation_ui"), "Q2")
+
+  # Choosing another repository in the tab moves the app-wide selection
+  app$set_inputs(validation_repo_select = "student2-average")
+  app$wait_for_idle()
+  expect_equal(app$get_value(input = "content_module-content_repo_select"), "student2-average")
 })

@@ -256,16 +256,17 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
   ui = bslib::page_navbar(
     title = "markermd - Marking",
     theme = bslib::bs_theme(version = 5),
-    selected = "validation",  # Set validation tab as default
+    selected = "assignments",
     id = "main_navbar",  # Add id to enable navigation tracking
     
     # Right-align the navigation tabs
     bslib::nav_spacer(),
     
-    # Validation tab (right aligned)
+    # Assignments tab (right aligned): the landing page, one card with the
+    # per-repository progress table (validation status and grading progress)
     bslib::nav_panel(
-      title = "Validation",
-      value = "validation",
+      title = "Assignments",
+      value = "assignments",
       # Font Awesome ships with shiny::icon()'s html dependency (the rubric
       # tab uses static icons), so no CDN stylesheet is needed
       shiny::tags$head(
@@ -285,20 +286,6 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
             font-size: 12px !important;
             font-weight: normal !important;
             padding: 4px 8px !important;
-          }
-
-          /* Repository select buttons. Selection highlight is toggled via the
-             .active class (shinyjs) so selecting a repo does not re-render the
-             whole table. Uses the theme primary color rather than a
-             hard-coded Bootstrap 4 blue. */
-          .repo-select-btn {
-            background-color: white; color: #333; border: 1px solid #ddd;
-            padding: 8px 12px; border-radius: 4px; text-align: left; width: 100%;
-            cursor: pointer; font-size: 12px; white-space: nowrap;
-            overflow: hidden; text-overflow: ellipsis;
-          }
-          .repo-select-btn.active {
-            background-color: var(--bs-primary); color: white; border-color: var(--bs-primary);
           }
 
           /* Compact filter inputs in the Assignments card header */
@@ -343,10 +330,12 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
         '))
       ),
       # Main content area: layout_columns sits directly in the fillable nav
-      # panel so both cards take the viewport height and scroll internally
+      # panel so the card takes the viewport height and scrolls internally;
+      # the negative widths centre it so the repository column does not
+      # sprawl across a wide window
       bslib::layout_columns(
-        col_widths = c(6, 6),
-        # Repository table card (left)
+        col_widths = c(-2, 8, -2),
+        # Repository table card
         bslib::card(
           bslib::card_header(
             class = "bg-light repo-table-controls",
@@ -380,15 +369,36 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
             class = "overflow-auto",
             shiny::uiOutput("repo_table")
           )
-        ),
-        # Validation results card (right)
-        bslib::card(
-          bslib::card_header("Validation", class = "bg-light"),
-          bslib::card_body(
-            class = "overflow-auto",
-            shiny::uiOutput("repo_parse_error"),
-            mark_validate_ui("explore_module")
+        )
+      )
+    ),
+
+    # Validation tab (right aligned): the selected repository's per-question
+    # rule results. Its repo select is kept in step with the app-wide
+    # selection (table click, rubric navigation, score click-through)
+    bslib::nav_panel(
+      title = "Validation",
+      value = "validation",
+      bslib::card(
+        class = "h-100",
+        bslib::card_header(
+          class = "bg-light",
+          shiny::div(
+            class = "d-flex justify-content-between align-items-center gap-2 w-100",
+            shiny::span("Validation"),
+            shiny::div(
+              style = "width: 260px;",
+              shiny::selectInput(
+                "validation_repo_select", NULL,
+                choices = repo_list, selected = initial_repo_name, width = "100%"
+              )
+            )
           )
+        ),
+        bslib::card_body(
+          class = "overflow-auto",
+          shiny::uiOutput("repo_parse_error"),
+          mark_validate_ui("explore_module")
         )
       )
     ),
@@ -431,8 +441,19 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
     current_repo_ast = shiny::reactiveVal(initial_repo_ast)
     current_repo_name = shiny::reactiveVal(initial_repo_name)
 
-    # Track selected repository for highlighting
-    selected_repo_index = shiny::reactiveVal(match(initial_repo_name, repo_list))
+    # The one way to change the app-wide repository selection: the name and
+    # the AST (NULL for a repo whose document is missing or failed to parse,
+    # so its error shows instead) move together. Used by the table's
+    # validation marker, the Validation tab's select, the rubric's navigation
+    # sync and the Scores tab's click-through.
+    select_repo = function(repo) {
+      if (length(repo) != 1 || !repo %in% repo_list) {
+        return(invisible(FALSE))
+      }
+      current_repo_name(repo)
+      current_repo_ast(collection_ast_for(collection, repo))
+      invisible(TRUE)
+    }
 
     # Surface a missing-document or parse error for the selected repo in place
     # of its validation results, quoting the parser's message verbatim
@@ -492,9 +513,6 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
         return(shiny::p("No repositories match the current filters.", class = "text-muted fst-italic m-2"))
       }
 
-      # The active-selection highlight is read once via isolate() (so the
-      # table is not re-rendered on every repo click) and baked into the
-      # class; subsequent selections toggle .active via shinyjs.
       table_data = build_repo_table_data(
         visible = visible,
         visible_idx = match(visible, repo_list),
@@ -507,39 +525,31 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
         repo_errors = repo_errors,
         all_progress = all_progress,
         graded_pairs = graded_pairs,
-        question_names = question_names,
-        active_row = shiny::isolate(selected_repo_index())
+        question_names = question_names
       )
 
       shiny::HTML(gt::as_raw_html(repo_table_gt(table_data), inline_css = FALSE))
     })
-    
-    # Handle repository button clicks (the clicked row index is the input value)
+
+    # A click on a repo's validation marker in the table opens that repo in
+    # the Validation tab
     shiny::observe({
-      row_index = input$repo_select_clicked
-      selected_repo = repo_list[row_index]
+      select_repo(repo_list[input$validation_clicked])
+      bslib::nav_select("main_navbar", "validation")
+    }) |> shiny::bindEvent(input$validation_clicked)
 
-      # Update selected index for highlighting
-      selected_repo_index(row_index)
-
-      # Repos whose document is missing or failed to parse get a NULL AST and
-      # show their error
-      current_repo_name(selected_repo)
-      current_repo_ast(collection_ast_for(collection, selected_repo))
-    }) |> shiny::bindEvent(input$repo_select_clicked)
-
-    # Move the selected-repo highlight in place instead of re-rendering the table.
-    # Fires on init too, so the initial selection is highlighted once the table
-    # is present.
+    # Keep the Validation tab's repo select in step with the app-wide
+    # selection, both ways. Selecting the already-current value does not
+    # re-fire the client input, so the pair cannot loop.
     shiny::observe({
-      idx = selected_repo_index()
-      shinyjs::removeClass(selector = ".repo-select-btn", class = "active")
-      shinyjs::addClass(
-        selector = paste0(".repo-select-btn[data-row='", idx, "']"),
-        class = "active"
-      )
-    }) |>
-      shiny::bindEvent(selected_repo_index())
+      shiny::updateSelectInput(session, "validation_repo_select", selected = current_repo_name())
+    }) |> shiny::bindEvent(current_repo_name())
+
+    shiny::observe({
+      if (!identical(input$validation_repo_select, shiny::isolate(current_repo_name()))) {
+        select_repo(input$validation_repo_select)
+      }
+    }) |> shiny::bindEvent(input$validation_repo_select, ignoreInit = TRUE)
 
     # Handle artifact button clicks
     shiny::observe({
@@ -570,6 +580,9 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
                   class = "w-100 h-100 border rounded bg-white"
                 )
               )
+              # Names the report shown when several HTML files were found
+              # for the repo (NULL otherwise)
+              artifact_ambiguity_note(artifact_paths, repo),
             )
           )
         } else {
@@ -580,9 +593,6 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
               easyClose = TRUE,
               shiny::div(
                 class = "p-4 text-center",
-              # Names the report shown when several HTML files were found
-              # for the repo (NULL otherwise)
-              artifact_ambiguity_note(artifact_paths, repo),
                 shiny::icon("triangle-exclamation", class = "fa-fw fs-3 text-warning me-2"),
                 "Artifact file not found."
               )
@@ -702,16 +712,13 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
     )
 
     # Reverse sync: z/x navigation (or the dropdown) in the Rubric tab moves
-    # the Assignments-table selection too, so the Validation card and the
-    # table highlight stay honest when tabbing back
+    # the app-wide selection too, so the Validation tab stays honest when
+    # tabbing back
     shiny::observe({
       repo = rubric_result$selected_content_repo()
       shiny::req(repo)
-      idx = match(repo, repo_list)
-      if (!is.na(idx) && idx != shiny::isolate(selected_repo_index())) {
-        selected_repo_index(idx)
-        current_repo_name(repo)
-        current_repo_ast(collection_ast_for(collection, repo))
+      if (!identical(repo, shiny::isolate(current_repo_name()))) {
+        select_repo(repo)
       }
     }) |>
       shiny::bindEvent(rubric_result$selected_content_repo())

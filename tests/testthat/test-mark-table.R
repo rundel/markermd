@@ -91,22 +91,17 @@ test_that("build_repo_table_data keys buttons to the full repo_list positions", 
     repo_errors = fx$repo_errors,
     all_progress = fx$all_progress,
     graded_pairs = fx$graded_pairs,
-    question_names = fx$question_names,
-    active_row = 3L
+    question_names = fx$question_names
   )
 
-  # htmltools escapes the onclick quotes structurally (&#39;), so the
-  # payloads are matched in their escaped form
+  # Repository names are plain text; the row's buttons are keyed to the
+  # repo's position in the full repo_list, not the visible subset. htmltools
+  # escapes the onclick quotes structurally (&#39;), so the payloads are
+  # matched in their escaped form
   expect_equal(nrow(df), 2)
-  expect_match(df$Repository[1], "repo_select_clicked&#39;, 2,")
-  expect_match(df$Repository[2], "repo_select_clicked&#39;, 3,")
-  expect_match(df$Repository[1], 'data-row="2"')
-  expect_match(df$Repository[2], 'data-row="3"')
+  expect_equal(df$Repository, c("repoB", "repoC"))
   expect_match(df$Folder[2], "folder_clicked&#39;, 3,")
-
-  # The active row (repoC, position 3) carries the baked-in active class
-  expect_match(df$Repository[2], "repo-select-btn active")
-  expect_match(df$Repository[1], "repo-select-btn\"")
+  expect_match(df$Validation[1], "validation_clicked&#39;, 2,")
 
   # repoB links to GitHub; repoC falls back to the greyed span
   expect_match(df$GitHub[1], "https://github.com/org/repoB")
@@ -133,8 +128,7 @@ test_that("repo_table_gt renders both repos' cells to raw html", {
     repo_errors = fx$repo_errors,
     all_progress = fx$all_progress,
     graded_pairs = fx$graded_pairs,
-    question_names = fx$question_names,
-    active_row = 1L
+    question_names = fx$question_names
   )
   html = gt::as_raw_html(markermd:::repo_table_gt(df), inline_css = FALSE)
   expect_match(html, "repoA")
@@ -157,6 +151,27 @@ test_that("validation_status_cell escapes question names in the tooltip", {
   expect_match(html, "1/2")
   expect_match(html, "Q&quot;1")          # quote escaped in the title attribute
   expect_false(grepl('Q"1"', html, fixed = TRUE))  # never the raw quote
+})
+
+test_that("validation_status_cell becomes a Validation-tab button when given its row", {
+  tmpl = mt_template(c("Q1", "Q2"))
+  vr = list(repoA = list(Q1 = list(status = "pass"), Q2 = list(status = "fail")))
+
+  # htmltools writes the quotes in the onclick attribute as entities
+  html = markermd:::validation_status_cell("repoA", vr, tmpl, row_index = 3L)
+  expect_match(html, "<button", fixed = TRUE)
+  expect_match(html, "Shiny.setInputValue(&#39;validation_clicked&#39;, 3, {priority: &#39;event&#39;})", fixed = TRUE)
+  expect_match(html, "1/2")
+
+  # the parse-error marker is a button too, so a broken repo is one click away
+  err = markermd:::validation_status_cell(
+    "repoA", list(), NULL, repo_errors = list(repoA = "boom"), row_index = 2L
+  )
+  expect_match(err, "validation_clicked&#39;, 2,", fixed = TRUE)
+  expect_match(err, "triangle-exclamation")
+
+  # without a row the bare marker is returned
+  expect_no_match(markermd:::validation_status_cell("repoA", vr, tmpl), "<button", fixed = TRUE)
 })
 
 test_that("validation_status_cell renders a warning marker for a parse error", {
