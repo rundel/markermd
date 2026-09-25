@@ -580,6 +580,9 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
               easyClose = TRUE,
               shiny::div(
                 class = "p-4 text-center",
+              # Names the report shown when several HTML files were found
+              # for the repo (NULL otherwise)
+              artifact_ambiguity_note(artifact_paths, repo),
                 shiny::icon("triangle-exclamation", class = "fa-fw fs-3 text-warning me-2"),
                 "Artifact file not found."
               )

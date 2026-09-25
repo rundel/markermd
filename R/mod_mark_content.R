@@ -252,14 +252,20 @@ mark_content_server = function(id, template, collection, artifact_paths, artifac
       html_path = artifact_paths[[selected_repo]]
 
       if (!is.na(html_path) && file.exists(html_path)) {
-        shiny::tags$iframe(
-          id = "artifact-content-frame",
-          src = artifact_urls[[selected_repo]],
-          class = "w-100 h-100 border-0 bg-white",
-          style = "min-height: 70vh;",
-          onload = glue::glue(
-            "this.dataset.loaded = '1'; Shiny.setInputValue('<<session$ns(\"artifact_loaded\")>>', Date.now(), {priority: 'event'});",
-            .open = "<<", .close = ">>"
+        # When several HTML files were found for the repo a notice names the
+        # one being shown (NULL otherwise, so the frame stands alone)
+        shiny::div(
+          class = "d-flex flex-column h-100",
+          artifact_ambiguity_note(artifact_paths, selected_repo),
+          shiny::tags$iframe(
+            id = "artifact-content-frame",
+            src = artifact_urls[[selected_repo]],
+            class = "w-100 flex-grow-1 border-0 bg-white",
+            style = "min-height: 70vh;",
+            onload = glue::glue(
+              "this.dataset.loaded = '1'; Shiny.setInputValue('<<session$ns(\"artifact_loaded\")>>', Date.now(), {priority: 'event'});",
+              .open = "<<", .close = ">>"
+            )
           )
         )
       } else if (is.na(html_path)) {
