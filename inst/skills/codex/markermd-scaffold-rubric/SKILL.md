@@ -1,6 +1,6 @@
 ---
 name: markermd-scaffold-rubric
-description: Scaffold a markermd grading rubric (per-question rubric items plus scoring setup, as YAML) for an initialized markermd project that already has a stored grading template. Asks whether to work through the questions all at once or one at a time (showing and importing each question's proposed items before moving to the next), and whether to base the rubric on the key (solution) repository alone or on the key plus the student repositories (sampling submissions to anticipate common mistakes); asks for the assignment's total points and how to distribute them across questions (proposing equal, content-weighted, and assignment-stated splits); drafts concrete key-derived rubric items for each template question, writes the rubric YAML, validates it against the bundled JSON Schema, and imports it into the project's grading database with rubric_import(). Use when a user wants to bootstrap, scaffold, or generate a markermd rubric or grading rubric items for an assignment project created with markermd::init_project() / ghclass::org_grade_assignment().
+description: Scaffold a markermd grading rubric (per-question items and scoring) for a project with a stored template: derives concrete items from the key, optionally samples student repositories for common mistakes, confirms points and grading mode with the user, and imports the rubric with rubric_import(). Use when asked to create, draft, or scaffold a markermd rubric or grading rubric items.
 ---
 
 # Scaffold a markermd grading rubric
@@ -100,8 +100,8 @@ to the project root.
 
 ### 3. Ask the user: workflow, rubric basis, and grading mode
 
-Ask all three questions in one round (AskUserQuestion) before reading anything
-else:
+Ask all three questions in one round before reading anything
+else, plus a fourth when subagents will be used:
 
 - **Workflow** -- how to work through the template's questions:
   - *All at once*: draft every question, show the user one full draft to
@@ -122,6 +122,20 @@ else:
     the score starts at `total_score`; graders mark what is wrong.
   - *Additive* (`positive`): items carry positive points and the score builds
     up from 0; graders mark what is present.
+
+- **Subagent model** (only when you intend to delegate the reading of
+  student repositories in step 6 to subagents, which is worth doing for a
+  large class with the key + student repos basis): which model the subagents
+  should run on. Offer the tiers from cheapest up, with the cheapest tier you
+  judge adequate marked as recommended, and state what each is good for: a
+  small, cheap model tier for reading each submission's sections
+  and reporting what it did per question; a mid-tier model
+  for spotting wrong approaches and interpretations, adequate for most
+  assignments; the session's current model only when the assignment demands
+  it. Never default to the current model. Pass the chosen model explicitly
+  to every subagent launch (your agent's per-subagent model setting), keep the
+  drafting of items in this session, and record the choice in the report
+  (step 11).
 
 The assignment's total points and their distribution across questions are
 asked separately (step 5), once the key has been read.
@@ -187,7 +201,7 @@ per-question numbers; never offer an abstract "weighted" option without them.
   plus a write-up earn more than a one-line answer -- normalized to a round
   total.
 
-Then ask, in one AskUserQuestion round:
+Then ask, in one round:
 
 1. **Total points for the assignment** -- offer the totals the proposals
    imply (the stated total when there is one, questions x 10, 100, ...).
@@ -213,9 +227,11 @@ results across all repos:
 Rscript -e 'res <- markermd::validate_project("<root>"); print(res, row.names = FALSE)'
 ```
 
-Questions that `fail` widely are where deduction items will earn their keep;
-repos with `status` of `error` (missing or unparseable documents) are excluded
-from sampling.
+Questions that `fail` widely are where deduction items will earn their keep.
+Repos with `status` of `error` have a missing or unparseable document: for
+the unparseable ones, suggest the `markermd-fix-parsing` skill (which repairs
+the document on a `grading-fixes` branch in the repository) before sampling;
+any still failing are excluded from sampling.
 
 Then read actual submissions under `<root>/<paths.repos>`:
 
@@ -227,6 +243,16 @@ Then read actual submissions under `<root>/<paths.repos>`:
 - Match each repo's document by the same filename as the key's `source.path`.
   Students sometimes edit headings so the template anchors are absent; fall
   back to matching heading text rather than skipping the repo.
+- A repo whose checked-out branch is `grading-fixes` (`git -C <repo> branch
+  --show-current`) carries repairs made by the `markermd-fix-parsing` skill
+  so the document parses. Read it as-is, but `<!-- markermd: ... -->`
+  comments are that skill's markers, never student content, and
+  `git -C <repo> diff <original-branch>..grading-fixes` shows exactly what
+  was changed (the untouched submission is on the original branch, usually
+  `main`). A repair is never itself a candidate mistake: markermd's parser is
+  stricter than Quarto 1.x, so a needed repair is not evidence that the
+  student's document fails to render. Judge rendering from the rendered
+  artifact instead.
 
 For each question, look for:
 
@@ -239,6 +265,10 @@ For each question, look for:
 A mistake observed in two or more sampled repos is a candidate deduction item.
 Phrase it generically -- never quote or identify a specific student or
 repository.
+
+If subagents do this reading, they run on the model the user chose in step 3
+and report per-question observations back; the drafting of items from those
+observations stays in this session.
 
 ### 7. Draft items and scoring for each question
 
@@ -444,7 +474,8 @@ Summarize for the user: the basis (key only vs key + repos) and grading mode
 chosen, the assignment's total points, each imported question's total and
 item count, and that the rubric was written to `<root>/markermd-rubric.yaml`
 and imported into the project database (in the question-at-a-time workflow,
-also list any questions left for later). Then tell them to start grading,
+also list any questions left for later). If subagents read the student
+repositories, say which model they ran on. Then tell them to start grading,
 where the rubric is refined in place:
 
 ```

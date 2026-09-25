@@ -6,7 +6,7 @@
 \alias{markermd-package}
 \title{markermd: Interactive Shiny-Based Grading Interface for Quarto and R Markdown Assignments}
 \description{
-Provides a Shiny-based workflow for grading assignments submitted as git repositories containing Quarto or R Markdown documents. A grading template of questions and structural validation rules is authored interactively against the solution (key) repository, and student submissions are then validated against it and graded question by question with per-question rubrics, keyboard hotkeys, and rendered-report previews. All grading state is stored in a per-project SQLite database, with YAML import and export for templates, rubrics, and marks, plus bundled Claude Code skills that scaffold templates and rubrics and record first-pass machine grading for human review.
+Provides a Shiny-based workflow for grading assignments submitted as git repositories containing Quarto or R Markdown documents. A grading template of questions and structural validation rules is authored interactively against the solution (key) repository, and student submissions are then validated against it and graded question by question with per-question rubrics, keyboard hotkeys, and rendered-report previews. All grading state is stored in a per-project SQLite database, with YAML import and export for templates, rubrics, and marks, plus bundled agent skills (for Claude Code and Codex) that scaffold templates and rubrics, repair submissions the strict parser rejects, and record first-pass machine grading for human review.
 }
 \seealso{
 Useful links:

@@ -91,16 +91,22 @@ assignment_outline = function(assignment_path, filename = "*.[Rq]md") {
   out
 }
 
-#' Path to the bundled markermd Claude Code skills
+#' Path to the bundled markermd agent skills
 #'
-#' Returns the directory holding the Claude Code skills distributed with the
-#' package (e.g. the assignment template scaffolding skill). Copy a skill's
-#' sub-directory into a `.claude/skills/` directory (per-user `~/.claude/skills`
-#' or per-project) to make it available to Claude Code. See the README in that
-#' directory for details.
+#' Returns the directory holding one agent's set of the skills distributed with
+#' the package: the Claude Code set, which [init_project()] installs into
+#' `<project>/.claude/skills/`, or the Codex set, installed into
+#' `<project>/.agents/skills/`. Both follow the Agent Skills format (a
+#' `SKILL.md` per skill) and share skill names, differing only in
+#' agent-specific wording and metadata. Copy a skill's sub-directory into the
+#' per-user directory (`~/.claude/skills/` or `~/.agents/skills/`) to make it
+#' available outside a project. See the README in the `skills` directory for
+#' details.
 #'
-#' @return Character path to the installed `skills` directory.
+#' @param agent Which set: `"claude"` (the default) or `"codex"`.
+#' @return Character path to the installed skills directory for that agent.
 #' @export
-markermd_skills_path = function() {
-  system.file("skills", package = "markermd")
+markermd_skills_path = function(agent = c("claude", "codex")) {
+  agent = match.arg(agent)
+  system.file("skills", agent, package = "markermd")
 }

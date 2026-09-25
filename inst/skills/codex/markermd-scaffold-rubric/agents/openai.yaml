@@ -1,0 +1,4 @@
+interface:
+  display_name: "markermd: scaffold rubric"
+  short_description: "Draft per-question rubric items and scoring from the key, optionally sampling student repos"
+  default_prompt: "Use $markermd-scaffold-rubric on this markermd project."

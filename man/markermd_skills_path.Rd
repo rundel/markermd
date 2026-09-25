@@ -2,17 +2,24 @@
 % Please edit documentation in R/template-scaffold.R
 \name{markermd_skills_path}
 \alias{markermd_skills_path}
-\title{Path to the bundled markermd Claude Code skills}
+\title{Path to the bundled markermd agent skills}
 \usage{
-markermd_skills_path()
+markermd_skills_path(agent = c("claude", "codex"))
+}
+\arguments{
+\item{agent}{Which set: \code{"claude"} (the default) or \code{"codex"}.}
 }
 \value{
-Character path to the installed \code{skills} directory.
+Character path to the installed skills directory for that agent.
 }
 \description{
-Returns the directory holding the Claude Code skills distributed with the
-package (e.g. the assignment template scaffolding skill). Copy a skill's
-sub-directory into a \verb{.claude/skills/} directory (per-user \verb{~/.claude/skills}
-or per-project) to make it available to Claude Code. See the README in that
-directory for details.
+Returns the directory holding one agent's set of the skills distributed with
+the package: the Claude Code set, which \code{\link[=init_project]{init_project()}} installs into
+\verb{<project>/.claude/skills/}, or the Codex set, installed into
+\verb{<project>/.agents/skills/}. Both follow the Agent Skills format (a
+\code{SKILL.md} per skill) and share skill names, differing only in
+agent-specific wording and metadata. Copy a skill's sub-directory into the
+per-user directory (\verb{~/.claude/skills/} or \verb{~/.agents/skills/}) to make it
+available outside a project. See the README in the \code{skills} directory for
+details.
 }

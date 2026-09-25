@@ -1,6 +1,6 @@
 ---
 name: markermd-scaffold-template
-description: Scaffold a markermd grading template (YAML) for an initialized markermd project, using the project's key (solution) repository as the basis, then validate it against every student repository. Reads the project config (.markermd/config.yml) to locate the key and the student repos, writes a starter template with a few basic validation rules, imports it into the project's grading database, and reports how the rules hold up across submissions. Use when a user wants to bootstrap, scaffold, or generate a markermd template for an assignment project created with markermd::init_project() / ghclass::org_grade_assignment().
+description: Scaffold a markermd grading template for an initialized markermd project: builds the template YAML from the key (solution) repository's assignment document using the exact section anchors and starter rules, imports it into the project's grading database, and validates it against every student repository. Use when asked to bootstrap, scaffold, or generate a markermd template for a project created with markermd::init_project().
 ---
 
 # Scaffold a markermd grading template
@@ -81,7 +81,13 @@ Rscript -e 'o <- markermd::assignment_outline("KEYDIR"); cat(jsonlite::toJSON(li
 ```
 
 It resolves the single assignment file in the key directory and prints its
-`source_file` plus a `sections` array. If the key holds more than one assignment
+`source_file` plus a `sections` array. If it instead aborts with a parser
+diagnostic (a bracketed code such as `[Q-2-10] Closed Quote Without Matching
+Open Quote` and a source excerpt), the key itself does not parse and nothing
+downstream works, since `source.path` is re-parsed whenever the template is
+built or loaded. Hand this to the `markermd-fix-parsing` skill, whose key step
+applies the same minimal escape to the instructor's document with their
+permission, then re-run this command. If the key holds more than one assignment
 document, `assignment_outline()` errors listing the candidates; ask the user
 which one and pass that file directly instead of the directory. The resolved
 `source_file` is an absolute path; you will need it as a path relative to the
@@ -191,9 +197,11 @@ Rules and constraints:
   `has at least` / `has at most` use `count`; `has content` / `lacks content` /
   `has name` use `pattern`.
 - Allowed `node_type` values: `Any node`, `Heading`, `Markdown`, `Chunk`,
-  `Code block`, `Raw Block`, `Div`, `Bullet list`, `Ordered list`,
-  `Block quote`, `Table`, `Figure`, `Horizontal rule`, `Definition list`,
-  `Line block`.
+  `Code block`, `Raw Block`, `HTML comment`, `Div`, `Bullet list`,
+  `Ordered list`, `Block quote`, `Table`, `Figure`, `Horizontal rule`,
+  `Definition list`, `Line block`. A list-valued `node_type` is a union.
+  A raw block that is nothing but `<!-- ... -->` comments is an
+  `HTML comment`, never a `Raw Block`.
 - Question `id`s and `name`s must each be unique.
 - The full JSON Schema is bundled at
   `system.file("schema/markermd-template.json", package = "markermd")` if you
@@ -255,9 +263,35 @@ how many repos pass each question, and which rules fail widely. Interpretation:
 - A rule that **fails for almost every repo** is usually too strict (or the
   anchor does not exist in the students' documents) -- flag it for relaxing.
 - A `status` of `error` means the repo's assignment file was missing or failed
-  to parse; list those repos for the user.
+  to parse; list those repos for the user. For the ones that failed to parse,
+  point the user at the `markermd-fix-parsing` skill: it shows each parser
+  diagnostic (`markermd::parse_project("<root>")`), repairs the document with
+  the smallest possible edit on a `grading-fixes` branch in the student's
+  repository, and re-runs this validation.
 - Scattered failures are expected (those students genuinely did not meet the
   rule) and are the point of grading.
+- A repo that **fails the write-up rule on every question** usually wrote its
+  answers inside `{=html}` raw blocks, which are `Raw Block` nodes rather than
+  `Markdown`. Node kinds are never template problems to fix by loosening
+  rules blindly, so ask the user whether such write-ups are acceptable. If
+  they are, widen the write-up rule's `node_type` to the union
+  `[Markdown, Raw Block]`. No filter is needed to keep comments out: a raw
+  block that is nothing but `<!-- ... -->` comments is its own `HTML comment`
+  kind, so a write-up left inside the skeleton's HTML comment placeholder
+  (which never renders) still fails, and the `<!-- markermd: ... -->` repair
+  markers left by the `markermd-fix-parsing` skill are not counted either:
+
+  ```yaml
+  rules:
+    - node_type: Chunk
+      verb: has at least
+      count: 1
+    - node_type:
+        - Markdown
+        - Raw Block
+      verb: has at least
+      count: 1
+  ```
 
 ### 8. Report
 

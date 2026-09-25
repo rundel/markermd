@@ -2,8 +2,9 @@
 #
 # init_project() bootstraps a grading project: it keeps all markermd state under
 # a single .markermd/ directory at the project root (the SQLite grading DB and a
-# YAML config), and installs the bundled Claude Code skills into the project's
-# .claude/skills/ so they are discoverable. project_config()/project_sitrep()
+# YAML config), and installs the bundled agent skills into the project's
+# .claude/skills/ (Claude Code) and .agents/skills/ (Codex) so they are
+# discoverable. project_config()/project_sitrep()
 # read and report that state; project_set() edits it.
 
 # Absolute path to a project's config file.
@@ -95,33 +96,46 @@ detect_keyish_dir = function(root, other_dirs) {
   if (length(keyish) == 1) keyish else NA_character_
 }
 
-# Copy every bundled skill directory into <path>/.claude/skills/<skill>,
-# overwriting any existing copy so the project's skills track the installed
-# package. The explicit per-skill target avoids fs::dir_copy() flattening a
-# skill's contents into .claude/skills/ directly.
+# Project-relative skills directory each supported agent discovers skills in
+#
+# agent: "claude" or "codex"
+
+agent_skills_dir = function(agent) {
+  c(claude = ".claude/skills", codex = ".agents/skills")[[agent]]
+}
+
+# Copy every bundled skill directory of each requested agent's set into that
+# agent's project skills directory (<path>/.claude/skills/<skill> for Claude
+# Code, <path>/.agents/skills/<skill> for Codex), overwriting any existing copy
+# so the project's skills track the installed package. The explicit per-skill
+# target avoids fs::dir_copy() flattening a skill's contents into the skills
+# directory directly.
 #
 # path: project root
-# Returns: character vector of skill names copied
+# agents: character vector of agents to install for ("claude", "codex")
+# Returns: list named by agent of the skill names copied for it
 
-install_project_skills = function(path) {
-  src = markermd_skills_path()
-  if (!nzchar(src) || !fs::dir_exists(src)) {
-    return(character(0))
+install_project_skills = function(path, agents = c("claude", "codex")) {
+  installed = list()
+  for (agent in agents) {
+    src = markermd_skills_path(agent)
+    skill_dirs = if (nzchar(src) && fs::dir_exists(src)) {
+      fs::dir_ls(src, type = "directory")
+    } else {
+      character(0)
+    }
+    names = fs::path_file(skill_dirs)
+
+    if (length(skill_dirs) > 0) {
+      dest_root = fs::path(path, agent_skills_dir(agent))
+      fs::dir_create(dest_root)
+      for (i in seq_along(skill_dirs)) {
+        fs::dir_copy(skill_dirs[[i]], fs::path(dest_root, names[[i]]), overwrite = TRUE)
+      }
+    }
+    installed[[agent]] = names
   }
-
-  skill_dirs = fs::dir_ls(src, type = "directory")
-  if (length(skill_dirs) == 0) {
-    return(character(0))
-  }
-
-  dest_root = fs::path(path, ".claude", "skills")
-  fs::dir_create(dest_root)
-
-  names = fs::path_file(skill_dirs)
-  for (i in seq_along(skill_dirs)) {
-    fs::dir_copy(skill_dirs[[i]], fs::path(dest_root, names[[i]]), overwrite = TRUE)
-  }
-  names
+  installed
 }
 
 # NULL -> NA_character_, otherwise coerce to character. Used when reading
@@ -235,9 +249,10 @@ write_project_config = function(project) {
 #' repositories, a `comments/` directory, an optional key/solution repository,
 #' and a directory per downloaded artifact). It creates a `.markermd/` directory
 #' at the project root holding the SQLite grading database and a `config.yml`
-#' recording the project's file locations, and installs the bundled Claude Code
-#' skills into `<path>/.claude/skills/` so they are discoverable from the
-#' project.
+#' recording the project's file locations, and installs the bundled agent
+#' skills so they are discoverable from the project: the Claude Code set into
+#' `<path>/.claude/skills/` and the Codex set into `<path>/.agents/skills/`
+#' (see `agents`).
 #'
 #' The key (solution) repository is detected as the top-level git repository
 #' (student repositories live under `repos/`); when several top-level repos
@@ -254,6 +269,9 @@ write_project_config = function(project) {
 #' (or cleared if it no longer exists).
 #'
 #' @param path Path to the project directory.
+#' @param agents Which agents' skill sets to install: `"claude"` (into
+#'   `<path>/.claude/skills/`), `"codex"` (into `<path>/.agents/skills/`), or
+#'   both, the default.
 #'
 #' @return A `markermd_project` object, invisibly.
 #' @export
@@ -263,7 +281,8 @@ write_project_config = function(project) {
 #' ghclass::org_grade_assignment("hw01", org = "my-course", repo_filter = "hw01-")
 #' init_project("hw01")
 #' }
-init_project = function(path) {
+init_project = function(path, agents = c("claude", "codex")) {
+  agents = match.arg(agents, several.ok = TRUE)
   if (!fs::dir_exists(path)) {
     cli::cli_abort("{.arg path} does not exist or is not a directory: {.path {path}}")
   }
@@ -300,7 +319,12 @@ init_project = function(path) {
   conn = initialize_database(root)
   close_database(conn)
 
-  skills = install_project_skills(root)
+  skills = install_project_skills(root, agents)
+  skills_lines = vapply(names(skills), function(agent) {
+    names_txt = if (length(skills[[agent]])) paste(skills[[agent]], collapse = ", ") else "none"
+    as.character(glue::glue("skills ({agent}): {names_txt} ({agent_skills_dir(agent)}/)"))
+  }, character(1))
+  names(skills_lines) = rep("*", length(skills_lines))
 
   project = markermd_project(
     root = root,
@@ -321,7 +345,7 @@ init_project = function(path) {
   }
   cli::cli_bullets(c(
     "*" = "database: {.path {project@database}} ({if (is.null(prior)) 'created' else 'preserved'})",
-    "*" = "skills: {if (length(skills)) paste(skills, collapse = ', ') else 'none'} (.claude/skills/)",
+    skills_lines,
     "*" = "repos: {if (has_repos) 'repos/' else 'not found'}",
     "*" = "comments: {if (has_comments) 'comments/' else 'not found'}",
     "*" = "key: {if (is.na(key)) 'not found' else key}",
@@ -1478,4 +1502,82 @@ validate_project = function(path = ".", template = NULL, use_qmd = TRUE) {
     ))
   }
   do.call(rbind, rows)
+}
+
+
+#' Check that every student repository's assignment document parses
+#'
+#' Locates each student repository's assignment document (discovered from the
+#' project config's `repos` directory and matched by the stored template's
+#' `source.path` basename when a template exists) and parses it with
+#' [parse_assignment_document()], reporting the outcome per repository. The
+#' q2r parser is strict, so small markdown slips in a submission (a stray `$`
+#' or `{`, an unclosed quote, emphasis mark, or bracket, malformed YAML front
+#' matter) fail the parse and leave the repository ungradable until repaired.
+#' This headless check finds them and returns the parser's diagnostic
+#' verbatim, which is what the bundled `markermd-fix-parsing` skill works
+#' from; unlike [validate_project()] it needs no stored template.
+#'
+#' @param path Path to an initialized markermd project directory.
+#' @param use_qmd Logical. Match `.qmd` files (`TRUE`, the default) or `.Rmd`
+#'   files (`FALSE`).
+#' @return A data frame with one row per repository and columns `repo`, `file`
+#'   (path of the document that was parsed, `NA` when none was found), `status`
+#'   (`"ok"`, `"warning"`, `"error"`, or `"missing"`), and `detail` (the
+#'   parser's diagnostics with ANSI styling stripped, or `NA` when there are
+#'   none).
+#' @examples
+#' \dontrun{
+#' res = parse_project("hw01")
+#' res[res$status != "ok", ]
+#' }
+#' @export
+parse_project = function(path = ".", use_qmd = TRUE) {
+  project = project_config(path)
+  repos_dir = project_repos_dir(project)
+
+  template_obj = load_template_from_db(project@root, base_dir = project@root)
+  assignment_file = basename_or_null(attr(template_obj, "markermd_source_raw"))
+  ext = if (use_qmd) "\\.qmd$" else "\\.Rmd$"
+
+  parse_captured = purrr::safely(purrr::quietly(parse_assignment_document))
+
+  rows = lapply(fs::dir_ls(repos_dir, type = "directory"), function(repo_dir) {
+    repo = fs::path_file(repo_dir)
+    file = find_repo_assignment(repo_dir, assignment_file, ext)
+
+    if (is.na(file)) {
+      return(data.frame(
+        repo = repo, file = NA_character_, status = "missing",
+        detail = "No assignment file found", stringsAsFactors = FALSE
+      ))
+    }
+
+    res = parse_captured(file)
+    if (!is.null(res$error)) {
+      status = "error"
+      detail = conditionMessage(res$error)
+    } else if (length(res$result$warnings) > 0) {
+      status = "warning"
+      detail = paste(res$result$warnings, collapse = "\n")
+    } else {
+      status = "ok"
+      detail = NA_character_
+    }
+
+    data.frame(
+      repo = repo, file = as.character(file), status = status,
+      detail = cli::ansi_strip(detail), stringsAsFactors = FALSE
+    )
+  })
+
+  if (length(rows) == 0) {
+    return(data.frame(
+      repo = character(0), file = character(0),
+      status = character(0), detail = character(0), stringsAsFactors = FALSE
+    ))
+  }
+  out = do.call(rbind, rows)
+  rownames(out) = NULL
+  out
 }

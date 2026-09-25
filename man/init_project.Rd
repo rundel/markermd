@@ -4,10 +4,14 @@
 \alias{init_project}
 \title{Initialize a markermd grading project}
 \usage{
-init_project(path)
+init_project(path, agents = c("claude", "codex"))
 }
 \arguments{
 \item{path}{Path to the project directory.}
+
+\item{agents}{Which agents' skill sets to install: \code{"claude"} (into
+\verb{<path>/.claude/skills/}), \code{"codex"} (into \verb{<path>/.agents/skills/}), or
+both, the default.}
 }
 \value{
 A \code{markermd_project} object, invisibly.
@@ -18,9 +22,10 @@ Bootstraps a markermd project in a directory laid out by
 repositories, a \verb{comments/} directory, an optional key/solution repository,
 and a directory per downloaded artifact). It creates a \verb{.markermd/} directory
 at the project root holding the SQLite grading database and a \code{config.yml}
-recording the project's file locations, and installs the bundled Claude Code
-skills into \verb{<path>/.claude/skills/} so they are discoverable from the
-project.
+recording the project's file locations, and installs the bundled agent
+skills so they are discoverable from the project: the Claude Code set into
+\verb{<path>/.claude/skills/} and the Codex set into \verb{<path>/.agents/skills/}
+(see \code{agents}).
 }
 \details{
 The key (solution) repository is detected as the top-level git repository

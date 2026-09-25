@@ -14,7 +14,7 @@ The package is built around two apps:
 - `template()` authors a grading template: which document sections are the questions, and what structural rules each answer must satisfy.
 - `mark()` grades a collection of student repositories against that template with per-question rubrics.
 
-Around the apps, a set of helper functions (`validate_project()`, `template_import()` / `template_export()`, `rubric_import()` / `rubric_export()`, `marks_import()` / `marks_export()` / `marks_set()`, `export_marks()`) makes the entire workflow scriptable, and bundled Claude Code skills can scaffold the template and rubric or apply the rubric across all submissions as a first pass for human review.
+Around the apps, a set of helper functions (`validate_project()`, `parse_project()`, `template_import()` / `template_export()`, `rubric_import()` / `rubric_export()`, `marks_import()` / `marks_export()` / `marks_set()`, `export_marks()`) makes the entire workflow scriptable, and bundled agent skills (for Claude Code and Codex) can scaffold the template and rubric, repair submissions the strict parser rejects, or apply the rubric across all submissions as a first pass for human review.
 
 ## Experimental status
 
@@ -62,7 +62,7 @@ hw01/
 library(markermd)
 
 # One-time setup: writes .markermd/config.yml, creates the grading
-# database, and installs the bundled Claude Code skills
+# database, and installs the bundled agent skills
 init_project("hw01")
 
 # Author the grading template (questions + validation rules)
@@ -135,11 +135,12 @@ export_marks("hw01")
 - `export_scores()` writes `scores.csv` to the project root: one row per repository, one column per question, plus a `total` column. Scores are recomputed exactly as `mark()` displays them, passing each question's selected rubric item points through its grading mode and bounds. Ungraded repository/question pairs export as `NA`, and a repository's total stays `NA` until all of its questions are graded.
 - `export_comments()` writes each repository's student-facing feedback to `comments/<repo>.md` (or the project's configured comments directory). Each graded question appears as a heading, in template order, followed by a bulleted list of its selected rubric item descriptions and public comment. Private notes are never exported, and a repository with no public feedback gets no file.
 
-## Claude Code skills
+## Agent skills (Claude Code and Codex)
 
-`init_project()` installs three [Claude Code](https://claude.com/claude-code) skills into the project's `.claude/skills/` directory:
+`init_project()` installs four agent skills into the project, in two sets: a [Claude Code](https://claude.com/claude-code) set under `.claude/skills/` and a [Codex](https://developers.openai.com/codex) set under `.agents/skills/` (the `agents` argument selects one or both; the default installs both). Both sets follow the Agent Skills format and share the same names, so a skill is invoked as `/markermd-fix-parsing` in Claude Code and `$markermd-fix-parsing` in Codex:
 
 - `markermd-scaffold-template`: builds a starter grading template from the key repository's assignment document.
+- `markermd-fix-parsing`: repairs student documents that the strict q2r parser rejects, making the smallest possible edits on a `grading-fixes` branch in each repository so the original submission stays intact, and flags any substantive change in the document.
 - `markermd-scaffold-rubric`: drafts per-question rubric items and scoring from the key, optionally sampling student submissions to anticipate common mistakes.
 - `markermd-apply-rubric`: applies the stored rubric to every student repository as a first-pass machine grading, recording its reasoning as private notes for human review in `mark()`.
 

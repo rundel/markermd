@@ -132,33 +132,78 @@ test_that("re-init preserves a manually configured key the heuristic would miss"
 })
 
 
-test_that("init_project installs bundled skills without flattening", {
-  skip_if(!fs::dir_exists(markermd:::markermd_skills_path()), "bundled skills not found")
+bundled_skill_names = c(
+  "markermd-scaffold-template", "markermd-scaffold-rubric",
+  "markermd-apply-rubric", "markermd-fix-parsing"
+)
+
+skill_frontmatter_field = function(skill_md, field) {
+  line = grep(paste0("^", field, ":"), readLines(skill_md), value = TRUE)[1]
+  trimws(sub(paste0("^", field, ":"), "", line))
+}
+
+
+test_that("init_project installs both bundled skill sets without flattening", {
+  skip_if(!fs::dir_exists(markermd:::markermd_skills_path("claude")), "bundled skills not found")
   d = make_fake_project()
   init_project(d)
 
-  expect_true(fs::file_exists(fs::path(d, ".claude/skills/markermd-scaffold-template/SKILL.md")))
-  expect_true(fs::file_exists(fs::path(d, ".claude/skills/markermd-scaffold-rubric/SKILL.md")))
-  expect_true(fs::file_exists(fs::path(d, ".claude/skills/markermd-apply-rubric/SKILL.md")))
+  for (skill in bundled_skill_names) {
+    expect_true(fs::file_exists(fs::path(d, ".claude/skills", skill, "SKILL.md")))
+    expect_true(fs::file_exists(fs::path(d, ".agents/skills", skill, "SKILL.md")))
+    expect_true(fs::file_exists(fs::path(d, ".agents/skills", skill, "agents/openai.yaml")))
+  }
   expect_false(fs::file_exists(fs::path(d, ".claude/skills/SKILL.md")))
+  expect_false(fs::file_exists(fs::path(d, ".agents/skills/SKILL.md")))
 })
 
 
-test_that("each bundled skill's frontmatter name matches its directory", {
-  skip_if(!fs::dir_exists(markermd:::markermd_skills_path()), "bundled skills not found")
+test_that("init_project installs only the requested agents' skills", {
+  skip_if(!fs::dir_exists(markermd:::markermd_skills_path("codex")), "bundled skills not found")
+  d = make_fake_project()
+  init_project(d, agents = "codex")
 
-  skill_dirs = fs::dir_ls(markermd:::markermd_skills_path(), type = "directory")
-  expect_gt(length(skill_dirs), 0)
+  expect_false(fs::dir_exists(fs::path(d, ".claude/skills")))
+  expect_true(fs::file_exists(fs::path(d, ".agents/skills/markermd-fix-parsing/SKILL.md")))
+  expect_error(init_project(d, agents = "cursor"), "should be one of")
+})
 
-  for (skill_dir in skill_dirs) {
-    skill_md = fs::path(skill_dir, "SKILL.md")
-    expect_true(fs::file_exists(skill_md))
 
-    frontmatter_name = grep("^name:", readLines(skill_md), value = TRUE)[1]
-    expect_equal(
-      trimws(sub("^name:", "", frontmatter_name)),
-      fs::path_file(skill_dir)
-    )
+test_that("each bundled skill set follows the Agent Skills frontmatter rules", {
+  skip_if(!fs::dir_exists(markermd:::markermd_skills_path("claude")), "bundled skills not found")
+
+  names_by_agent = list()
+  for (agent in c("claude", "codex")) {
+    skill_dirs = fs::dir_ls(markermd:::markermd_skills_path(agent), type = "directory")
+    expect_gt(length(skill_dirs), 0)
+
+    for (skill_dir in skill_dirs) {
+      skill_md = fs::path(skill_dir, "SKILL.md")
+      expect_true(fs::file_exists(skill_md))
+
+      name = skill_frontmatter_field(skill_md, "name")
+      expect_equal(name, fs::path_file(skill_dir))
+      expect_match(name, "^[a-z0-9]+(-[a-z0-9]+)*$")
+      expect_lte(nchar(name), 64)
+
+      description = skill_frontmatter_field(skill_md, "description")
+      expect_gt(nchar(description), 0)
+      expect_lte(nchar(description), 1024)
+    }
+    names_by_agent[[agent]] = fs::path_file(skill_dirs)
+  }
+  expect_setequal(names_by_agent$claude, names_by_agent$codex)
+  expect_setequal(names_by_agent$claude, bundled_skill_names)
+})
+
+
+test_that("the Codex skill set carries no Claude-specific tool references", {
+  skip_if(!fs::dir_exists(markermd:::markermd_skills_path("codex")), "bundled skills not found")
+  files = fs::dir_ls(markermd:::markermd_skills_path("codex"), recurse = TRUE, glob = "*.md")
+  expect_gt(length(files), 0)
+  for (f in files) {
+    hits = grep("Claude|AskUserQuestion|Agent tool|Edit tool", readLines(f), value = TRUE)
+    expect_length(hits, 0)
   }
 })
 
@@ -369,4 +414,42 @@ test_that("validate_project errors when repos is unconfigured", {
 
 test_that("markermd_project_version is 1.0", {
   expect_identical(markermd:::markermd_project_version(), "1.0")
+})
+
+
+test_that("parse_project reports per-repo parse status", {
+  d = make_fake_project()
+  unlink(file.path(d, "repos"), recursive = TRUE)
+  dir.create(file.path(d, "repos", "team-ok"), recursive = TRUE)
+  dir.create(file.path(d, "repos", "team-broken"), recursive = TRUE)
+  dir.create(file.path(d, "repos", "team-html"), recursive = TRUE)
+  dir.create(file.path(d, "repos", "team-empty"), recursive = TRUE)
+  writeLines(c("## Question 1 {#q1}", "", "```{r}", "1 + 1", "```"),
+             file.path(d, "repos", "team-ok", "hw1.qmd"))
+  writeLines(c("## Question 1 {#q1}", "", "The cost was $5 today."),
+             file.path(d, "repos", "team-broken", "hw1.qmd"))
+  writeLines(c("## Question 1 {#q1}", "", "Line one<br>line two"),
+             file.path(d, "repos", "team-html", "hw1.qmd"))
+  init_project(d)
+
+  res = parse_project(d)
+
+  expect_s3_class(res, "data.frame")
+  expect_named(res, c("repo", "file", "status", "detail"))
+  expect_equal(res$status[res$repo == "team-ok"], "ok")
+  expect_true(is.na(res$detail[res$repo == "team-ok"]))
+  expect_equal(basename(res$file[res$repo == "team-ok"]), "hw1.qmd")
+  expect_equal(res$status[res$repo == "team-broken"], "error")
+  expect_match(res$detail[res$repo == "team-broken"], "cost was $5", fixed = TRUE)
+  expect_equal(res$status[res$repo == "team-html"], "warning")
+  expect_match(res$detail[res$repo == "team-html"], "Q-2-9")
+  expect_equal(res$status[res$repo == "team-empty"], "missing")
+  expect_true(is.na(res$file[res$repo == "team-empty"]))
+})
+
+
+test_that("parse_project errors when repos is unconfigured", {
+  d = make_fake_project(with_repos = FALSE)
+  suppressWarnings(init_project(d))
+  expect_error(parse_project(d), "No repos directory")
 })

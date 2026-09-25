@@ -1,0 +1,4 @@
+interface:
+  display_name: "markermd: fix parsing"
+  short_description: "Repair submissions the strict parser rejects, on a grading-fixes branch in each repo"
+  default_prompt: "Use $markermd-fix-parsing on this markermd project."

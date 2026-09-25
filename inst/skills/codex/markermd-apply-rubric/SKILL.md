@@ -1,6 +1,6 @@
 ---
 name: markermd-apply-rubric
-description: Apply a markermd project's stored grading rubric to the student repositories headlessly, as a first-pass machine grading for human review. Reads each repository's per-question sections, decides which rubric items apply (matching item descriptions verbatim), records the reasoning as private notes, writes a marks YAML, validates it against the bundled JSON Schema, and imports it into the project's grading database with marks_import() for review in mark(). Use when a user wants to grade, mark, pre-grade, or apply the rubric to student repos in a markermd project created with markermd::init_project() / ghclass::org_grade_assignment().
+description: Apply a markermd project's stored rubric to the student repositories as a first-pass machine grading: reads each repository question by question, selects the rubric items that apply, records the reasoning as private notes, and imports the marks with marks_import() for human review in mark(). Use when asked to grade, mark, pre-grade, or apply the rubric to student repos in a markermd project.
 ---
 
 # Apply a markermd rubric to the student repositories
@@ -47,6 +47,11 @@ Hard rules:
 - When unsure whether an item applies, do **not** select it; say what was
   unclear in the pair's private note instead. A wrong machine selection that a
   reviewer misses becomes a wrong grade.
+- If any of the work is delegated to subagents (for example one per
+  repository when the class is large), the user chooses the subagents' model
+  first (step 4). Never launch a subagent on the session's current model by
+  default: a cheaper model is often adequate for reading sections and
+  applying concrete rubric items, and the choice is the user's.
 
 This skill requires the `markermd` R package to be installed. If the commands
 below fail with a package-not-found error, ask the user to install it first.
@@ -122,8 +127,8 @@ Note any questions that lack one; step 4 offers to add them.
 
 ### 4. Ask the user: scope and overwrite behavior
 
-Ask both questions in one round (AskUserQuestion) before reading any
-repositories:
+Ask both questions in one round before reading any
+repositories, plus a third when subagents will be used:
 
 - **Scope** -- mark all student repositories, or a named subset.
 - **Existing grading** (recommend skip): `marks_import()` by default skips
@@ -135,6 +140,20 @@ repositories:
   every pair from its own previous pass unless you pass `overwrite = TRUE`.
   Offer `overwrite = TRUE` only if the user explicitly wants those pairs
   re-marked, and say that it replaces their selections.
+- **Subagent model** (only when you intend to delegate per-repository
+  reading or marking to subagents, which is worth doing once there are more
+  than a handful of repositories): which model the subagents should run on.
+  Offer the tiers from cheapest up, with the cheapest tier you judge adequate
+  marked as recommended, and state what each is good for: a small, cheap
+  model tier for reading sections and applying concrete, literal rubric
+  items; a mid-tier model for judging correctness of code and interpretation
+  against the items, adequate for most assignments; the session's current
+  model only when the assignment demands it (subtle reasoning, long or
+  unusual submissions). Never default to the current model. Pass the chosen
+  model explicitly to every subagent launch (your agent's per-subagent model
+  setting), keep the final review of the subagents' proposed selections and
+  private notes in this session, and record the choice in the report
+  (step 11).
 
 If step 3 found questions without a confirmation item, also ask whether to
 add one to each (recommended): a 0-point "Looks good" item in deduction mode,
@@ -169,9 +188,12 @@ results across all repos:
 Rscript -e 'res <- markermd::validate_project("<root>"); print(res, row.names = FALSE)'
 ```
 
-Repos with `status` of `error` (missing or unparseable documents) cannot be
-read and are excluded; list them in the final report (step 11) so the user
-grades them by hand. Per-question `fail` results indicate missing sections or
+Repos with `status` of `error` have a missing or unparseable document. For
+the unparseable ones, suggest the `markermd-fix-parsing` skill first: it
+repairs the document on a `grading-fixes` branch in the repository so it can
+be read here. Those still failing, and the missing ones, cannot be read and
+are excluded; list them in the final report (step 11) so the user grades them
+by hand. Per-question `fail` results indicate missing sections or
 rule violations -- useful pointers for which rubric items are likely to apply,
 but read the actual answer before selecting anything.
 
@@ -181,6 +203,19 @@ For every in-scope repository under `<root>/<paths.repos>`:
 
 - Match the assignment document by the basename of `source.path` from step 2,
   falling back to the first `.qmd` file when absent.
+- A repo whose checked-out branch is `grading-fixes` (`git -C <repo> branch
+  --show-current`) carries repairs made by the `markermd-fix-parsing` skill,
+  and the document you read includes them. `<!-- markermd: ... -->` comments
+  are that skill's markers for substantive repairs, never student content:
+  skip them when reading, and for any question whose section carries one,
+  run `git -C <repo> diff <original-branch>..grading-fixes -- <file>` to see
+  what was removed or rewritten before judging the answer (the untouched
+  submission is on the original branch, usually `main`). Grade the student's
+  original meaning. A repair is never by itself a reason to select an item
+  (markermd's parser is stricter than Quarto 1.x, so a needed repair is not
+  evidence of a rendering failure), and the pair's private note should say
+  when a repair touched the question so the reviewer knows to look at the
+  diff.
 - Slice each question's section from its anchor heading (the template's
   `node_ids`) to the next same-or-higher-level heading -- the same technique
   the scaffold skills use. Students sometimes edit headings so an anchor is
@@ -298,8 +333,11 @@ already had grading activity and were left untouched.
 
 Summarize for the user: how many pairs were marked and how many item
 selections recorded (the import prints both), which pairs were skipped for
-existing grading activity, and which repos were excluded as unreadable in
-step 5 and need manual grading. Then direct them to review in:
+existing grading activity, which repos were excluded as unreadable in
+step 5 and need manual grading, and which repos were read from a
+`grading-fixes` branch (naming the questions whose section carried a
+markermd repair marker). If subagents were used, say which model they ran on
+and that their selections were reviewed here before import. Then direct them to review in:
 
 ```
 markermd::mark("<root>")

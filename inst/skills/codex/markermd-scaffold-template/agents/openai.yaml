@@ -1,0 +1,4 @@
+interface:
+  display_name: "markermd: scaffold template"
+  short_description: "Build a starter grading template from the key and validate it across the student repos"
+  default_prompt: "Use $markermd-scaffold-template on this markermd project."

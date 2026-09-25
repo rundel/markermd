@@ -1,8 +1,22 @@
-# markermd skills for Claude Code
+# markermd agent skills
 
-This directory holds [Claude Code](https://claude.com/claude-code) skills
-distributed with the `markermd` package. A skill is a folder containing a
-`SKILL.md` file that teaches Claude Code how to perform a markermd task.
+This directory holds the agent skills distributed with the `markermd` package,
+in two sets that share the same skill names:
+
+- `claude/`: the [Claude Code](https://claude.com/claude-code) set, worded for
+  Claude Code's tools (AskUserQuestion, the Edit and Agent tools).
+- `codex/`: the [Codex](https://developers.openai.com/codex) set, with
+  agent-neutral wording, descriptions kept under the Agent Skills
+  1024-character cap, and an `agents/openai.yaml` per skill carrying the
+  display metadata Codex reads.
+
+A skill is a folder containing a `SKILL.md` file (YAML frontmatter with `name`
+and `description`, then the instructions) that teaches the agent how to
+perform a markermd task, following the
+[Agent Skills](https://agentskills.io/specification) format. A skill is invoked
+as `/markermd-fix-parsing` in Claude Code and `$markermd-fix-parsing` in Codex,
+and both agents also pick a skill up on their own when a request matches its
+description.
 
 ## Available skills
 
@@ -29,6 +43,16 @@ distributed with the `markermd` package. A skill is a folder containing a
   verbatim), records its reasoning as private notes (never shared with
   students), and imports the result with `marks_import()` for human review in
   `mark()`. Pairs that already have grading activity are skipped by default.
+- `markermd-fix-parsing`: repair student documents that markermd's strict
+  q2r parser rejects (a stray `$` or `{` in prose, an unclosed quote or
+  emphasis mark, malformed YAML front matter), so they can be validated and
+  graded. It finds the failing repositories with `parse_project()`, makes the
+  smallest edit that makes each document parseable, and commits every change
+  on a new `grading-fixes` branch in the student's repository (left checked
+  out, since `mark()` reads the working tree) so the original submission
+  stays intact. Substantive changes are made only with the user's permission
+  and flagged in the document with a `<!-- markermd: ... -->` comment, which
+  the rubric skills treat as not the student's work.
 
 Underlying these skills, templates, rubrics, and marks are LLM-authorable
 YAML: `rubric_export()` / `marks_export()` write a project's rubric or
@@ -37,26 +61,36 @@ JSON Schemas at `system.file("schema", package = "markermd")`
 (`markermd-rubric.json`, `markermd-marks.json`), and `rubric_import()` /
 `marks_import()` bring them back into the project database. The rubric
 import/export is also available inside `mark()` from the Rubric pane's menu.
+`parse_project()` is the headless per-repository parse check the fix-parsing
+skill starts from; unlike `validate_project()` it needs no stored template.
 
 ## Installing a skill
 
-Claude Code loads skills from a `.claude/skills/` directory, either per-user
-(`~/.claude/skills/`) or per-project (`<project>/.claude/skills/`). Copy the
-skill's folder into one of those locations.
+Claude Code loads project skills from `<project>/.claude/skills/` and
+per-user skills from `~/.claude/skills/`; Codex loads project skills from
+`<project>/.agents/skills/` (scanned from the working directory up to the
+repository root) and per-user skills from `~/.agents/skills/`. Copy a skill's
+folder from the matching set into one of those locations.
 
-`markermd::init_project()` installs every bundled skill into a project's
-`<project>/.claude/skills/` automatically (re-copying to the packaged version on
-each run), so the steps below are only needed for a per-user install or when not
-using `init_project()`. Re-running it installs skills under their current names
-but never deletes old ones, so after a skill rename a stale folder (e.g.
-`scaffold-markermd-template/`) can simply be removed by hand.
+`markermd::init_project()` installs every bundled skill into the project
+automatically, both sets by default (`agents = c("claude", "codex")`; pass one
+name to install a single set), re-copying to the packaged version on each run.
+The steps below are only needed for a per-user install or when not using
+`init_project()`. Re-running it installs skills under their current names but
+never deletes old ones, so after a skill rename a stale folder can simply be
+removed by hand.
 
 From R:
 
 ```r
 file.copy(
-  file.path(markermd::markermd_skills_path(), "markermd-scaffold-template"),
+  file.path(markermd::markermd_skills_path("claude"), "markermd-scaffold-template"),
   "~/.claude/skills",      # or "<project>/.claude/skills"
+  recursive = TRUE
+)
+file.copy(
+  file.path(markermd::markermd_skills_path("codex"), "markermd-scaffold-template"),
+  "~/.agents/skills",      # or "<project>/.agents/skills"
   recursive = TRUE
 )
 ```
@@ -64,9 +98,10 @@ file.copy(
 From a shell:
 
 ```sh
-cp -r "$(Rscript -e 'cat(markermd::markermd_skills_path())')/markermd-scaffold-template" ~/.claude/skills/
+cp -r "$(Rscript -e 'cat(markermd::markermd_skills_path("claude"))')/markermd-scaffold-template" ~/.claude/skills/
+cp -r "$(Rscript -e 'cat(markermd::markermd_skills_path("codex"))')/markermd-scaffold-template" ~/.agents/skills/
 ```
 
-`markermd::markermd_skills_path()` returns the directory these skills are
-installed in. After copying, start Claude Code in your project and ask it to
-scaffold a template, pointing it at your assignment directory.
+`markermd::markermd_skills_path(agent)` returns the directory holding one
+set. After copying, start your agent in the project and ask it to scaffold a
+template, pointing it at the project directory.

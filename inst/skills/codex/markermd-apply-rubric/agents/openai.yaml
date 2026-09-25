@@ -1,0 +1,4 @@
+interface:
+  display_name: "markermd: apply rubric"
+  short_description: "First-pass machine grading of every student repo against the stored rubric, for human review"
+  default_prompt: "Use $markermd-apply-rubric on this markermd project."
