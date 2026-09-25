@@ -9,8 +9,10 @@
 # History:
 #   1: initial schema
 #   2: items.position (explicit display order; see migrate_items_position())
+#   3: items.group_id and the item_groups table (rubric item groups; see
+#      migrate_items_group())
 
-markermd_db_version = function() "2"
+markermd_db_version = function() "3"
 
 # ORDER BY clause giving a question's rubric items in display order. position
 # is authoritative; a row without one (written before schema version 2 and
@@ -108,7 +110,11 @@ create_tables_if_needed = function(conn) {
   # Items table - stores markermd_rubric_item properties (without selected
   # state). position is the 1-based display order within the question and the
   # only ordering key; hotkey is derived from it (position <= 10) and kept in
-  # the row so the table reads sensibly by hand.
+  # the row so the table reads sensibly by hand. group_id names the item's
+  # group in item_groups (NULL = ungrouped); a group's members are kept
+  # contiguous in position order (normalize_item_order()), and the group's
+  # display position is its first member's, so no separate group position
+  # is stored.
   if (!DBI::dbExistsTable(conn, "items")) {
     DBI::dbExecute(conn, "
       CREATE TABLE items (
@@ -117,11 +123,35 @@ create_tables_if_needed = function(conn) {
         item_id TEXT NOT NULL,
         hotkey INTEGER,
         position INTEGER,
+        group_id TEXT,
         points REAL NOT NULL,
         description TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         UNIQUE(question_name, item_id)
+      )
+    ")
+  }
+
+  # Item groups table - stores markermd_rubric_group properties: a named run
+  # of a question's items whose combined points are bounded by floor (<= 0)
+  # and ceiling (>= 0), optionally exclusive (at most one member selected).
+  # Labels are unique within a question because the rubric import matches
+  # groups by label.
+  if (!DBI::dbExistsTable(conn, "item_groups")) {
+    DBI::dbExecute(conn, "
+      CREATE TABLE item_groups (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        question_name TEXT NOT NULL,
+        group_id TEXT NOT NULL,
+        label TEXT NOT NULL,
+        floor REAL CHECK (floor IS NULL OR floor <= 0),
+        ceiling REAL CHECK (ceiling IS NULL OR ceiling >= 0),
+        exclusive INTEGER NOT NULL DEFAULT 0 CHECK (exclusive IN (0, 1)),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (question_name, group_id),
+        UNIQUE (question_name, label)
       )
     ")
   }
@@ -203,6 +233,7 @@ create_tables_if_needed = function(conn) {
   }
 
   migrate_items_position(conn)
+  migrate_items_group(conn)
 }
 
 # Schema version 1 -> 2: add items.position to a database created by an
@@ -239,7 +270,32 @@ migrate_items_position = function(conn) {
         WHERE ranked.id = items.id
       )
     ")
-    set_metadata(conn, "schema_version", markermd_db_version())
+    set_metadata(conn, "schema_version", "2")
+  }
+  DBI::dbExecute(conn, "COMMIT")
+
+  invisible(TRUE)
+}
+
+# Schema version 2 -> 3: add items.group_id to a database created by an
+# earlier markermd (the item_groups table itself is created on first touch by
+# create_tables_if_needed), then stamp the new schema version. Existing
+# rubrics become all-ungrouped, so their scores are unchanged. Same shape as
+# migrate_items_position(): runs on first touch of each database per session,
+# is a no-op once the column exists, and holds an immediate transaction
+# across the check and the ALTER.
+#
+# conn: DBI connection object
+
+migrate_items_group = function(conn) {
+  if ("group_id" %in% DBI::dbListFields(conn, "items")) {
+    return(invisible(FALSE))
+  }
+
+  DBI::dbExecute(conn, "BEGIN IMMEDIATE")
+  if (!"group_id" %in% DBI::dbListFields(conn, "items")) {
+    DBI::dbExecute(conn, "ALTER TABLE items ADD COLUMN group_id TEXT")
+    set_metadata(conn, "schema_version", "3")
   }
   DBI::dbExecute(conn, "COMMIT")
 
@@ -343,15 +399,16 @@ upsert_items = function(conn, question_name, item_id, rubric_item, position = NU
   # Single atomic statement (created_at is preserved on update); the previous
   # SELECT-then-write pattern was racy against a concurrent skill writer
   DBI::dbExecute(conn, "
-    INSERT INTO items (question_name, item_id, hotkey, position, points, description, created_at, updated_at)
+    INSERT INTO items (question_name, item_id, hotkey, position, group_id, points, description, created_at, updated_at)
     VALUES (
       ?, ?, ?,
       COALESCE(?, (SELECT COALESCE(MAX(position), 0) + 1 FROM items WHERE question_name = ?)),
-      ?, ?, ?, ?
+      ?, ?, ?, ?, ?
     )
     ON CONFLICT(question_name, item_id) DO UPDATE SET
       hotkey = excluded.hotkey,
       position = COALESCE(?, items.position),
+      group_id = excluded.group_id,
       points = excluded.points,
       description = excluded.description,
       updated_at = excluded.updated_at
@@ -361,12 +418,100 @@ upsert_items = function(conn, question_name, item_id, rubric_item, position = NU
     if (is.na(rubric_item@hotkey)) NA_integer_ else rubric_item@hotkey,
     position,
     question_name,
+    if (is.na(rubric_item@group)) NA_character_ else rubric_item@group,
     rubric_item@points,
     rubric_item@description,
     timestamp,
     timestamp,
     position
   ))
+}
+
+# Upsert an item_groups record (created_at is preserved on update). The
+# UNIQUE (question_name, label) constraint rejects a label already used by
+# another group of the question; callers check availability first and this
+# is the safety net.
+#
+# conn: DBI connection object
+# question_name: Character string
+# group_id: Character string
+# group: markermd_rubric_group S7 object
+
+upsert_item_group = function(conn, question_name, group_id, group) {
+  timestamp = get_current_timestamp()
+  DBI::dbExecute(conn, "
+    INSERT INTO item_groups (question_name, group_id, label, floor, ceiling, exclusive, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(question_name, group_id) DO UPDATE SET
+      label = excluded.label,
+      floor = excluded.floor,
+      ceiling = excluded.ceiling,
+      exclusive = excluded.exclusive,
+      updated_at = excluded.updated_at
+  ", params = list(
+    question_name,
+    group_id,
+    group@label,
+    if (is.na(group@floor)) NA_real_ else as.numeric(group@floor),
+    if (is.na(group@ceiling)) NA_real_ else as.numeric(group@ceiling),
+    as.integer(group@exclusive),
+    timestamp,
+    timestamp
+  ))
+}
+
+# Delete an item_groups record and ungroup its members, which keep their
+# positions (they become ungrouped items in place). Grades are untouched.
+#
+# conn: DBI connection object
+# question_name: Character string
+# group_id: Character string
+
+delete_item_group_records = function(conn, question_name, group_id) {
+  DBI::dbExecute(conn, "
+    UPDATE items SET group_id = NULL WHERE question_name = ? AND group_id = ?
+  ", params = list(question_name, group_id))
+  DBI::dbExecute(conn, "
+    DELETE FROM item_groups WHERE question_name = ? AND group_id = ?
+  ", params = list(question_name, group_id))
+}
+
+# Repositories with more than one of the given items selected (by the most
+# recent grade event per item): the pairs that stand in the way of making a
+# group exclusive, or of moving an item into an exclusive group. Empty when
+# member_ids has fewer than two entries.
+#
+# conn: DBI connection object
+# question_name: Character string
+# member_ids: Character vector of the item ids that would share the group
+# Returns: Data frame with assignment_repo and item_ids (a list column of
+#   the selected member ids), one row per conflicting repository
+
+group_selection_conflicts = function(conn, question_name, member_ids) {
+  empty = data.frame(assignment_repo = character(0), stringsAsFactors = FALSE)
+  empty$item_ids = list()
+  if (length(member_ids) < 2) {
+    return(empty)
+  }
+
+  grades = latest_rows(
+    conn, "grades", c("assignment_repo", "item_id"),
+    where = "question_name = ?", params = list(question_name)
+  )
+  grades = grades[grades$selected == 1 & grades$item_id %in% member_ids, , drop = FALSE]
+  if (nrow(grades) == 0) {
+    return(empty)
+  }
+
+  by_repo = split(grades$item_id, grades$assignment_repo)
+  by_repo = by_repo[vapply(by_repo, length, integer(1)) > 1]
+  if (length(by_repo) == 0) {
+    return(empty)
+  }
+
+  out = data.frame(assignment_repo = names(by_repo), stringsAsFactors = FALSE)
+  out$item_ids = unname(lapply(by_repo, function(ids) member_ids[member_ids %in% ids]))
+  out
 }
 
 # Delete an items record along with its grade-selection events, so a repo no
@@ -463,6 +608,15 @@ load_all_settings = function(conn) {
 
 load_all_items = function(conn) {
   DBI::dbGetQuery(conn, "SELECT * FROM items ORDER BY question_name, id")
+}
+
+# Load all item groups from database
+#
+# conn: DBI connection object
+# Returns: Data frame with item_groups data
+
+load_all_item_groups = function(conn) {
+  DBI::dbGetQuery(conn, "SELECT * FROM item_groups ORDER BY question_name, id")
 }
 
 # Most recent row per group from an event-log table

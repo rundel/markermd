@@ -4,10 +4,14 @@
 \alias{export_marks}
 \title{Export scores and feedback for a graded project}
 \usage{
-export_marks(project = ".")
+export_marks(project = ".", group_headings = FALSE)
 }
 \arguments{
 \item{project}{Path to the project directory. Defaults to the working directory.}
+
+\item{group_headings}{Passed to \code{\link[=export_comments]{export_comments()}}: whether to write each
+item group's selected items under a subheading carrying the group's
+label. Defaults to \code{FALSE}.}
 }
 \value{
 Invisibly, a list with elements \code{scores} (the CSV path) and

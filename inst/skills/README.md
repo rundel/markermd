@@ -43,7 +43,9 @@ description.
   the project's grading database, and validates it across the student
   repositories, ready to refine in the `template()` app.
 - `markermd-scaffold-rubric`: scaffold a grading rubric (per-question rubric
-  items plus scoring setup) for a project that already has a stored template.
+  items plus scoring setup, with item groups that cap stacking deductions or
+  hold exclusive severity tiers) for a project that already has a stored
+  template.
   It asks whether to work through the questions all at once or one at a time
   (confirming and importing each question before moving to the next), whether
   to base the rubric on the key alone or on the key plus the student

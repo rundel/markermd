@@ -624,11 +624,12 @@ project_question_names = function(root) {
 #' Export a project's grading rubric to YAML
 #'
 #' Writes the rubric stored in the project's grading database (each question's
-#' rubric items, in display order, plus its scoring setup when one has been
-#' configured) to a YAML file. The file contains no per-repository grading
-#' data, so it can be shared, edited by hand or by an LLM tool, and brought
-#' back with [rubric_import()]. The file format is described by the JSON
-#' Schema at `system.file("schema/markermd-rubric.json", package = "markermd")`.
+#' rubric items, in display order, with its item groups nested around their
+#' members, plus its scoring setup when one has been configured) to a YAML
+#' file. The file contains no per-repository grading data, so it can be
+#' shared, edited by hand or by an LLM tool, and brought back with
+#' [rubric_import()]. The file format is described by the JSON Schema at
+#' `system.file("schema/markermd-rubric.json", package = "markermd")`.
 #'
 #' @param path Output path for the rubric `.yaml` file.
 #' @param project Path to the project directory. Defaults to the working directory.
@@ -683,9 +684,18 @@ rubric_export = function(path, project = ".", question = NULL) {
 #' @details
 #' With `mode = "append"` (the default) the file's items are added after each
 #' question's existing items. With `mode = "replace"` each affected question's
-#' existing items are deleted first; this also deletes any recorded selections
-#' of those items, for every repository, and cannot be undone. A question's
-#' scoring setup is only updated when the file provides a `scoring` block.
+#' existing items and item groups are deleted first; this also deletes any
+#' recorded selections of those items, for every repository, and cannot be
+#' undone. A question's scoring setup is only updated when the file provides
+#' a `scoring` block.
+#'
+#' Item groups (format `"1.1"`; see [markermd_rubric_group]) are matched to
+#' the question's existing groups by label. Items for an existing group are
+#' appended to the end of that group and the file's `floor`, `ceiling` and
+#' `exclusive` overwrite the stored ones; an unknown label creates a new
+#' group at the end of the question. Making an existing group exclusive
+#' while some repository has more than one of its items selected aborts
+#' before anything is written, listing those repositories.
 #'
 #' Question names in the file must exactly match question names in the
 #' project's stored template; mismatches abort before anything is written.
@@ -846,11 +856,12 @@ restrict_names = function(requested, available, unknown_msg, hint_msg) {
 }
 
 # Resolve a marks exchange list against a project: validate repository names,
-# question names, and rubric item descriptions, and translate each
-# (repo, question) entry into the item_id-keyed selections that
-# apply_marks_import() writes. All validation happens here, before any write.
-# An entry whose items is NULL (only possible via marks_set()) leaves
-# selections untouched and carries comments only.
+# question names, and rubric item descriptions, check that no exclusive
+# group has more than one item selected, and translate each (repo, question)
+# entry into the item_id-keyed selections that apply_marks_import() writes.
+# All validation happens here, before any write. An entry whose items is
+# NULL (only possible via marks_set()) leaves selections untouched and
+# carries comments only.
 #
 # proj: markermd_project object
 # marks: Exchange-list marks (read_marks_yaml() shape)
@@ -861,6 +872,7 @@ resolve_marks_plan = function(proj, marks) {
   question_universe = project_question_names(proj@root)$names
 
   items_cache = list()
+  groups_cache = list()
   plan = list()
 
   for (repo_entry in marks$repos) {
@@ -884,8 +896,10 @@ resolve_marks_plan = function(proj, marks) {
       if (!is.null(question$items)) {
         if (is.null(items_cache[[question$name]])) {
           items_cache[[question$name]] = load_rubric_items(proj@root, question$name)
+          groups_cache[[question$name]] = load_item_groups(proj@root, question$name)
         }
         items = items_cache[[question$name]]
+        groups = groups_cache[[question$name]]
         descriptions = vapply(items, function(item) item@description, character(1))
 
         dupes = unique(descriptions[duplicated(descriptions)])
@@ -911,6 +925,21 @@ resolve_marks_plan = function(proj, marks) {
         }
 
         selections = stats::setNames(descriptions %in% question$items, names(items))
+
+        for (group_id in names(groups)) {
+          group = groups[[group_id]]
+          if (!isTRUE(group@exclusive)) {
+            next
+          }
+          members = vapply(items, function(item) identical(item@group, group_id), logical(1))
+          chosen = descriptions[members & selections]
+          if (length(chosen) > 1) {
+            cli::cli_abort(c(
+              "Marks for {.val {repo_entry$name}} / {.val {question$name}} select {length(chosen)} items from the exclusive group {.val {group@label}}: {.val {chosen}}.",
+              "i" = "At most one item of an exclusive group can be selected."
+            ))
+          }
+        }
       }
 
       plan[[length(plan) + 1]] = list(
@@ -967,8 +996,9 @@ marks_plan_summary = function(plan, action) {
 #'
 #' All validation (repository names against the project's repos directory,
 #' question names against the stored template, item descriptions against each
-#' question's rubric) happens before anything is written, and the import
-#' itself is a single transaction.
+#' question's rubric, and at most one selected item per exclusive item
+#' group) happens before anything is written, and the import itself is a
+#' single transaction.
 #'
 #' @param path Path to a marks `.yaml`/`.yml` file. Absolute or relative to
 #'   the current directory; a bare relative path is also resolved against the
@@ -1236,7 +1266,8 @@ marks_set = function(repo, question, items = NULL, comment = NULL, private_comme
 #' grading database and writes them to `scores.csv` in the project root, one
 #' row per repository with one column per question plus a `total` column.
 #' Scores are recomputed the same way [mark()] displays them: the points of
-#' the selected rubric items are summed and passed through the question's
+#' the selected rubric items are summed (each item group's combined points
+#' first clamped to its floor and ceiling) and passed through the question's
 #' grading mode and score bounds. A repository/question pair that is not yet
 #' graded (no selected rubric item and no public comment) is written as `NA`,
 #' and a repository's `total` stays `NA` until all of its questions are
@@ -1314,7 +1345,19 @@ export_scores = function(project = ".") {
 #' rubric item descriptions and its public comment. Private comments are
 #' never exported, and a repository with no public feedback gets no file.
 #'
+#' Item groups never change the default output: selected items are listed
+#' as they are and a group's floor or ceiling is never mentioned, in keeping
+#' with the rule that student-facing text does not describe grading
+#' mechanics. With `group_headings = TRUE` the selected items that belong to
+#' a group are written under a `### <label>` subheading beneath the
+#' question's heading, in display order; the question's ungrouped items and
+#' its public comment come first, without a subheading, and a group with no
+#' selected items gets none. Group labels then reach students, so choose
+#' them accordingly.
+#'
 #' @param project Path to the project directory. Defaults to the working directory.
+#' @param group_headings Whether to write each item group's selected items
+#'   under a subheading carrying the group's label. Defaults to `FALSE`.
 #'
 #' @return The paths of the written markdown files, invisibly.
 #' @seealso [export_scores()], [export_marks()], [marks_export()]
@@ -1323,9 +1366,15 @@ export_scores = function(project = ".") {
 #' @examples
 #' \dontrun{
 #' export_comments("hw01")
+#'
+#' # Group the feedback under the rubric's item group labels
+#' export_comments("hw01", group_headings = TRUE)
 #' }
-export_comments = function(project = ".") {
+export_comments = function(project = ".", group_headings = FALSE) {
   proj = project_config(project)
+  if (!rlang::is_bool(group_headings)) {
+    cli::cli_abort("{.arg group_headings} must be {.code TRUE} or {.code FALSE}.")
+  }
 
   repo_names = project_repo_names(proj)
   if (length(repo_names) == 0) {
@@ -1346,6 +1395,13 @@ export_comments = function(project = ".") {
     vapply(marks$repos, function(r) r$name, character(1))
   )
 
+  # Each question's items with their group ids and its groups in display
+  # order, for placing selected items under their group's subheading
+  rubric_by_question = if (group_headings) {
+    rubric = collect_rubric_data(proj@root, question_names)
+    stats::setNames(rubric$questions, vapply(rubric$questions, function(q) q$name, character(1)))
+  }
+
   comments_rel = if (is.na(proj@comments)) "comments" else proj@comments
   comments_dir = fs::path(proj@root, comments_rel)
   fs::dir_create(comments_dir)
@@ -1360,19 +1416,57 @@ export_comments = function(project = ".") {
     paste0(c("- ", rep("  ", length(lines) - 1)), lines)
   }
 
+  # The feedback for one question: its heading, then the bullets for its
+  # ungrouped (or, by default, all) selected items and its comment, then
+  # with group_headings one subsection per group with a selected item. Every
+  # part ends in a blank line; NULL when the question has nothing to say.
+  question_section = function(q) {
+    items = as.character(q$items)
+    group_of = rep(NA_character_, length(items))
+    groups = list()
+    if (group_headings && !is.null(rubric_by_question[[q$name]])) {
+      rubric_q = rubric_by_question[[q$name]]
+      by_description = stats::setNames(
+        vapply(rubric_q$items, function(item) item@group, character(1)),
+        vapply(rubric_q$items, function(item) item@description, character(1))
+      )
+      group_of = unname(by_description[items])
+      groups = rubric_q$groups
+    }
+
+    top = unlist(lapply(items[is.na(group_of)], as_bullet))
+    if (!is.null(q$comment)) {
+      top = c(top, as_bullet(q$comment))
+    }
+    parts = list()
+    if (length(top) > 0) {
+      parts[[length(parts) + 1]] = top
+    }
+    for (group_id in names(groups)) {
+      members = items[!is.na(group_of) & group_of == group_id]
+      if (length(members) == 0) {
+        next
+      }
+      parts[[length(parts) + 1]] = c(
+        paste0("### ", groups[[group_id]]@label), "",
+        unlist(lapply(members, as_bullet))
+      )
+    }
+    if (length(parts) == 0) {
+      return(NULL)
+    }
+    c(paste0("## ", q$name), "", unlist(lapply(parts, function(part) c(part, ""))))
+  }
+
   written = character(0)
   skipped = character(0)
   for (repo_name in repo_names) {
     sections = list()
     for (q in questions_by_repo[[repo_name]]) {
-      bullets = unlist(lapply(as.character(q$items), as_bullet))
-      if (!is.null(q$comment)) {
-        bullets = c(bullets, as_bullet(q$comment))
+      section = question_section(q)
+      if (!is.null(section)) {
+        sections[[length(sections) + 1]] = section
       }
-      if (length(bullets) == 0) {
-        next
-      }
-      sections[[length(sections) + 1]] = c(paste0("## ", q$name), "", bullets, "")
     }
 
     if (length(sections) == 0) {
@@ -1410,6 +1504,9 @@ export_comments = function(project = ".") {
 #' per-repository feedback files from the project's grading database.
 #'
 #' @param project Path to the project directory. Defaults to the working directory.
+#' @param group_headings Passed to [export_comments()]: whether to write each
+#'   item group's selected items under a subheading carrying the group's
+#'   label. Defaults to `FALSE`.
 #'
 #' @return Invisibly, a list with elements `scores` (the CSV path) and
 #'   `comments` (the feedback file paths).
@@ -1420,9 +1517,9 @@ export_comments = function(project = ".") {
 #' \dontrun{
 #' export_marks("hw01")
 #' }
-export_marks = function(project = ".") {
+export_marks = function(project = ".", group_headings = FALSE) {
   scores = export_scores(project)
-  comments = export_comments(project)
+  comments = export_comments(project, group_headings = group_headings)
   invisible(list(scores = scores, comments = comments))
 }
 

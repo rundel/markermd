@@ -19,11 +19,12 @@ The output \code{path}, invisibly.
 }
 \description{
 Writes the rubric stored in the project's grading database (each question's
-rubric items, in display order, plus its scoring setup when one has been
-configured) to a YAML file. The file contains no per-repository grading
-data, so it can be shared, edited by hand or by an LLM tool, and brought
-back with \code{\link[=rubric_import]{rubric_import()}}. The file format is described by the JSON
-Schema at \code{system.file("schema/markermd-rubric.json", package = "markermd")}.
+rubric items, in display order, with its item groups nested around their
+members, plus its scoring setup when one has been configured) to a YAML
+file. The file contains no per-repository grading data, so it can be
+shared, edited by hand or by an LLM tool, and brought back with
+\code{\link[=rubric_import]{rubric_import()}}. The file format is described by the JSON Schema at
+\code{system.file("schema/markermd-rubric.json", package = "markermd")}.
 }
 \examples{
 \dontrun{

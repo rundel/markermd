@@ -8,7 +8,8 @@ markermd_rubric_item(
   hotkey = integer(0),
   points = integer(0),
   description = character(0),
-  selected = FALSE
+  selected = FALSE,
+  group = NA_character_
 )
 }
 \arguments{
@@ -22,10 +23,18 @@ from an item's display position (1-10 for the first ten, NA beyond).}
 \item{description}{Character. Description text for the rubric item}
 
 \item{selected}{Logical. Whether this item is currently selected}
+
+\item{group}{Character. Id of the \link{markermd_rubric_group} the item belongs
+to within its question, or \code{NA} (the default) when the item is
+ungrouped. Group ids are an app/database detail: in a rubric YAML file
+the grouping is expressed by nesting items under a group entry.}
 }
 \value{
 A \code{markermd_rubric_item} S7 object.
 }
 \description{
 S7 class representing a single rubric item with hotkey, points, description and selection state
+}
+\seealso{
+\link{markermd_rubric_group}
 }

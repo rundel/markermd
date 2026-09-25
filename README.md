@@ -101,11 +101,11 @@ The Validation tab checks the selected repository against the template's rules, 
 
 ### Rubric
 
-The Rubric tab is where grading happens. The left pane shows the student's rendered report or source; the right pane shows the current question's rubric. Items toggle by click or number-key hotkey (the first ten items of a question get the keys 1-9 and 0; there is no limit on items, and any beyond the tenth toggle by click), and the score follows from the question's scoring setup (additive or deduction mode, with optional clamping between zero and the question total; clicking the score display edits the total, and the gear popover holds the mode and bounds). Below the items are two comment boxes: a public, student-facing comment (which also marks the question as graded) and private notes that are never shared with students. Every action autosaves to the project database.
+The Rubric tab is where grading happens. The left pane shows the student's rendered report or source; the right pane shows the current question's rubric. Items toggle by click or number-key hotkey (the first ten items of a question get the keys 1-9 and 0; there is no limit on items, and any beyond the tenth toggle by click), and the score follows from the question's scoring setup (additive or deduction mode, with optional clamping between zero and the question total; clicking the score display edits the total, and the gear popover holds the mode and bounds). Items that stack can be placed in a named group with a floor or ceiling on their combined points, so every defect is recorded while the deductions stay proportionate, or made exclusive so only one severity tier can be selected; a group's header shows its live subtotal and flags a bound that was hit, and a badge beside the score opens the breakdown. Below the items are two comment boxes: a public, student-facing comment (which also marks the question as graded) and private notes that are never shared with students. Every action autosaves to the project database.
 
 ![The mark app's Rubric tab: rendered report on the left; rubric items with hotkeys, the computed score, and the public and private comment boxes on the right](man/figures/mark_rubric_screenshot.png)
 
-Rubric items can be added, edited, and reordered while grading, and the rubric pane's menu offers YAML import and export for editing the rubric outside the app.
+Rubric items can be added, edited, reordered, and grouped while grading (Add Group creates a group whose settings popover holds its label, bounds and exclusivity; each item's group menu moves it in or out), and the rubric pane's menu offers YAML import and export for editing the rubric outside the app.
 
 ## Scripting the workflow
 
@@ -139,8 +139,8 @@ When grading is complete, `export_marks()` writes the final hand-off artifacts f
 export_marks("hw01")
 ```
 
-- `export_scores()` writes `scores.csv` to the project root: one row per repository, one column per question, plus a `total` column. Scores are recomputed exactly as `mark()` displays them, passing each question's selected rubric item points through its grading mode and bounds. Ungraded repository/question pairs export as `NA`, and a repository's total stays `NA` until all of its questions are graded.
-- `export_comments()` writes each repository's student-facing feedback to `comments/<repo>.md` (or the project's configured comments directory). Each graded question appears as a heading, in template order, followed by a bulleted list of its selected rubric item descriptions and public comment. Private notes are never exported, and a repository with no public feedback gets no file.
+- `export_scores()` writes `scores.csv` to the project root: one row per repository, one column per question, plus a `total` column. Scores are recomputed exactly as `mark()` displays them, passing each question's selected rubric item points (each item group's combined points first clamped to its floor and ceiling) through its grading mode and bounds. Ungraded repository/question pairs export as `NA`, and a repository's total stays `NA` until all of its questions are graded.
+- `export_comments()` writes each repository's student-facing feedback to `comments/<repo>.md` (or the project's configured comments directory). Each graded question appears as a heading, in template order, followed by a bulleted list of its selected rubric item descriptions and public comment. Group bounds are never mentioned; with `group_headings = TRUE` a group's selected items are listed under a subheading carrying its label. Private notes are never exported, and a repository with no public feedback gets no file.
 
 ## Agent skills (Claude Code and Codex)
 

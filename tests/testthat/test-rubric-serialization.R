@@ -39,7 +39,9 @@ test_that("rubric YAML round-trips items, order and scoring", {
   expect_identical(write_rubric_yaml(rubric, path), path)
   back = read_rubric_yaml(path)
 
-  expect_equal(back$format_version, markermd:::markermd_rubric_version())
+  # a rubric without item groups is written as format 1.0 so it still loads
+  # in older markermd; groups (test-rubric-groups.R) bump it to 1.1
+  expect_equal(back$format_version, "1.0")
   expect_length(back$questions, 2)
 
   q1 = back$questions[[1]]

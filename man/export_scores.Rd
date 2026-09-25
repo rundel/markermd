@@ -17,7 +17,8 @@ Computes every student repository's per-question scores from the project's
 grading database and writes them to \code{scores.csv} in the project root, one
 row per repository with one column per question plus a \code{total} column.
 Scores are recomputed the same way \code{\link[=mark]{mark()}} displays them: the points of
-the selected rubric items are summed and passed through the question's
+the selected rubric items are summed (each item group's combined points
+first clamped to its floor and ceiling) and passed through the question's
 grading mode and score bounds. A repository/question pair that is not yet
 graded (no selected rubric item and no public comment) is written as \code{NA},
 and a repository's \code{total} stays \code{NA} until all of its questions are

@@ -333,8 +333,53 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
           .rubric-item-row:hover { background-color: #e9ecef; }
           .rubric-action-btns { opacity: 0.35; transition: opacity 0.15s ease-in-out; }
           .rubric-item-row:hover .rubric-action-btns,
+          .rubric-group-head:hover .rubric-action-btns,
           .rubric-action-btns:hover,
           .rubric-action-btns:focus-within { opacity: 1; }
+          .rubric-group-menu { font-size: 12px; min-width: 200px; }
+          .rubric-group-menu .dropdown-item { padding: 4px 12px; }
+          .rubric-group-menu .dropdown-header { padding: 4px 12px; font-size: 11px; }
+
+          /* Rubric item groups: a left rule (amber while a bound is hit)
+             around a header row and the member rows, with the subtotal in
+             the header keeping clear of its hover actions */
+          .rubric-group { border-left: 3px solid #ced4da; margin: 8px 0 8px 2px; }
+          .rubric-group-capped { border-left-color: #f0a04b; }
+          .rubric-group-head {
+            padding: 4px 8px 4px 10px; background: #f8f9fa; border-radius: 0 4px 4px 0;
+          }
+          .rubric-group-name { font-weight: 600; font-size: 12.5px; }
+          .rubric-group-chip {
+            font-size: 11px; border: 1px solid #ced4da; border-radius: 10px; padding: 0 7px;
+            color: #495057; background: #fff; white-space: nowrap;
+          }
+          .rubric-group-chip-excl { border-color: #9ec5fe; color: #0a58ca; background: #f0f6ff; }
+          .rubric-group-subtotal {
+            margin-left: auto; font-size: 12px; font-weight: 600; white-space: nowrap;
+            padding-right: 64px;
+          }
+          .rubric-group-subtotal .raw {
+            text-decoration: line-through; color: #6c757d; font-weight: 400; margin-right: 4px;
+          }
+          .rubric-group-capped .rubric-group-subtotal .eff { color: #b35c00; }
+          .rubric-group .rubric-item-row { margin-left: 6px !important; }
+          .rubric-hk-radio { border-radius: 50% !important; }
+          .rubric-group-settings .form-group { margin-bottom: 8px; }
+          .rubric-group-settings .control-label { font-size: 12px; font-weight: 600; margin-bottom: 2px; }
+          .rubric-group-settings .form-control { font-size: 12.5px; padding: 3px 8px; }
+
+          /* The cap badge beside the score and the breakdown it opens; the
+             breakdown and group settings popovers are wider than the
+             Bootstrap default so their columns fit */
+          .rubric-wide-popover { --bs-popover-max-width: 400px; }
+          .rubric-cap-badge {
+            background: #fff3e0; color: #b35c00; border: 1px solid #f3c58f; border-radius: 10px;
+            font-size: 11px; font-weight: 600; padding: 1px 8px; cursor: pointer; white-space: nowrap;
+          }
+          .rubric-score-breakdown td { padding: 2px 6px; font-size: 12px; }
+
+          /* The Assignments table marker on a score the group bounds changed */
+          .rubric-cap-mark { color: #b35c00; font-size: 9px; vertical-align: super; margin-left: 1px; }
         
         '))
       ),
@@ -514,22 +559,21 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       if (is.null(template_obj) || length(template_obj@questions) == 0) {
         return(list(
           question_names = NULL, graded_pairs = NULL, all_progress = NULL,
-          totals = numeric(0), scores = NULL, summary = NULL
+          totals = numeric(0), scores = NULL, capped = NULL, summary = NULL
         ))
       }
       question_names = template_question_names(template_obj)
       graded_pairs = graded_question_pairs(root)
-      scores = build_scores_table_data(
-        collect_score_data(root, question_names, repo_list),
-        question_names,
-        repo_list
-      )
+      score_data = collect_score_data(root, question_names, repo_list)
+      scores = build_scores_table_data(score_data, question_names, repo_list)
       list(
         question_names = question_names,
         graded_pairs = graded_pairs,
         all_progress = calculate_grading_progress(root, question_names, repo_list, graded_pairs = graded_pairs),
         totals = question_total_scores(root, question_names),
         scores = scores,
+        # What the item group bounds changed per pair, for the score marker
+        capped = build_scores_table_data(score_data, question_names, repo_list, value = "bound_adjustment"),
         summary = build_scores_summary_rows(scores, question_names)
       )
     })
@@ -569,7 +613,8 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
         all_progress = state$all_progress,
         graded_pairs = state$graded_pairs,
         question_names = state$question_names,
-        scores_table = state$scores
+        scores_table = state$scores,
+        capped_table = state$capped
       )
 
       repo_table_reactable(table_data, state$summary, state$totals, click_input = "score_clicked")

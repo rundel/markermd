@@ -56,8 +56,9 @@ comment unchanged, while an empty string clears it.
 
 All validation (repository names against the project's repos directory,
 question names against the stored template, item descriptions against each
-question's rubric) happens before anything is written, and the import
-itself is a single transaction.
+question's rubric, and at most one selected item per exclusive item
+group) happens before anything is written, and the import itself is a
+single transaction.
 }
 \examples{
 \dontrun{

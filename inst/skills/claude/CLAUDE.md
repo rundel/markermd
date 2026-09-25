@@ -130,10 +130,10 @@ questions:
   check that each `node_id` exists; a wrong anchor surfaces as a per-repo
   error from `validate_project()`.
 
-### Rubric (`format_version: "1.0"`)
+### Rubric (`format_version: "1.1"`)
 
 ```yaml
-format_version: "1.0"
+format_version: "1.1"
 questions:
 - name: Q1
   scoring:
@@ -148,6 +148,20 @@ questions:
     description: Question not attempted
   - points: -5
     description: Confidence interval uses the normal quantile instead of qt() with n-1 df
+  - group: Examples
+    floor: -2
+    items:
+    - points: -1
+      description: No example with a sample size below 30
+    - points: -1
+      description: Examples do not vary the confidence level
+  - group: Write-up
+    exclusive: true
+    items:
+    - points: -3
+      description: The interpretation of the interval is missing
+    - points: -1.5
+      description: The interpretation of the interval is incomplete
 ```
 
 - `name` must match a stored template question exactly; the import aborts
@@ -160,19 +174,35 @@ questions:
   `bound_below_max` (clamp the score to `[0, total_score]`; both default to
   true).
 - Each item is `points` plus a `description`. The description is the item's
-  identity: non-empty, unique within its question, and copied verbatim
-  wherever the item is referenced. Item order is display order, and the
-  first ten items of a question are bound to the hotkeys 1-9 and 0, so the
+  identity: non-empty, unique within its question (across all of its
+  groups), and copied verbatim wherever the item is referenced. Item order
+  is display order, and the first ten items of a question, counting a
+  group's items in place, are bound to the hotkeys 1-9 and 0, so the
   most-used items come first. Give every question a 0-point confirmation item
   (`Looks good`) in negative mode, or a full-credit item in positive mode, so
   a correct answer can be recorded as graded. Descriptions are shown to
   students: phrase them as feedback about the work, never as grading
   mechanics.
+- An entry of `items` may instead be an item group: a `group` label (unique
+  within the question) with its own `items` and optionally `floor` (`<= 0`),
+  `ceiling` (`>= 0`) and `exclusive` (a boolean). The combined points of the
+  group's selected items are clamped to `[floor, ceiling]` before the
+  question's scoring mode and bounds apply, so a group with nothing selected
+  contributes zero and a capped group lets the grader record every defect
+  without the deductions stacking past the cap. An exclusive group allows at
+  most one selected item (severity tiers); `marks_import()` rejects a pair
+  that selects two. Groups cannot nest. A file without groups is written as
+  `format_version: "1.0"`, and both versions are read. Group labels reach
+  students only when `export_comments(group_headings = TRUE)` is used.
 - Import with `rubric_import(path, project, mode = "append")`, which adds the
-  file's items after each question's existing ones; `mode = "replace"` deletes
-  each affected question's items first, together with every recorded
-  selection of them across all repositories, and cannot be undone. Export the
-  stored rubric with `rubric_export()`.
+  file's items after each question's existing ones, merging a group into the
+  existing group of the same label (items appended to it, bounds
+  overwritten) and creating a group for a new label; `mode = "replace"`
+  deletes each affected question's items and groups first, together with
+  every recorded selection of the items across all repositories, and cannot
+  be undone. Making an existing group exclusive while some repository has
+  two of its items selected aborts the import. Export the stored rubric with
+  `rubric_export()`.
 
 ### Marks (`format_version: "1.0"`)
 

@@ -7,16 +7,22 @@ description: Scaffold a markermd grading rubric (per-question items and scoring)
 
 ## Overview
 
-markermd grades each question against a rubric: a flat list of rubric items,
+markermd grades each question against a rubric: a list of rubric items,
 where each item is a point value plus a feedback description that the grader
 toggles on or off per student, and a scoring setup (`total_score`, a
-`grading_mode` of `positive` or `negative`, and score bounds). Item order is
-the display order; the first ten items per question are bound to the keyboard
-hotkeys 1-9 and 0 and any further items are toggled by clicking (there is no
-limit on the number of items), so the most-used items belong first. The canonical
-store for the rubric is the project's grading database
-(`.markermd/markermd.sqlite`); YAML (`format_version: "1.0"`) is the
-human-authorable import/export format, with the full JSON Schema bundled at
+`grading_mode` of `positive` or `negative`, and score bounds). Items that
+stack (several example checks, several documentation checks, the tiers of a
+write-up) can be placed in a named **item group** whose combined points are
+bounded by a `floor` and/or `ceiling`, or which is `exclusive` (at most one
+selected item), so the grader records every defect and the score still
+respects the question's calibration. Item order is the display order; the
+first ten items per question, counting a group's items in place, are bound
+to the keyboard hotkeys 1-9 and 0 and any further items are toggled by
+clicking (there is no limit on the number of items), so the most-used items
+belong first. The canonical store for the rubric is the project's grading
+database (`.markermd/markermd.sqlite`); YAML (`format_version: "1.1"`, or
+`"1.0"` for a file without groups) is the human-authorable import/export
+format, with the full JSON Schema bundled at
 `system.file("schema/markermd-rubric.json", package = "markermd")`. This skill
 builds that scaffolding so the user does not have to author items one at a
 time in the app.
@@ -331,6 +337,35 @@ Guidelines:
 - With the key + repos basis, add items only for mistakes actually observed in
   step 6 beyond the key-derived core checks -- do not pad with hypotheticals.
 
+Item groups, for items that stack. Several items often describe the same
+category of shortfall (the examples a solution should demonstrate, the
+pieces of its documentation, style and leftover debug output, the quality
+of a write-up). Selected together they can swamp the question, and a
+"never select both" rule between two severities of the same problem is
+only enforced by grader discipline. Put such items in a group:
+
+- A **capped group** carries a `floor` (deduction mode: the most the group
+  can take off together) or a `ceiling` (additive mode: the most it can
+  earn together). Choose the bound from the question's weight: roughly
+  15-20 percent of `total_score` for the examples category, less for style
+  and debug output, and about the weight of the element for documentation
+  or a write-up. The grader still selects every defect that applies; the
+  bound does the proportionality, and the record of what was wrong stays
+  complete.
+- An **exclusive group** (`exclusive: true`) holds severity tiers of one
+  problem ("write-up absent" versus "write-up partial", "comparison missing"
+  versus "comparison superficial"): at most one of its items can be
+  selected. Use it instead of two separate items plus an informal rule.
+- Do not group the confirmation item or the core correctness checks, and
+  keep them ahead of any group: hotkeys follow the flat position, so the
+  most-used items should hold the first keys. A group is only worth
+  creating for two or more items; one level of grouping only, since
+  groups cannot nest.
+- A group's `group` label is shown to the grader and, only when feedback
+  is exported with group headings, to students, so phrase it as a neutral
+  category name ("Examples", "Documentation", "Write-up"), never as a
+  grading mechanic.
+
 ### 8. The rubric YAML: shape, validation, and import mode
 
 Both workflows write the rubric to `<root>/markermd-rubric.yaml` (ask if the
@@ -338,7 +373,7 @@ user wants a different location) and import from that file; the
 question-at-a-time workflow grows it one question per round. Shape:
 
 ```yaml
-format_version: "1.0"
+format_version: "1.1"
 questions:
 - name: Q1
   scoring:
@@ -353,6 +388,22 @@ questions:
     description: Question not attempted
   - points: -5
     description: Confidence interval uses the normal quantile instead of qt() with n-1 df
+  - group: Examples
+    floor: -2
+    items:
+    - points: -1
+      description: No example with a sample size below 30
+    - points: -1
+      description: No example where the interval misses the true mean
+    - points: -1
+      description: Examples do not vary the confidence level
+  - group: Write-up
+    exclusive: true
+    items:
+    - points: -3
+      description: The interpretation of the interval is missing
+    - points: -1.5
+      description: The interpretation of the interval is incomplete
   - points: -1
     description: Plot is missing axis labels
 ```
@@ -362,8 +413,14 @@ Rules and constraints:
 - `name` values must match the stored template's question names exactly
   (step 2).
 - There are **no item ids and no hotkeys** in the YAML: item order is the
-  binding (positions 1-10 become the hotkeys on import; later positions have
-  none).
+  binding (positions 1-10, counting a group's items in place, become the
+  hotkeys on import; later positions have none).
+- A group entry has a `group` label (unique within the question), its
+  `items`, and optionally `floor` (a number `<= 0`), `ceiling` (a number
+  `>= 0`) and `exclusive` (a boolean). Groups cannot nest, and item
+  descriptions stay unique across the whole question, groups included.
+  Use `format_version: "1.1"` when the file has a group (`"1.0"` files
+  cannot carry one).
 - `scoring` is optional per question; when omitted the project's existing
   scoring settings are left unchanged. In this skill, always emit `scoring`
   for every question, using the step 5 totals.
@@ -399,10 +456,13 @@ Rscript -e 'p <- tempfile(fileext = ".yaml"); markermd::rubric_export(p, project
 If any question already has items, **ask the user** which import mode to use:
 
 - `append` (the default): the file's items are added after each question's
-  existing items.
-- `replace`: each affected question's existing items are deleted first --
-  along with **all recorded selections of those items, for every repository**.
-  This cannot be undone, so say so explicitly when offering it.
+  existing items. A group whose label matches an existing group of the
+  question is merged into it (its items appended to that group, its bounds
+  overwriting the stored ones); a new label creates a new group.
+- `replace`: each affected question's existing items and groups are deleted
+  first -- along with **all recorded selections of those items, for every
+  repository**. This cannot be undone, so say so explicitly when offering
+  it.
 
 Ask this once: in the question-at-a-time workflow the chosen mode applies to
 every per-question import, and `replace` only touches the questions named in
@@ -489,6 +549,9 @@ markermd::mark("<root>")
 
 Point out that the Rubric pane shows the items with their hotkeys (the first
 ten per question, in order; any further items are toggled by clicking), that
-items can be edited, reordered, and added while grading, and that the pane's
-menu offers the same YAML import/export for later round trips. Remind them the scaffold is a starting point: real
+groups appear as sections whose header shows the live subtotal and flags a
+hit bound, that items can be edited, reordered, added and moved between
+groups while grading (Add Group creates a group; each item's group menu
+moves it), and that the pane's menu offers the same YAML import/export for
+later round trips. Remind them the scaffold is a starting point: real
 submissions will suggest items no one anticipated.

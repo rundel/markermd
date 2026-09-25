@@ -54,12 +54,63 @@ db_row_to_rubric_item = function(items_row, selected = FALSE) {
     as.integer(items_row$hotkey[1])
   }
 
+  group = items_row$group_id[1]
+  group = if (is.null(group) || is.na(group)) NA_character_ else as.character(group)
+
   markermd_rubric_item(
     hotkey = hotkey,
     points = items_row$points[1],
     description = items_row$description[1],
-    selected = selected
+    selected = selected,
+    group = group
   )
+}
+
+# Convert a database item_groups row to a markermd_rubric_group S7 object
+#
+# group_row: Single row data frame from the item_groups table
+# Returns: markermd_rubric_group S7 object
+
+db_row_to_rubric_group = function(group_row) {
+  if (nrow(group_row) == 0) {
+    return(NULL)
+  }
+  markermd_rubric_group(
+    label = group_row$label[1],
+    floor = as.numeric(group_row$floor[1]),
+    ceiling = as.numeric(group_row$ceiling[1]),
+    exclusive = as.logical(group_row$exclusive[1])
+  )
+}
+
+# Item groups for one question out of full item_groups and items data
+# frames, as a named list of markermd_rubric_group keyed by group id in
+# display order: a group sits where its first member does, and groups with
+# no members come after every item, by insertion id.
+#
+# groups_df: Data frame of item_groups rows (see load_all_item_groups())
+# items_df: Data frame of items rows (see load_all_items())
+# question_name: Character string
+
+groups_df_to_list = function(groups_df, items_df, question_name) {
+  rows = groups_df[groups_df$question_name == question_name, , drop = FALSE]
+  if (nrow(rows) == 0) {
+    return(list())
+  }
+
+  item_rows = items_df[items_df$question_name == question_name, , drop = FALSE]
+  item_rows = item_rows[order(item_rows$position, item_rows$hotkey, item_rows$id), , drop = FALSE]
+  first_member = vapply(rows$group_id, function(gid) {
+    hit = which(!is.na(item_rows$group_id) & item_rows$group_id == gid)
+    if (length(hit) == 0) Inf else min(hit)
+  }, numeric(1))
+  rows = rows[order(first_member, rows$id), , drop = FALSE]
+
+  groups = list()
+  for (i in seq_len(nrow(rows))) {
+    groups[[rows$group_id[i]]] = db_row_to_rubric_group(rows[i, ])
+  }
+  groups
 }
 
 # Save grade state to database
@@ -90,10 +141,10 @@ save_rubric_item = function(collection_path, question_name, item_id, rubric_item
 }
 
 # Save a question's rubric items in display order, atomically: the list order
-# becomes each item's stored position (and the hotkey it implies), so a
-# renumbering after a move or delete cannot be half-persisted, and it pays one
-# connection rather than one per item. This is the app's only writer of
-# display order.
+# (normalized so each group's members are contiguous) becomes each item's
+# stored position (and the hotkey it implies), so a renumbering after a move
+# or delete cannot be half-persisted, and it pays one connection rather than
+# one per item. This is the app's only writer of display order.
 #
 # collection_path: Path to collection directory
 # question_name: Character string
@@ -101,6 +152,7 @@ save_rubric_item = function(collection_path, question_name, item_id, rubric_item
 #   display order
 
 save_rubric_items = function(collection_path, question_name, items) {
+  items = normalize_item_order(items)
   with_database(collection_path, function(conn) {
     DBI::dbBegin(conn)
     tryCatch({
@@ -128,6 +180,59 @@ delete_rubric_item = function(collection_path, question_name, item_id) {
   with_database(collection_path, function(conn) {
     delete_item_records(conn, question_name, item_id)
     return(TRUE)
+  })
+}
+
+# Save (insert or update) a rubric item group
+#
+# collection_path: Path to collection directory
+# question_name: Character string
+# group_id: Character string (unique identifier for this group)
+# group: markermd_rubric_group S7 object
+
+save_item_group = function(collection_path, question_name, group_id, group) {
+  with_database(collection_path, function(conn) {
+    upsert_item_group(conn, question_name, group_id, group)
+    return(TRUE)
+  })
+}
+
+# Delete a rubric item group, leaving its members ungrouped in place
+#
+# collection_path: Path to collection directory
+# question_name: Character string
+# group_id: Character string
+
+delete_item_group = function(collection_path, question_name, group_id) {
+  with_database(collection_path, function(conn) {
+    delete_item_group_records(conn, question_name, group_id)
+    return(TRUE)
+  })
+}
+
+# Load a question's rubric item groups in display order
+#
+# collection_path: Path to collection directory
+# question_name: Character string
+# Returns: Named list of markermd_rubric_group keyed by group id (see
+#   groups_df_to_list())
+
+load_item_groups = function(collection_path, question_name) {
+  with_database(collection_path, function(conn) {
+    groups_df_to_list(load_all_item_groups(conn), load_all_items(conn), question_name)
+  })
+}
+
+# Repositories with more than one of the given items selected (see
+# group_selection_conflicts())
+#
+# collection_path: Path to collection directory
+# question_name: Character string
+# member_ids: Character vector of item ids
+
+load_group_selection_conflicts = function(collection_path, question_name, member_ids) {
+  with_database(collection_path, function(conn) {
+    group_selection_conflicts(conn, question_name, member_ids)
   })
 }
 
@@ -305,17 +410,19 @@ initialize_database_state = function(collection_path, template_obj) {
 
   question_names = template_question_names(template_obj)
 
-  # One connection for the whole load rather than two per question
+  # One connection for the whole load rather than three per question
   data = with_database(collection_path, function(conn) {
     list(
       settings = load_all_settings(conn),
-      items = load_all_items(conn)
+      items = load_all_items(conn),
+      groups = load_all_item_groups(conn)
     )
   })
 
   state = list(
     grade_states = list(),
-    rubric_items = list()
+    rubric_items = list(),
+    rubric_groups = list()
   )
 
   for (question_name in question_names) {
@@ -329,6 +436,7 @@ initialize_database_state = function(collection_path, template_obj) {
     state$grade_states[[question_name]] = loaded_grade_state
 
     state$rubric_items[[question_name]] = items_df_to_rubric_list(data$items, question_name)
+    state$rubric_groups[[question_name]] = groups_df_to_list(data$groups, data$items, question_name)
   }
 
   return(state)
@@ -358,24 +466,26 @@ items_df_to_rubric_list = function(items_df, question_name) {
   items
 }
 
-# Mint n fresh rubric item ids in the app's "item_<k>" style, continuing past
-# the largest numeric suffix among the ids already in use so imports never
-# reuse an id.
+# Mint n fresh ids in the app's "item_<k>" style (or "group_<k>" for item
+# groups), continuing past the largest numeric suffix among the ids already
+# in use so imports never reuse an id.
 #
 # existing_ids: Character vector of ids that must not be reused
 # n: Number of ids to mint
+# prefix: Id prefix, "item_" or "group_"
 
-next_item_ids = function(existing_ids, n) {
+next_item_ids = function(existing_ids, n, prefix = "item_") {
   if (n == 0) {
     return(character(0))
   }
 
-  suffixes = sub("^item_", "", existing_ids[grepl("^item_[0-9]+$", existing_ids)])
+  pattern = paste0("^", prefix, "[0-9]+$")
+  suffixes = substring(existing_ids[grepl(pattern, existing_ids)], nchar(prefix) + 1)
   k = if (length(suffixes) == 0) 0L else max(as.integer(suffixes)) + 1L
 
   ids = character(0)
   while (length(ids) < n) {
-    candidate = paste0("item_", k)
+    candidate = paste0(prefix, k)
     if (!candidate %in% existing_ids) {
       ids = c(ids, candidate)
     }
@@ -384,35 +494,119 @@ next_item_ids = function(existing_ids, n) {
   ids
 }
 
+# Repositories that would violate an exclusive group's rule once a rubric
+# import has been applied in append mode: for every group the file marks
+# exclusive that already exists (matched by label), the repositories with
+# more than one of its current members selected. Replace mode deletes the
+# existing items and their selections, so it can never conflict. Checked
+# before anything is written.
+#
+# conn: DBI connection object
+# rubric: Exchange-list rubric (format_version + questions)
+# Returns: Data frame with question, group (label), assignment_repo and
+#   items (the selected member descriptions, joined)
+
+exclusive_import_conflicts = function(conn, rubric) {
+  groups_df = load_all_item_groups(conn)
+  items_df = load_all_items(conn)
+  rows = list()
+
+  for (question in rubric$questions) {
+    for (group in question$groups) {
+      if (!isTRUE(group@exclusive)) {
+        next
+      }
+      db_id = groups_df$group_id[
+        groups_df$question_name == question$name & groups_df$label == group@label
+      ]
+      if (length(db_id) != 1) {
+        next
+      }
+      members = items_df[
+        items_df$question_name == question$name &
+          !is.na(items_df$group_id) & items_df$group_id == db_id,
+        , drop = FALSE
+      ]
+      conflicts = group_selection_conflicts(conn, question$name, members$item_id)
+      for (i in seq_len(nrow(conflicts))) {
+        rows[[length(rows) + 1]] = data.frame(
+          question = question$name,
+          group = group@label,
+          assignment_repo = conflicts$assignment_repo[i],
+          items = paste(
+            members$description[match(conflicts$item_ids[[i]], members$item_id)],
+            collapse = "; "
+          ),
+          stringsAsFactors = FALSE
+        )
+      }
+    }
+  }
+
+  if (length(rows) == 0) {
+    return(data.frame(
+      question = character(0), group = character(0),
+      assignment_repo = character(0), items = character(0),
+      stringsAsFactors = FALSE
+    ))
+  }
+  do.call(rbind, rows)
+}
+
 # Apply a parsed rubric (the exchange list from read_rubric_yaml()) to a
 # project's grading database in a single transaction.
 #
-# Mode "append" keeps each question's existing items and adds the file's items
-# after them; "replace" deletes the existing items first, which also removes
-# their per-repo grade-selection events (delete_item_records). In both modes
-# the combined item list is written back with contiguous display positions
+# Mode "append" keeps each question's existing items and groups and adds the
+# file's items after them; "replace" deletes the existing items (which also
+# removes their per-repo grade-selection events, see delete_item_records)
+# and groups first. The file's groups are matched to the question's existing
+# groups by label: a match reuses the stored group (its floor, ceiling and
+# exclusive flag are overwritten by the file's, just as scoring overwrites
+# settings) and an unknown label creates a new group. In both modes the
+# combined item list is written back with contiguous display positions
 # (kept items first, in their current order, then the file's items in file
-# order) and the hotkeys those positions imply (1-10, NA beyond). Fresh
-# item ids are minted avoiding every id in the database (across all questions,
-# since the mark app's module-id namespace is shared) plus any reserved_ids
-# the caller has ever bound.
+# order, normalized so an item imported into an existing group lands at the
+# end of that group and a new group lands at the end of the question) and the
+# hotkeys those positions imply (1-10, NA beyond). Fresh item and group ids
+# are minted avoiding every id in the database (across all questions, since
+# the mark app's module-id namespace is shared) plus any reserved_ids the
+# caller has ever bound. Making an existing group exclusive while some
+# repository has more than one of its items selected aborts before anything
+# is written (exclusive_import_conflicts()).
 #
 # collection_path: Project root containing the grading database
 # rubric: Exchange-list rubric (format_version + questions)
 # mode: "append" or "replace"
-# reserved_ids: Additional item ids that must not be reused
+# reserved_ids: Additional item / group ids that must not be reused
 # Returns: Named list (by question name) of summaries with mode, n_existing,
-#   new_ids, new_items (markermd_rubric_item objects as written, hotkeys
-#   final), hotkey_changes (named integer vector for kept items whose hotkey
-#   changed; NA means the hotkey was cleared) and scoring
+#   new_ids, new_items (markermd_rubric_item objects as written, hotkeys and
+#   group ids final), items (every item of the question as written, a named
+#   list in display order), hotkey_changes (named integer vector for kept
+#   items whose hotkey changed; NA means the hotkey was cleared), group_ids
+#   (the question's group ids after the import) and scoring
 #   (markermd_grade_state or NULL)
 
 apply_rubric_import = function(collection_path, rubric, mode, reserved_ids = character(0)) {
   with_database(collection_path, function(conn) {
+    if (identical(mode, "append")) {
+      conflicts = exclusive_import_conflicts(conn, rubric)
+      if (nrow(conflicts) > 0) {
+        detail = glue::glue(
+          "{conflicts$assignment_repo} / {conflicts$question}, group \"{conflicts$group}\": {conflicts$items}"
+        )
+        cli::cli_abort(c(
+          "Cannot import the rubric: making a group exclusive while repositories have more than one of its items selected.",
+          stats::setNames(as.character(detail), rep("x", length(detail))),
+          "i" = "Resolve those selections first (in {.code mark()} or with {.code marks_set()}), or import with {.code mode = \"replace\"}."
+        ))
+      }
+    }
+
     DBI::dbBegin(conn)
 
     tryCatch({
       taken = union(load_all_items(conn)$item_id, reserved_ids)
+      taken_groups = union(load_all_item_groups(conn)$group_id, reserved_ids)
       summaries = list()
 
       for (question in rubric$questions) {
@@ -422,49 +616,75 @@ apply_rubric_import = function(collection_path, rubric, mode, reserved_ids = cha
           SELECT * FROM items WHERE question_name = ?
           ORDER BY ", items_display_order_sql
         ), params = list(question_name))
+        existing_groups = DBI::dbGetQuery(conn, "
+          SELECT * FROM item_groups WHERE question_name = ?
+        ", params = list(question_name))
         n_existing = nrow(existing)
 
         if (identical(mode, "replace")) {
           for (item_id in existing$item_id) {
             delete_item_records(conn, question_name, item_id)
           }
+          for (group_id in existing_groups$group_id) {
+            delete_item_group_records(conn, question_name, group_id)
+          }
           existing = existing[0, ]
+          existing_groups = existing_groups[0, ]
         }
 
-        kept_ids = existing$item_id
-
-        # Rewrite kept items whose stored position or hotkey does not match
-        # their display position (a database with gaps, or rows that predate
-        # the position column); hotkey_changes reports only the visible part
-        hotkey_changes = integer(0)
-        for (i in seq_along(kept_ids)) {
-          hotkey = position_hotkey(i)
-          stored_hotkey = as.integer(existing$hotkey[i])
-          stored_position = as.integer(existing$position[i])
-          if (!identical(stored_hotkey, hotkey) || !identical(stored_position, i)) {
-            item = db_row_to_rubric_item(existing[i, ])
-            item@hotkey = hotkey
-            upsert_items(conn, question_name, kept_ids[i], item, position = i)
+        # The file's groups, matched to stored groups by label; the exchange
+        # list's transient group ids are mapped to database ids
+        group_map = character(0)
+        file_groups = if (is.null(question$groups)) list() else question$groups
+        for (exchange_id in names(file_groups)) {
+          group = file_groups[[exchange_id]]
+          db_id = existing_groups$group_id[existing_groups$label == group@label]
+          if (length(db_id) != 1) {
+            db_id = next_item_ids(taken_groups, 1, prefix = "group_")
+            taken_groups = union(taken_groups, db_id)
           }
-          if (!identical(stored_hotkey, hotkey)) {
-            hotkey_changes[kept_ids[i]] = hotkey
-          }
+          group_map[[exchange_id]] = db_id
+          upsert_item_group(conn, question_name, db_id, group)
         }
 
-        # Imported items take the positions after the kept ones
+        kept_items = items_df_to_rubric_list(existing, question_name)
+        kept_ids = names(kept_items)
+
         new_ids = next_item_ids(taken, length(question$items))
         taken = union(taken, new_ids)
-
-        new_items = lapply(seq_along(question$items), function(j) {
-          item = question$items[[j]]
-          item@hotkey = position_hotkey(length(kept_ids) + j)
+        new_items = lapply(question$items, function(item) {
+          if (!is.na(item@group)) {
+            item@group = group_map[[item@group]]
+          }
           item
         })
-        for (j in seq_along(new_items)) {
-          upsert_items(
-            conn, question_name, new_ids[j], new_items[[j]],
-            position = length(kept_ids) + j
-          )
+        names(new_items) = new_ids
+
+        # The final order: kept items, then the file's, pulled together by
+        # group; every item is (re)written whose position, hotkey or group
+        # differs from what is stored. hotkey_changes reports only the
+        # visible part, for kept items.
+        final = normalize_item_order(c(kept_items, new_items))
+        hotkey_changes = integer(0)
+        for (i in seq_along(final)) {
+          item_id = names(final)[i]
+          item = final[[i]]
+          item@hotkey = position_hotkey(i)
+          final[[i]] = item
+
+          if (item_id %in% kept_ids) {
+            row = existing[existing$item_id == item_id, , drop = FALSE]
+            stored_hotkey = as.integer(row$hotkey[1])
+            stored_position = as.integer(row$position[1])
+            if (!identical(stored_hotkey, item@hotkey) || !identical(stored_position, i)) {
+              upsert_items(conn, question_name, item_id, item, position = i)
+            }
+            if (!identical(stored_hotkey, item@hotkey)) {
+              hotkey_changes[item_id] = item@hotkey
+            }
+          } else {
+            upsert_items(conn, question_name, item_id, item, position = i)
+          }
         }
 
         if (!is.null(question$scoring)) {
@@ -475,8 +695,10 @@ apply_rubric_import = function(collection_path, rubric, mode, reserved_ids = cha
           mode = mode,
           n_existing = n_existing,
           new_ids = new_ids,
-          new_items = new_items,
+          new_items = unname(final[new_ids]),
+          items = final,
           hotkey_changes = hotkey_changes,
+          group_ids = union(existing_groups$group_id, unname(group_map)),
           scoring = question$scoring
         )
       }
@@ -590,24 +812,29 @@ marked_question_pairs = function(collection_path) {
 
 # Per-repo per-question scores recomputed from the grading database
 #
-# Replicates the mark() rubric score: the points of the currently selected
-# rubric items (most recent grade event per item, by autoincrement id) are
-# summed and fed through the question's grading mode and bounds from the
-# settings table, defaulting to the app's positive mode with a total of 10
-# when a question has no settings row. The stored current_score is ephemeral
-# app state and is never used. A pair that does not count as graded (see
-# graded_question_pairs()) gets NA rather than a misleading 0 or full marks.
+# Replicates the mark() rubric score through score_question(): the currently
+# selected rubric items (most recent grade event per item, by autoincrement
+# id) are scored with the question's item groups, grading mode and bounds
+# from the settings table, defaulting to the app's positive mode with a
+# total of 10 when a question has no settings row. The stored current_score
+# is ephemeral app state and is never used. A pair that does not count as
+# graded (see graded_question_pairs()) gets NA rather than a misleading 0 or
+# full marks. bound_adjustment is what the group bounds changed
+# (score minus the score with the group bounds ignored), for the
+# Assignments table's marker.
 #
 # collection_path: Path to collection directory
 # question_names: Character vector of question names
 # assignment_repos: Character vector of assignment repository names
-# Returns: Data frame with question_name, assignment_repo, and score columns
+# Returns: Data frame with question_name, assignment_repo, score and
+#   bound_adjustment columns
 
 collect_score_data = function(collection_path, question_names, assignment_repos) {
   data = with_database(collection_path, function(conn) {
     list(
       settings = load_all_settings(conn),
       items = load_all_items(conn),
+      groups = load_all_item_groups(conn),
       grades = load_most_recent_grades(conn)
     )
   })
@@ -615,11 +842,7 @@ collect_score_data = function(collection_path, question_names, assignment_repos)
   # Unit-separator join so a name containing spaces cannot collide across pairs.
   graded_keys = paste(graded$question_name, graded$assignment_repo, sep = "\x1f")
 
-  selected = merge(
-    data$grades[data$grades$selected == 1, c("question_name", "assignment_repo", "item_id"), drop = FALSE],
-    data$items[, c("question_name", "item_id", "points"), drop = FALSE],
-    by = c("question_name", "item_id")
-  )
+  selected = data$grades[data$grades$selected == 1, , drop = FALSE]
 
   rows = list()
   for (question_name in question_names) {
@@ -627,26 +850,26 @@ collect_score_data = function(collection_path, question_names, assignment_repos)
     if (is.null(state)) {
       state = markermd_grade_state(current_score = 0, total_score = 10)
     }
+    items = items_df_to_rubric_list(data$items, question_name)
+    groups = groups_df_to_list(data$groups, data$items, question_name)
 
     for (repo_name in assignment_repos) {
       score = NA_real_
+      bound_adjustment = NA_real_
       if (paste(question_name, repo_name, sep = "\x1f") %in% graded_keys) {
-        points_sum = sum(selected$points[
+        selected_ids = selected$item_id[
           selected$question_name == question_name & selected$assignment_repo == repo_name
-        ])
-        score = if (state@grading_mode == "positive") points_sum else state@total_score + points_sum
-        if (state@bound_above_zero && score < 0) {
-          score = 0
-        }
-        if (state@bound_below_max && score > state@total_score) {
-          score = state@total_score
-        }
+        ]
+        result = score_question(items, selected_ids, groups, state)
+        score = result$score
+        bound_adjustment = result$score - result$without_groups
       }
 
       rows[[length(rows) + 1]] = data.frame(
         question_name = question_name,
         assignment_repo = repo_name,
         score = score,
+        bound_adjustment = bound_adjustment,
         stringsAsFactors = FALSE
       )
     }
@@ -655,7 +878,7 @@ collect_score_data = function(collection_path, question_names, assignment_repos)
   if (length(rows) == 0) {
     return(data.frame(
       question_name = character(0), assignment_repo = character(0),
-      score = numeric(0), stringsAsFactors = FALSE
+      score = numeric(0), bound_adjustment = numeric(0), stringsAsFactors = FALSE
     ))
   }
   do.call(rbind, rows)

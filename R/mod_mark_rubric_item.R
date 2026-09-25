@@ -11,12 +11,15 @@ POINTS_NEGATIVE_COLOR = "#dc3545"
 # their hotkey (1-9, then 0); items past the tenth have none, so their button
 # is blank with a dashed outline and a tooltip, and is toggled by clicking.
 # The number-key handler (rubric_hotkeys_js) matches buttons by this label,
-# so a blank button is never reached from the keyboard.
+# so a blank button is never reached from the keyboard. In an exclusive
+# group the button is round and announced as a radio button, since selecting
+# it deselects the group's other items.
 #
 # id: Character. Module namespace ID
 # rubric_item: markermd_rubric_item S7 object containing item properties
+# exclusive: Logical. Whether the item's group allows one selected item
 
-mark_rubric_item_hotkey_btn = function(id, rubric_item) {
+mark_rubric_item_hotkey_btn = function(id, rubric_item, exclusive = FALSE) {
   ns = shiny::NS(id)
   has_hotkey = !is.na(rubric_item@hotkey)
 
@@ -31,7 +34,8 @@ mark_rubric_item_hotkey_btn = function(id, rubric_item) {
     label = if (has_hotkey) as.character(rubric_item@hotkey %% 10) else "",
     class = paste(
       if (rubric_item@selected) "btn-success" else "btn-outline-secondary",
-      "btn-sm"
+      "btn-sm",
+      if (exclusive) "rubric-hk-radio"
     ),
     style = paste0(
       "display: inline-block; box-sizing: border-box; ",
@@ -41,7 +45,36 @@ mark_rubric_item_hotkey_btn = function(id, rubric_item) {
       "font-size: 10px; vertical-align: top;",
       if (!has_hotkey) " border-style: dashed;" else ""
     ),
-    title = if (has_hotkey) NULL else "No hotkey: click to toggle"
+    title = if (has_hotkey) NULL else "No hotkey: click to toggle",
+    role = if (exclusive) "radio" else NULL,
+    `aria-checked` = if (exclusive) tolower(rubric_item@selected) else NULL
+  )
+}
+
+# One entry of an item's group menu: choosing it reports the group id (or ""
+# for no group) to the item module's group_choice input as an event. Entries
+# are links rather than buttons so the number-key handler, which scans the
+# pane's buttons by label, never matches a group label.
+#
+# ns: The item module's namespace function
+# group_id: Group id, or NA for the "No group" entry
+# label: Text shown for the entry
+# active: Whether the item is currently in this group
+
+rubric_group_menu_item = function(ns, group_id, label, active) {
+  value = if (is.na(group_id)) "" else group_id
+  shiny::tags$li(
+    shiny::tags$a(
+      class = "dropdown-item rubric-group-menu-item d-flex align-items-center gap-2",
+      href = "#",
+      `data-group` = value,
+      onclick = glue::glue(
+        "Shiny.setInputValue('<<ns('group_choice')>>', '<<value>>', {priority: 'event'}); return false;",
+        .open = "<<", .close = ">>"
+      ),
+      shiny::icon("check", class = paste("fa-fw", if (!active) "invisible")),
+      shiny::span(class = "rubric-group-menu-label", label)
+    )
   )
 }
 
@@ -49,15 +82,21 @@ mark_rubric_item_hotkey_btn = function(id, rubric_item) {
 #
 # id: Character. Module namespace ID
 # rubric_item: markermd_rubric_item S7 object containing item properties
+# groups: Named list of the question's markermd_rubric_group objects keyed by
+#   group id, in display order, for the item's group menu
 
-mark_rubric_item_ui = function(id, rubric_item) {
+mark_rubric_item_ui = function(id, rubric_item, groups = list()) {
   ns = shiny::NS(id)
-  
+
+  action_style = "border: none; background: transparent; color: #6c757d; font-size: 12px; line-height: 1;"
+
   shiny::div(
     id = ns("container"),
     class = "rubric-item-row px-2 py-1 m-0 rounded position-relative",
     # Action buttons row: always present at reduced emphasis, full opacity on
-    # hover or keyboard focus (styled via .rubric-action-btns in mark-app.R)
+    # hover or keyboard focus (styled via .rubric-action-btns in mark-app.R).
+    # Every item has the full set, grouped or not: move within its run,
+    # move to another group (or out of its group), delete.
     shiny::div(
       class = "rubric-action-btns position-absolute",
       style = "top: 0; right: 8px;",
@@ -68,7 +107,7 @@ mark_rubric_item_ui = function(id, rubric_item) {
           label = NULL,
           icon = shiny::icon("chevron-up"),
           class = "btn btn-sm p-1",
-          style = "border: none; background: transparent; color: #6c757d; font-size: 12px; line-height: 1;",
+          style = action_style,
           title = "Move item up"
         ),
         shiny::actionButton(
@@ -76,8 +115,34 @@ mark_rubric_item_ui = function(id, rubric_item) {
           label = NULL,
           icon = shiny::icon("chevron-down"),
           class = "btn btn-sm p-1",
-          style = "border: none; background: transparent; color: #6c757d; font-size: 12px; line-height: 1;",
+          style = action_style,
           title = "Move item down"
+        ),
+        # Group menu: a Bootstrap dropdown listing "No group" and the
+        # question's groups. Groups are created with Add Group; this menu
+        # only moves the item between existing ones.
+        shiny::div(
+          class = "dropdown d-inline-block",
+          shiny::tags$button(
+            type = "button",
+            class = "btn btn-sm p-1 rubric-group-menu-btn",
+            style = action_style,
+            `data-bs-toggle` = "dropdown",
+            `aria-expanded` = "false",
+            title = "Move item to a group",
+            shiny::icon("layer-group")
+          ),
+          shiny::tags$ul(
+            class = "dropdown-menu dropdown-menu-end shadow-sm rubric-group-menu",
+            shiny::tags$li(shiny::tags$h6(class = "dropdown-header", "Move item to group")),
+            rubric_group_menu_item(ns, NA_character_, "No group", is.na(rubric_item@group)),
+            lapply(names(groups), function(group_id) {
+              rubric_group_menu_item(
+                ns, group_id, groups[[group_id]]@label,
+                active = identical(rubric_item@group, group_id)
+              )
+            })
+          )
         ),
         shiny::actionButton(
           ns("delete_btn"),
@@ -264,37 +329,36 @@ mark_rubric_item_ui = function(id, rubric_item) {
 # collection_path: Character string. Path to collection directory (optional)
 # question_name: Character string. Name of the question (optional)
 # item_id: Character string. Unique identifier for this item (optional)
+# group_exclusive: function(group_id) returning whether that group of the
+#   item's question is exclusive (read reactively by the toggle button
+#   render, so a change in the group's setting restyles the button)
 
-mark_rubric_item_server = function(id, initial_item, collection_path = NULL, question_name = NULL, item_id = NULL) {
+mark_rubric_item_server = function(id, initial_item, collection_path = NULL, question_name = NULL, item_id = NULL,
+                                   group_exclusive = function(group_id) FALSE) {
   ns = shiny::NS(id)
 
   shiny::moduleServer(id, function(input, output, session) {
   
     # Internal state using S7 class
     rubric_item_state = shiny::reactiveVal(initial_item)
-    
 
-    
+    # Persist the item when its editable fields change; the parent owns the
+    # hotkey, group and selection, so those are carried over untouched
+    save_edit = function(new_item) {
+      rubric_item_state(new_item)
+      if (!is.null(collection_path) && !is.null(question_name) && !is.null(item_id)) {
+        save_rubric_item(collection_path, question_name, item_id, new_item)
+      }
+    }
+
     # Handle description text changes
     shiny::observe({
       current_item = rubric_item_state()
 
       # Only update if the value actually changed
       if (input$description_text != current_item@description) {
-        # Create new item with updated description
-        new_item = markermd_rubric_item(
-          hotkey = current_item@hotkey,
-          points = current_item@points,
-          description = input$description_text,
-          selected = current_item@selected
-        )
-
-        rubric_item_state(new_item)
-
-        # Save to database if parameters are provided
-        if (!is.null(collection_path) && !is.null(question_name) && !is.null(item_id)) {
-          save_rubric_item(collection_path, question_name, item_id, new_item)
-        }
+        current_item@description = input$description_text
+        save_edit(current_item)
       }
     }) |>
       shiny::bindEvent(input$description_text, ignoreInit = TRUE)
@@ -305,40 +369,32 @@ mark_rubric_item_server = function(id, initial_item, collection_path = NULL, que
 
       # Only update if the value actually changed
       if (input$points_text != current_item@points) {
-        # Create new item with updated points
-        new_item = markermd_rubric_item(
-          hotkey = current_item@hotkey,
-          points = input$points_text,
-          description = current_item@description,
-          selected = current_item@selected
-        )
-
-        rubric_item_state(new_item)
-
-        # Save to database if parameters are provided
-        if (!is.null(collection_path) && !is.null(question_name) && !is.null(item_id)) {
-          save_rubric_item(collection_path, question_name, item_id, new_item)
-        }
+        current_item@points = as.numeric(input$points_text)
+        save_edit(current_item)
       }
     }) |>
       shiny::bindEvent(input$points_text, ignoreInit = TRUE)
   
-    # Render the hotkey button so its styling tracks the selection state
+    # Render the hotkey button so its styling tracks the selection state and
+    # the exclusivity of the item's group
     output$hotkey_btn_ui = shiny::renderUI({
-      mark_rubric_item_hotkey_btn(session$ns(NULL), rubric_item_state())
+      item = rubric_item_state()
+      mark_rubric_item_hotkey_btn(
+        session$ns(NULL), item,
+        exclusive = isTRUE(group_exclusive(item@group))
+      )
     })
+
+    # A user toggle (button click or hotkey), as opposed to a programmatic
+    # update_item(): bumped after the state change so the parent's exclusive
+    # group handling reads the new selection and never fires on loads
+    toggle_signal = shiny::reactiveVal(0)
 
     shiny::observe({
       current_item = rubric_item_state()
-      
-      new_item = markermd_rubric_item(
-        hotkey = current_item@hotkey,
-        points = current_item@points,
-        description = current_item@description,
-        selected = !current_item@selected
-      )
-      
-      rubric_item_state(new_item)
+      current_item@selected = !current_item@selected
+      rubric_item_state(current_item)
+      toggle_signal(toggle_signal() + 1)
     }) |>
       shiny::bindEvent(input$hotkey_btn, ignoreInit = TRUE)
     
@@ -390,13 +446,17 @@ mark_rubric_item_server = function(id, initial_item, collection_path = NULL, que
     }) |>
       shiny::bindEvent(input$move_down_btn)
     
-    # Return reactive rubric item, move/delete signals, and update method for external use
+    # Return reactive rubric item, move/delete/group signals, and update method for external use
     return(list(
       id = id,
       item = shiny::reactive(rubric_item_state()),
       delete_signal = delete_signal,
       move_up_signal = move_up_signal,
       move_down_signal = move_down_signal,
+      toggle_signal = toggle_signal,
+      # The group chosen in the item's group menu: a group id, or "" for
+      # "No group"; an event input, so re-choosing the same entry re-fires
+      group_signal = shiny::reactive(input$group_choice),
       update_item = function(new_item) {
         rubric_item_state(new_item)
       }

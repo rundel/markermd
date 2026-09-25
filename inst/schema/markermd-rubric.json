@@ -2,14 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://rundel.github.io/markermd/schema/markermd-rubric.json",
   "title": "markermd grading rubric",
-  "description": "A markermd grading rubric: per-question rubric items and scoring setup used while marking in mark(). Contains no per-student grading data. A file may cover a single question or every question in a project.",
+  "description": "A markermd grading rubric: per-question rubric items and scoring setup used while marking in mark(). Contains no per-student grading data. A file may cover a single question or every question in a project. Format 1.1 adds item groups: an entry of a question's items list may be a group whose combined points are bounded by a floor and/or ceiling, or which allows only one selected item.",
   "type": "object",
   "required": ["format_version", "questions"],
   "additionalProperties": false,
   "properties": {
     "format_version": {
       "type": "string",
-      "description": "Rubric format version (e.g. \"1.0\")."
+      "description": "Rubric format version: \"1.0\" (items only) or \"1.1\" (items and groups)."
     },
     "questions": {
       "type": "array",
@@ -33,8 +33,13 @@
         },
         "items": {
           "type": "array",
-          "items": { "$ref": "#/$defs/item" },
-          "description": "Rubric items in display order. There is no limit on the number of items. Order is meaningful: the first ten items are bound to keyboard hotkeys 1-9 and 0, and any further items are toggled by clicking."
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/item" },
+              { "$ref": "#/$defs/group" }
+            ]
+          },
+          "description": "Rubric items and item groups in display order. There is no limit on the number of items. Order is meaningful: counting a group's items in place, the first ten items are bound to keyboard hotkeys 1-9 and 0, and any further items are toggled by clicking."
         }
       }
     },
@@ -75,7 +80,38 @@
         "description": {
           "type": "string",
           "minLength": 1,
-          "description": "Feedback text shown for the item. Used as the cross-format identity key, so it must be non-empty and unique within a question."
+          "description": "Feedback text shown for the item. Used as the cross-format identity key, so it must be non-empty and unique within a question (across all of its groups)."
+        }
+      }
+    },
+    "group": {
+      "type": "object",
+      "required": ["group", "items"],
+      "additionalProperties": false,
+      "properties": {
+        "group": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Group label, unique within the question. Shown to the grader; shown to students only when feedback is exported with group headings."
+        },
+        "floor": {
+          "type": "number",
+          "maximum": 0,
+          "description": "Lowest the combined points of the group's selected items can go (a cap on the total deduction in negative mode). Omit for no floor."
+        },
+        "ceiling": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Highest the combined points of the group's selected items can go (a cap on the points earned in positive mode). Omit for no ceiling."
+        },
+        "exclusive": {
+          "type": "boolean",
+          "description": "When true at most one item of the group can be selected (severity tiers)."
+        },
+        "items": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/item" },
+          "description": "The group's rubric items in display order. Groups cannot nest."
         }
       }
     }

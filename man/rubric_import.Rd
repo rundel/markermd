@@ -36,9 +36,18 @@ limit on their number). This is the inverse of \code{\link[=rubric_export]{rubri
 \details{
 With \code{mode = "append"} (the default) the file's items are added after each
 question's existing items. With \code{mode = "replace"} each affected question's
-existing items are deleted first; this also deletes any recorded selections
-of those items, for every repository, and cannot be undone. A question's
-scoring setup is only updated when the file provides a \code{scoring} block.
+existing items and item groups are deleted first; this also deletes any
+recorded selections of those items, for every repository, and cannot be
+undone. A question's scoring setup is only updated when the file provides
+a \code{scoring} block.
+
+Item groups (format \code{"1.1"}; see \link{markermd_rubric_group}) are matched to
+the question's existing groups by label. Items for an existing group are
+appended to the end of that group and the file's \code{floor}, \code{ceiling} and
+\code{exclusive} overwrite the stored ones; an unknown label creates a new
+group at the end of the question. Making an existing group exclusive
+while some repository has more than one of its items selected aborts
+before anything is written, listing those repositories.
 
 Question names in the file must exactly match question names in the
 project's stored template; mismatches abort before anything is written.

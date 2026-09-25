@@ -11,8 +11,10 @@ read_rubric_yaml(path)
 }
 \value{
 A rubric list: \code{format_version} plus \code{questions}, each with \code{name},
-\code{items} (a list of \code{markermd_rubric_item} objects) and \code{scoring} (a
-\code{markermd_grade_state} object, or \code{NULL} when the file omits it).
+\code{items} (a list of \code{markermd_rubric_item} objects), \code{groups} (a named
+list of \code{markermd_rubric_group} objects, empty when the question has
+none) and \code{scoring} (a \code{markermd_grade_state} object, or \code{NULL} when the
+file omits it).
 }
 \description{
 Parses a rubric YAML file into the rubric list structure used by
@@ -20,7 +22,11 @@ Parses a rubric YAML file into the rubric list structure used by
 determines display order and keyboard hotkeys: the first ten items of a
 question get the keys 1-9 and 0, and any further items have no hotkey and
 are toggled by clicking in \code{\link[=mark]{mark()}}. There is no limit on the number of
-items. Validation is performed by the S7 constructors as items are built.
+items. A group entry in the items list (format \code{"1.1"}) is flattened: its
+members join the question's item list in place, each with its \code{group}
+set, and the group itself is recorded in the question's \code{groups}.
+Validation is performed by the S7 constructors as items and groups are
+built.
 }
 \seealso{
 \code{\link[=write_rubric_yaml]{write_rubric_yaml()}}, \code{\link[=rubric_import]{rubric_import()}}, \code{\link[=validate_rubric_file]{validate_rubric_file()}}

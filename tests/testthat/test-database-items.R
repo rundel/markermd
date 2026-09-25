@@ -163,7 +163,9 @@ test_that("a schema-version-1 database gains item positions in its legacy displa
   expect_equal(unname(purrr::map_int(items, ~ .x@hotkey)), c(1:10, NA, NA))
 
   markermd:::with_database(dir, function(conn) {
-    expect_equal(markermd:::get_metadata(conn, "schema_version"), "2")
+    # the position migration stamps 2 and the group migration that follows
+    # it (test-rubric-groups.R) stamps the current version
+    expect_equal(markermd:::get_metadata(conn, "schema_version"), markermd:::markermd_db_version())
 
     q1 = DBI::dbGetQuery(conn, "SELECT item_id, position FROM items WHERE question_name = 'Q1' ORDER BY position")
     expect_equal(q1$item_id, paste0("item_", c(2, 1, 3:12)))

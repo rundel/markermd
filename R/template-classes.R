@@ -233,7 +233,12 @@ markermd_template = S7::new_class(
 #' @param points Numeric. Point value for this rubric item
 #' @param description Character. Description text for the rubric item
 #' @param selected Logical. Whether this item is currently selected
+#' @param group Character. Id of the [markermd_rubric_group] the item belongs
+#'   to within its question, or `NA` (the default) when the item is
+#'   ungrouped. Group ids are an app/database detail: in a rubric YAML file
+#'   the grouping is expressed by nesting items under a group entry.
 #' @return A `markermd_rubric_item` S7 object.
+#' @seealso [markermd_rubric_group]
 #' @export
 markermd_rubric_item = S7::new_class(
   "markermd_rubric_item",
@@ -274,6 +279,96 @@ markermd_rubric_item = S7::new_class(
       validator = function(value) {
         if (length(value) != 1) {
           return("selected must be a single logical value")
+        }
+        return(NULL)
+      }
+    ),
+    group = S7::new_property(
+      S7::class_character,
+      default = quote(NA_character_),
+      validator = function(value) {
+        if (length(value) != 1) {
+          return("group must be a single character string or NA")
+        }
+        if (!is.na(value) && nchar(value) == 0) {
+          return("group must be a non-empty string or NA")
+        }
+        return(NULL)
+      }
+    )
+  ),
+  package = "markermd"
+)
+
+#' @title Rubric Item Group
+#' @description S7 class representing a named group of rubric items within a
+#'   question whose combined points are bounded together. A group has an
+#'   optional `floor` (the lowest its members' combined points can go; in
+#'   deduction mode, a cap on the total deduction) and an optional `ceiling`
+#'   (the highest they can go; in additive mode, a cap on the points earned).
+#'   Requiring `floor <= 0 <= ceiling` means a group with no selected items
+#'   always contributes exactly zero. An `exclusive` group allows at most one
+#'   of its items to be selected (severity tiers). Items reference their
+#'   group through the `group` property of [markermd_rubric_item].
+#' @param label Character. Group name, unique within its question. Shown to
+#'   the grader, and to students only when [export_comments()] is asked for
+#'   group headings.
+#' @param floor Numeric. Lower bound on the group's combined points (`<= 0`),
+#'   or `NA` for none.
+#' @param ceiling Numeric. Upper bound on the group's combined points
+#'   (`>= 0`), or `NA` for none.
+#' @param exclusive Logical. Whether at most one item of the group can be
+#'   selected at a time.
+#' @return A `markermd_rubric_group` S7 object.
+#' @seealso [markermd_rubric_item]
+#' @export
+markermd_rubric_group = S7::new_class(
+  "markermd_rubric_group",
+  properties = list(
+    label = S7::new_property(
+      S7::class_character,
+      validator = function(value) {
+        if (length(value) != 1 || is.na(value)) {
+          return("label must be a single character string")
+        }
+        if (nchar(trimws(value)) == 0) {
+          return("label cannot be empty")
+        }
+        return(NULL)
+      }
+    ),
+    floor = S7::new_property(
+      S7::class_numeric,
+      default = quote(NA_real_),
+      validator = function(value) {
+        if (length(value) != 1) {
+          return("floor must be a single number or NA")
+        }
+        if (!is.na(value) && value > 0) {
+          return("floor must be less than or equal to 0, or NA for no floor")
+        }
+        return(NULL)
+      }
+    ),
+    ceiling = S7::new_property(
+      S7::class_numeric,
+      default = quote(NA_real_),
+      validator = function(value) {
+        if (length(value) != 1) {
+          return("ceiling must be a single number or NA")
+        }
+        if (!is.na(value) && value < 0) {
+          return("ceiling must be greater than or equal to 0, or NA for no ceiling")
+        }
+        return(NULL)
+      }
+    ),
+    exclusive = S7::new_property(
+      S7::class_logical,
+      default = quote(FALSE),
+      validator = function(value) {
+        if (length(value) != 1 || is.na(value)) {
+          return("exclusive must be TRUE or FALSE")
         }
         return(NULL)
       }

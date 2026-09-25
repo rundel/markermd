@@ -109,7 +109,12 @@ Rscript -e 'p <- tempfile(fileext = ".yaml"); markermd::rubric_export(p, project
 From the printed YAML record, per question:
 
 - the ordered item `description` values -- copy verbatim; these are the only
-  legal entries for the marks file's `items` lists;
+  legal entries for the marks file's `items` lists. A `group` entry nests
+  some of the question's items under a label: its items are ordinary items
+  for the marks file (listed by description like any other), but note the
+  group's `floor` / `ceiling` (the bound on the group's combined points,
+  applied by markermd when scoring) and whether it is `exclusive` (at most
+  one of its items may be selected);
 - each item's `points` and the question's `scoring.grading_mode`, which tell
   you what a selection means: in `negative` mode items describe defects to
   mark when present, in `positive` mode achievements to mark when earned.
@@ -244,6 +249,12 @@ Work pair by pair against step 3's item lists:
   description does not match what you observed -- not even as "the closest
   one". If no item fits an observed problem, leave it unselected and note the
   problem in the private note (the human can add a rubric item later).
+- In a capped group (one with a `floor` or `ceiling`), select every item
+  that applies and never pre-apply the cap by leaving some out: the bound
+  does the arithmetic, and the selections are the record of what was wrong.
+  In an exclusive group select at most one item, the tier that fits the
+  evidence; `marks_import()` rejects a pair with two items of an exclusive
+  group.
 - For every pair, draft a one-to-three sentence `private_comment` recording
   the evidence: what you saw in the answer that justifies the selections (or
   the clean pass), citing the relevant function/value/line. State the
@@ -297,7 +308,8 @@ Show the marks YAML written in step 8 (print the file's contents; for a large
 class show it repo by repo rather than eliding entries), followed by a
 per-repository summary: for each question, the selected item descriptions (or
 "none apply") and the implied score arithmetic from the scoring mode (e.g.
-"Q1: -5, -1 -> 4/10"). Flag any pairs where you were uncertain. Then ask
+"Q1: -5, -1 -> 4/10"; a capped group's items count together, clamped to
+its floor or ceiling). Flag any pairs where you were uncertain. Then ask
 explicitly whether to import these marks. Never run `marks_import()` without
 an explicit yes; if the user adjusts anything, update the file and show the
 affected entries again before asking.

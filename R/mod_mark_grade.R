@@ -1,14 +1,125 @@
 # Shiny module for displaying and managing question grades with scoring options
 
+# Text of the cap badge beside the score: how much the item group bounds
+# changed the score ("1 pt capped")
+#
+# capped: Numeric. score - score without group bounds
+
+cap_badge_text = function(capped) {
+  paste(format_points(abs(capped)), "capped")
+}
+
+# A score as signed text: "+3", "-1.5", "0"
+#
+# x: Numeric
+
+format_score_signed = function(x) {
+  paste0(if (x > 0) "+" else "", format_score(x))
+}
+
+# The score breakdown shown in the cap badge's popover: the start value, the
+# ungrouped items, each group's applied value (with its raw sum and the
+# bound that changed it), the bounded score and the score without the group
+# bounds
+#
+# result: List from score_question()
+# state: markermd_grade_state with the question's scoring setup
+
+score_breakdown_ui = function(result, state) {
+  row = function(label, value, note = NULL, total = FALSE) {
+    shiny::tags$tr(
+      class = if (total) "fw-bold",
+      shiny::tags$td(
+        class = if (total) "border-top",
+        label,
+        if (!is.null(note)) shiny::span(class = "text-muted fw-normal ms-1", note)
+      ),
+      shiny::tags$td(
+        class = paste("text-end", if (total) "border-top"),
+        style = "font-variant-numeric: tabular-nums;",
+        value
+      )
+    )
+  }
+
+  group_rows = lapply(seq_len(nrow(result$groups)), function(i) {
+    g = result$groups[i, ]
+    note = if (!isTRUE(all.equal(g$sum, g$applied))) {
+      bound = if (!is.na(g$floor) && g$applied == g$floor) {
+        paste("floor", format_score(g$floor))
+      } else {
+        paste("ceiling", format_score(g$ceiling))
+      }
+      paste0(format_score_signed(g$sum), ", ", bound)
+    }
+    row(g$label, format_score_signed(g$applied), note = note)
+  })
+
+  bounds = if (state@bound_above_zero && state@bound_below_max) {
+    paste0("(bounded to 0 to ", format_score(state@total_score), ")")
+  } else if (state@bound_above_zero) {
+    "(bounded to \u2265 0)"
+  } else if (state@bound_below_max) {
+    paste0("(bounded to \u2264 ", format_score(state@total_score), ")")
+  } else {
+    "(unbounded)"
+  }
+
+  shiny::tagList(
+    shiny::tags$table(
+      class = "w-100 rubric-score-breakdown",
+      shiny::tags$tbody(
+        row(paste0("Start (", state@grading_mode, " mode)"), format_score(result$base)),
+        row("Ungrouped items", format_score_signed(result$ungrouped)),
+        group_rows,
+        row("Score", format_score(result$score), note = bounds, total = TRUE)
+      )
+    ),
+    shiny::div(
+      class = "text-muted mt-1",
+      style = "font-size: 11px;",
+      paste0("Without group bounds: ", format_score(result$without_groups))
+    )
+  )
+}
+
 # Creates UI for displaying current score and grading configuration options
 #
 # id: Character. Module namespace ID
 # grade_state: markermd_grade_state S7 object containing grade properties
+# capped: Numeric. How much the item group bounds changed the current score
+#   (score minus the score without them); the cap badge is hidden at 0
+# breakdown: UI shown in the cap badge's popover (the rubric module's score
+#   breakdown output), or NULL for a badge without a popover
 
-mark_grade_ui = function(id, grade_state) {
+mark_grade_ui = function(id, grade_state, capped = 0, breakdown = NULL) {
   # Sanitize ID to avoid spaces and special characters that could break JavaScript
   safe_id = gsub("[^A-Za-z0-9_-]", "_", id)
   ns = shiny::NS(safe_id)
+
+  # The cap badge: shown only while the group bounds make a difference, and
+  # patched along with the score (markermd_update_score below)
+  cap_badge = shiny::span(
+    id = ns("cap_badge"),
+    class = paste("rubric-cap-badge", if (capped == 0) "d-none"),
+    tabindex = "0",
+    role = "button",
+    title = "Item group bounds changed this score",
+    shiny::icon("compress"), " ",
+    shiny::span(id = ns("cap_badge_text"), cap_badge_text(capped))
+  )
+  if (!is.null(breakdown)) {
+    # Wider than Bootstrap's default popover so the value column has room
+    # (the rubric-wide-popover class is styled in mark-app.R)
+    cap_badge = bslib::popover(
+      cap_badge,
+      title = "Score breakdown",
+      placement = "bottom",
+      id = ns("cap_badge_popover"),
+      options = list(customClass = "rubric-wide-popover"),
+      shiny::div(style = "min-width: 320px;", breakdown)
+    )
+  }
   
   shiny::div(
     class = "border-bottom",
@@ -19,46 +130,52 @@ mark_grade_ui = function(id, grade_state) {
       # by every repo), so it is edited through this deliberate popover rather
       # than inline. The trigger wraps score_display so the in-place score
       # patches (markermd_update_score below) never touch the popover wiring
-      # or the pen affordance.
+      # or the pen affordance. The cap badge sits beside it, outside the
+      # trigger, so clicking the badge opens the breakdown rather than the
+      # total.
       shiny::div(
         shiny::div(
           style = "font-size: 14px;",
           "Points:"
         ),
-        bslib::popover(
-          shiny::div(
-            id = ns("score_popover_trigger"),
-            class = "d-inline-flex align-items-center gap-1",
-            style = "cursor: pointer;",
-            tabindex = "0",
-            role = "button",
-            `aria-label` = "Set total points",
+        shiny::div(
+          class = "d-flex align-items-center gap-2 flex-wrap",
+          bslib::popover(
             shiny::div(
-              id = ns("score_display"),
-              `data-current` = grade_state@current_score,
-              `data-total` = grade_state@total_score,
-              class = "fw-bold d-inline-block py-2",
-              style = "font-size: 20px;",
-              paste0(
-                grade_state@current_score, " / ", grade_state@total_score, " ",
-                if (grade_state@total_score == 1) "pt" else "pts"
-              )
+              id = ns("score_popover_trigger"),
+              class = "d-inline-flex align-items-center gap-1",
+              style = "cursor: pointer;",
+              tabindex = "0",
+              role = "button",
+              `aria-label` = "Set total points",
+              shiny::div(
+                id = ns("score_display"),
+                `data-current` = grade_state@current_score,
+                `data-total` = grade_state@total_score,
+                class = "fw-bold d-inline-block py-2",
+                style = "font-size: 20px;",
+                paste0(
+                  grade_state@current_score, " / ", grade_state@total_score, " ",
+                  if (grade_state@total_score == 1) "pt" else "pts"
+                )
+              ),
+              shiny::icon("pen", class = "text-muted small")
             ),
-            shiny::icon("pen", class = "text-muted small")
-          ),
-          title = "Total points",
-          placement = "bottom",
-          shiny::div(
-            style = "min-width: 180px;",
-            shiny::numericInput(
-              ns("total_score_input"),
-              NULL,
-              value = grade_state@total_score,
-              min = 0,
-              step = 0.5,
-              width = "100%"
+            title = "Total points",
+            placement = "bottom",
+            shiny::div(
+              style = "min-width: 180px;",
+              shiny::numericInput(
+                ns("total_score_input"),
+                NULL,
+                value = grade_state@total_score,
+                min = 0,
+                step = 0.5,
+                width = "100%"
+              )
             )
-          )
+          ),
+          cap_badge
         )
       ),
       # Configuration popover (right side)
@@ -122,12 +239,23 @@ mark_grade_ui = function(id, grade_state) {
         // the attributes.
         Shiny.addCustomMessageHandler('markermd_update_score', function(msg) {
           var el = document.getElementById(msg.id);
-          if (!el) return;
-          var $el = $(el);
-          $el.data('current', msg.current).data('total', msg.total);
-          $el.attr('data-current', msg.current).attr('data-total', msg.total);
-          var suffix = msg.total === 1 ? 'pt' : 'pts';
-          $el.html(msg.current + ' / ' + msg.total + ' ' + suffix);
+          if (el) {
+            var $el = $(el);
+            $el.data('current', msg.current).data('total', msg.total);
+            $el.attr('data-current', msg.current).attr('data-total', msg.total);
+            var suffix = msg.total === 1 ? 'pt' : 'pts';
+            $el.html(msg.current + ' / ' + msg.total + ' ' + suffix);
+          }
+          // The cap badge is only touched when the message carries it (a
+          // total or mode edit leaves it to the next score recompute)
+          if (msg.badge_id && msg.capped_text !== null && msg.capped_text !== undefined) {
+            var badge = document.getElementById(msg.badge_id);
+            if (badge) {
+              badge.classList.toggle('d-none', !msg.capped);
+              var text = document.getElementById(msg.badge_id + '_text');
+              if (text) text.textContent = msg.capped_text;
+            }
+          }
         });
       });
     ")),
@@ -162,17 +290,20 @@ mark_grade_server = function(id, initial_grade, ui_ns = NULL, collection_path = 
 
     # Patch the score display's text and data attributes in place (the widget
     # is not re-rendered on score changes; see output$grade_ui in
-    # mod_mark_rubric.R). The patch is deferred to onFlushed because a
-    # question switch re-renders the widget in the same flush from a grade
-    # snapshot taken before the loaded selections recompute the score; a
-    # message sent mid-flush would land first and be clobbered by that
-    # stale re-render.
-    update_score_display = function(current, total) {
+    # mod_mark_rubric.R), and the cap badge when capped is given. The patch
+    # is deferred to onFlushed because a question switch re-renders the
+    # widget in the same flush from a grade snapshot taken before the loaded
+    # selections recompute the score; a message sent mid-flush would land
+    # first and be clobbered by that stale re-render.
+    update_score_display = function(current, total, capped = NULL) {
       session$onFlushed(function() {
         session$sendCustomMessage("markermd_update_score", list(
           id = target_ns("score_display"),
           current = current,
-          total = total
+          total = total,
+          badge_id = target_ns("cap_badge"),
+          capped = if (is.null(capped)) NULL else capped != 0,
+          capped_text = if (is.null(capped)) NULL else cap_badge_text(capped)
         ))
       }, once = TRUE)
     }
@@ -287,11 +418,13 @@ mark_grade_server = function(id, initial_grade, ui_ns = NULL, collection_path = 
     }) |> shiny::bindEvent(input$grade_bounds, ignoreInit = TRUE)
 
 
-    # Return reactive grade state and update method for external use
+    # Return reactive grade state and update methods for external use
     return(list(
       id = safe_id,
       grade = shiny::reactive(grade_state()),
-      update_grade = function(new_grade) {
+      # Replace the grade state (persisting it) and patch the display; capped
+      # is how much the item group bounds changed the score, for the badge
+      update_grade = function(new_grade, capped = NULL) {
         grade_state(new_grade)
         
         # Save to database if parameters are provided
@@ -300,7 +433,13 @@ mark_grade_server = function(id, initial_grade, ui_ns = NULL, collection_path = 
         }
         
         # Update the display
-        update_score_display(new_grade@current_score, new_grade@total_score)
+        update_score_display(new_grade@current_score, new_grade@total_score, capped)
+      },
+      # Patch the display (score and cap badge) from the current state
+      # without changing it: the score is unchanged but the cap badge may be
+      refresh_display = function(capped) {
+        current = grade_state()
+        update_score_display(current@current_score, current@total_score, capped)
       }
     ))
   })

@@ -9,8 +9,11 @@ write_rubric_yaml(rubric, path)
 \arguments{
 \item{rubric}{A rubric list as returned by \code{\link[=read_rubric_yaml]{read_rubric_yaml()}} or
 \code{\link[=rubric_export]{rubric_export()}}: \code{format_version} plus a \code{questions} list whose entries
-have \code{name}, \code{items} (a list of \code{markermd_rubric_item} objects) and
-optionally \code{scoring} (a \code{markermd_grade_state} object).}
+have \code{name}, \code{items} (a list of \code{markermd_rubric_item} objects in
+display order, each item's \code{group} naming its group or \code{NA}),
+optionally \code{groups} (a named list of \code{markermd_rubric_group} objects
+keyed by group id) and optionally \code{scoring} (a \code{markermd_grade_state}
+object).}
 
 \item{path}{Output file path (\code{.yaml}).}
 }
@@ -19,10 +22,14 @@ The output \code{path}, invisibly.
 }
 \description{
 Serializes a rubric (one or more questions' rubric items plus optional
-scoring setup) to a human-readable, schema-validatable YAML file. Items are
-written in display order; order is meaningful, as the first ten items are
-bound to keyboard hotkeys on import and any further items (there is no
-limit) are toggled by clicking. No per-repository grading data is written.
+scoring setup and item groups) to a human-readable, schema-validatable
+YAML file. Items are written in display order; order is meaningful, as
+the first ten items are bound to keyboard hotkeys on import and any
+further items (there is no limit) are toggled by clicking. A group's
+items are nested under a group entry (\code{group}, optional \code{floor},
+\code{ceiling} and \code{exclusive}, then \code{items}). The file is written as
+\code{format_version} \code{"1.1"} when it contains a group and \code{"1.0"} otherwise.
+No per-repository grading data is written.
 }
 \seealso{
 \code{\link[=read_rubric_yaml]{read_rubric_yaml()}}, \code{\link[=rubric_export]{rubric_export()}}, \code{\link[=rubric_import]{rubric_import()}}

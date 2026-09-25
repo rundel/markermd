@@ -66,6 +66,7 @@ reference:
   - markermd_filter_condition
   - markermd_filter_group
   - markermd_rubric_item
+  - markermd_rubric_group
   - markermd_grade_state
   - markermd_project
   - get_allowed_rule_verbs
