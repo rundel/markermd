@@ -18,7 +18,8 @@
 #' @return A data frame with one row per anchorable section and columns `type`
 #'   (`"heading"` or `"div"`), `id`, `level`, `title`, `n_subsections`, and the
 #'   content counts `n_chunk`, `n_code_block`, `n_markdown`, `n_list`,
-#'   `n_table`, `n_div`, `n_other` and `n_content` (all non-heading blocks). The
+#'   `n_table`, `n_div`, `n_other` and `n_content` (all non-heading blocks;
+#'   HTML comments, which never render, are not counted anywhere). The
 #'   resolved source file is attached as the `"source_file"` attribute.
 #' @export
 #'
@@ -68,8 +69,8 @@ assignment_outline = function(assignment_path, filename = "*.[Rq]md") {
       n_list = sum(kinds %in% c("Bullet list", "Ordered list")),
       n_table = sum(kinds == "Table"),
       n_div = sum(kinds == "Div"),
-      n_other = sum(!kinds %in% c("Heading", content_kinds)),
-      n_content = sum(kinds != "Heading"),
+      n_other = sum(!kinds %in% c("Heading", "HTML comment", content_kinds)),
+      n_content = sum(!kinds %in% c("Heading", "HTML comment")),
       stringsAsFactors = FALSE
     )
   }

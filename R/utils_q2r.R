@@ -54,7 +54,9 @@ q2r_node_kind = function(node) {
   if (S7::S7_inherits(node, q2r::pandoc_code_block)) {
     return(if (isTRUE(q2r::is_code_cell(node))) "Chunk" else "Code block")
   }
-  if (S7::S7_inherits(node, q2r::pandoc_raw_block)) return("Raw Block")
+  if (S7::S7_inherits(node, q2r::pandoc_raw_block)) {
+    return(if (is_html_comment_block(node)) "HTML comment" else "Raw Block")
+  }
   if (S7::S7_inherits(node, q2r::pandoc_div)) return("Div")
   if (S7::S7_inherits(node, q2r::pandoc_paragraph) || S7::S7_inherits(node, q2r::pandoc_plain)) return("Markdown")
   if (S7::S7_inherits(node, q2r::pandoc_bullet_list)) return("Bullet list")
@@ -69,6 +71,28 @@ q2r_node_kind = function(node) {
   # Fallback for any other block type: friendly-case the class name
   raw = gsub("_", " ", sub("^q2r::pandoc_", "", class(node)[1]))
   paste0(toupper(substr(raw, 1, 1)), substr(raw, 2, nchar(raw)))
+}
+
+# Regex matching raw text that is nothing but HTML comments: one or more
+# <!-- ... --> spans, whose bodies may span lines and contain dashes but never
+# "-->", separated by whitespace only. Written for R's default (TRE) regex
+# engine, which is what q2r::has_text() uses, so the node kind decided here
+# and the "node type" filter predicate in filter_node_kind_exprs() agree
+# exactly.
+html_comment_only_regex = "^\\s*(<!--([^-]|-+[^->]|->)*-{2,}>\\s*)+$"
+
+# Whether a raw block is nothing but HTML comments
+#
+# A raw block whose text holds only <!-- ... --> comments (and whitespace)
+# never renders, so it is its own node kind, "HTML comment", rather than a
+# "Raw Block": a skeleton's placeholder comment, a write-up a student left
+# inside that comment, or a markermd repair marker never counts as a raw-HTML
+# write-up. Raw content carrying anything outside comments stays a "Raw Block".
+#
+# node: A q2r pandoc_raw_block node
+
+is_html_comment_block = function(node) {
+  grepl(html_comment_only_regex, node@text)
 }
 
 # Whether a node can be selected as a question target in the tree
@@ -147,6 +171,9 @@ q2r_node_label = function(node) {
 q2r_node_detail = function(node) {
   if (S7::S7_inherits(node, q2r::pandoc_paragraph) || S7::S7_inherits(node, q2r::pandoc_plain)) {
     return(truncate_text(q2r::ast_text(node), 120))
+  }
+  if (S7::S7_inherits(node, q2r::pandoc_raw_block) && is_html_comment_block(node)) {
+    return(truncate_text(node@text, 120))
   }
   ""
 }

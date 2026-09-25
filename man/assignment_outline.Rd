@@ -17,7 +17,8 @@ directory. Defaults to any \code{.Rmd}/\code{.qmd} file.}
 A data frame with one row per anchorable section and columns \code{type}
 (\code{"heading"} or \code{"div"}), \code{id}, \code{level}, \code{title}, \code{n_subsections}, and the
 content counts \code{n_chunk}, \code{n_code_block}, \code{n_markdown}, \code{n_list},
-\code{n_table}, \code{n_div}, \code{n_other} and \code{n_content} (all non-heading blocks). The
+\code{n_table}, \code{n_div}, \code{n_other} and \code{n_content} (all non-heading blocks;
+HTML comments, which never render, are not counted anywhere). The
 resolved source file is attached as the \code{"source_file"} attribute.
 }
 \description{

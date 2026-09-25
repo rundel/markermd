@@ -177,24 +177,31 @@ parse_filter_option = function(value) {
 # Quoted q2r predicate expressions for each friendly node kind, the reverse of
 # q2r_node_kind(). "Chunk" / "Code block" both correspond to pandoc_code_block
 # and are distinguished by is_code_cell(); "Markdown" covers paragraphs and
-# plain blocks. is() and is_code_cell() resolve in q2r's predicate data mask.
+# plain blocks; "Raw Block" / "HTML comment" both correspond to
+# pandoc_raw_block and are split by has_text() on html_comment_only_regex, the
+# same regex is_html_comment_block() applies, so rules and filters agree. is(),
+# is_code_cell() and has_text() resolve in q2r's predicate data mask. A
+# function rather than a constant so the regex is read at call time.
 
-filter_node_kind_exprs = list(
-  "Heading" = quote(is(q2r::pandoc_header)),
-  "Markdown" = quote(is(q2r::pandoc_paragraph) | is(q2r::pandoc_plain)),
-  "Chunk" = quote(is_code_cell()),
-  "Code block" = quote(is(q2r::pandoc_code_block) & !is_code_cell()),
-  "Raw Block" = quote(is(q2r::pandoc_raw_block)),
-  "Div" = quote(is(q2r::pandoc_div)),
-  "Bullet list" = quote(is(q2r::pandoc_bullet_list)),
-  "Ordered list" = quote(is(q2r::pandoc_ordered_list)),
-  "Block quote" = quote(is(q2r::pandoc_block_quote)),
-  "Table" = quote(is(q2r::pandoc_table)),
-  "Figure" = quote(is(q2r::pandoc_figure)),
-  "Horizontal rule" = quote(is(q2r::pandoc_horizontal_rule)),
-  "Definition list" = quote(is(q2r::pandoc_definition_list)),
-  "Line block" = quote(is(q2r::pandoc_line_block))
-)
+filter_node_kind_exprs = function() {
+  list(
+    "Heading" = quote(is(q2r::pandoc_header)),
+    "Markdown" = quote(is(q2r::pandoc_paragraph) | is(q2r::pandoc_plain)),
+    "Chunk" = quote(is_code_cell()),
+    "Code block" = quote(is(q2r::pandoc_code_block) & !is_code_cell()),
+    "Raw Block" = bquote(is(q2r::pandoc_raw_block) & !has_text(.(html_comment_only_regex))),
+    "HTML comment" = bquote(is(q2r::pandoc_raw_block) & has_text(.(html_comment_only_regex))),
+    "Div" = quote(is(q2r::pandoc_div)),
+    "Bullet list" = quote(is(q2r::pandoc_bullet_list)),
+    "Ordered list" = quote(is(q2r::pandoc_ordered_list)),
+    "Block quote" = quote(is(q2r::pandoc_block_quote)),
+    "Table" = quote(is(q2r::pandoc_table)),
+    "Figure" = quote(is(q2r::pandoc_figure)),
+    "Horizontal rule" = quote(is(q2r::pandoc_horizontal_rule)),
+    "Definition list" = quote(is(q2r::pandoc_definition_list)),
+    "Line block" = quote(is(q2r::pandoc_line_block))
+  )
+}
 
 # Quoted q2r predicate expression for a friendly node kind, errors on unknown
 # kinds so vocabulary drift from q2r_node_kind() is caught loudly
@@ -202,7 +209,7 @@ filter_node_kind_exprs = list(
 # kind: Single node kind string (a get_allowed_node_types() value, not "Any node")
 
 filter_node_kind_expr = function(kind) {
-  expr = filter_node_kind_exprs[[kind]]
+  expr = filter_node_kind_exprs()[[kind]]
   if (is.null(expr)) {
     cli::cli_abort("Unknown node kind for filter: {kind}")
   }

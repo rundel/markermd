@@ -22,6 +22,7 @@ get_allowed_node_types = function() {
     "Chunk",
     "Code block",
     "Raw Block",
+    "HTML comment",
     "Div",
     "Bullet list",
     "Ordered list",
