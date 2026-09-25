@@ -106,6 +106,12 @@ The Rubric tab is where grading happens. The left pane shows the student's rende
 
 Rubric items can be added, edited, and reordered while grading, and the rubric pane's menu offers YAML import and export for editing the rubric outside the app.
 
+### Scores
+
+The Scores tab shows the grading so far: every repository's score per question and its total, computed from the rubric selections exactly as `export_scores()` would, with summary rows beneath (how many repositories are graded, then the mean, median and standard deviation per question and for the total). The table sorts by any column with the summary rows staying put, pages for large classes, and updates as grading proceeds. Clicking a score opens that repository and question in the Rubric tab.
+
+![The mark app's Scores tab: one row per repository with a column per question and the total, and the graded count, mean, median and standard deviation pinned beneath](man/figures/mark_scores_screenshot.png)
+
 ## Scripting the workflow
 
 Everything the apps do is also available headlessly:

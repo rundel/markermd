@@ -1098,6 +1098,10 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
       selected_question = shiny::reactive(input$question_select),
       selected_content_repo = selected_repo,
       grading_data_version = shiny::reactive(grading_data_version()),
+      # Programmatic question selection (the Scores tab's click-through)
+      select_question = function(question_name) {
+        shiny::updateSelectInput(session, "question_select", selected = question_name)
+      },
       question_grade_servers = question_grade_servers,
       current_grade = shiny::reactive({
         shiny::req(input$question_select)

@@ -328,6 +328,62 @@ test_that("items past the tenth have no hotkey, toggle by click, and keep their 
 })
 
 
+test_that("the Scores tab tabulates rubric scores per repository and per question", {
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
+  root = mg_make_fixture()
+  app = new_app_driver(markermd:::mark_app(root), name = "mark_scores_tab")
+  app$set_inputs(main_navbar = "rubric")
+  app$wait_for_idle()
+
+  # Grade Q2 for the first repo: one 4-point item selected
+  app$click("rubric_module-add_item")
+  app$wait_for_idle()
+  app$run_js("Shiny.setInputValue('rubric_module-item_0-points_text', 4)")
+  app$wait_for_idle()
+  app$click("rubric_module-item_0-hotkey_btn")
+  app$wait_for_idle()
+
+  app$set_inputs(main_navbar = "scores")
+  app$wait_for_idle()
+
+  exports = app$get_values(export = TRUE)$export
+  tbl = exports[["scores_module-scores_table"]]
+  expect_equal(names(tbl), c("Repository", "Q2", "Q3", "Total", "Graded"))
+  first = tbl[tbl$Repository == "student1-excellent", ]
+  expect_equal(first$Q2, 4)
+  expect_true(is.na(first$Q3))
+  expect_equal(first$Total, 4)
+  expect_equal(first$Graded, 1L)
+  expect_true(all(is.na(tbl$Q2[tbl$Repository != "student1-excellent"])))
+
+  summary = exports[["scores_module-scores_summary"]]
+  expect_equal(summary$Repository, c("Graded", "Mean", "Median", "SD"))
+  expect_equal(summary$Q2, c(1, 4, 4, NA))
+  expect_equal(summary$Q3, c(0, NA, NA, NA))
+
+  # The interactive table is rendered into the tab with point-carrying labels
+  # and the summary rows in its footer; the caption reports that no repo is
+  # fully graded yet
+  expect_true(app$get_js("document.querySelector('#scores_module-scores_table .rt-tfoot') !== null"))
+  table_html = app$get_html("#scores_module-scores_table")
+  expect_match(table_html, "10 pts", fixed = TRUE)
+  expect_match(table_html, "Median")
+  expect_match(table_html, "progress-bar bg-success", fixed = TRUE)
+  expect_match(app$get_html("#scores_module-caption"), "0 of 5 repositories with every question graded")
+
+  # Clicking a score cell (second row, Q3 column) opens that repository and
+  # question in the Rubric tab
+  app$run_js("
+    var row = document.querySelectorAll('#scores_module-scores_table .rt-tbody .rt-tr')[1];
+    row.querySelectorAll('.rt-td')[2].click();
+  ")
+  app$wait_for_idle()
+  expect_equal(app$get_value(input = "main_navbar"), "rubric")
+  expect_equal(app$get_value(input = "content_module-content_repo_select"), "student2-average")
+  expect_equal(app$get_value(input = "rubric_module-question_select"), "Q3")
+})
 
 
 test_that("the Validation tab follows the app-wide repo selection and the table opens it", {

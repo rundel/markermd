@@ -416,8 +416,15 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
         rubric_hotkeys_js(shiny::NS("rubric_module"), shiny::NS("content_module"))
       )
     ),
-    
-    
+
+    # Scores tab (right aligned): live per-repository scores and a
+    # per-question summary, recomputed from the database as grading proceeds
+    bslib::nav_panel(
+      title = "Scores",
+      value = "scores",
+      mark_scores_ui("scores_module")
+    ),
+
     # Footer with project info
     footer = shiny::div(
       class = "bg-light border-top text-center text-muted p-2 fs-6 text-truncate",
@@ -573,6 +580,9 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
                 shiny::icon("up-right-from-square"),
                 " Open in browser"
               ),
+              # Names the report shown when several HTML files were found
+              # for the repo (NULL otherwise)
+              artifact_ambiguity_note(artifact_paths, repo),
               shiny::div(
                 style = "height: 70vh;",
                 shiny::tags$iframe(
@@ -580,9 +590,6 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
                   class = "w-100 h-100 border rounded bg-white"
                 )
               )
-              # Names the report shown when several HTML files were found
-              # for the repo (NULL otherwise)
-              artifact_ambiguity_note(artifact_paths, repo),
             )
           )
         } else {
@@ -710,6 +717,28 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       selected_repo = content_result$selected_repo,
       set_repo_labels = content_result$set_repo_labels
     )
+
+    # Scores tab: re-reads the database after each grading write, and on
+    # every visit so a question total edited in the rubric pane shows too
+    scores_result = mark_scores_server(
+      "scores_module", root, template_obj, repo_list,
+      grading_data_version = rubric_result$grading_data_version,
+      refresh = shiny::reactive(input$main_navbar)
+    )
+
+    # A click on a score cell (or repository name) in the Scores tab opens
+    # that repository, and question when one was clicked, in the Rubric tab.
+    # The content module follows current_repo_name and the rubric module
+    # follows the content module.
+    shiny::observe({
+      target = scores_result$score_clicked()
+      shiny::req(select_repo(target$repo))
+      if (!is.null(target$question)) {
+        rubric_result$select_question(target$question)
+      }
+      bslib::nav_select("main_navbar", "rubric")
+    }) |>
+      shiny::bindEvent(scores_result$score_clicked())
 
     # Reverse sync: z/x navigation (or the dropdown) in the Rubric tab moves
     # the app-wide selection too, so the Validation tab stays honest when
