@@ -141,5 +141,30 @@ test_that("Add a document question", {
 
   expect_equal(get_n_questions(app), 1)
   expect_equal(unname(unlist(app$get_values(export = "question_names"))), "Document")
-  expect_match(app$get_value(output = "question_1-selected_nodes_display")$html, "Whole document")
+  expect_match(app$get_value(output = "question_1-selected_nodes_display")$html, "Entire document")
+})
+
+test_that("an active document entry highlights the entire tree", {
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
+  app = new_app_driver(
+    template(file),
+    name  = "document_tree"
+  )
+  n_selected = function() {
+    html = app$get_value(output = "ast_panel-ast_tree_ui")$html
+    sum(gregexpr(" selected\"", html)[[1]] > 0)
+  }
+
+  app$click("add_document_question")
+  expect_gt(n_selected(), 0)
+
+  # every non-root node of the document is highlighted
+  ast = markermd:::parse_assignment_document(fs::dir_ls(file, glob = "*.qmd")[[1]])
+  expect_equal(n_selected(), 2 * length(markermd:::q2r_flatten(ast)))
+
+  # a sections question with nothing selected highlights nothing
+  app$click("add_question")
+  expect_equal(n_selected(), 0)
 })

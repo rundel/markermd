@@ -159,6 +159,16 @@ question_ui = function(id, name_id, name = paste("Question", name_id)) {
   )
 }
 
+# Tell the user a document entry's nodes cannot be changed: it covers the
+# entire document
+
+notify_document_entry = function() {
+  shiny::showNotification(
+    "This is a document entry: it covers the entire document, so nodes cannot be selected for it.",
+    type = "message"
+  )
+}
+
 # Question Server
 #
 # id: Character. Module namespace ID
@@ -191,7 +201,7 @@ question_server = function(id, ast, initial_question = NULL) {
       n_filters = length(q@filters)
       n_rules = length(q@rules)
       nodes_text = if (is_document_question(q)) {
-        "Whole document"
+        "Entire document"
       } else {
         glue::glue("{n_nodes} node{if (n_nodes == 1) '' else 's'} selected")
       }
@@ -228,7 +238,7 @@ question_server = function(id, ast, initial_question = NULL) {
     output$selected_nodes_display = shiny::renderUI({
       ids = state()@selected_nodes@node_ids
       if (is_document_question(state())) {
-        shiny::span("Whole document (document-level question)", class = "text-success")
+        shiny::span("Entire document", class = "text-success")
       } else if (length(ids) == 0) {
         shiny::span("None", class = "text-muted")
       } else {
@@ -289,13 +299,10 @@ question_server = function(id, ast, initial_question = NULL) {
       # interaction works in index space), but selections are stored as the
       # nodes' q2r ids (heading or div ids), converted at this boundary.
       add_node = function(node_index) {
-        # A document-scope question covers the whole document and never
+        # A document-scope question covers the entire document and never
         # selects nodes
         if (is_document_question(state())) {
-          shiny::showNotification(
-            "This is a document-level question: it covers the whole document, so nodes cannot be selected for it.",
-            type = "message"
-          )
+          notify_document_entry()
           return(invisible(NULL))
         }
         id = node_id_for_index(ast(), node_index)
@@ -311,6 +318,10 @@ question_server = function(id, ast, initial_question = NULL) {
       },
 
       remove_node = function(node_index) {
+        if (is_document_question(state())) {
+          notify_document_entry()
+          return(invisible(NULL))
+        }
         id = node_id_for_index(ast(), node_index)
         cur_state = state()
         cur_state@selected_nodes = markermd_node_selection(
@@ -319,7 +330,12 @@ question_server = function(id, ast, initial_question = NULL) {
         state(cur_state)
       },
 
+      # A document-scope question reports the tree's document root (index 0),
+      # so the tree highlights every node beneath it
       get_selected_nodes = shiny::reactive({
+        if (is_document_question(state())) {
+          return(0L)
+        }
         node_ids_to_indices(ast(), state()@selected_nodes@node_ids)
       }),
 

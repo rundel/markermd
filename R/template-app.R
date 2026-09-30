@@ -341,6 +341,12 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     # otherwise an add that first clears any selected descendants. Shared by the
     # pending-click and direct-click observers so the two never drift.
     apply_node_toggle = function(current_module, node_index) {
+      # A document entry's selection is the whole tree and cannot change;
+      # add_node() tells the user so
+      if (is_document_question(current_module$server$question())) {
+        current_module$server$add_node(node_index)
+        return(invisible())
+      }
       current_selected = current_module$server$get_selected_nodes()
       tree_items = tree_items_memo()
 
@@ -469,10 +475,10 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
           # submission needs it
           shiny::actionButton(
             "add_document_question",
-            "Add Document Question",
+            "Add Document Entry",
             icon = shiny::icon("file-lines"),
             class = "btn-outline-secondary btn-sm ms-1",
-            title = "Add a question covering the whole document (YAML header, render settings, and other issues that belong to no single question)"
+            title = "Add an entry covering the entire document (YAML header, render settings, and other issues that do not belong to another question). Used for document-level validation and feedback."
           )
         )
       )
