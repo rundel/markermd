@@ -43,7 +43,8 @@
 <span>  hotkey <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/integer.html" class="external-link">integer</a></span><span class="op">(</span><span class="fl">0</span><span class="op">)</span>,</span>
 <span>  points <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/integer.html" class="external-link">integer</a></span><span class="op">(</span><span class="fl">0</span><span class="op">)</span>,</span>
 <span>  description <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">character</a></span><span class="op">(</span><span class="fl">0</span><span class="op">)</span>,</span>
-<span>  selected <span class="op">=</span> <span class="cn">FALSE</span></span>
+<span>  selected <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  group <span class="op">=</span> <span class="cn">NA_character_</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -53,7 +54,9 @@
 
 <dl><dt id="arg-hotkey">hotkey<a class="anchor" aria-label="anchor" href="#arg-hotkey"></a></dt>
 <dd><p>Integer. Hotkey number (1-10) for keyboard selection, or NA for
-items past the first ten (which have no hotkey)</p></dd>
+items past the first ten, which have no hotkey and are toggled by
+clicking. A question may hold any number of items; the hotkey follows
+from an item's display position (1-10 for the first ten, NA beyond).</p></dd>
 
 
 <dt id="arg-points">points<a class="anchor" aria-label="anchor" href="#arg-points"></a></dt>
@@ -67,10 +70,21 @@ items past the first ten (which have no hotkey)</p></dd>
 <dt id="arg-selected">selected<a class="anchor" aria-label="anchor" href="#arg-selected"></a></dt>
 <dd><p>Logical. Whether this item is currently selected</p></dd>
 
+
+<dt id="arg-group">group<a class="anchor" aria-label="anchor" href="#arg-group"></a></dt>
+<dd><p>Character. Id of the <a href="markermd_rubric_group.html">markermd_rubric_group</a> the item belongs
+to within its question, or <code>NA</code> (the default) when the item is
+ungrouped. Group ids are an app/database detail: in a rubric YAML file
+the grouping is expressed by nesting items under a group entry.</p></dd>
+
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p>A <code>markermd_rubric_item</code> S7 object.</p>
+    </div>
+    <div class="section level2">
+    <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
+    <div class="dont-index"><p><a href="markermd_rubric_group.html">markermd_rubric_group</a></p></div>
     </div>
 
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

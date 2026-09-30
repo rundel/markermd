@@ -12,7 +12,8 @@ project_set(
   repos = NULL,
   comments = NULL,
   template = NULL,
-  key = NULL
+  key = NULL,
+  artifacts = NULL
 )
 ```
 
@@ -44,6 +45,12 @@ project_set(
   Root-relative key (solution) repository directory to record. Warns if
   it does not exist. Pass `NA` to clear a previously configured key.
 
+- artifacts:
+
+  Character vector of root-relative directories holding the students'
+  rendered reports, replacing the recorded list. Warns for any that does
+  not exist. Pass `NA` or `character(0)` to record none.
+
 ## Value
 
 The updated `markermd_project` object, invisibly.
@@ -55,5 +62,8 @@ if (FALSE) { # \dontrun{
 # Record the key repository and store a template from YAML
 project_set("hw01", key = "hw01-key")
 project_set("hw01", template = "hw01-template.yaml")
+
+# Record the directories of rendered reports
+project_set("hw01", artifacts = c("html", "md"))
 } # }
 ```

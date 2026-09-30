@@ -7,7 +7,7 @@ file (the optional import/export format). This is the inverse of
 ## Usage
 
 ``` r
-template_export(path, project = ".")
+template_export(path, project = ".", snapshot = NULL)
 ```
 
 ## Arguments
@@ -19,6 +19,12 @@ template_export(path, project = ".")
 - project:
 
   Path to the project directory. Defaults to the working directory.
+
+- snapshot:
+
+  Optional snapshot reference (see
+  [`snapshot_info()`](https://rundel.github.io/markermd/reference/snapshot_info.md)):
+  export the template that snapshot recorded instead of the stored one.
 
 ## Value
 

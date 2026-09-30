@@ -16,7 +16,9 @@ marks_import(
   project = ".",
   overwrite = FALSE,
   repo = NULL,
-  question = NULL
+  question = NULL,
+  snapshot = TRUE,
+  summary = NULL
 )
 ```
 
@@ -47,6 +49,17 @@ marks_import(
   Optional character vector restricting the import to those question
   names within the file.
 
+- snapshot:
+
+  Whether to take an automatic snapshot before an import that overwrites
+  existing grading. `FALSE` is for scripts that take their own snapshot
+  once before several imports.
+
+- summary:
+
+  Optional text recorded on the automatic snapshot: what the import
+  changes and why.
+
 ## Value
 
 Invisibly, a data frame with one row per (repository, question) pair:
@@ -72,8 +85,15 @@ it.
 
 All validation (repository names against the project's repos directory,
 question names against the stored template, item descriptions against
-each question's rubric) happens before anything is written, and the
-import itself is a single transaction.
+each question's rubric, and at most one selected item per exclusive item
+group) happens before anything is written, and the import itself is a
+single transaction.
+
+When the import re-marks pairs that already have grading activity
+(`overwrite = TRUE`), an automatic snapshot of the state being replaced
+is taken in the same transaction (see
+[`snapshot_create()`](https://rundel.github.io/markermd/reference/snapshot_create.md));
+an import that only fills empty pairs replaces nothing and takes none.
 
 ## See also
 
@@ -89,7 +109,8 @@ import itself is a single transaction.
 if (FALSE) { # \dontrun{
 marks_import("hw01-marks.yaml", project = "hw01")
 
-# Re-mark pairs that already have grading activity
-marks_import("hw01-marks.yaml", project = "hw01", overwrite = TRUE)
+# Re-mark pairs that already have grading activity, recording why
+marks_import("hw01-marks.yaml", project = "hw01", overwrite = TRUE,
+  summary = "Adversarial re-check of the first-pass grading")
 } # }
 ```

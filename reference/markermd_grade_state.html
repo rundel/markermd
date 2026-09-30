@@ -47,7 +47,8 @@ and grading configuration options.</p>
 <span>  total_score <span class="op">=</span> <span class="fl">0</span>,</span>
 <span>  grading_mode <span class="op">=</span> <span class="st">"positive"</span>,</span>
 <span>  bound_above_zero <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  bound_below_max <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span>  bound_below_max <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  optional <span class="op">=</span> <span class="cn">FALSE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -73,6 +74,14 @@ and grading configuration options.</p>
 
 <dt id="arg-bound-below-max">bound_below_max<a class="anchor" aria-label="anchor" href="#arg-bound-below-max"></a></dt>
 <dd><p>Logical. Whether to enforce score &lt;= maximum</p></dd>
+
+
+<dt id="arg-optional">optional<a class="anchor" aria-label="anchor" href="#arg-optional"></a></dt>
+<dd><p>Logical. Whether the question is optional: a submission
+with nothing recorded for it counts as graded and scores as if no rubric
+item were selected (its starting score, 0 in positive mode or
+<code>total_score</code> in negative mode), instead of being left ungraded. Meant
+for a document-level question that only applies to some submissions.</p></dd>
 
 </dl></div>
     <div class="section level2">

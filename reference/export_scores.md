@@ -5,8 +5,9 @@ project's grading database and writes them to `scores.csv` in the
 project root, one row per repository with one column per question plus a
 `total` column. Scores are recomputed the same way
 [`mark()`](https://rundel.github.io/markermd/reference/mark.md) displays
-them: the points of the selected rubric items are summed and passed
-through the question's grading mode and score bounds. A
+them: the points of the selected rubric items are summed (each item
+group's combined points first clamped to its floor and ceiling) and
+passed through the question's grading mode and score bounds. A
 repository/question pair that is not yet graded (no selected rubric item
 and no public comment) is written as `NA`, and a repository's `total`
 stays `NA` until all of its questions are graded.

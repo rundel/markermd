@@ -14,8 +14,10 @@ Initialize a grading project and inspect or edit its configuration.
   : Report a markermd project's status
 - [`validate_project()`](https://rundel.github.io/markermd/reference/validate_project.md)
   : Validate a project's student repositories against its template
+- [`parse_project()`](https://rundel.github.io/markermd/reference/parse_project.md)
+  : Check that every student repository's assignment document parses
 - [`markermd_skills_path()`](https://rundel.github.io/markermd/reference/markermd_skills_path.md)
-  : Path to the bundled markermd Claude Code skills
+  : Path to the bundled markermd agent skills
 
 ## Grading apps
 
@@ -75,6 +77,40 @@ comments.
 - [`export_marks()`](https://rundel.github.io/markermd/reference/export_marks.md)
   : Export scores and feedback for a graded project
 
+## Snapshots
+
+Named, annotated copies of the grading state kept in the project
+database, and how to compare and restore them.
+
+- [`snapshot_create()`](https://rundel.github.io/markermd/reference/snapshot_create.md)
+  : Take a snapshot of a project's grading state
+- [`snapshot_list()`](https://rundel.github.io/markermd/reference/snapshot_list.md)
+  : List a project's snapshots
+- [`snapshot_info()`](https://rundel.github.io/markermd/reference/snapshot_info.md)
+  : Inspect one snapshot
+- [`snapshot_annotate()`](https://rundel.github.io/markermd/reference/snapshot_annotate.md)
+  : Annotate a snapshot
+- [`snapshot_diff()`](https://rundel.github.io/markermd/reference/snapshot_diff.md)
+  : Compare two snapshots, or a snapshot with the live state
+- [`snapshot_scores()`](https://rundel.github.io/markermd/reference/snapshot_scores.md)
+  : Scores recorded in a snapshot, or the live scores
+- [`snapshot_restore()`](https://rundel.github.io/markermd/reference/snapshot_restore.md)
+  : Restore a snapshot's grading state
+- [`snapshot_export()`](https://rundel.github.io/markermd/reference/snapshot_export.md)
+  : Export a snapshot to YAML files
+- [`snapshot_pin()`](https://rundel.github.io/markermd/reference/snapshot_pin.md)
+  : Pin or unpin a snapshot
+- [`snapshot_delete()`](https://rundel.github.io/markermd/reference/snapshot_delete.md)
+  : Delete a snapshot
+- [`snapshot_prune()`](https://rundel.github.io/markermd/reference/snapshot_prune.md)
+  : Prune old automatic snapshots
+- [`project_backup()`](https://rundel.github.io/markermd/reference/project_backup.md)
+  : Back up the project database file
+- [`markermd_snapshot()`](https://rundel.github.io/markermd/reference/markermd_snapshot.md)
+  : Snapshot of a project's grading state
+- [`markermd_snapshot_diff()`](https://rundel.github.io/markermd/reference/markermd_snapshot_diff.md)
+  : Differences between two snapshots
+
 ## YAML file formats
 
 Read, write, and schema-validate the template, rubric, and marks file
@@ -120,6 +156,8 @@ plus the allowed rule vocabularies.
   : Markermd Filter Group
 - [`markermd_rubric_item()`](https://rundel.github.io/markermd/reference/markermd_rubric_item.md)
   : Rubric Item
+- [`markermd_rubric_group()`](https://rundel.github.io/markermd/reference/markermd_rubric_group.md)
+  : Rubric Item Group
 - [`markermd_grade_state()`](https://rundel.github.io/markermd/reference/markermd_grade_state.md)
   : Grade State S7 Class
 - [`markermd_project()`](https://rundel.github.io/markermd/reference/markermd_project.md)

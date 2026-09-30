@@ -4,16 +4,30 @@ ghclass::org_grade_assignment() (a repos/ directory of student
 repositories, a comments/ directory, an optional key/solution repository,
 and a directory per downloaded artifact). It creates a .markermd/ directory
 at the project root holding the SQLite grading database and a config.yml
-recording the project's file locations, and installs the bundled Claude Code
-skills into &amp;lt;path&amp;gt;/.claude/skills/ so they are discoverable from the
-project."><meta property="og:description" content="Bootstraps a markermd project in a directory laid out by
+recording the project's file locations, and installs the bundled agent
+skills so they are discoverable from the project: the Claude Code set into
+&amp;lt;path&amp;gt;/.claude/skills/ and the Codex set into &amp;lt;path&amp;gt;/.agents/skills/
+(see agents). It also writes each selected agent's project instructions
+file at the project root (CLAUDE.md for Claude Code, AGENTS.md for
+Codex) describing the project layout, the grading workflow and skills, and
+the rules an agent must follow when working with student submissions. An
+existing instructions file is kept, so it can be customized freely, unless
+overwrite_instructions = TRUE; pass instructions = FALSE to skip this
+step."><meta property="og:description" content="Bootstraps a markermd project in a directory laid out by
 ghclass::org_grade_assignment() (a repos/ directory of student
 repositories, a comments/ directory, an optional key/solution repository,
 and a directory per downloaded artifact). It creates a .markermd/ directory
 at the project root holding the SQLite grading database and a config.yml
-recording the project's file locations, and installs the bundled Claude Code
-skills into &amp;lt;path&amp;gt;/.claude/skills/ so they are discoverable from the
-project."></head><body>
+recording the project's file locations, and installs the bundled agent
+skills so they are discoverable from the project: the Claude Code set into
+&amp;lt;path&amp;gt;/.claude/skills/ and the Codex set into &amp;lt;path&amp;gt;/.agents/skills/
+(see agents). It also writes each selected agent's project instructions
+file at the project root (CLAUDE.md for Claude Code, AGENTS.md for
+Codex) describing the project layout, the grading workflow and skills, and
+the rules an agent must follow when working with student submissions. An
+existing instructions file is kept, so it can be customized freely, unless
+overwrite_instructions = TRUE; pass instructions = FALSE to skip this
+step."></head><body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
 
 
@@ -49,18 +63,31 @@ project."></head><body>
 
     <div class="ref-description section level2">
     <p>Bootstraps a markermd project in a directory laid out by
-<code><a href="https://rdrr.io/pkg/ghclass/man/org_grade_assignment.html" class="external-link">ghclass::org_grade_assignment()</a></code> (a <code>repos/</code> directory of student
+<code><a href="https://rundel.github.io/ghclass/reference/org_grade_assignment.html" class="external-link">ghclass::org_grade_assignment()</a></code> (a <code>repos/</code> directory of student
 repositories, a <code>comments/</code> directory, an optional key/solution repository,
 and a directory per downloaded artifact). It creates a <code>.markermd/</code> directory
 at the project root holding the SQLite grading database and a <code>config.yml</code>
-recording the project's file locations, and installs the bundled Claude Code
-skills into <code>&lt;path&gt;/.claude/skills/</code> so they are discoverable from the
-project.</p>
+recording the project's file locations, and installs the bundled agent
+skills so they are discoverable from the project: the Claude Code set into
+<code>&lt;path&gt;/.claude/skills/</code> and the Codex set into <code>&lt;path&gt;/.agents/skills/</code>
+(see <code>agents</code>). It also writes each selected agent's project instructions
+file at the project root (<code>CLAUDE.md</code> for Claude Code, <code>AGENTS.md</code> for
+Codex) describing the project layout, the grading workflow and skills, and
+the rules an agent must follow when working with student submissions. An
+existing instructions file is kept, so it can be customized freely, unless
+<code>overwrite_instructions = TRUE</code>; pass <code>instructions = FALSE</code> to skip this
+step.</p>
     </div>
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">init_project</span><span class="op">(</span><span class="va">path</span><span class="op">)</span></span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">init_project</span><span class="op">(</span></span>
+<span>  <span class="va">path</span>,</span>
+<span>  agents <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"claude"</span>, <span class="st">"codex"</span><span class="op">)</span>,</span>
+<span>  instructions <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  overwrite_instructions <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  rescan_artifacts <span class="op">=</span> <span class="cn">FALSE</span></span>
+<span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
@@ -69,6 +96,32 @@ project.</p>
 
 <dl><dt id="arg-path">path<a class="anchor" aria-label="anchor" href="#arg-path"></a></dt>
 <dd><p>Path to the project directory.</p></dd>
+
+
+<dt id="arg-agents">agents<a class="anchor" aria-label="anchor" href="#arg-agents"></a></dt>
+<dd><p>Which agents' skill sets to install: <code>"claude"</code> (into
+<code>&lt;path&gt;/.claude/skills/</code>), <code>"codex"</code> (into <code>&lt;path&gt;/.agents/skills/</code>), or
+both, the default. The same selection decides which instructions files
+are written.</p></dd>
+
+
+<dt id="arg-instructions">instructions<a class="anchor" aria-label="anchor" href="#arg-instructions"></a></dt>
+<dd><p>Whether to write the selected agents' project
+instructions files (<code>CLAUDE.md</code> / <code>AGENTS.md</code>) at the project root when
+they do not already exist. Defaults to <code>TRUE</code>.</p></dd>
+
+
+<dt id="arg-overwrite-instructions">overwrite_instructions<a class="anchor" aria-label="anchor" href="#arg-overwrite-instructions"></a></dt>
+<dd><p>Whether to replace existing instructions
+files with the packaged versions, discarding any local edits to them (for
+example to pick up the instructions shipped with a newer markermd).
+Defaults to <code>FALSE</code>; has no effect when <code>instructions = FALSE</code>.</p></dd>
+
+
+<dt id="arg-rescan-artifacts">rescan_artifacts<a class="anchor" aria-label="anchor" href="#arg-rescan-artifacts"></a></dt>
+<dd><p>Whether a re-run rebuilds the artifact directory
+list from every non-repository top-level directory instead of keeping the
+configured one. Defaults to <code>FALSE</code>; the first run always scans.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -82,19 +135,24 @@ project.</p>
 exist, the one whose name contains "key" is used. When no top-level git
 repository exists (a copied or unpacked layout, such as the bundled example
 project), a directory whose name contains "key" and that holds an assignment
-document (<code>.qmd</code>/<code>.Rmd</code>) is used instead. Remaining top-level directories
-that are not git repositories are recorded as artifact directories.</p>
+document (<code>.qmd</code>/<code>.Rmd</code>) is used instead. On the first run the remaining
+top-level directories that are not git repositories are recorded as
+artifact directories.</p>
 <p>Re-running <code>init_project()</code> on an already-initialized directory updates it in
 place: the existing grading database (including any stored grading template)
-is preserved, the skills are refreshed to the packaged version, the key and
-artifact directories are re-scanned, and a previously configured key is kept
-(or cleared if it no longer exists).</p>
+is preserved, the skills are refreshed to the packaged version, existing
+instructions files are left untouched (unless <code>overwrite_instructions = TRUE</code>), and a previously configured key is kept (or cleared if it no longer
+exists). The configured artifact directories are kept too, minus any that
+no longer exist: top-level directories created since (working notes,
+backups) are listed but not added, so add one with
+<code>project_set(artifacts = )</code>, or pass <code>rescan_artifacts = TRUE</code> to rebuild
+the list from every non-repository top-level directory as on the first run.</p>
     </div>
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
-<span class="r-in"><span><span class="fu">ghclass</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/ghclass/man/org_grade_assignment.html" class="external-link">org_grade_assignment</a></span><span class="op">(</span><span class="st">"hw01"</span>, org <span class="op">=</span> <span class="st">"my-course"</span>, repo_filter <span class="op">=</span> <span class="st">"hw01-"</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="fu">ghclass</span><span class="fu">::</span><span class="fu"><a href="https://rundel.github.io/ghclass/reference/org_grade_assignment.html" class="external-link">org_grade_assignment</a></span><span class="op">(</span><span class="st">"hw01"</span>, org <span class="op">=</span> <span class="st">"my-course"</span>, repo_filter <span class="op">=</span> <span class="st">"hw01-"</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="fu">init_project</span><span class="op">(</span><span class="st">"hw01"</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
 </code></pre></div>

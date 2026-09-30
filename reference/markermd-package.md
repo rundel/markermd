@@ -8,8 +8,9 @@ submissions are then validated against it and graded question by
 question with per-question rubrics, keyboard hotkeys, and
 rendered-report previews. All grading state is stored in a per-project
 SQLite database, with YAML import and export for templates, rubrics, and
-marks, plus bundled Claude Code skills that scaffold templates and
-rubrics and record first-pass machine grading for human review.
+marks, plus bundled agent skills (for Claude Code and Codex) that
+scaffold templates and rubrics, repair submissions the strict parser
+rejects, and record first-pass machine grading for human review.
 
 ## See also
 

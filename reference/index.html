@@ -78,10 +78,17 @@
 
         <dt>
 
+          <code><a href="parse_project.html">parse_project()</a></code>
+
+        </dt>
+        <dd>Check that every student repository's assignment document parses</dd>
+
+        <dt>
+
           <code><a href="markermd_skills_path.html">markermd_skills_path()</a></code>
 
         </dt>
-        <dd>Path to the bundled markermd Claude Code skills</dd>
+        <dd>Path to the bundled markermd agent skills</dd>
       </dl></div><div class="section level2">
       <h2 id="grading-apps">Grading apps<a class="anchor" aria-label="anchor" href="#grading-apps"></a></h2>
 
@@ -245,6 +252,113 @@
         </dt>
         <dd>Export scores and feedback for a graded project</dd>
       </dl></div><div class="section level2">
+      <h2 id="snapshots">Snapshots<a class="anchor" aria-label="anchor" href="#snapshots"></a></h2>
+
+      <div class="section-desc"><p>Named, annotated copies of the grading state kept in the project database, and how to compare and restore them.</p></div>
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
+
+          <code><a href="snapshot_create.html">snapshot_create()</a></code>
+
+        </dt>
+        <dd>Take a snapshot of a project's grading state</dd>
+
+        <dt>
+
+          <code><a href="snapshot_list.html">snapshot_list()</a></code>
+
+        </dt>
+        <dd>List a project's snapshots</dd>
+
+        <dt>
+
+          <code><a href="snapshot_info.html">snapshot_info()</a></code>
+
+        </dt>
+        <dd>Inspect one snapshot</dd>
+
+        <dt>
+
+          <code><a href="snapshot_annotate.html">snapshot_annotate()</a></code>
+
+        </dt>
+        <dd>Annotate a snapshot</dd>
+
+        <dt>
+
+          <code><a href="snapshot_diff.html">snapshot_diff()</a></code>
+
+        </dt>
+        <dd>Compare two snapshots, or a snapshot with the live state</dd>
+
+        <dt>
+
+          <code><a href="snapshot_scores.html">snapshot_scores()</a></code>
+
+        </dt>
+        <dd>Scores recorded in a snapshot, or the live scores</dd>
+
+        <dt>
+
+          <code><a href="snapshot_restore.html">snapshot_restore()</a></code>
+
+        </dt>
+        <dd>Restore a snapshot's grading state</dd>
+
+        <dt>
+
+          <code><a href="snapshot_export.html">snapshot_export()</a></code>
+
+        </dt>
+        <dd>Export a snapshot to YAML files</dd>
+
+        <dt>
+
+          <code><a href="snapshot_pin.html">snapshot_pin()</a></code>
+
+        </dt>
+        <dd>Pin or unpin a snapshot</dd>
+
+        <dt>
+
+          <code><a href="snapshot_delete.html">snapshot_delete()</a></code>
+
+        </dt>
+        <dd>Delete a snapshot</dd>
+
+        <dt>
+
+          <code><a href="snapshot_prune.html">snapshot_prune()</a></code>
+
+        </dt>
+        <dd>Prune old automatic snapshots</dd>
+
+        <dt>
+
+          <code><a href="project_backup.html">project_backup()</a></code>
+
+        </dt>
+        <dd>Back up the project database file</dd>
+
+        <dt>
+
+          <code><a href="markermd_snapshot.html">markermd_snapshot()</a></code>
+
+        </dt>
+        <dd>Snapshot of a project's grading state</dd>
+
+        <dt>
+
+          <code><a href="markermd_snapshot_diff.html">markermd_snapshot_diff()</a></code>
+
+        </dt>
+        <dd>Differences between two snapshots</dd>
+      </dl></div><div class="section level2">
       <h2 id="yaml-file-formats">YAML file formats<a class="anchor" aria-label="anchor" href="#yaml-file-formats"></a></h2>
 
       <div class="section-desc"><p>Read, write, and schema-validate the template, rubric, and marks file formats.</p></div>
@@ -381,6 +495,13 @@
 
         </dt>
         <dd>Rubric Item</dd>
+
+        <dt>
+
+          <code><a href="markermd_rubric_group.html">markermd_rubric_group()</a></code>
+
+        </dt>
+        <dd>Rubric Item Group</dd>
 
         <dt>
 

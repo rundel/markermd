@@ -1,10 +1,11 @@
 # Export a project's grading rubric to YAML
 
 Writes the rubric stored in the project's grading database (each
-question's rubric items, in display order, plus its scoring setup when
-one has been configured) to a YAML file. The file contains no
-per-repository grading data, so it can be shared, edited by hand or by
-an LLM tool, and brought back with
+question's rubric items, in display order, with its item groups nested
+around their members, plus its scoring setup when one has been
+configured) to a YAML file. The file contains no per-repository grading
+data, so it can be shared, edited by hand or by an LLM tool, and brought
+back with
 [`rubric_import()`](https://rundel.github.io/markermd/reference/rubric_import.md).
 The file format is described by the JSON Schema at
 `system.file("schema/markermd-rubric.json", package = "markermd")`.
@@ -12,7 +13,7 @@ The file format is described by the JSON Schema at
 ## Usage
 
 ``` r
-rubric_export(path, project = ".", question = NULL)
+rubric_export(path, project = ".", question = NULL, snapshot = NULL)
 ```
 
 ## Arguments
@@ -29,6 +30,12 @@ rubric_export(path, project = ".", question = NULL)
 
   Optional character vector of question names to export. Defaults to
   every question in the project's template.
+
+- snapshot:
+
+  Optional snapshot reference (see
+  [`snapshot_info()`](https://rundel.github.io/markermd/reference/snapshot_info.md)):
+  export the rubric that snapshot recorded instead of the live one.
 
 ## Value
 

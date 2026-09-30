@@ -13,7 +13,13 @@ and its format is described by the JSON Schema at
 ## Usage
 
 ``` r
-marks_export(path, project = ".", repo = NULL, question = NULL)
+marks_export(
+  path,
+  project = ".",
+  repo = NULL,
+  question = NULL,
+  snapshot = NULL
+)
 ```
 
 ## Arguments
@@ -33,6 +39,12 @@ marks_export(path, project = ".", repo = NULL, question = NULL)
 - question:
 
   Optional character vector of question names to export.
+
+- snapshot:
+
+  Optional snapshot reference (see
+  [`snapshot_info()`](https://rundel.github.io/markermd/reference/snapshot_info.md)):
+  export the marks that snapshot recorded instead of the live ones.
 
 ## Value
 

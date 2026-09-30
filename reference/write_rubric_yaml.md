@@ -1,10 +1,14 @@
 # Write a grading rubric to a YAML file
 
 Serializes a rubric (one or more questions' rubric items plus optional
-scoring setup) to a human-readable, schema-validatable YAML file. Items
-are written in display order; order is meaningful, as the first ten
-items are bound to keyboard hotkeys on import. No per-repository grading
-data is written.
+scoring setup and item groups) to a human-readable, schema-validatable
+YAML file. Items are written in display order; order is meaningful, as
+the first ten items are bound to keyboard hotkeys on import and any
+further items (there is no limit) are toggled by clicking. A group's
+items are nested under a group entry (`group`, optional `floor`,
+`ceiling` and `exclusive`, then `items`). The file is written as
+`format_version` `"1.1"` when it contains a group and `"1.0"` otherwise.
+No per-repository grading data is written.
 
 ## Usage
 
@@ -21,8 +25,10 @@ write_rubric_yaml(rubric, path)
   or
   [`rubric_export()`](https://rundel.github.io/markermd/reference/rubric_export.md):
   `format_version` plus a `questions` list whose entries have `name`,
-  `items` (a list of `markermd_rubric_item` objects) and optionally
-  `scoring` (a `markermd_grade_state` object).
+  `items` (a list of `markermd_rubric_item` objects in display order,
+  each item's `group` naming its group or `NA`), optionally `groups` (a
+  named list of `markermd_rubric_group` objects keyed by group id) and
+  optionally `scoring` (a `markermd_grade_state` object).
 
 - path:
 

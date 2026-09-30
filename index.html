@@ -11,8 +11,8 @@
 <script src="deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
 <script src="deps/headroom-0.11.0/headroom.min.js"></script><script src="deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="deps/search-1.0.0/fuse.min.js"></script><script src="deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="pkgdown.js"></script><meta property="og:title" content="Interactive Shiny-Based Grading Interface for Quarto and R Markdown Assignments">
-<meta name="description" content="Provides a Shiny-based workflow for grading assignments submitted as git repositories containing Quarto or R Markdown documents. A grading template of questions and structural validation rules is authored interactively against the solution (key) repository, and student submissions are then validated against it and graded question by question with per-question rubrics, keyboard hotkeys, and rendered-report previews. All grading state is stored in a per-project SQLite database, with YAML import and export for templates, rubrics, and marks, plus bundled Claude Code skills that scaffold templates and rubrics and record first-pass machine grading for human review.">
-<meta property="og:description" content="Provides a Shiny-based workflow for grading assignments submitted as git repositories containing Quarto or R Markdown documents. A grading template of questions and structural validation rules is authored interactively against the solution (key) repository, and student submissions are then validated against it and graded question by question with per-question rubrics, keyboard hotkeys, and rendered-report previews. All grading state is stored in a per-project SQLite database, with YAML import and export for templates, rubrics, and marks, plus bundled Claude Code skills that scaffold templates and rubrics and record first-pass machine grading for human review.">
+<meta name="description" content="Provides a Shiny-based workflow for grading assignments submitted as git repositories containing Quarto or R Markdown documents. A grading template of questions and structural validation rules is authored interactively against the solution (key) repository, and student submissions are then validated against it and graded question by question with per-question rubrics, keyboard hotkeys, and rendered-report previews. All grading state is stored in a per-project SQLite database, with YAML import and export for templates, rubrics, and marks, plus bundled agent skills (for Claude Code and Codex) that scaffold templates and rubrics, repair submissions the strict parser rejects, and record first-pass machine grading for human review.">
+<meta property="og:description" content="Provides a Shiny-based workflow for grading assignments submitted as git repositories containing Quarto or R Markdown documents. A grading template of questions and structural validation rules is authored interactively against the solution (key) repository, and student submissions are then validated against it and graded question by question with per-question rubrics, keyboard hotkeys, and rendered-report previews. All grading state is stored in a per-project SQLite database, with YAML import and export for templates, rubrics, and marks, plus bundled agent skills (for Claude Code and Codex) that scaffold templates and rubrics, repair submissions the strict parser rejects, and record first-pass machine grading for human review.">
 </head>
 <body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
@@ -60,7 +60,7 @@
 <li>
 <code><a href="reference/mark.html">mark()</a></code> grades a collection of student repositories against that template with per-question rubrics.</li>
 </ul>
-<p>Around the apps, a set of helper functions (<code><a href="reference/validate_project.html">validate_project()</a></code>, <code><a href="reference/template_import.html">template_import()</a></code> / <code><a href="reference/template_export.html">template_export()</a></code>, <code><a href="reference/rubric_import.html">rubric_import()</a></code> / <code><a href="reference/rubric_export.html">rubric_export()</a></code>, <code><a href="reference/marks_import.html">marks_import()</a></code> / <code><a href="reference/marks_export.html">marks_export()</a></code> / <code><a href="reference/marks_set.html">marks_set()</a></code>, <code><a href="reference/export_marks.html">export_marks()</a></code>) makes the entire workflow scriptable, and bundled Claude Code skills can scaffold the template and rubric or apply the rubric across all submissions as a first pass for human review.</p>
+<p>Around the apps, a set of helper functions (<code><a href="reference/validate_project.html">validate_project()</a></code>, <code><a href="reference/parse_project.html">parse_project()</a></code>, <code><a href="reference/template_import.html">template_import()</a></code> / <code><a href="reference/template_export.html">template_export()</a></code>, <code><a href="reference/rubric_import.html">rubric_import()</a></code> / <code><a href="reference/rubric_export.html">rubric_export()</a></code>, <code><a href="reference/marks_import.html">marks_import()</a></code> / <code><a href="reference/marks_export.html">marks_export()</a></code> / <code><a href="reference/marks_set.html">marks_set()</a></code>, <code><a href="reference/export_marks.html">export_marks()</a></code>) makes the entire workflow scriptable, and bundled agent skills (for Claude Code and Codex) can scaffold the template and rubric, repair submissions the strict parser rejects, or apply the rubric across all submissions as a first pass for human review.</p>
 <div class="section level2">
 <h2 id="experimental-status">Experimental status<a class="anchor" aria-label="anchor" href="#experimental-status"></a>
 </h2>
@@ -102,7 +102,8 @@
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://rundel.github.io/markermd/">markermd</a></span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># One-time setup: writes .markermd/config.yml, creates the grading</span></span>
-<span><span class="co"># database, and installs the bundled Claude Code skills</span></span>
+<span><span class="co"># database, installs the bundled agent skills, and writes CLAUDE.md /</span></span>
+<span><span class="co"># AGENTS.md project instructions for them</span></span>
 <span><span class="fu"><a href="reference/init_project.html">init_project</a></span><span class="op">(</span><span class="st">"hw01"</span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># Author the grading template (questions + validation rules)</span></span>
@@ -110,7 +111,7 @@
 <span></span>
 <span><span class="co"># Grade the student repositories</span></span>
 <span><span class="fu"><a href="reference/mark.html">mark</a></span><span class="op">(</span><span class="st">"hw01"</span><span class="op">)</span></span></code></pre></div>
-<p><code><a href="reference/init_project.html">init_project()</a></code> detects the key repository and artifact directories, records everything in <code>hw01/.markermd/config.yml</code>, and creates the SQLite database that stores the template, rubric, and all grading. <code><a href="reference/project_sitrep.html">project_sitrep()</a></code> prints an overview of a project’s configuration at any point.</p>
+<p><code><a href="reference/init_project.html">init_project()</a></code> detects the key repository and artifact directories, records everything in <code>hw01/.markermd/config.yml</code>, and creates the SQLite database that stores the template, rubric, and all grading. <code><a href="reference/project_sitrep.html">project_sitrep()</a></code> prints an overview of a project’s configuration at any point, and <code><a href="reference/project_set.html">project_set()</a></code> changes it (including <code>artifacts =</code>, the directories of rendered reports). Re-running <code><a href="reference/init_project.html">init_project()</a></code> keeps the configured artifact directories rather than adding every new top-level folder; <code>rescan_artifacts = TRUE</code> rebuilds the list.</p>
 </div>
 <div class="section level2">
 <h2 id="template-creation-with-template">Template creation with <code>template()</code>
@@ -120,6 +121,7 @@
 <div class="float">
 <img src="reference/figures/template_screenshot.png" alt="The template app: document structure tree on the left, questions with their selected sections and validation rules on the right"><div class="figcaption">The template app: document structure tree on the left, questions with their selected sections and validation rules on the right</div>
 </div>
+<p>Some problems belong to no single question: a render setting in the YAML header, global chunk options, a document that does not render. “Add Document Entry” creates a document-scope question for them. It selects no sections (its filters and rules, if any, run against the whole document), and is written as <code>scope: document</code> in the template YAML (format 3.1). Add one only when a submission needs it. Paired with rubric scoring worth 0 points, marked optional and not bounded below zero, it records such a problem once as a deduction from the total instead of spreading it across the questions it affects.</p>
 <p>When the app is opened on an initialized project, saving writes the template directly into the project database, ready for grading.</p>
 </div>
 <div class="section level2">
@@ -128,21 +130,34 @@
 </h2>
 <p><code><a href="reference/mark.html">mark()</a></code> opens an initialized project and sources everything from it: the student repositories, the stored template, the grading database, and each repository’s rendered reports.</p>
 <div class="section level3">
+<h3 id="assignments">Assignments<a class="anchor" aria-label="anchor" href="#assignments"></a>
+</h3>
+<p>The app opens on the Assignments tab, one table with a row per repository: links to its folder, GitHub repository, rendered report and source, its validation status, its grading progress, and its score per question and in total, computed from the rubric selections exactly as <code><a href="reference/export_scores.html">export_scores()</a></code> would. The class summary is pinned beneath the rows: how many repositories are graded, then the mean, median and standard deviation per question and for the total. The table filters by name and by status (failed validation, incomplete, complete), sorts by any column, and updates as grading proceeds. Clicking a repository’s validation marker opens it in the Validation tab, and clicking a score opens that repository and question in the Rubric tab.</p>
+<div class="float">
+<img src="reference/figures/mark_assignments_screenshot.png" alt="The mark app’s Assignments tab: one row per repository with folder, GitHub, report and source links, validation status, grading progress and per-question scores, with the class summary pinned beneath"><div class="figcaption">The mark app’s Assignments tab: one row per repository with folder, GitHub, report and source links, validation status, grading progress and per-question scores, with the class summary pinned beneath</div>
+</div>
+</div>
+<div class="section level3">
 <h3 id="validation">Validation<a class="anchor" aria-label="anchor" href="#validation"></a>
 </h3>
-<p>The Validation tab checks every repository against the template’s rules, so structural problems (missing sections, missing chunks, absent content) are visible before any grading starts. The assignment table tracks per-repository validation status and grading progress.</p>
+<p>The Validation tab checks the selected repository against the template’s rules, so structural problems (missing sections, missing chunks, absent content) are visible before any grading starts. Its repository selector, whose entries carry each repository’s count of passed questions, stays in step with the rest of the app, and a question selector beside it, whose entries carry each question’s pass or fail mark for that repository, jumps to a question’s results. Each question’s results collapse behind their header, and a collapsed question stays collapsed while moving between repositories.</p>
 <div class="float">
-<img src="reference/figures/mark_validation_screenshot.png" alt="The mark app’s Validation tab: assignment table with validation status and grading progress on the left, the selected repository’s per-question rule results on the right"><div class="figcaption">The mark app’s Validation tab: assignment table with validation status and grading progress on the left, the selected repository’s per-question rule results on the right</div>
+<img src="reference/figures/mark_validation_screenshot.png" alt="The mark app’s Validation tab: the selected repository’s per-question rule results"><div class="figcaption">The mark app’s Validation tab: the selected repository’s per-question rule results</div>
 </div>
 </div>
 <div class="section level3">
 <h3 id="rubric">Rubric<a class="anchor" aria-label="anchor" href="#rubric"></a>
 </h3>
-<p>The Rubric tab is where grading happens. The left pane shows the student’s rendered report or source; the right pane shows the current question’s rubric. Items toggle by click or number-key hotkey, and the score follows from the question’s scoring setup (additive or deduction mode, with optional clamping between zero and the question total; clicking the score display edits the total, and the gear popover holds the mode and bounds). Below the items are two comment boxes: a public, student-facing comment (which also marks the question as graded) and private notes that are never shared with students. Every action autosaves to the project database.</p>
+<p>The Rubric tab is where grading happens. The left pane shows the student’s rendered report or source; the right pane shows the current question’s rubric. Items toggle by click or number-key hotkey (the first ten items of a question get the keys 1-9 and 0; there is no limit on items, and any beyond the tenth toggle by click), and the score follows from the question’s scoring setup (additive or deduction mode, with optional clamping between zero and the question total; clicking the score display edits the total, and the gear popover holds the mode and bounds). Items that stack can be placed in a named group with a floor or ceiling on their combined points, so every defect is recorded while the deductions stay proportionate, or made exclusive so only one severity tier can be selected; a group’s header shows its live subtotal and flags a bound that was hit, and a badge beside the score opens the breakdown. Below the items are two comment boxes: a public, student-facing comment (which also marks the question as graded) and private notes that are never shared with students. Every action autosaves to the project database.</p>
 <div class="float">
 <img src="reference/figures/mark_rubric_screenshot.png" alt="The mark app’s Rubric tab: rendered report on the left; rubric items with hotkeys, the computed score, and the public and private comment boxes on the right"><div class="figcaption">The mark app’s Rubric tab: rendered report on the left; rubric items with hotkeys, the computed score, and the public and private comment boxes on the right</div>
 </div>
-<p>Rubric items can be added, edited, and reordered while grading, and the rubric pane’s menu offers YAML import and export for editing the rubric outside the app.</p>
+<p>Rubric items can be added, edited, reordered, and grouped while grading (Add Group creates a group whose settings popover holds its label, bounds and exclusivity; each item’s group menu moves it in or out), and the rubric pane’s menu offers YAML import and export for editing the rubric outside the app.</p>
+</div>
+<div class="section level3">
+<h3 id="history">History<a class="anchor" aria-label="anchor" href="#history"></a>
+</h3>
+<p>The History tab lists the project’s snapshots: named, timestamped copies of the grading state (template, rubric and marks) kept inside the project database. Snapshots are taken automatically before every bulk change (a rubric import, deleting an item that has selections, deleting a group, a restore), and by hand from the camera button or the <code>s</code> key, with a label and a summary of what is about to change. Selecting a snapshot shows its fields and notes, what changed between it and the current state (or any other snapshot): items added, removed, reworded or re-pointed, selections and comments changed, and every repository’s total before and after; and the scores it recorded. From there a snapshot can be restored (undoing every change since to the rubric and marks, or to chosen questions and repositories), exported to YAML files, pinned, or deleted, and the database file backed up. The navbar shows when the latest snapshot was taken and how many selections have been recorded since, turning amber when that number grows large, as a nudge to take a named checkpoint at the end of a session.</p>
 </div>
 </div>
 <div class="section level2">
@@ -166,32 +181,61 @@
 <span>  project <span class="op">=</span> <span class="st">"hw01"</span></span>
 <span><span class="op">)</span></span></code></pre></div>
 <p>The YAML formats are validated against bundled JSON Schemas (see <code>system.file("schema", package = "markermd")</code>) and are deliberately simple enough for LLM tools to author. Marks imports are conservative by default: repository/question pairs that already have grading activity are skipped unless explicitly overwritten.</p>
+<div class="section level3">
+<h3 id="snapshots">Snapshots<a class="anchor" aria-label="anchor" href="#snapshots"></a>
+</h3>
+<p>Every bulk change to the grading state takes a snapshot of the state it replaces, in the same transaction, so a change cannot succeed without its snapshot. The imports take a <code>summary</code> so the reason for a change is recorded with it, and the snapshots can be listed, compared, exported and restored from R (and from the History tab of <code><a href="reference/mark.html">mark()</a></code>; the template editor offers a take-snapshot and a load-a-snapshot’s-template control):</p>
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># A named checkpoint before a multi-step change</span></span>
+<span><span class="fu"><a href="reference/snapshot_create.html">snapshot_create</a></span><span class="op">(</span><span class="st">"hw01"</span>, label <span class="op">=</span> <span class="st">"Before feedback review"</span>,</span>
+<span>  summary <span class="op">=</span> <span class="st">"Re-checking every Q1 selection against the reviewed standard."</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Imports record their reason on the snapshot they take</span></span>
+<span><span class="fu"><a href="reference/rubric_import.html">rubric_import</a></span><span class="op">(</span><span class="st">"hw01-rubric.yaml"</span>, project <span class="op">=</span> <span class="st">"hw01"</span>, mode <span class="op">=</span> <span class="st">"replace"</span>,</span>
+<span>  summary <span class="op">=</span> <span class="st">"Feedback review: lenient Q1a standard, unrequested items to 0 pts"</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># What changed since, and what it did to the grades</span></span>
+<span><span class="fu"><a href="reference/snapshot_list.html">snapshot_list</a></span><span class="op">(</span><span class="st">"hw01"</span><span class="op">)</span></span>
+<span><span class="fu"><a href="reference/snapshot_diff.html">snapshot_diff</a></span><span class="op">(</span><span class="st">"Before feedback review"</span>, project <span class="op">=</span> <span class="st">"hw01"</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Undo (the state before the restore is snapshotted first)</span></span>
+<span><span class="fu"><a href="reference/snapshot_restore.html">snapshot_restore</a></span><span class="op">(</span><span class="st">"Before feedback review"</span>, project <span class="op">=</span> <span class="st">"hw01"</span>,</span>
+<span>  summary <span class="op">=</span> <span class="st">"The review's Q1c severities were wrong."</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># An archive of one snapshot as YAML files, and a copy of the database file</span></span>
+<span><span class="fu"><a href="reference/snapshot_export.html">snapshot_export</a></span><span class="op">(</span><span class="st">"Before feedback review"</span>, <span class="st">"backups/before-review"</span>, project <span class="op">=</span> <span class="st">"hw01"</span><span class="op">)</span></span>
+<span><span class="fu"><a href="reference/project_backup.html">project_backup</a></span><span class="op">(</span><span class="st">"hw01"</span><span class="op">)</span></span></code></pre></div>
+<p>Snapshots live in the project database (schema version 5; an existing database gains a baseline snapshot when first opened). Identical parts are stored once, an automatic snapshot of an unchanged state is recorded as a note on the latest one rather than a new row, and <code><a href="reference/snapshot_prune.html">snapshot_prune()</a></code> removes old automatic snapshots while keeping every manual or pinned one. <code><a href="reference/export_scores.html">export_scores()</a></code> and <code><a href="reference/export_comments.html">export_comments()</a></code> record which snapshot each export came from, and <code><a href="reference/project_sitrep.html">project_sitrep()</a></code> reports the snapshot state, including whether the exported scores are stale.</p>
+</div>
 </div>
 <div class="section level2">
 <h2 id="exporting-results">Exporting results<a class="anchor" aria-label="anchor" href="#exporting-results"></a>
 </h2>
 <p>When grading is complete, <code><a href="reference/export_marks.html">export_marks()</a></code> writes the final hand-off artifacts from the project database (or run <code><a href="reference/export_scores.html">export_scores()</a></code> and <code><a href="reference/export_comments.html">export_comments()</a></code> individually):</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="reference/export_marks.html">export_marks</a></span><span class="op">(</span><span class="st">"hw01"</span><span class="op">)</span></span></code></pre></div>
 <ul>
 <li>
-<code><a href="reference/export_scores.html">export_scores()</a></code> writes <code>scores.csv</code> to the project root: one row per repository, one column per question, plus a <code>total</code> column. Scores are recomputed exactly as <code><a href="reference/mark.html">mark()</a></code> displays them, passing each question’s selected rubric item points through its grading mode and bounds. Ungraded repository/question pairs export as <code>NA</code>, and a repository’s total stays <code>NA</code> until all of its questions are graded.</li>
+<code><a href="reference/export_scores.html">export_scores()</a></code> writes <code>scores.csv</code> to the project root: one row per repository, one column per question, plus a <code>total</code> column. Scores are recomputed exactly as <code><a href="reference/mark.html">mark()</a></code> displays them, passing each question’s selected rubric item points (each item group’s combined points first clamped to its floor and ceiling) through its grading mode and bounds. Ungraded repository/question pairs export as <code>NA</code>, and a repository’s total stays <code>NA</code> until all of its questions are graded. A question whose scoring is marked optional (the gear popover’s “Optional: nothing selected still counts as graded”, or <code>optional: true</code> in the rubric YAML) counts as graded for every repository, scoring as if no item were selected until something is recorded; its column in the Assignments table has a small red dot beside the name.</li>
 <li>
-<code><a href="reference/export_comments.html">export_comments()</a></code> writes each repository’s student-facing feedback to <code>comments/&lt;repo&gt;.md</code> (or the project’s configured comments directory). Each graded question appears as a heading, in template order, followed by a bulleted list of its selected rubric item descriptions and public comment. Private notes are never exported, and a repository with no public feedback gets no file.</li>
+<code><a href="reference/export_comments.html">export_comments()</a></code> writes each repository’s student-facing feedback to <code>comments/&lt;repo&gt;.md</code> (or the project’s configured comments directory). Each graded question appears as a heading, in template order (document-scope questions first), followed by a bulleted list of its selected rubric item descriptions and public comment. Group bounds are never mentioned; with <code>group_headings = TRUE</code> a group’s selected items are listed under a subheading carrying its label. Private notes are never exported, and a repository with no public feedback gets no file.</li>
 </ul>
 </div>
 <div class="section level2">
-<h2 id="claude-code-skills">Claude Code skills<a class="anchor" aria-label="anchor" href="#claude-code-skills"></a>
+<h2 id="agent-skills-claude-code-and-codex">Agent skills (Claude Code and Codex)<a class="anchor" aria-label="anchor" href="#agent-skills-claude-code-and-codex"></a>
 </h2>
-<p><code><a href="reference/init_project.html">init_project()</a></code> installs three <a href="https://claude.com/claude-code" class="external-link">Claude Code</a> skills into the project’s <code>.claude/skills/</code> directory:</p>
+<p><code><a href="reference/init_project.html">init_project()</a></code> installs four agent skills into the project, in two sets: a <a href="https://claude.com/claude-code" class="external-link">Claude Code</a> set under <code>.claude/skills/</code> and a <a href="https://developers.openai.com/codex" class="external-link">Codex</a> set under <code>.agents/skills/</code> (the <code>agents</code> argument selects one or both; the default installs both). Both sets follow the Agent Skills format and share the same names, so a skill is invoked as <code>/markermd-fix-parsing</code> in Claude Code and <code>$markermd-fix-parsing</code> in Codex:</p>
 <ul>
 <li>
 <code>markermd-scaffold-template</code>: builds a starter grading template from the key repository’s assignment document.</li>
+<li>
+<code>markermd-fix-parsing</code>: repairs student documents that the strict q2r parser rejects, making the smallest possible edits on a <code>grading-fixes</code> branch in each repository so the original submission stays intact, and flags any substantive change in the document.</li>
 <li>
 <code>markermd-scaffold-rubric</code>: drafts per-question rubric items and scoring from the key, optionally sampling student submissions to anticipate common mistakes.</li>
 <li>
 <code>markermd-apply-rubric</code>: applies the stored rubric to every student repository as a first-pass machine grading, recording its reasoning as private notes for human review in <code><a href="reference/mark.html">mark()</a></code>.</li>
 </ul>
+<p><code><a href="reference/init_project.html">init_project()</a></code> also writes a project instructions file for each selected agent at the project root (<code>CLAUDE.md</code> for Claude Code, <code>AGENTS.md</code> for Codex) describing the project layout, the workflow and skills, the headless entry points, the template, rubric, and marks YAML formats, and the rules for working with student submissions. An existing file is kept, so it can be customized per project, unless <code>overwrite_instructions = TRUE</code> replaces it with the packaged version (to pick up a newer markermd’s instructions); <code>instructions = FALSE</code> skips it.</p>
 <p>See <code>inst/skills/README.md</code> for details and per-user installation.</p>
 </div>
 <div class="section level2">

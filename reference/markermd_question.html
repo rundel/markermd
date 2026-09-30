@@ -44,7 +44,8 @@
 <span>  name <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">character</a></span><span class="op">(</span><span class="fl">0</span><span class="op">)</span>,</span>
 <span>  selected_nodes <span class="op">=</span> <span class="fu"><a href="markermd_node_selection.html">markermd_node_selection</a></span><span class="op">(</span><span class="op">)</span>,</span>
 <span>  rules <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span>,</span>
-<span>  filters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span></span>
+<span>  filters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span>,</span>
+<span>  scope <span class="op">=</span> <span class="st">"sections"</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -72,6 +73,15 @@
 <dd><p>List. Filter groups for this question as markermd_filter_group
 objects. Conditions within a group are ANDed, groups are ORed; filters
 narrow the question's node set before rules evaluate.</p></dd>
+
+
+<dt id="arg-scope">scope<a class="anchor" aria-label="anchor" href="#arg-scope"></a></dt>
+<dd><p>Character. <code>"sections"</code> (the default) for a question that
+targets the selected headings and divs, or <code>"document"</code> for a question
+about the document as a whole (the YAML header, render settings, and
+other issues that belong to no single question). A document-scope
+question selects no nodes; its filters and rules, if any, evaluate
+against the whole document.</p></dd>
 
 </dl></div>
     <div class="section level2">

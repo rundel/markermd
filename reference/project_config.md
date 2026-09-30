@@ -27,10 +27,13 @@ A `markermd_project` object.
 src = system.file("examples/test_assignment", package = "markermd")
 project = fs::dir_copy(src, fs::file_temp("markermd_example_"))
 init_project(project)
-#> ✔ Initialized markermd project at /tmp/RtmpvYDUmn/markermd_example_21ca3e0f9de0
+#> ✔ Initialized markermd project at /tmp/RtmpXDFX45/markermd_example_382363137177
 #> • database: .markermd/markermd.sqlite (created)
-#> • skills: markermd-apply-rubric, markermd-scaffold-rubric,
-#>   markermd-scaffold-template (.claude/skills/)
+#> • skills (claude): markermd-apply-rubric, markermd-fix-parsing,
+#>   markermd-scaffold-rubric, markermd-scaffold-template (.claude/skills/)
+#> • skills (codex): markermd-apply-rubric, markermd-fix-parsing,
+#>   markermd-scaffold-rubric, markermd-scaffold-template (.agents/skills/)
+#> • instructions: CLAUDE.md (created), AGENTS.md (created)
 #> • repos: repos/
 #> • comments: not found
 #> • key: hw3-key
@@ -39,10 +42,10 @@ init_project(project)
 project_config(project)
 #> 
 #> ── markermd project ────────────────────────────────────────────────────────────
-#> root: /tmp/RtmpvYDUmn/markermd_example_21ca3e0f9de0
+#> root: /tmp/RtmpXDFX45/markermd_example_382363137177
 #> version: 1.0
-#> created: 2026-07-15 12:34:49
-#> updated: 2026-07-15 12:34:49
+#> created: 2026-09-30 02:41:48
+#> updated: 2026-09-30 02:41:49
 #> 
 #> ── Locations ──
 #> 
@@ -52,4 +55,8 @@ project_config(project)
 #> • artifacts: html
 #> • database: .markermd/markermd.sqlite (present)
 #> • template: not set
+#> 
+#> ── Snapshots ──
+#> 
+#>   • none yet (`snapshot_create()` takes one)
 ```

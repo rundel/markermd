@@ -1,9 +1,11 @@
 # Report a markermd project's status
 
 Prints a situation report for a markermd project: its root, version and
-timestamps, and the configured locations along with whether they exist
-(repo and comment counts, artifact directories, the grading database,
-and the template).
+timestamps, the configured locations along with whether they exist (repo
+and comment counts, artifact directories, the grading database, and the
+template), and the state of its snapshots (how many, the latest one,
+whether the grading state changed since it, and when the scores and
+comments were last exported relative to the last change).
 
 ## Usage
 
@@ -27,10 +29,13 @@ The project's `markermd_project` object, invisibly.
 src = system.file("examples/test_assignment", package = "markermd")
 project = fs::dir_copy(src, fs::file_temp("markermd_example_"))
 init_project(project)
-#> ✔ Initialized markermd project at /tmp/RtmpvYDUmn/markermd_example_21ca75c5d333
+#> ✔ Initialized markermd project at /tmp/RtmpXDFX45/markermd_example_38236f3c42
 #> • database: .markermd/markermd.sqlite (created)
-#> • skills: markermd-apply-rubric, markermd-scaffold-rubric,
-#>   markermd-scaffold-template (.claude/skills/)
+#> • skills (claude): markermd-apply-rubric, markermd-fix-parsing,
+#>   markermd-scaffold-rubric, markermd-scaffold-template (.claude/skills/)
+#> • skills (codex): markermd-apply-rubric, markermd-fix-parsing,
+#>   markermd-scaffold-rubric, markermd-scaffold-template (.agents/skills/)
+#> • instructions: CLAUDE.md (created), AGENTS.md (created)
 #> • repos: repos/
 #> • comments: not found
 #> • key: hw3-key
@@ -39,10 +44,10 @@ init_project(project)
 project_sitrep(project)
 #> 
 #> ── markermd project ────────────────────────────────────────────────────────────
-#> root: /tmp/RtmpvYDUmn/markermd_example_21ca75c5d333
+#> root: /tmp/RtmpXDFX45/markermd_example_38236f3c42
 #> version: 1.0
-#> created: 2026-07-15 12:34:50
-#> updated: 2026-07-15 12:34:50
+#> created: 2026-09-30 02:41:50
+#> updated: 2026-09-30 02:41:50
 #> 
 #> ── Locations ──
 #> 
@@ -52,4 +57,8 @@ project_sitrep(project)
 #> • artifacts: html
 #> • database: .markermd/markermd.sqlite (present)
 #> • template: not set
+#> 
+#> ── Snapshots ──
+#> 
+#>   • none yet (`snapshot_create()` takes one)
 ```

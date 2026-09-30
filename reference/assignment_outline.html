@@ -79,7 +79,8 @@ directory. Defaults to any <code>.Rmd</code>/<code>.qmd</code> file.</p></dd>
     <p>A data frame with one row per anchorable section and columns <code>type</code>
 (<code>"heading"</code> or <code>"div"</code>), <code>id</code>, <code>level</code>, <code>title</code>, <code>n_subsections</code>, and the
 content counts <code>n_chunk</code>, <code>n_code_block</code>, <code>n_markdown</code>, <code>n_list</code>,
-<code>n_table</code>, <code>n_div</code>, <code>n_other</code> and <code>n_content</code> (all non-heading blocks). The
+<code>n_table</code>, <code>n_div</code>, <code>n_other</code> and <code>n_content</code> (all non-heading blocks;
+HTML comments, which never render, are not counted anywhere). The
 resolved source file is attached as the <code>"source_file"</code> attribute.</p>
     </div>
 

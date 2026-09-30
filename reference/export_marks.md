@@ -11,7 +11,7 @@ grading database.
 ## Usage
 
 ``` r
-export_marks(project = ".")
+export_marks(project = ".", group_headings = FALSE)
 ```
 
 ## Arguments
@@ -19,6 +19,13 @@ export_marks(project = ".")
 - project:
 
   Path to the project directory. Defaults to the working directory.
+
+- group_headings:
+
+  Passed to
+  [`export_comments()`](https://rundel.github.io/markermd/reference/export_comments.md):
+  whether to write each item group's selected items under a subheading
+  carrying the group's label. Defaults to `FALSE`.
 
 ## Value
 

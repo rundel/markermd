@@ -56,7 +56,9 @@ question's rubric.</p>
 <span>  project <span class="op">=</span> <span class="st">"."</span>,</span>
 <span>  overwrite <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  repo <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  question <span class="op">=</span> <span class="cn">NULL</span></span>
+<span>  question <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  snapshot <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  summary <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -88,6 +90,17 @@ repository names within the file.</p></dd>
 <dd><p>Optional character vector restricting the import to those
 question names within the file.</p></dd>
 
+
+<dt id="arg-snapshot">snapshot<a class="anchor" aria-label="anchor" href="#arg-snapshot"></a></dt>
+<dd><p>Whether to take an automatic snapshot before an import
+that overwrites existing grading. <code>FALSE</code> is for scripts that take their
+own snapshot once before several imports.</p></dd>
+
+
+<dt id="arg-summary">summary<a class="anchor" aria-label="anchor" href="#arg-summary"></a></dt>
+<dd><p>Optional text recorded on the automatic snapshot: what the
+import changes and why.</p></dd>
+
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
@@ -110,8 +123,13 @@ grading. An omitted <code>comment</code> / <code>private_comment</code> field le
 comment unchanged, while an empty string clears it.</p>
 <p>All validation (repository names against the project's repos directory,
 question names against the stored template, item descriptions against each
-question's rubric) happens before anything is written, and the import
-itself is a single transaction.</p>
+question's rubric, and at most one selected item per exclusive item
+group) happens before anything is written, and the import itself is a
+single transaction.</p>
+<p>When the import re-marks pairs that already have grading activity
+(<code>overwrite = TRUE</code>), an automatic snapshot of the state being replaced is
+taken in the same transaction (see <code><a href="snapshot_create.html">snapshot_create()</a></code>); an import that
+only fills empty pairs replaces nothing and takes none.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
@@ -124,8 +142,9 @@ itself is a single transaction.</p>
     <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
 <span class="r-in"><span><span class="fu">marks_import</span><span class="op">(</span><span class="st">"hw01-marks.yaml"</span>, project <span class="op">=</span> <span class="st">"hw01"</span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># Re-mark pairs that already have grading activity</span></span></span>
-<span class="r-in"><span><span class="fu">marks_import</span><span class="op">(</span><span class="st">"hw01-marks.yaml"</span>, project <span class="op">=</span> <span class="st">"hw01"</span>, overwrite <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="co"># Re-mark pairs that already have grading activity, recording why</span></span></span>
+<span class="r-in"><span><span class="fu">marks_import</span><span class="op">(</span><span class="st">"hw01-marks.yaml"</span>, project <span class="op">=</span> <span class="st">"hw01"</span>, overwrite <span class="op">=</span> <span class="cn">TRUE</span>,</span></span>
+<span class="r-in"><span>  summary <span class="op">=</span> <span class="st">"Adversarial re-check of the first-pass grading"</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
 </code></pre></div>
     </div>

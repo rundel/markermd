@@ -32,8 +32,9 @@ assignment_outline(assignment_path, filename = "*.[Rq]md")
 A data frame with one row per anchorable section and columns `type`
 (`"heading"` or `"div"`), `id`, `level`, `title`, `n_subsections`, and
 the content counts `n_chunk`, `n_code_block`, `n_markdown`, `n_list`,
-`n_table`, `n_div`, `n_other` and `n_content` (all non-heading blocks).
-The resolved source file is attached as the `"source_file"` attribute.
+`n_table`, `n_div`, `n_other` and `n_content` (all non-heading blocks;
+HTML comments, which never render, are not counted anywhere). The
+resolved source file is attached as the `"source_file"` attribute.
 
 ## Examples
 
