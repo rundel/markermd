@@ -43,6 +43,23 @@ reference:
   - export_scores
   - export_comments
   - export_marks
+- title: Snapshots
+  desc: Named, annotated copies of the grading state kept in the project database, and how to compare and restore them.
+  contents:
+  - snapshot_create
+  - snapshot_list
+  - snapshot_info
+  - snapshot_annotate
+  - snapshot_diff
+  - snapshot_scores
+  - snapshot_restore
+  - snapshot_export
+  - snapshot_pin
+  - snapshot_delete
+  - snapshot_prune
+  - project_backup
+  - markermd_snapshot
+  - markermd_snapshot_diff
 - title: YAML file formats
   desc: Read, write, and schema-validate the template, rubric, and marks file formats.
   contents:

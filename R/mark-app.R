@@ -309,6 +309,11 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
              does not push the validation cards down */
           #repo_parse_error:empty { display: none; }
 
+          /* The navbar snapshot status: a quiet link that turns amber once
+             many selection events have piled up since the latest snapshot */
+          #snapshot_status .snapshot-status { font-size: 12px; text-decoration: none; }
+          #snapshot_status .snapshot-status-warn { color: #b35c00 !important; }
+
           /* Make switch more visible when in false state */
           .form-switch .form-check-input:not(:checked) {
             border-color: #212529 !important;
@@ -481,6 +486,18 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
         rubric_hotkeys_js(shiny::NS("rubric_module"), shiny::NS("content_module"))
       )
     ),
+
+    # History tab (right aligned): the project's snapshots, with the detail,
+    # compare, restore and export actions (see mod_mark_history.R)
+    bslib::nav_panel(
+      title = "History",
+      value = "history",
+      mark_history_ui("history_module")
+    ),
+
+    # The snapshot status: when the latest snapshot was taken and how far the
+    # grading has moved since; opens the History tab
+    bslib::nav_item(shiny::uiOutput("snapshot_status", inline = TRUE)),
 
     # Footer with project info
     footer = shiny::div(
@@ -820,6 +837,53 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       }
     }) |>
       shiny::bindEvent(rubric_result$selected_content_repo())
+
+    # The History tab: snapshots of the grading state. Its listing and the
+    # status indicator re-read the database on every grading write and on
+    # every tab change; a restore rebuilds the rubric module from the
+    # database.
+    history_result = mark_history_server(
+      "history_module", root,
+      question_names = if (is.null(template_obj)) character(0) else template_question_names(template_obj),
+      refresh = shiny::reactive(list(rubric_result$grading_data_version(), input$main_navbar)),
+      reload_rubric = rubric_result$reload_from_db,
+      reserved_ids = rubric_result$reserved_ids
+    )
+
+    output$snapshot_status = shiny::renderUI({
+      status = history_result$status()
+      warn = status$events_since > snapshot_warn_events()
+      text = if (is.null(status$latest)) {
+        if (status$changed) "No snapshot yet" else NULL
+      } else {
+        paste0(
+          "Last snapshot: ", format_age(status$latest$created_at),
+          if (status$changed) paste0(" \u00b7 ", status$events_since, " change", if (status$events_since == 1) "" else "s", " since")
+        )
+      }
+      if (is.null(text)) {
+        return(NULL)
+      }
+      shiny::actionLink(
+        "snapshot_status_link", text,
+        icon = shiny::icon("camera"),
+        class = paste("nav-link snapshot-status", if (warn) "snapshot-status-warn text-warning-emphasis" else "text-muted"),
+        title = if (warn) {
+          "Many selections have been recorded since the latest snapshot; press s to take a named checkpoint"
+        } else {
+          "Open the History tab"
+        }
+      )
+    })
+
+    shiny::observe({
+      bslib::nav_select("main_navbar", "history")
+    }) |> shiny::bindEvent(input$snapshot_status_link)
+
+    # The Rubric tab's camera button opens the same Take snapshot modal
+    shiny::observe({
+      history_result$open_take_snapshot()
+    }) |> shiny::bindEvent(input$`rubric_module-take_snapshot`)
 
   }
   

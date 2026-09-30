@@ -155,7 +155,7 @@ test_that("a schema-version-3 database gains settings.optional", {
   expect_equal(state@total_score, 10)
 
   markermd:::with_database(dir, function(conn) {
-    expect_equal(markermd:::get_metadata(conn, "schema_version"), "4")
+    expect_equal(markermd:::get_metadata(conn, "schema_version"), markermd:::markermd_db_version())
     expect_true("optional" %in% DBI::dbListFields(conn, "settings"))
   })
 })

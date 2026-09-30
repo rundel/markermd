@@ -179,7 +179,7 @@ questions:
 ```
 
 ```
-Rscript -e 'markermd::rubric_import("<file>.yaml", project = "<root>", mode = "append")'
+Rscript -e 'markermd::rubric_import("<file>.yaml", project = "<root>", mode = "append", summary = "Added the document question for document-level problems")'
 ```
 
 Then re-run step 3's export so the item list you mark against is current.
@@ -349,14 +349,19 @@ Rscript -e 'print(markermd::validate_marks_file("<root>/markermd-marks.yaml"))'
 import (set `overwrite` per step 4):
 
 ```
-Rscript -e 'markermd::marks_import("markermd-marks.yaml", project = "<root>", overwrite = FALSE)'
+Rscript -e 'markermd::marks_import("markermd-marks.yaml", project = "<root>", overwrite = FALSE, summary = "<one line: which pass this is and what it covers>")'
 ```
 
 The import validates every repository name, question name, and item
 description before writing anything; on a description mismatch, fix the marks
 YAML against step 3's verbatim list and retry -- never edit the rubric to
 match the marks file. Relay the skipped-pairs report to the user: those pairs
-already had grading activity and were left untouched.
+already had grading activity and were left untouched. With `overwrite = TRUE`
+the import takes an automatic snapshot of the marks it replaces and records
+`summary` on it, so always pass one; `Rscript -e
+'print(markermd::snapshot_diff("latest", project = "<root>"))'` then reports
+every selection, comment and score the import changed, which is the summary
+to relay. `markermd::snapshot_restore()` undoes it.
 
 ### 11. Report
 
@@ -383,7 +388,7 @@ question (step 6), with the repos it affects.
 
 Whenever a later `rubric_import(mode = "replace")` deletes items, a pair
 whose only selections were among them is left with none and turns
-ungraded. After such a change, list the pairs of non-optional questions
+ungraded (the automatic snapshot the import took still holds them). After such a change, list the pairs of non-optional questions
 with no selection (`marks_export()`), and where no defect remains record
 the confirmation item for them with `marks_import(overwrite = TRUE)`.
 These are machine suggestions: the human review is the grading.

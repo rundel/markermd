@@ -201,3 +201,53 @@ test_that("template() tracks unsaved changes and clears the flag on save", {
   app$wait_for_idle(duration = 1000)
   expect_false(app$get_values(export = "template_dirty") |> unlist(use.names = FALSE))
 })
+
+
+test_that("template() takes a snapshot and loads a snapshot's template into the editor", {
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
+  proj = make_template_project(with_template = TRUE)
+  app = new_app_driver(
+    template(proj$root),
+    name = "template_project_snapshot"
+  )
+  expect_equal(unlist(app$get_values(export = "n_questions"), use.names = FALSE), 2)
+
+  # Take a named snapshot of the stored two-question template
+  app$click("take_snapshot")
+  app$wait_for_idle()
+  app$set_inputs(snapshot_label = "Two questions")
+  app$click("confirm_snapshot")
+  app$wait_for_idle()
+  rows = markermd::snapshot_list(proj$root)
+  expect_equal(rows$label[1], "Two questions")
+
+  # Store a one-question template from R and snapshot that state too
+  writeLines(c(
+    sprintf("format_version: '%s'", markermd:::markermd_template_version()),
+    "source:", "  path: key/assignment.qmd", "questions:", "  - id: 1", "    name: Q2",
+    "    node_ids:", "      - question-2-basic-programming"
+  ), file.path(proj$root, "one.yaml"))
+  suppressMessages(markermd::template_import("one.yaml", project = proj$root))
+  one = suppressMessages(markermd::snapshot_create(proj$root, label = "One question"))
+
+  # Load the one-question snapshot into the editor: the questions are
+  # replaced and the editor is dirty until saved
+  app$click("restore_snapshot")
+  app$wait_for_idle()
+  app$set_inputs(restore_snapshot_id = one, wait_ = FALSE)
+  app$click("confirm_restore_snapshot")
+  app$wait_for_idle()
+  expect_equal(unlist(app$get_values(export = "n_questions"), use.names = FALSE), 1)
+  expect_equal(unlist(app$get_values(export = "question_names"), use.names = FALSE), "Q2")
+
+  # Saving writes it back, after an automatic snapshot of the stored state
+  n_before = nrow(markermd::snapshot_list(proj$root))
+  app$click("save_to_project")
+  app$wait_for_idle()
+  expect_false(app$get_value(export = "template_dirty"))
+  rows = markermd::snapshot_list(proj$root)
+  expect_equal(nrow(rows), n_before)
+  expect_equal(markermd:::project_question_names(proj$root)$names, "Q2")
+})

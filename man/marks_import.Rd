@@ -9,7 +9,9 @@ marks_import(
   project = ".",
   overwrite = FALSE,
   repo = NULL,
-  question = NULL
+  question = NULL,
+  snapshot = TRUE,
+  summary = NULL
 )
 }
 \arguments{
@@ -27,6 +29,13 @@ repository names within the file.}
 
 \item{question}{Optional character vector restricting the import to those
 question names within the file.}
+
+\item{snapshot}{Whether to take an automatic snapshot before an import
+that overwrites existing grading. \code{FALSE} is for scripts that take their
+own snapshot once before several imports.}
+
+\item{summary}{Optional text recorded on the automatic snapshot: what the
+import changes and why.}
 }
 \value{
 Invisibly, a data frame with one row per (repository, question)
@@ -59,13 +68,19 @@ question names against the stored template, item descriptions against each
 question's rubric, and at most one selected item per exclusive item
 group) happens before anything is written, and the import itself is a
 single transaction.
+
+When the import re-marks pairs that already have grading activity
+(\code{overwrite = TRUE}), an automatic snapshot of the state being replaced is
+taken in the same transaction (see \code{\link[=snapshot_create]{snapshot_create()}}); an import that
+only fills empty pairs replaces nothing and takes none.
 }
 \examples{
 \dontrun{
 marks_import("hw01-marks.yaml", project = "hw01")
 
-# Re-mark pairs that already have grading activity
-marks_import("hw01-marks.yaml", project = "hw01", overwrite = TRUE)
+# Re-mark pairs that already have grading activity, recording why
+marks_import("hw01-marks.yaml", project = "hw01", overwrite = TRUE,
+  summary = "Adversarial re-check of the first-pass grading")
 }
 }
 \seealso{

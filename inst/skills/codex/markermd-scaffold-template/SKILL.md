@@ -236,11 +236,14 @@ step 7.
 Then import the template into the project database (its canonical store):
 
 ```
-Rscript -e 'markermd::template_import("markermd-template.yaml", project = "<root>")'
+Rscript -e 'markermd::template_import("markermd-template.yaml", project = "<root>", summary = "<one line: what this template covers, or what changed>")'
 ```
 
 If a template is already stored in the project, ask the user whether to
-regenerate it or just refine the existing one before overwriting.
+regenerate it or just refine the existing one before overwriting. The import
+takes an automatic snapshot of the state it replaces and records `summary`
+on it, so always pass one; `markermd::snapshot_restore("latest", part =
+"template", project = "<root>")` undoes the import.
 
 ### 7. Validate the template against every student repository
 

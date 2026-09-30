@@ -133,5 +133,59 @@ S7::method(print, markermd_project) = function(x, ...) {
   }
   cli::cli_end()
 
+  if (db_exists) {
+    print_project_snapshots(x@root)
+  }
+
   invisible(x)
+}
+
+# The Snapshots section of a project's print method: the snapshot count,
+# the latest snapshot, whether the grading state changed since it, and the
+# last scores and comments exports relative to the last change
+#
+# root: Project root
+
+print_project_snapshots = function(root) {
+  info = with_database(root, function(conn) {
+    list(
+      rows = snapshot_rows(conn),
+      status = snapshot_state_status(conn),
+      exports = DBI::dbGetQuery(conn, "
+        SELECT n.value, n.timestamp, n.snapshot_id FROM snapshot_notes n
+        WHERE n.key = 'export' ORDER BY n.id DESC
+      ")
+    )
+  })
+  rows = info$rows
+  status = info$status
+
+  cli::cli_h2("Snapshots")
+  cli::cli_ul()
+  if (nrow(rows) == 0) {
+    cli::cli_li("none yet ({.code snapshot_create()} takes one)")
+  } else {
+    latest = rows[1, ]
+    what = if (!is.na(latest$label)) latest$label else if (!is.na(latest$trigger)) latest$trigger else "unnamed"
+    when = format(parse_utc_timestamp(latest$created_at), "%Y-%m-%d %H:%M")
+    cli::cli_li("{nrow(rows)} snapshot{?s}; latest {when} ({latest$kind}): {what}")
+    if (!is.na(latest$summary)) {
+      cli::cli_li("summary: {latest$summary}")
+    }
+  }
+  if (status$changed) {
+    cli::cli_li("{.emph state changed since the latest snapshot} ({status$events_since} selection event{?s})")
+  } else if (nrow(rows) > 0) {
+    cli::cli_li("state unchanged since the latest snapshot")
+  }
+
+  for (what in c("scores", "comments")) {
+    hits = info$exports[startsWith(info$exports$value, paste0(what, ": ")), , drop = FALSE]
+    if (nrow(hits) == 0) {
+      next
+    }
+    current = !status$changed && nrow(rows) > 0 && identical(hits$snapshot_id[1], rows$snapshot_id[1])
+    cli::cli_li("{what} exported {format_age(hits$timestamp[1])} ({if (current) 'state unchanged since' else 'state changed since'})")
+  }
+  cli::cli_end()
 }

@@ -544,8 +544,15 @@ have changed it. Never run `rubric_import()` without an explicit yes to this
 question. Then import, with the mode chosen in step 8:
 
 ```
-Rscript -e 'markermd::rubric_import("markermd-rubric.yaml", project = "<root>", mode = "append")'
+Rscript -e 'markermd::rubric_import("markermd-rubric.yaml", project = "<root>", mode = "append", summary = "<one line: what this rubric adds or changes, and why>")'
 ```
+
+The import takes an automatic snapshot of the rubric and marks it replaces
+and records `summary` on it, so always pass one that says what changed and
+why (a `replace` import deletes items and every selection of them; the
+snapshot is the way back, with `markermd::snapshot_restore()`). After the
+import, `Rscript -e 'print(markermd::snapshot_diff("latest", project =
+"<root>"))'` reports exactly what it changed; relay that to the user.
 
 If the import aborts because a question name is not in the project's template,
 correct the YAML to the exact names from step 2 and retry. Never rename the
@@ -578,8 +585,10 @@ Work through the template's questions in order. For each question:
    untouched, with the mode chosen in step 8:
 
    ```
-   Rscript -e 'markermd::rubric_import("markermd-rubric.yaml", project = "<root>", mode = "append", question = "<name>")'
+   Rscript -e 'markermd::rubric_import("markermd-rubric.yaml", project = "<root>", mode = "append", question = "<name>", summary = "<one line: what this question's rubric adds or changes>")'
    ```
+
+   The `summary` is recorded on the automatic snapshot the import takes.
 
    If the import aborts because the question name is not in the project's
    template, correct the YAML to the exact name from step 2 and retry; never

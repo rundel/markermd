@@ -121,6 +121,16 @@ mark_rubric_ui = function(id) {
             ),
             import_input_id = ns("rubric_import_file"),
             button_title = "Import / Export rubric"
+          ),
+          # Take a snapshot of the grading state without leaving the tab; the
+          # app opens the History tab's modal (see mark_history_server())
+          bslib::tooltip(
+            shiny::actionButton(
+              ns("take_snapshot"),
+              shiny::icon("camera"),
+              class = "btn-outline-secondary btn-sm"
+            ),
+            "Take a snapshot: record the current template, rubric and marks with a label and a summary, for comparing or restoring later from the History tab (shortcut: s)"
           )
         ),
         # Same fixed width as the content pane's repo selector so the two
@@ -559,8 +569,20 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
         question_item_servers[[question_name]][[server$id]] = NULL
 
         # Remove the item's row and its grade-selection events; otherwise it
-        # reappears on the next app start via load_rubric_items()
-        delete_rubric_item(root, question_name, server$id)
+        # reappears on the next app start via load_rubric_items(). When the
+        # item is selected somewhere, that grading is about to be lost, so an
+        # automatic snapshot is taken in the same transaction.
+        n_selected = item_selection_count(root, question_name, server$id)
+        snapshot = if (n_selected > 0) {
+          list(
+            trigger = "mark(): delete item",
+            summary = glue::glue(
+              "Deleted item \"{server$item()@description}\" of {question_name}, ",
+              "selected by {n_selected} repositor{if (n_selected == 1) 'y' else 'ies'}"
+            )
+          )
+        }
+        delete_rubric_item(root, question_name, server$id, snapshot = snapshot)
         bump_grading_version()
 
         # Reorder hotkeys for remaining items to ensure continuity. Each item's
@@ -630,6 +652,7 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
     # deleted and its server dropped
     ungroup = function(question_name, group_id) {
       servers = question_item_servers[[question_name]]
+      label = question_group_servers[[question_name]][[group_id]]$group()@label
       for (server in servers) {
         item = server$item()
         if (identical(item@group, group_id)) {
@@ -637,7 +660,10 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
           server$update_item(item)
         }
       }
-      delete_item_group(root, question_name, group_id)
+      delete_item_group(root, question_name, group_id, snapshot = list(
+        trigger = "mark(): delete group",
+        summary = glue::glue("Removed group \"{label}\" of {question_name}; its items are now ungrouped")
+      ))
       remove_group_server(question_name, group_id)
       if (length(servers) > 0) {
         persist_item_order(root, question_name, servers)
@@ -988,10 +1014,17 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
           ),
           selected = "append"
         ),
+        shiny::textInput(
+          session$ns("rubric_import_summary"),
+          "Summary (recorded on the snapshot taken before importing)",
+          placeholder = "What this import changes and why",
+          width = "100%"
+        ),
         shiny::p(
           class = "text-danger small mb-0",
           "Replace deletes the existing rubric items and groups for these questions, and any",
-          "recorded selections of the items, for every repository. This cannot be undone."
+          "recorded selections of the items, for every repository. A snapshot of the current",
+          "rubric and marks is taken first, so the import can be undone from the History tab."
         ),
         easyClose = TRUE,
         footer = shiny::tagList(
@@ -1013,7 +1046,11 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
 
       applied = purrr::safely(apply_rubric_import)(
         root, pending$rubric, mode,
-        reserved_ids = session_item_ids
+        reserved_ids = session_item_ids,
+        snapshot = list(
+          trigger = glue::glue("mark(): Rubric import ({mode})"),
+          summary = if (nzchar(trimws(input$rubric_import_summary))) trimws(input$rubric_import_summary)
+        )
       )
       if (!is.null(applied$error)) {
         shiny::showNotification(
@@ -1304,24 +1341,21 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
       previous_selections(all_prev)
     })
 
-    # Observer to load saved grade selections when switching repos or questions
-    shiny::observe({
-      shiny::req(input$question_select,
-                 selected_repo(),
-                 cancelOutput = TRUE)
-
-      current_question = input$question_select
-      current_repo = selected_repo()
-
-      # Ensure question_item_servers is available and has the current question
-      shiny::req(length(question_item_servers) > 0, 
-                 current_question %in% names(question_item_servers),
-                 cancelOutput = TRUE)
+    # Put the current question's item servers in the selection state the
+    # database holds for the current repository and re-baseline the change
+    # tracking, so no grade rows are written for the load itself
+    apply_saved_selections = function() {
+      current_question = shiny::isolate(input$question_select)
+      current_repo = shiny::isolate(selected_repo())
+      if (is.null(current_question) || is.null(current_repo) ||
+            !current_question %in% names(question_item_servers)) {
+        return(invisible(NULL))
+      }
 
       current_servers = question_item_servers[[current_question]]
 
       if (length(current_servers) == 0) {
-        return()
+        return(invisible(NULL))
       }
 
       # Load saved selections from database
@@ -1353,13 +1387,47 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
       names(current_selections) = names(current_servers)
 
       prev_key = paste(current_question, current_repo, sep = ":")
-      all_prev = previous_selections()
+      all_prev = shiny::isolate(previous_selections())
       if (is.null(all_prev)) all_prev = list()
       all_prev[[prev_key]] = current_selections
       previous_selections(all_prev)
+      invisible(NULL)
+    }
 
+    # Observer to load saved grade selections when switching repos or questions
+    shiny::observe({
+      shiny::req(input$question_select,
+                 selected_repo(),
+                 cancelOutput = TRUE)
+      apply_saved_selections()
     }) |>
       shiny::bindEvent(input$question_select, selected_repo(), ignoreInit = TRUE)
+
+    # Rebuild every question's items, groups and scoring from the database
+    # after a snapshot restore (which replaces items with fresh ids, so the
+    # old servers become inert and their DOM goes away on redraw), then put
+    # the current question back in the state the database holds
+    reload_from_db = function() {
+      state = initialize_database_state(root, template)
+      for (question_name in question_names) {
+        question_item_servers[[question_name]] = list()
+        sync_question_groups(question_name)
+        items = state$rubric_items[[question_name]]
+        for (item_id in names(items)) {
+          add_question_item_server(question_name, item_id, items[[item_id]])
+        }
+        grade_server = question_grade_servers[[question_name]]
+        if (!is.null(grade_server)) {
+          grade_server$update_grade(state$grade_states[[question_name]])
+        }
+      }
+      previous_selections(list())
+      apply_saved_selections()
+      redraw()
+      grade_redraw(shiny::isolate(grade_redraw()) + 1)
+      bump_grading_version()
+      invisible(NULL)
+    }
 
     # Patch the group headers' subtotals (and capped styling) in place after
     # the flush, the same way the score is patched, so no item row is
@@ -1427,6 +1495,10 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
       selected_content_repo = selected_repo,
       grading_data_version = shiny::reactive(grading_data_version()),
       question_grade_servers = question_grade_servers,
+      # For the History tab: rebuild from the database after a restore, and
+      # the ids a restore must not reuse
+      reload_from_db = reload_from_db,
+      reserved_ids = function() session_item_ids,
       current_grade = shiny::reactive({
         shiny::req(input$question_select)
         current_server = question_grade_servers[[input$question_select]]

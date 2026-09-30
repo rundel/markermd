@@ -181,6 +181,29 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
                   )
                 ),
                 import_input_id = "import_file"
+              ),
+              # Snapshots of the project's grading state: take one, or load
+              # the template a snapshot recorded (see template_snapshot_controls())
+              bslib::popover(
+                shiny::tags$button(
+                  shiny::icon("clock-rotate-left"),
+                  id = "snapshot_menu",
+                  type = "button",
+                  class = "btn btn-outline-secondary btn-sm",
+                  title = "Snapshots: record the project's grading state, or load the template an earlier snapshot recorded"
+                ),
+                shiny::div(
+                  class = "d-grid gap-2",
+                  bslib::tooltip(
+                    shiny::actionButton("take_snapshot", "Take snapshot", class = "btn-outline-secondary btn-sm"),
+                    "Record the project's stored template, rubric and marks as a named snapshot in its database (save first to include unsaved edits)"
+                  ),
+                  bslib::tooltip(
+                    shiny::actionButton("restore_snapshot", "Restore template\u2026", class = "btn-outline-secondary btn-sm"),
+                    "Choose a snapshot and load the template it recorded into the editor, replacing the questions shown here; nothing is written until you save"
+                  )
+                ),
+                title = "Snapshots"
               )
             )
           } else {

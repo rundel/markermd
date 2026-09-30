@@ -14,9 +14,11 @@ The project's \code{markermd_project} object, invisibly.
 }
 \description{
 Prints a situation report for a markermd project: its root, version and
-timestamps, and the configured locations along with whether they exist (repo
+timestamps, the configured locations along with whether they exist (repo
 and comment counts, artifact directories, the grading database, and the
-template).
+template), and the state of its snapshots (how many, the latest one,
+whether the grading state changed since it, and when the scores and
+comments were last exported relative to the last change).
 }
 \examples{
 src = system.file("examples/test_assignment", package = "markermd")

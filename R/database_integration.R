@@ -171,16 +171,46 @@ save_rubric_items = function(collection_path, question_name, items) {
   })
 }
 
-# Delete rubric item from database, along with its grade-selection events
+# Delete rubric item from database, along with its grade-selection events,
+# optionally after an automatic snapshot taken in the same transaction (the
+# marking app passes one when the item has recorded selections, the case
+# where grading would otherwise be lost)
 #
 # collection_path: Path to collection directory
 # question_name: Character string
 # item_id: Character string (unique identifier for this item)
+# snapshot: NULL, or a list with trigger and summary for snapshot_before_change()
 
-delete_rubric_item = function(collection_path, question_name, item_id) {
+delete_rubric_item = function(collection_path, question_name, item_id, snapshot = NULL) {
   with_database(collection_path, function(conn) {
-    delete_item_records(conn, question_name, item_id)
+    DBI::dbBegin(conn)
+    tryCatch({
+      snapshot_before_change(conn, collection_path, snapshot)
+      delete_item_records(conn, question_name, item_id)
+      DBI::dbCommit(conn)
+    }, error = function(e) {
+      DBI::dbRollback(conn)
+      cli::cli_abort("Failed to delete the rubric item: {conditionMessage(e)}")
+    })
     return(TRUE)
+  })
+}
+
+# How many repositories currently have an item selected (by the most recent
+# grade event per repository), the marking app's test for whether deleting
+# the item loses grading and so deserves an automatic snapshot
+#
+# collection_path: Path to collection directory
+# question_name: Character string
+# item_id: Character string
+
+item_selection_count = function(collection_path, question_name, item_id) {
+  with_database(collection_path, function(conn) {
+    grades = latest_rows(
+      conn, "grades", "assignment_repo",
+      where = "question_name = ? AND item_id = ?", params = list(question_name, item_id)
+    )
+    sum(grades$selected == 1)
   })
 }
 
@@ -198,15 +228,25 @@ save_item_group = function(collection_path, question_name, group_id, group) {
   })
 }
 
-# Delete a rubric item group, leaving its members ungrouped in place
+# Delete a rubric item group, leaving its members ungrouped in place,
+# optionally after an automatic snapshot taken in the same transaction
 #
 # collection_path: Path to collection directory
 # question_name: Character string
 # group_id: Character string
+# snapshot: NULL, or a list with trigger and summary for snapshot_before_change()
 
-delete_item_group = function(collection_path, question_name, group_id) {
+delete_item_group = function(collection_path, question_name, group_id, snapshot = NULL) {
   with_database(collection_path, function(conn) {
-    delete_item_group_records(conn, question_name, group_id)
+    DBI::dbBegin(conn)
+    tryCatch({
+      snapshot_before_change(conn, collection_path, snapshot)
+      delete_item_group_records(conn, question_name, group_id)
+      DBI::dbCommit(conn)
+    }, error = function(e) {
+      DBI::dbRollback(conn)
+      cli::cli_abort("Failed to delete the item group: {conditionMessage(e)}")
+    })
     return(TRUE)
   })
 }
@@ -575,10 +615,16 @@ exclusive_import_conflicts = function(conn, rubric) {
 # repository has more than one of its items selected aborts before anything
 # is written (exclusive_import_conflicts()).
 #
+# The import is one transaction, preceded by an automatic snapshot of the
+# state it replaces when the caller asks for one (snapshot_before_change()),
+# so the import and its snapshot commit or roll back together.
+#
 # collection_path: Project root containing the grading database
 # rubric: Exchange-list rubric (format_version + questions)
 # mode: "append" or "replace"
 # reserved_ids: Additional item / group ids that must not be reused
+# snapshot: NULL, or a list with trigger and summary for the automatic
+#   snapshot taken before the import
 # Returns: Named list (by question name) of summaries with mode, n_existing,
 #   new_ids, new_items (markermd_rubric_item objects as written, hotkeys and
 #   group ids final), items (every item of the question as written, a named
@@ -587,123 +633,15 @@ exclusive_import_conflicts = function(conn, rubric) {
 #   (the question's group ids after the import) and scoring
 #   (markermd_grade_state or NULL)
 
-apply_rubric_import = function(collection_path, rubric, mode, reserved_ids = character(0)) {
+apply_rubric_import = function(collection_path, rubric, mode, reserved_ids = character(0), snapshot = NULL) {
   with_database(collection_path, function(conn) {
-    if (identical(mode, "append")) {
-      conflicts = exclusive_import_conflicts(conn, rubric)
-      if (nrow(conflicts) > 0) {
-        detail = glue::glue(
-          "{conflicts$assignment_repo} / {conflicts$question}, group \"{conflicts$group}\": {conflicts$items}"
-        )
-        cli::cli_abort(c(
-          "Cannot import the rubric: making a group exclusive while repositories have more than one of its items selected.",
-          stats::setNames(as.character(detail), rep("x", length(detail))),
-          "i" = "Resolve those selections first (in {.code mark()} or with {.code marks_set()}), or import with {.code mode = \"replace\"}."
-        ))
-      }
-    }
+    check_exclusive_import_conflicts(conn, rubric, mode)
 
     DBI::dbBegin(conn)
 
     tryCatch({
-      taken = union(load_all_items(conn)$item_id, reserved_ids)
-      taken_groups = union(load_all_item_groups(conn)$group_id, reserved_ids)
-      summaries = list()
-
-      for (question in rubric$questions) {
-        question_name = question$name
-
-        existing = DBI::dbGetQuery(conn, paste0("
-          SELECT * FROM items WHERE question_name = ?
-          ORDER BY ", items_display_order_sql
-        ), params = list(question_name))
-        existing_groups = DBI::dbGetQuery(conn, "
-          SELECT * FROM item_groups WHERE question_name = ?
-        ", params = list(question_name))
-        n_existing = nrow(existing)
-
-        if (identical(mode, "replace")) {
-          for (item_id in existing$item_id) {
-            delete_item_records(conn, question_name, item_id)
-          }
-          for (group_id in existing_groups$group_id) {
-            delete_item_group_records(conn, question_name, group_id)
-          }
-          existing = existing[0, ]
-          existing_groups = existing_groups[0, ]
-        }
-
-        # The file's groups, matched to stored groups by label; the exchange
-        # list's transient group ids are mapped to database ids
-        group_map = character(0)
-        file_groups = if (is.null(question$groups)) list() else question$groups
-        for (exchange_id in names(file_groups)) {
-          group = file_groups[[exchange_id]]
-          db_id = existing_groups$group_id[existing_groups$label == group@label]
-          if (length(db_id) != 1) {
-            db_id = next_item_ids(taken_groups, 1, prefix = "group_")
-            taken_groups = union(taken_groups, db_id)
-          }
-          group_map[[exchange_id]] = db_id
-          upsert_item_group(conn, question_name, db_id, group)
-        }
-
-        kept_items = items_df_to_rubric_list(existing, question_name)
-        kept_ids = names(kept_items)
-
-        new_ids = next_item_ids(taken, length(question$items))
-        taken = union(taken, new_ids)
-        new_items = lapply(question$items, function(item) {
-          if (!is.na(item@group)) {
-            item@group = group_map[[item@group]]
-          }
-          item
-        })
-        names(new_items) = new_ids
-
-        # The final order: kept items, then the file's, pulled together by
-        # group; every item is (re)written whose position, hotkey or group
-        # differs from what is stored. hotkey_changes reports only the
-        # visible part, for kept items.
-        final = normalize_item_order(c(kept_items, new_items))
-        hotkey_changes = integer(0)
-        for (i in seq_along(final)) {
-          item_id = names(final)[i]
-          item = final[[i]]
-          item@hotkey = position_hotkey(i)
-          final[[i]] = item
-
-          if (item_id %in% kept_ids) {
-            row = existing[existing$item_id == item_id, , drop = FALSE]
-            stored_hotkey = as.integer(row$hotkey[1])
-            stored_position = as.integer(row$position[1])
-            if (!identical(stored_hotkey, item@hotkey) || !identical(stored_position, i)) {
-              upsert_items(conn, question_name, item_id, item, position = i)
-            }
-            if (!identical(stored_hotkey, item@hotkey)) {
-              hotkey_changes[item_id] = item@hotkey
-            }
-          } else {
-            upsert_items(conn, question_name, item_id, item, position = i)
-          }
-        }
-
-        if (!is.null(question$scoring)) {
-          upsert_settings(conn, question_name, question$scoring)
-        }
-
-        summaries[[question_name]] = list(
-          mode = mode,
-          n_existing = n_existing,
-          new_ids = new_ids,
-          new_items = unname(final[new_ids]),
-          items = final,
-          hotkey_changes = hotkey_changes,
-          group_ids = union(existing_groups$group_id, unname(group_map)),
-          scoring = question$scoring
-        )
-      }
-
+      snapshot_before_change(conn, collection_path, snapshot)
+      summaries = apply_rubric_import_conn(conn, rubric, mode, reserved_ids)
       DBI::dbCommit(conn)
       summaries
     }, error = function(e) {
@@ -713,8 +651,147 @@ apply_rubric_import = function(collection_path, rubric, mode, reserved_ids = cha
   })
 }
 
+# Abort an append-mode import that would make a group exclusive while some
+# repository has more than one of its items selected (see
+# exclusive_import_conflicts()); replace mode can never conflict
+#
+# conn: DBI connection object
+# rubric: Exchange-list rubric
+# mode: "append" or "replace"
+
+check_exclusive_import_conflicts = function(conn, rubric, mode) {
+  if (!identical(mode, "append")) {
+    return(invisible(NULL))
+  }
+  conflicts = exclusive_import_conflicts(conn, rubric)
+  if (nrow(conflicts) > 0) {
+    detail = glue::glue(
+      "{conflicts$assignment_repo} / {conflicts$question}, group \"{conflicts$group}\": {conflicts$items}"
+    )
+    cli::cli_abort(c(
+      "Cannot import the rubric: making a group exclusive while repositories have more than one of its items selected.",
+      stats::setNames(as.character(detail), rep("x", length(detail))),
+      "i" = "Resolve those selections first (in {.code mark()} or with {.code marks_set()}), or import with {.code mode = \"replace\"}."
+    ))
+  }
+  invisible(NULL)
+}
+
+# The body of apply_rubric_import(), run inside the caller's transaction on
+# an open connection (the snapshot restore runs it alongside the marks
+# restore in one transaction). Same arguments and result as
+# apply_rubric_import() without the connection management.
+#
+# conn: DBI connection object
+# rubric: Exchange-list rubric (format_version + questions)
+# mode: "append" or "replace"
+# reserved_ids: Additional item / group ids that must not be reused
+
+apply_rubric_import_conn = function(conn, rubric, mode, reserved_ids = character(0)) {
+  taken = union(load_all_items(conn)$item_id, reserved_ids)
+  taken_groups = union(load_all_item_groups(conn)$group_id, reserved_ids)
+  summaries = list()
+
+  for (question in rubric$questions) {
+    question_name = question$name
+
+    existing = DBI::dbGetQuery(conn, paste0("
+      SELECT * FROM items WHERE question_name = ?
+      ORDER BY ", items_display_order_sql
+    ), params = list(question_name))
+    existing_groups = DBI::dbGetQuery(conn, "
+      SELECT * FROM item_groups WHERE question_name = ?
+    ", params = list(question_name))
+    n_existing = nrow(existing)
+
+    if (identical(mode, "replace")) {
+      for (item_id in existing$item_id) {
+        delete_item_records(conn, question_name, item_id)
+      }
+      for (group_id in existing_groups$group_id) {
+        delete_item_group_records(conn, question_name, group_id)
+      }
+      existing = existing[0, ]
+      existing_groups = existing_groups[0, ]
+    }
+
+    # The file's groups, matched to stored groups by label; the exchange
+    # list's transient group ids are mapped to database ids
+    group_map = character(0)
+    file_groups = if (is.null(question$groups)) list() else question$groups
+    for (exchange_id in names(file_groups)) {
+      group = file_groups[[exchange_id]]
+      db_id = existing_groups$group_id[existing_groups$label == group@label]
+      if (length(db_id) != 1) {
+        db_id = next_item_ids(taken_groups, 1, prefix = "group_")
+        taken_groups = union(taken_groups, db_id)
+      }
+      group_map[[exchange_id]] = db_id
+      upsert_item_group(conn, question_name, db_id, group)
+    }
+
+    kept_items = items_df_to_rubric_list(existing, question_name)
+    kept_ids = names(kept_items)
+
+    new_ids = next_item_ids(taken, length(question$items))
+    taken = union(taken, new_ids)
+    new_items = lapply(question$items, function(item) {
+      if (!is.na(item@group)) {
+        item@group = group_map[[item@group]]
+      }
+      item
+    })
+    names(new_items) = new_ids
+
+    # The final order: kept items, then the file's, pulled together by
+    # group; every item is (re)written whose position, hotkey or group
+    # differs from what is stored. hotkey_changes reports only the
+    # visible part, for kept items.
+    final = normalize_item_order(c(kept_items, new_items))
+    hotkey_changes = integer(0)
+    for (i in seq_along(final)) {
+      item_id = names(final)[i]
+      item = final[[i]]
+      item@hotkey = position_hotkey(i)
+      final[[i]] = item
+
+      if (item_id %in% kept_ids) {
+        row = existing[existing$item_id == item_id, , drop = FALSE]
+        stored_hotkey = as.integer(row$hotkey[1])
+        stored_position = as.integer(row$position[1])
+        if (!identical(stored_hotkey, item@hotkey) || !identical(stored_position, i)) {
+          upsert_items(conn, question_name, item_id, item, position = i)
+        }
+        if (!identical(stored_hotkey, item@hotkey)) {
+          hotkey_changes[item_id] = item@hotkey
+        }
+      } else {
+        upsert_items(conn, question_name, item_id, item, position = i)
+      }
+    }
+
+    if (!is.null(question$scoring)) {
+      upsert_settings(conn, question_name, question$scoring)
+    }
+
+    summaries[[question_name]] = list(
+      mode = mode,
+      n_existing = n_existing,
+      new_ids = new_ids,
+      new_items = unname(final[new_ids]),
+      items = final,
+      hotkey_changes = hotkey_changes,
+      group_ids = union(existing_groups$group_id, unname(group_map)),
+      scoring = question$scoring
+    )
+  }
+
+  summaries
+}
+
 # Apply a resolved marks plan to a project's grading database in a single
-# transaction. Each entry is one (repo, question) pair with fully-resolved
+# transaction, preceded by an automatic snapshot when the caller asks for
+# one. Each entry is one (repo, question) pair with fully-resolved
 # selections (named logical keyed by item_id, covering every item of the
 # question, so the pair's state is declarative; NULL to leave selections
 # untouched) and optional public / private comment text appended to their
@@ -723,25 +800,17 @@ apply_rubric_import = function(collection_path, rubric, mode, reserved_ids = cha
 #
 # collection_path: Project root containing the grading database
 # plan: List of entries with repo, question, selections, comment, private_comment
+# snapshot: NULL, or a list with trigger and summary for the automatic
+#   snapshot taken before the writes
 # Returns: TRUE
 
-apply_marks_import = function(collection_path, plan) {
+apply_marks_import = function(collection_path, plan, snapshot = NULL) {
   with_database(collection_path, function(conn) {
     DBI::dbBegin(conn)
 
     tryCatch({
-      for (entry in plan) {
-        for (item_id in names(entry$selections)) {
-          insert_grade(conn, entry$question, entry$repo, item_id, entry$selections[[item_id]])
-        }
-        if (!is.null(entry$comment)) {
-          insert_comment(conn, entry$question, entry$repo, entry$comment)
-        }
-        if (!is.null(entry$private_comment)) {
-          insert_private_comment(conn, entry$question, entry$repo, entry$private_comment)
-        }
-      }
-
+      snapshot_before_change(conn, collection_path, snapshot)
+      apply_marks_import_conn(conn, plan)
       DBI::dbCommit(conn)
       TRUE
     }, error = function(e) {
@@ -749,6 +818,27 @@ apply_marks_import = function(collection_path, plan) {
       cli::cli_abort("Failed to import marks: {conditionMessage(e)}")
     })
   })
+}
+
+# The writes of apply_marks_import(), on an open connection inside the
+# caller's transaction
+#
+# conn: DBI connection object
+# plan: List of entries with repo, question, selections, comment, private_comment
+
+apply_marks_import_conn = function(conn, plan) {
+  for (entry in plan) {
+    for (item_id in names(entry$selections)) {
+      insert_grade(conn, entry$question, entry$repo, item_id, entry$selections[[item_id]])
+    }
+    if (!is.null(entry$comment)) {
+      insert_comment(conn, entry$question, entry$repo, entry$comment)
+    }
+    if (!is.null(entry$private_comment)) {
+      insert_private_comment(conn, entry$question, entry$repo, entry$private_comment)
+    }
+  }
+  invisible(TRUE)
 }
 
 # All (question, repo) pairs that currently count as graded
@@ -769,35 +859,44 @@ apply_marks_import = function(collection_path, plan) {
 
 graded_question_pairs = function(collection_path, assignment_repos = NULL) {
   with_database(collection_path, function(conn) {
-    # Pairs with a selected rubric item among the most recent grade per item
-    latest_grades = load_most_recent_grades(conn)
-    selected_pairs = unique(latest_grades[
-      latest_grades$selected == 1,
-      c("question_name", "assignment_repo"),
-      drop = FALSE
-    ])
-
-    # Most recent comment per pair, kept when it is non-empty
-    comment_pairs = nonempty_comments(load_most_recent_comments(conn))[
-      , c("question_name", "assignment_repo"), drop = FALSE
-    ]
-
-    pairs = rbind(selected_pairs, comment_pairs)
-
-    if (length(assignment_repos) > 0) {
-      settings = load_all_settings(conn)
-      optional_questions = settings$question_name[is_true_flag(settings$optional)]
-      if (length(optional_questions) > 0) {
-        pairs = rbind(pairs, expand.grid(
-          question_name = optional_questions,
-          assignment_repo = assignment_repos,
-          stringsAsFactors = FALSE
-        ))
-      }
-    }
-
-    unique(pairs)
+    graded_question_pairs_conn(conn, assignment_repos)
   })
+}
+
+# graded_question_pairs() on an open connection
+#
+# conn: DBI connection object
+# assignment_repos: See graded_question_pairs()
+
+graded_question_pairs_conn = function(conn, assignment_repos = NULL) {
+  # Pairs with a selected rubric item among the most recent grade per item
+  latest_grades = load_most_recent_grades(conn)
+  selected_pairs = unique(latest_grades[
+    latest_grades$selected == 1,
+    c("question_name", "assignment_repo"),
+    drop = FALSE
+  ])
+
+  # Most recent comment per pair, kept when it is non-empty
+  comment_pairs = nonempty_comments(load_most_recent_comments(conn))[
+    , c("question_name", "assignment_repo"), drop = FALSE
+  ]
+
+  pairs = rbind(selected_pairs, comment_pairs)
+
+  if (length(assignment_repos) > 0) {
+    settings = load_all_settings(conn)
+    optional_questions = settings$question_name[is_true_flag(settings$optional)]
+    if (length(optional_questions) > 0) {
+      pairs = rbind(pairs, expand.grid(
+        question_name = optional_questions,
+        assignment_repo = assignment_repos,
+        stringsAsFactors = FALSE
+      ))
+    }
+  }
+
+  unique(pairs)
 }
 
 # Elementwise TRUE test for an integer/logical column that may be absent
@@ -824,22 +923,28 @@ is_true_flag = function(x) {
 # Returns: Data frame with question_name and assignment_repo columns
 
 marked_question_pairs = function(collection_path) {
-  with_database(collection_path, function(conn) {
-    grade_pairs = DBI::dbGetQuery(conn, "
-      SELECT DISTINCT question_name, assignment_repo FROM grades")
+  with_database(collection_path, marked_question_pairs_conn)
+}
 
-    nonempty_latest_pairs = function(table) {
-      nonempty_comments(latest_rows(conn, table, c("question_name", "assignment_repo")))[
-        , c("question_name", "assignment_repo"), drop = FALSE
-      ]
-    }
+# marked_question_pairs() on an open connection
+#
+# conn: DBI connection object
 
-    unique(rbind(
-      grade_pairs,
-      nonempty_latest_pairs("comments"),
-      nonempty_latest_pairs("private_comments")
-    ))
-  })
+marked_question_pairs_conn = function(conn) {
+  grade_pairs = DBI::dbGetQuery(conn, "
+    SELECT DISTINCT question_name, assignment_repo FROM grades")
+
+  nonempty_latest_pairs = function(table) {
+    nonempty_comments(latest_rows(conn, table, c("question_name", "assignment_repo")))[
+      , c("question_name", "assignment_repo"), drop = FALSE
+    ]
+  }
+
+  unique(rbind(
+    grade_pairs,
+    nonempty_latest_pairs("comments"),
+    nonempty_latest_pairs("private_comments")
+  ))
 }
 
 # Per-repo per-question scores recomputed from the grading database
@@ -851,26 +956,33 @@ marked_question_pairs = function(collection_path) {
 # total of 10 when a question has no settings row. The stored current_score
 # is ephemeral app state and is never used. A pair that does not count as
 # graded (see graded_question_pairs()) gets NA rather than a misleading 0 or
-# full marks. bound_adjustment is what the group bounds changed
-# (score minus the score with the group bounds ignored), for the
-# Assignments table's marker.
+# full marks.
 #
 # collection_path: Path to collection directory
 # question_names: Character vector of question names
 # assignment_repos: Character vector of assignment repository names
-# Returns: Data frame with question_name, assignment_repo, score and
-#   bound_adjustment columns
+# Returns: Data frame with question_name, assignment_repo and score columns
 
 collect_score_data = function(collection_path, question_names, assignment_repos) {
-  data = with_database(collection_path, function(conn) {
-    list(
-      settings = load_all_settings(conn),
-      items = load_all_items(conn),
-      groups = load_all_item_groups(conn),
-      grades = load_most_recent_grades(conn)
-    )
+  with_database(collection_path, function(conn) {
+    collect_score_data_conn(conn, question_names, assignment_repos)
   })
-  graded = graded_question_pairs(collection_path, assignment_repos)
+}
+
+# collect_score_data() on an open connection
+#
+# conn: DBI connection object
+# question_names: Character vector of question names
+# assignment_repos: Character vector of assignment repository names
+
+collect_score_data_conn = function(conn, question_names, assignment_repos) {
+  data = list(
+    settings = load_all_settings(conn),
+    items = load_all_items(conn),
+    groups = load_all_item_groups(conn),
+    grades = load_most_recent_grades(conn)
+  )
+  graded = graded_question_pairs_conn(conn, assignment_repos)
   # Unit-separator join so a name containing spaces cannot collide across pairs.
   graded_keys = paste(graded$question_name, graded$assignment_repo, sep = "\x1f")
 
@@ -887,21 +999,17 @@ collect_score_data = function(collection_path, question_names, assignment_repos)
 
     for (repo_name in assignment_repos) {
       score = NA_real_
-      bound_adjustment = NA_real_
       if (paste(question_name, repo_name, sep = "\x1f") %in% graded_keys) {
         selected_ids = selected$item_id[
           selected$question_name == question_name & selected$assignment_repo == repo_name
         ]
-        result = score_question(items, selected_ids, groups, state)
-        score = result$score
-        bound_adjustment = result$score - result$without_groups
+        score = score_question(items, selected_ids, groups, state)$score
       }
 
       rows[[length(rows) + 1]] = data.frame(
         question_name = question_name,
         assignment_repo = repo_name,
         score = score,
-        bound_adjustment = bound_adjustment,
         stringsAsFactors = FALSE
       )
     }
@@ -910,7 +1018,7 @@ collect_score_data = function(collection_path, question_names, assignment_repos)
   if (length(rows) == 0) {
     return(data.frame(
       question_name = character(0), assignment_repo = character(0),
-      score = numeric(0), bound_adjustment = numeric(0), stringsAsFactors = FALSE
+      score = numeric(0), stringsAsFactors = FALSE
     ))
   }
   do.call(rbind, rows)
@@ -958,12 +1066,22 @@ calculate_grading_progress = function(collection_path, question_names, assignmen
 # template: markermd_template S7 object
 # source_path: Assignment-document path recorded under source.path (optional;
 #   prefer a root-relative path so it resolves on reload)
+# snapshot: NULL, or a list with trigger and summary for an automatic
+#   snapshot of the state being overwritten, taken in the same transaction
 
-save_template_to_db = function(collection_path, template, source_path = NULL) {
+save_template_to_db = function(collection_path, template, source_path = NULL, snapshot = NULL) {
   lst = template_to_list(template, source_path = source_path)
   json = as.character(jsonlite::toJSON(lst, auto_unbox = TRUE, null = "null"))
   with_database(collection_path, function(conn) {
-    set_metadata(conn, "template", json)
+    DBI::dbBegin(conn)
+    tryCatch({
+      snapshot_before_change(conn, collection_path, snapshot)
+      set_metadata(conn, "template", json)
+      DBI::dbCommit(conn)
+    }, error = function(e) {
+      DBI::dbRollback(conn)
+      cli::cli_abort("Failed to save the template: {conditionMessage(e)}")
+    })
     TRUE
   })
 }

@@ -81,7 +81,7 @@ The template app loads an assignment (a project's key repository, a single `.qmd
 
 ![The template app: document structure tree on the left, questions with their selected sections and validation rules on the right](man/figures/template_screenshot.png)
 
-Some problems belong to no single question: a render setting in the YAML header, global chunk options, a document that does not render. "Add Document Question" creates a document-scope question for them. It selects no sections (its filters and rules, if any, run against the whole document), and is written as `scope: document` in the template YAML (format 3.1). Add one only when a submission needs it. Paired with rubric scoring worth 0 points, marked optional and not bounded below zero, it records such a problem once as a deduction from the total instead of spreading it across the questions it affects.
+Some problems belong to no single question: a render setting in the YAML header, global chunk options, a document that does not render. "Add Document Entry" creates a document-scope question for them. It selects no sections (its filters and rules, if any, run against the whole document), and is written as `scope: document` in the template YAML (format 3.1). Add one only when a submission needs it. Paired with rubric scoring worth 0 points, marked optional and not bounded below zero, it records such a problem once as a deduction from the total instead of spreading it across the questions it affects.
 
 When the app is opened on an initialized project, saving writes the template directly into the project database, ready for grading.
 
@@ -109,6 +109,10 @@ The Rubric tab is where grading happens. The left pane shows the student's rende
 
 Rubric items can be added, edited, reordered, and grouped while grading (Add Group creates a group whose settings popover holds its label, bounds and exclusivity; each item's group menu moves it in or out), and the rubric pane's menu offers YAML import and export for editing the rubric outside the app.
 
+### History
+
+The History tab lists the project's snapshots: named, timestamped copies of the grading state (template, rubric and marks) kept inside the project database. Snapshots are taken automatically before every bulk change (a rubric import, deleting an item that has selections, deleting a group, a restore), and by hand from the camera button or the `s` key, with a label and a summary of what is about to change. Selecting a snapshot shows its fields and notes, what changed between it and the current state (or any other snapshot): items added, removed, reworded or re-pointed, selections and comments changed, and every repository's total before and after; and the scores it recorded. From there a snapshot can be restored (undoing every change since to the rubric and marks, or to chosen questions and repositories), exported to YAML files, pinned, or deleted, and the database file backed up. The navbar shows when the latest snapshot was taken and how many selections have been recorded since, turning amber when that number grows large, as a nudge to take a named checkpoint at the end of a session.
+
 ## Scripting the workflow
 
 Everything the apps do is also available headlessly:
@@ -133,6 +137,34 @@ marks_set("student1-hw01", "Question 2",
 
 The YAML formats are validated against bundled JSON Schemas (see `system.file("schema", package = "markermd")`) and are deliberately simple enough for LLM tools to author. Marks imports are conservative by default: repository/question pairs that already have grading activity are skipped unless explicitly overwritten.
 
+### Snapshots
+
+Every bulk change to the grading state takes a snapshot of the state it replaces, in the same transaction, so a change cannot succeed without its snapshot. The imports take a `summary` so the reason for a change is recorded with it, and the snapshots can be listed, compared, exported and restored from R (and from the History tab of `mark()`; the template editor offers a take-snapshot and a load-a-snapshot's-template control):
+
+```r
+# A named checkpoint before a multi-step change
+snapshot_create("hw01", label = "Before feedback review",
+  summary = "Re-checking every Q1 selection against the reviewed standard.")
+
+# Imports record their reason on the snapshot they take
+rubric_import("hw01-rubric.yaml", project = "hw01", mode = "replace",
+  summary = "Feedback review: lenient Q1a standard, unrequested items to 0 pts")
+
+# What changed since, and what it did to the grades
+snapshot_list("hw01")
+snapshot_diff("Before feedback review", project = "hw01")
+
+# Undo (the state before the restore is snapshotted first)
+snapshot_restore("Before feedback review", project = "hw01",
+  summary = "The review's Q1c severities were wrong.")
+
+# An archive of one snapshot as YAML files, and a copy of the database file
+snapshot_export("Before feedback review", "backups/before-review", project = "hw01")
+project_backup("hw01")
+```
+
+Snapshots live in the project database (schema version 5; an existing database gains a baseline snapshot when first opened). Identical parts are stored once, an automatic snapshot of an unchanged state is recorded as a note on the latest one rather than a new row, and `snapshot_prune()` removes old automatic snapshots while keeping every manual or pinned one. `export_scores()` and `export_comments()` record which snapshot each export came from, and `project_sitrep()` reports the snapshot state, including whether the exported scores are stale.
+
 ## Exporting results
 
 When grading is complete, `export_marks()` writes the final hand-off artifacts from the project database (or run `export_scores()` and `export_comments()` individually):
@@ -141,7 +173,7 @@ When grading is complete, `export_marks()` writes the final hand-off artifacts f
 export_marks("hw01")
 ```
 
-- `export_scores()` writes `scores.csv` to the project root: one row per repository, one column per question, plus a `total` column. Scores are recomputed exactly as `mark()` displays them, passing each question's selected rubric item points (each item group's combined points first clamped to its floor and ceiling) through its grading mode and bounds. Ungraded repository/question pairs export as `NA`, and a repository's total stays `NA` until all of its questions are graded. A question whose scoring is marked optional (the gear popover's "Optional question", or `optional: true` in the rubric YAML) counts as graded for every repository, scoring as if no item were selected until something is recorded.
+- `export_scores()` writes `scores.csv` to the project root: one row per repository, one column per question, plus a `total` column. Scores are recomputed exactly as `mark()` displays them, passing each question's selected rubric item points (each item group's combined points first clamped to its floor and ceiling) through its grading mode and bounds. Ungraded repository/question pairs export as `NA`, and a repository's total stays `NA` until all of its questions are graded. A question whose scoring is marked optional (the gear popover's "Optional: nothing selected still counts as graded", or `optional: true` in the rubric YAML) counts as graded for every repository, scoring as if no item were selected until something is recorded; its column in the Assignments table has a small red dot beside the name.
 - `export_comments()` writes each repository's student-facing feedback to `comments/<repo>.md` (or the project's configured comments directory). Each graded question appears as a heading, in template order (document-scope questions first), followed by a bulleted list of its selected rubric item descriptions and public comment. Group bounds are never mentioned; with `group_headings = TRUE` a group's selected items are listed under a subheading carrying its label. Private notes are never exported, and a repository with no public feedback gets no file.
 
 ## Agent skills (Claude Code and Codex)

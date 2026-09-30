@@ -159,10 +159,15 @@ template_persistence = function(input, output, session,
 
   # Save into the project database, the canonical template store (project
   # sessions). The assignment source is recorded root-relative so it resolves
-  # on reload; YAML remains available via the Export button.
+  # on reload; YAML remains available via the Export button. An automatic
+  # snapshot of the state being overwritten is taken in the same transaction
+  # (skipped when nothing changed since the latest snapshot).
   shiny::observe({
     src_rel = if (!is.null(source_path)) as.character(fs::path_rel(source_path, project@root)) else NULL
-    save_template_to_db(project@root, build_current_template(), source_path = src_rel)
+    save_template_to_db(
+      project@root, build_current_template(), source_path = src_rel,
+      snapshot = list(trigger = "template(): save")
+    )
     mark_saved()
 
     shiny::showNotification(
@@ -170,6 +175,14 @@ template_persistence = function(input, output, session,
       type = "message"
     )
   }) |> shiny::bindEvent(input$save_to_project)
+
+  # Snapshots (project sessions): take a named snapshot of the project's
+  # grading state, or load the template a snapshot recorded into the editor
+  # (saving then writes it back, through the usual automatic snapshot). The
+  # snapshot records the saved database state, not the editor's unsaved edits.
+  if (!is.null(project)) {
+    template_snapshot_controls(input, output, session, project, question_modules, template_dirty, load_questions_into_editor)
+  }
 
   # Export the current template to a YAML file (project sessions). The source
   # is recorded root-relative so the exported file re-opens against the key.
@@ -246,4 +259,100 @@ template_persistence = function(input, output, session,
     dirty = template_dirty,
     mark_saved = mark_saved
   )
+}
+
+# The template editor's snapshot controls (project sessions): the modals
+# behind the Snapshots popover's "Take snapshot" and "Restore template"
+# buttons. Snapshots are of the project database (template, rubric and
+# marks); restoring here loads a snapshot's template into the editor rather
+# than writing the database, so the user reviews it and saves.
+#
+# input, output, session: The template app's server objects
+# project: markermd_project S7 object
+# question_modules: Reactive. The app's question-module registry
+# template_dirty: Reactive. Whether the editor has unsaved changes
+# load_questions_into_editor: Function(questions). Replaces the editor's
+#   questions with the supplied list
+
+template_snapshot_controls = function(input, output, session, project, question_modules, template_dirty,
+                                      load_questions_into_editor) {
+  shiny::observe({
+    shiny::showModal(shiny::modalDialog(
+      title = "Take snapshot",
+      shiny::p(
+        class = "small text-muted",
+        "Records the project's current template, rubric and marks as stored in its database.",
+        if (template_dirty()) shiny::span(class = "text-warning-emphasis", " The editor has unsaved changes; save first to include them.")
+      ),
+      shiny::textInput("snapshot_label", "Label", placeholder = "e.g. Template before adding Q4", width = "100%"),
+      shiny::textAreaInput("snapshot_summary", "Summary", placeholder = "What is about to change, or why this state is worth keeping", width = "100%", rows = 3),
+      easyClose = TRUE,
+      footer = shiny::tagList(
+        shiny::modalButton("Cancel"),
+        shiny::actionButton("confirm_snapshot", "Take snapshot", class = "btn-primary")
+      )
+    ))
+  }) |> shiny::bindEvent(input$take_snapshot)
+
+  shiny::observe({
+    shiny::removeModal()
+    blank_to_null = function(x) if (is.null(x) || !nzchar(trimws(x))) NULL else x
+    res = purrr::safely(purrr::quietly(snapshot_create))(
+      project@root,
+      label = blank_to_null(input$snapshot_label),
+      summary = blank_to_null(input$snapshot_summary)
+    )
+    if (!is.null(res$error)) {
+      shiny::showNotification(conditionMessage(res$error), type = "error", duration = NULL)
+    } else {
+      shiny::showNotification(paste0("Snapshot ", res$result$result, " taken."), type = "message")
+    }
+  }) |> shiny::bindEvent(input$confirm_snapshot)
+
+  shiny::observe({
+    choices = template_snapshot_choices(project@root)
+    if (length(choices) == 0) {
+      shiny::showNotification("No snapshot holds a template yet.", type = "warning")
+      return()
+    }
+    shiny::showModal(shiny::modalDialog(
+      title = "Restore a template snapshot",
+      shiny::p(
+        class = "small text-muted",
+        "Loads the template a snapshot recorded into the editor, replacing the questions shown here.",
+        "Nothing is written until you save. Only snapshots whose template differs from the one before are listed."
+      ),
+      shiny::selectInput("restore_snapshot_id", "Snapshot", choices = choices, width = "100%", selectize = FALSE),
+      if (length(question_modules()) > 0) shiny::p(
+        class = "text-danger small mb-0",
+        "The ", length(question_modules()), " question", if (length(question_modules()) == 1) "" else "s",
+        " currently in the editor will be replaced.", if (template_dirty()) " Unsaved changes are lost."
+      ),
+      easyClose = TRUE,
+      footer = shiny::tagList(
+        shiny::modalButton("Cancel"),
+        shiny::actionButton("confirm_restore_snapshot", "Load into editor", class = "btn-danger")
+      )
+    ))
+  }) |> shiny::bindEvent(input$restore_snapshot)
+
+  shiny::observe({
+    shiny::removeModal()
+    id = input$restore_snapshot_id
+    shiny::req(id)
+    part = with_database(project@root, function(conn) read_snapshot_part(conn, id, "template"))
+    parsed = purrr::safely(function() lapply(part$questions, question_from_list))()
+    if (!is.null(parsed$error)) {
+      shiny::showNotification(
+        paste0("Could not load the snapshot's template: ", conditionMessage(parsed$error)),
+        type = "error", duration = NULL
+      )
+      return()
+    }
+    load_questions_into_editor(parsed$result)
+    shiny::showNotification(
+      glue::glue("Loaded {length(parsed$result)} question{if (length(parsed$result) == 1) '' else 's'} from snapshot {id}. Save to keep them."),
+      type = "message"
+    )
+  }) |> shiny::bindEvent(input$confirm_restore_snapshot)
 }

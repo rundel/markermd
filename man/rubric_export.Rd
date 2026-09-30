@@ -4,7 +4,7 @@
 \alias{rubric_export}
 \title{Export a project's grading rubric to YAML}
 \usage{
-rubric_export(path, project = ".", question = NULL)
+rubric_export(path, project = ".", question = NULL, snapshot = NULL)
 }
 \arguments{
 \item{path}{Output path for the rubric \code{.yaml} file.}
@@ -13,6 +13,9 @@ rubric_export(path, project = ".", question = NULL)
 
 \item{question}{Optional character vector of question names to export.
 Defaults to every question in the project's template.}
+
+\item{snapshot}{Optional snapshot reference (see \code{\link[=snapshot_info]{snapshot_info()}}): export
+the rubric that snapshot recorded instead of the live one.}
 }
 \value{
 The output \code{path}, invisibly.

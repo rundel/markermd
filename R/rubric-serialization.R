@@ -47,15 +47,20 @@ markermd_rubric_version = function() {
 
 # markermd_rubric_item -> plain list. Hotkey, group and selection state are
 # not serialized: order encodes the hotkey, nesting encodes the group, and
-# selection is per-repo runtime state.
+# selection is per-repo runtime state. The database id is written only for
+# a snapshot (id given), never for the public YAML format.
 #
 # item: markermd_rubric_item S7 object
+# id: The item's database id, or NULL
 
-rubric_item_to_list = function(item) {
-  list(
-    points = clean_number(item@points),
-    description = item@description
-  )
+rubric_item_to_list = function(item, id = NULL) {
+  out = list()
+  if (!is.null(id)) {
+    out$id = id
+  }
+  out$points = clean_number(item@points)
+  out$description = item@description
+  out
 }
 
 # plain list -> markermd_rubric_item with a position-derived hotkey. The S7
@@ -88,13 +93,19 @@ is_rubric_group_entry = function(x) {
 #
 # group: markermd_rubric_group S7 object
 # items: List of markermd_rubric_item members, in display order
+# id: The group's database id, or NULL (snapshots only)
+# item_ids: The members' database ids, parallel to items, or NULL
 
-rubric_group_to_list = function(group, items) {
-  out = list(group = group@label)
+rubric_group_to_list = function(group, items, id = NULL, item_ids = NULL) {
+  out = list()
+  if (!is.null(id)) {
+    out$id = id
+  }
+  out$group = group@label
   if (!is.na(group@floor)) out$floor = clean_number(group@floor)
   if (!is.na(group@ceiling)) out$ceiling = clean_number(group@ceiling)
   if (isTRUE(group@exclusive)) out$exclusive = TRUE
-  out$items = lapply(items, rubric_item_to_list)
+  out$items = lapply(seq_along(items), function(i) rubric_item_to_list(items[[i]], id = item_ids[i]))
   out
 }
 
@@ -166,8 +177,10 @@ scoring_from_list = function(x) {
 #
 # question: List with name, scoring (markermd_grade_state or NULL), items
 #   and optionally groups
+# ids: Whether to write the item ids (the names of items) and group ids
+#   (the names of groups); snapshots only
 
-rubric_question_to_list = function(question) {
+rubric_question_to_list = function(question, ids = FALSE) {
   out = list(name = question$name)
   if (!is.null(question$scoring)) {
     out$scoring = scoring_to_list(question$scoring)
@@ -175,6 +188,7 @@ rubric_question_to_list = function(question) {
 
   items = question$items
   groups = if (is.null(question$groups)) list() else question$groups
+  item_ids = if (ids && !is.null(names(items))) names(items) else NULL
   n = length(items)
   entries = list()
   seen = character(0)
@@ -182,7 +196,7 @@ rubric_question_to_list = function(question) {
   while (i <= n) {
     group_id = items[[i]]@group
     if (is.na(group_id)) {
-      entries[[length(entries) + 1]] = rubric_item_to_list(items[[i]])
+      entries[[length(entries) + 1]] = rubric_item_to_list(items[[i]], id = item_ids[i])
       i = i + 1
       next
     }
@@ -197,7 +211,10 @@ rubric_question_to_list = function(question) {
     while (j <= n && identical(items[[j]]@group, group_id)) {
       j = j + 1
     }
-    entries[[length(entries) + 1]] = rubric_group_to_list(groups[[group_id]], items[i:(j - 1)])
+    entries[[length(entries) + 1]] = rubric_group_to_list(
+      groups[[group_id]], items[i:(j - 1)],
+      id = if (ids) group_id else NULL, item_ids = item_ids[i:(j - 1)]
+    )
     i = j
   }
 
@@ -210,7 +227,9 @@ rubric_question_to_list = function(question) {
 # "group_<k>" id, k in file order) and hotkeys are assigned by flat item
 # position (position_hotkey(): 1-10, NA beyond ten) to match the mark app's
 # renumbering invariant. Groups cannot nest, and labels must be unique
-# within the question.
+# within the question. A snapshot's rubric carries the database ids; when
+# every entry has one, the items come back named by id and the groups keyed
+# by id, so a diff can match items across snapshots.
 #
 # x: List with name, optionally scoring, and items
 
@@ -222,13 +241,16 @@ rubric_question_from_list = function(x) {
 
   entries = if (is.null(x$items)) list() else x$items
   items = list()
+  item_ids = character(0)
   groups = list()
+  entry_id = function(entry) if (is.null(entry$id)) NA_character_ else as.character(entry$id)
   for (entry in entries) {
     if (!is_rubric_group_entry(entry)) {
       items[[length(items) + 1]] = rubric_item_from_list(entry, position_hotkey(length(items) + 1))
+      item_ids = c(item_ids, entry_id(entry))
       next
     }
-    group_id = paste0("group_", length(groups) + 1)
+    group_id = if (is.na(entry_id(entry))) paste0("group_", length(groups) + 1) else entry_id(entry)
     groups[[group_id]] = rubric_group_from_list(entry)
     members = if (is.null(entry$items)) list() else entry$items
     for (member in members) {
@@ -236,7 +258,11 @@ rubric_question_from_list = function(x) {
         cli::cli_abort("Rubric question '{name}': group '{entry$group}' contains a nested group, which is not allowed.")
       }
       items[[length(items) + 1]] = rubric_item_from_list(member, position_hotkey(length(items) + 1), group = group_id)
+      item_ids = c(item_ids, entry_id(member))
     }
+  }
+  if (length(items) > 0 && !anyNA(item_ids) && !anyDuplicated(item_ids)) {
+    names(items) = item_ids
   }
 
   labels = vapply(groups, function(group) group@label, character(1))
@@ -275,9 +301,11 @@ rubric_question_from_list = function(x) {
 # the exchange list's own format_version is informational.
 #
 # rubric: Exchange list with format_version and questions
+# ids: Whether to write item and group ids (snapshots only; the public YAML
+#   format never carries them)
 
-rubric_to_list = function(rubric) {
-  questions = lapply(rubric$questions, rubric_question_to_list)
+rubric_to_list = function(rubric, ids = FALSE) {
+  questions = lapply(rubric$questions, rubric_question_to_list, ids = ids)
   has_groups = any(vapply(questions, function(question) {
     any(vapply(question$items, is_rubric_group_entry, logical(1)))
   }, logical(1)))
@@ -332,21 +360,34 @@ rubric_from_list = function(x) {
 
 collect_rubric_data = function(collection_path, question_names) {
   # One connection for the whole export rather than three per question
-  data = with_database(collection_path, function(conn) {
-    list(
-      settings = load_all_settings(conn),
-      items = load_all_items(conn),
-      groups = load_all_item_groups(conn)
-    )
+  with_database(collection_path, function(conn) {
+    rubric_data_from_conn(conn, question_names)
   })
+}
+
+# collect_rubric_data() on an open connection. With ids = TRUE each
+# question's items keep their database ids as names (the snapshot writer
+# stores them; the public format drops them).
+#
+# conn: DBI connection object
+# question_names: Character vector of question names to include
+# ids: Whether items are named by their database ids
+
+rubric_data_from_conn = function(conn, question_names, ids = FALSE) {
+  data = list(
+    settings = load_all_settings(conn),
+    items = load_all_items(conn),
+    groups = load_all_item_groups(conn)
+  )
 
   questions = lapply(question_names, function(question_name) {
+    items = items_df_to_rubric_list(data$items, question_name)
     list(
       name = question_name,
       scoring = db_row_to_grade_state(
         data$settings[data$settings$question_name == question_name, , drop = FALSE]
       ),
-      items = unname(items_df_to_rubric_list(data$items, question_name)),
+      items = if (ids) items else unname(items),
       groups = groups_df_to_list(data$groups, data$items, question_name)
     )
   })

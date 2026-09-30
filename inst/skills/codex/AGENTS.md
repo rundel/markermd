@@ -57,9 +57,21 @@ Headless entry points, all taking the project root:
   the template, rubric, and marks between the database and YAML. The export
   is the way to learn the current questions, items, and marks.
 - `export_scores()`, `export_comments()`, `export_marks()`: final outputs.
+  Each records which snapshot of the grading it came from.
 - `assignment_outline()`: a document's sections with their exact Pandoc
   anchors and content counts. Anchors in a template always come from here,
   never from guesswork.
+- `snapshot_create()`, `snapshot_list()`, `snapshot_info()`,
+  `snapshot_diff()`, `snapshot_restore()`, `snapshot_export()`,
+  `snapshot_annotate()`, `project_backup()`: snapshots of the grading state
+  (template, rubric and marks) kept inside the project database. Every bulk
+  change (the imports, a restore, the apps' imports and deletions) takes an
+  automatic snapshot of the state it replaces, in the same transaction, and
+  records the `summary` passed to it. `snapshot_diff("latest")` reports what
+  changed since the latest snapshot (items reworded, re-pointed or
+  regrouped, selections and comments changed, per-repository score deltas);
+  `snapshot_restore()` is the undo. There is no need for hand-made backup
+  copies of the database or of exported YAML before a change.
 
 ## File formats
 
@@ -264,6 +276,13 @@ repos:
 - Every change to grading state goes through the import functions or the
   apps, never through the SQLite file or hand-edited YAML that is not then
   imported.
+- Every import you run gets a `summary =` saying what it changes and why; it
+  is recorded on the automatic snapshot the import takes. After a change,
+  report what it did with `snapshot_diff("latest")` rather than by
+  describing the file you imported. Take a named snapshot
+  (`snapshot_create(label =, summary =)`) before a multi-step change, and
+  use `snapshot_restore()` to undo, never `rubric_import(mode = "replace")`
+  from a copied file.
 - Names match verbatim on import: question names against the stored template,
   rubric item descriptions against the stored rubric, repository names against
   the directories under `paths.repos`. Fix the file being imported; never edit

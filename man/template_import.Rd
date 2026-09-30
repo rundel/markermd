@@ -4,7 +4,7 @@
 \alias{template_import}
 \title{Import a grading template from YAML into a project's database}
 \usage{
-template_import(path, project = ".")
+template_import(path, project = ".", snapshot = TRUE, summary = NULL)
 }
 \arguments{
 \item{path}{Path to a template \code{.yaml}/\code{.yml} file. Absolute or relative to
@@ -12,6 +12,13 @@ the current directory; a bare relative path is also resolved against the
 project root.}
 
 \item{project}{Path to the project directory. Defaults to the working directory.}
+
+\item{snapshot}{Whether to take an automatic snapshot before the import.
+\code{FALSE} is for scripts that take their own snapshot once before several
+imports.}
+
+\item{summary}{Optional text recorded on the automatic snapshot: what the
+import changes and why.}
 }
 \value{
 The imported \code{markermd_template} object, invisibly.
@@ -20,6 +27,8 @@ The imported \code{markermd_template} object, invisibly.
 Reads a template YAML file and stores it in the project's grading database,
 which is the canonical store for templates. This is the inverse of
 \code{\link[=template_export]{template_export()}}. Equivalent to \code{project_set(project, template = path)}.
+An automatic snapshot of the state being replaced is taken first (see
+\code{\link[=snapshot_create]{snapshot_create()}}).
 }
 \examples{
 \dontrun{

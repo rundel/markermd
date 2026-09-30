@@ -491,9 +491,11 @@ project_config = function(path = ".") {
 #' Report a markermd project's status
 #'
 #' Prints a situation report for a markermd project: its root, version and
-#' timestamps, and the configured locations along with whether they exist (repo
+#' timestamps, the configured locations along with whether they exist (repo
 #' and comment counts, artifact directories, the grading database, and the
-#' template).
+#' template), and the state of its snapshots (how many, the latest one,
+#' whether the grading state changed since it, and when the scores and
+#' comments were last exported relative to the last change).
 #'
 #' @param path Path to the project directory. Defaults to the working directory.
 #'
@@ -562,15 +564,21 @@ project_set = function(path = ".", repos = NULL, comments = NULL, template = NUL
     project@comments = rel
   }
   if (!is.null(template)) {
+    spec = list(trigger = "project_set(template = ...)")
     if (S7::S7_inherits(template, markermd_template)) {
       assert_template_compatible(template)
       source_path = attr(template, "markermd_source_raw")
       if (is.null(source_path)) source_path = attr(template, "markermd_source_path")
-      save_template_to_db(project@root, template, source_path = source_path)
+      save_template_to_db(project@root, template, source_path = source_path, snapshot = spec)
     } else if (is_clear_sentinel(template)) {
-      with_database(project@root, function(conn) delete_metadata(conn, "template"))
+      with_database(project@root, function(conn) {
+        DBI::dbBegin(conn)
+        snapshot_before_change(conn, project@root, list(trigger = "project_set(template = NA)"))
+        delete_metadata(conn, "template")
+        DBI::dbCommit(conn)
+      })
     } else {
-      import_template_yaml_to_db(project@root, as.character(template))
+      import_template_yaml_to_db(project@root, as.character(template), snapshot = spec)
     }
   }
   if (!is.null(key)) {
@@ -607,13 +615,34 @@ project_set = function(path = ".", repos = NULL, comments = NULL, template = NUL
 #
 # root: absolute project root
 # path: path to a template YAML file
+# snapshot: NULL, or a list with trigger and summary for the automatic
+#   snapshot taken before the stored template is overwritten
 
-import_template_yaml_to_db = function(root, path) {
+import_template_yaml_to_db = function(root, path, snapshot = NULL) {
   template_path = resolve_project_file(root, path, "Template")
   template_obj = read_template_yaml(template_path, require_ast = FALSE)
   assert_template_compatible(template_obj)
-  save_template_to_db(root, template_obj, source_path = attr(template_obj, "markermd_source_raw"))
+  save_template_to_db(
+    root, template_obj, source_path = attr(template_obj, "markermd_source_raw"), snapshot = snapshot
+  )
   invisible(template_obj)
+}
+
+# The snapshot spec (trigger plus summary) an import passes down when it
+# wants an automatic snapshot, NULL when it does not
+#
+# snapshot: The import's snapshot argument (TRUE or FALSE)
+# trigger: What is running
+# summary: The import's summary argument
+
+import_snapshot_spec = function(snapshot, trigger, summary = NULL) {
+  if (!rlang::is_bool(snapshot)) {
+    cli::cli_abort("{.arg snapshot} must be {.code TRUE} or {.code FALSE}.")
+  }
+  if (!is.null(summary) && (!is.character(summary) || length(summary) != 1)) {
+    cli::cli_abort("{.arg summary} must be a single string.")
+  }
+  if (snapshot) list(trigger = trigger, summary = summary) else NULL
 }
 
 #' Import a grading template from YAML into a project's database
@@ -621,11 +650,18 @@ import_template_yaml_to_db = function(root, path) {
 #' Reads a template YAML file and stores it in the project's grading database,
 #' which is the canonical store for templates. This is the inverse of
 #' [template_export()]. Equivalent to `project_set(project, template = path)`.
+#' An automatic snapshot of the state being replaced is taken first (see
+#' [snapshot_create()]).
 #'
 #' @param path Path to a template `.yaml`/`.yml` file. Absolute or relative to
 #'   the current directory; a bare relative path is also resolved against the
 #'   project root.
 #' @param project Path to the project directory. Defaults to the working directory.
+#' @param snapshot Whether to take an automatic snapshot before the import.
+#'   `FALSE` is for scripts that take their own snapshot once before several
+#'   imports.
+#' @param summary Optional text recorded on the automatic snapshot: what the
+#'   import changes and why.
 #'
 #' @return The imported `markermd_template` object, invisibly.
 #' @export
@@ -634,9 +670,12 @@ import_template_yaml_to_db = function(root, path) {
 #' \dontrun{
 #' template_import("hw01-template.yaml", project = "hw01")
 #' }
-template_import = function(path, project = ".") {
+template_import = function(path, project = ".", snapshot = TRUE, summary = NULL) {
   proj = project_config(project)
-  import_template_yaml_to_db(proj@root, path)
+  import_template_yaml_to_db(
+    proj@root, path,
+    snapshot = import_snapshot_spec(snapshot, "template_import()", summary)
+  )
 }
 
 #' Export a project's grading template to YAML
@@ -646,6 +685,8 @@ template_import = function(path, project = ".") {
 #'
 #' @param path Output path for the template `.yaml` file.
 #' @param project Path to the project directory. Defaults to the working directory.
+#' @param snapshot Optional snapshot reference (see [snapshot_info()]): export
+#'   the template that snapshot recorded instead of the stored one.
 #'
 #' @return The output `path`, invisibly.
 #' @export
@@ -654,8 +695,18 @@ template_import = function(path, project = ".") {
 #' \dontrun{
 #' template_export("hw01-template.yaml", project = "hw01")
 #' }
-template_export = function(path, project = ".") {
+template_export = function(path, project = ".", snapshot = NULL) {
   proj = project_config(project)
+  if (!is.null(snapshot)) {
+    part = with_database(proj@root, function(conn) {
+      read_snapshot_part(conn, resolve_snapshot_id(conn, snapshot), "template")
+    })
+    if (is.null(part)) {
+      cli::cli_abort("Snapshot {.val {snapshot}} holds no template.")
+    }
+    yaml::write_yaml(part, path)
+    return(invisible(path))
+  }
   template_obj = load_template_from_db(proj@root, base_dir = proj@root)
   if (is.null(template_obj)) {
     cli::cli_abort(c(
@@ -671,21 +722,13 @@ template_export = function(path, project = ".") {
 # stored, otherwise the distinct names found in the rubric items table
 # (sorted). Returns a list with names, a had_template flag, and document (the
 # names of the template's document-scope questions; empty without a template).
+# Read off the stored template JSON (db_question_names()), so the assignment
+# document is not re-parsed.
 #
 # root: absolute project root
 
 project_question_names = function(root) {
-  template_obj = load_template_from_db(root, base_dir = root)
-  if (!is.null(template_obj)) {
-    document = Filter(is_document_question, template_obj@questions)
-    return(list(
-      names = template_question_names(template_obj),
-      had_template = TRUE,
-      document = vapply(document, function(q) q@name, character(1))
-    ))
-  }
-  names = sort(unique(with_database(root, load_all_items)$question_name))
-  list(names = names, had_template = FALSE, document = character(0))
+  with_database(root, db_question_names)
 }
 
 #' Export a project's grading rubric to YAML
@@ -702,6 +745,8 @@ project_question_names = function(root) {
 #' @param project Path to the project directory. Defaults to the working directory.
 #' @param question Optional character vector of question names to export.
 #'   Defaults to every question in the project's template.
+#' @param snapshot Optional snapshot reference (see [snapshot_info()]): export
+#'   the rubric that snapshot recorded instead of the live one.
 #'
 #' @return The output `path`, invisibly.
 #' @seealso [rubric_import()], [template_export()]
@@ -714,8 +759,23 @@ project_question_names = function(root) {
 #' # Export only some questions
 #' rubric_export("hw01-q1.yaml", project = "hw01", question = "Question 1")
 #' }
-rubric_export = function(path, project = ".", question = NULL) {
+rubric_export = function(path, project = ".", question = NULL, snapshot = NULL) {
   proj = project_config(project)
+
+  if (!is.null(snapshot)) {
+    rubric = rubric_from_list(with_database(proj@root, function(conn) {
+      read_snapshot_part(conn, resolve_snapshot_id(conn, snapshot), "rubric")
+    }))
+    names = vapply(rubric$questions, function(q) q$name, character(1))
+    selected = restrict_names(
+      question, names,
+      "Unknown question{?s}: {.val {unknown}}.",
+      "The snapshot's questions: {.val {available}}."
+    )
+    rubric$questions = rubric$questions[names %in% selected]
+    write_rubric_yaml(rubric, path)
+    return(invisible(path))
+  }
 
   universe = project_question_names(proj@root)
   if (!universe$had_template && length(universe$names) > 0) {
@@ -767,6 +827,10 @@ rubric_export = function(path, project = ".", question = NULL) {
 #' Question names in the file must exactly match question names in the
 #' project's stored template; mismatches abort before anything is written.
 #'
+#' An automatic snapshot of the state being changed is taken in the same
+#' transaction as the import (see [snapshot_create()]), so a replace import
+#' can be undone with [snapshot_restore()].
+#'
 #' @param path Path to a rubric `.yaml`/`.yml` file. Absolute or relative to
 #'   the current directory; a bare relative path is also resolved against the
 #'   project root.
@@ -774,6 +838,11 @@ rubric_export = function(path, project = ".", question = NULL) {
 #' @param mode Either `"append"` or `"replace"`; see Details.
 #' @param question Optional character vector restricting the import to those
 #'   question names within the file.
+#' @param snapshot Whether to take an automatic snapshot before the import.
+#'   `FALSE` is for scripts that take their own snapshot once before several
+#'   imports.
+#' @param summary Optional text recorded on the automatic snapshot: what the
+#'   import changes and why.
 #'
 #' @return The parsed rubric list, invisibly.
 #' @seealso [rubric_export()], [read_rubric_yaml()], [validate_rubric_file()]
@@ -783,12 +852,20 @@ rubric_export = function(path, project = ".", question = NULL) {
 #' \dontrun{
 #' rubric_import("hw01-rubric.yaml", project = "hw01")
 #'
-#' # Replace each affected question's existing items
-#' rubric_import("hw01-rubric.yaml", project = "hw01", mode = "replace")
+#' # Replace each affected question's existing items, recording why
+#' rubric_import("hw01-rubric.yaml", project = "hw01", mode = "replace",
+#'   summary = "Feedback review: reworded the Q1 items and capped the examples group")
 #' }
-rubric_import = function(path, project = ".", mode = c("append", "replace"), question = NULL) {
+rubric_import = function(path, project = ".", mode = c("append", "replace"), question = NULL,
+                         snapshot = TRUE, summary = NULL) {
   mode = match.arg(mode)
   proj = project_config(project)
+  trigger = if (is.null(question)) {
+    glue::glue("rubric_import(mode = '{mode}')")
+  } else {
+    glue::glue("rubric_import(mode = '{mode}', question = '{paste(question, collapse = \"', '\")}')")
+  }
+  spec = import_snapshot_spec(snapshot, as.character(trigger), summary)
 
   rubric_path = resolve_project_file(proj@root, path, "Rubric")
 
@@ -829,7 +906,7 @@ rubric_import = function(path, project = ".", mode = c("append", "replace"), que
     )
   }
 
-  summaries = apply_rubric_import(proj@root, rubric, mode)
+  summaries = apply_rubric_import(proj@root, rubric, mode, snapshot = spec)
 
   n_items = sum(vapply(summaries, function(s) length(s$new_ids), integer(1)))
   cli::cli_alert_success(
@@ -936,7 +1013,23 @@ restrict_names = function(requested, available, unknown_msg, hint_msg) {
 
 resolve_marks_plan = function(proj, marks) {
   repo_universe = project_repo_names(proj)
-  question_universe = project_question_names(proj@root)$names
+  with_database(proj@root, function(conn) {
+    resolve_marks_plan_conn(conn, repo_universe, db_question_names(conn)$names, marks)
+  })
+}
+
+# resolve_marks_plan() on an open connection, against the rubric that
+# connection sees (the snapshot restore resolves the marks against the
+# rubric it has just written in the same transaction)
+#
+# conn: DBI connection object
+# repo_universe: The project's repository names
+# question_universe: The project's question names
+# marks: Exchange-list marks (read_marks_yaml() shape)
+
+resolve_marks_plan_conn = function(conn, repo_universe, question_universe, marks) {
+  all_items = load_all_items(conn)
+  all_groups = load_all_item_groups(conn)
 
   items_cache = list()
   groups_cache = list()
@@ -962,8 +1055,8 @@ resolve_marks_plan = function(proj, marks) {
       selections = NULL
       if (!is.null(question$items)) {
         if (is.null(items_cache[[question$name]])) {
-          items_cache[[question$name]] = load_rubric_items(proj@root, question$name)
-          groups_cache[[question$name]] = load_item_groups(proj@root, question$name)
+          items_cache[[question$name]] = items_df_to_rubric_list(all_items, question$name)
+          groups_cache[[question$name]] = groups_df_to_list(all_groups, all_items, question$name)
         }
         items = items_cache[[question$name]]
         groups = groups_cache[[question$name]]
@@ -1067,6 +1160,11 @@ marks_plan_summary = function(plan, action) {
 #' group) happens before anything is written, and the import itself is a
 #' single transaction.
 #'
+#' When the import re-marks pairs that already have grading activity
+#' (`overwrite = TRUE`), an automatic snapshot of the state being replaced is
+#' taken in the same transaction (see [snapshot_create()]); an import that
+#' only fills empty pairs replaces nothing and takes none.
+#'
 #' @param path Path to a marks `.yaml`/`.yml` file. Absolute or relative to
 #'   the current directory; a bare relative path is also resolved against the
 #'   project root.
@@ -1077,6 +1175,11 @@ marks_plan_summary = function(plan, action) {
 #'   repository names within the file.
 #' @param question Optional character vector restricting the import to those
 #'   question names within the file.
+#' @param snapshot Whether to take an automatic snapshot before an import
+#'   that overwrites existing grading. `FALSE` is for scripts that take their
+#'   own snapshot once before several imports.
+#' @param summary Optional text recorded on the automatic snapshot: what the
+#'   import changes and why.
 #'
 #' @return Invisibly, a data frame with one row per (repository, question)
 #'   pair: columns `repo`, `question`, `action` (`"written"` or `"skipped"`),
@@ -1089,11 +1192,14 @@ marks_plan_summary = function(plan, action) {
 #' \dontrun{
 #' marks_import("hw01-marks.yaml", project = "hw01")
 #'
-#' # Re-mark pairs that already have grading activity
-#' marks_import("hw01-marks.yaml", project = "hw01", overwrite = TRUE)
+#' # Re-mark pairs that already have grading activity, recording why
+#' marks_import("hw01-marks.yaml", project = "hw01", overwrite = TRUE,
+#'   summary = "Adversarial re-check of the first-pass grading")
 #' }
-marks_import = function(path, project = ".", overwrite = FALSE, repo = NULL, question = NULL) {
+marks_import = function(path, project = ".", overwrite = FALSE, repo = NULL, question = NULL,
+                        snapshot = TRUE, summary = NULL) {
   proj = project_config(project)
+  spec = import_snapshot_spec(snapshot, as.character(glue::glue("marks_import(overwrite = {overwrite})")), summary)
 
   marks_path = resolve_project_file(proj@root, path, "Marks")
 
@@ -1131,19 +1237,21 @@ marks_import = function(path, project = ".", overwrite = FALSE, repo = NULL, que
     cli::cli_abort("The marks file contains no marks to import.")
   }
 
+  marked = marked_question_pairs(proj@root)
+  # Join on a unit-separator that cannot appear in a repo or question name, so
+  # two distinct (repo, question) pairs never collapse to the same key.
+  marked_keys = paste(marked$assignment_repo, marked$question_name, sep = "\x1f")
+  is_marked = vapply(plan, function(e) paste(e$repo, e$question, sep = "\x1f") %in% marked_keys, logical(1))
   skipped = list()
   if (!overwrite) {
-    marked = marked_question_pairs(proj@root)
-    # Join on a unit-separator that cannot appear in a repo or question name, so
-    # two distinct (repo, question) pairs never collapse to the same key.
-    marked_keys = paste(marked$assignment_repo, marked$question_name, sep = "\x1f")
-    is_marked = vapply(plan, function(e) paste(e$repo, e$question, sep = "\x1f") %in% marked_keys, logical(1))
     skipped = plan[is_marked]
     plan = plan[!is_marked]
+    is_marked = is_marked[!is_marked]
   }
 
   if (length(plan) > 0) {
-    apply_marks_import(proj@root, plan)
+    # Only an import that replaces existing grading needs the snapshot
+    apply_marks_import(proj@root, plan, snapshot = if (any(is_marked)) spec else NULL)
   }
 
   n_selected = sum(vapply(plan, function(e) sum(e$selections), integer(1)))
@@ -1178,6 +1286,8 @@ marks_import = function(path, project = ".", overwrite = FALSE, repo = NULL, que
 #' @param project Path to the project directory. Defaults to the working directory.
 #' @param repo Optional character vector of repository names to export.
 #' @param question Optional character vector of question names to export.
+#' @param snapshot Optional snapshot reference (see [snapshot_info()]): export
+#'   the marks that snapshot recorded instead of the live ones.
 #'
 #' @return The output `path`, invisibly.
 #' @seealso [marks_import()], [rubric_export()]
@@ -1187,8 +1297,30 @@ marks_import = function(path, project = ".", overwrite = FALSE, repo = NULL, que
 #' \dontrun{
 #' marks_export("hw01-marks.yaml", project = "hw01")
 #' }
-marks_export = function(path, project = ".", repo = NULL, question = NULL) {
+marks_export = function(path, project = ".", repo = NULL, question = NULL, snapshot = NULL) {
   proj = project_config(project)
+
+  if (!is.null(snapshot)) {
+    marks = marks_from_list(with_database(proj@root, function(conn) {
+      read_snapshot_part(conn, resolve_snapshot_id(conn, snapshot), "marks")
+    }))
+    repo_names = vapply(marks$repos, function(r) r$name, character(1))
+    repo_names = restrict_names(
+      repo, repo_names,
+      "No marks recorded for repositor{cli::qty(unknown)}{?y/ies} {.val {unknown}}.",
+      "The snapshot's repositories with marks: {.val {available}}."
+    )
+    marks$repos = Filter(function(r) r$name %in% repo_names, marks$repos)
+    if (!is.null(question)) {
+      marks$repos = lapply(marks$repos, function(r) {
+        r$questions = Filter(function(q) q$name %in% question, r$questions)
+        r
+      })
+      marks$repos = Filter(function(r) length(r$questions) > 0, marks$repos)
+    }
+    write_marks_yaml(marks, path)
+    return(invisible(path))
+  }
 
   marked = marked_question_pairs(proj@root)
 
@@ -1391,6 +1523,7 @@ export_scores = function(project = ".") {
 
   csv_path = fs::path(proj@root, "scores.csv")
   utils::write.csv(result, csv_path, row.names = FALSE)
+  record_export_note(proj@root, "scores", csv_path)
 
   cli::cli_alert_success("Wrote scores for {nrow(result)} repositor{?y/ies} to {.path {csv_path}}.")
   if (n_ungraded > 0) {
@@ -1560,6 +1693,7 @@ export_comments = function(project = ".", group_headings = FALSE) {
       "i" = "Select rubric items or write public comments in {.code mark()} first."
     ))
   }
+  record_export_note(proj@root, "comments", comments_dir)
 
   cli::cli_alert_success("Wrote feedback for {length(written)} repositor{?y/ies} to {.path {comments_dir}}.")
   if (length(skipped) > 0) {

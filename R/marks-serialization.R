@@ -178,16 +178,26 @@ marks_from_list = function(x) {
 # question_names: Question names to include, in output order (NULL = all, sorted)
 
 collect_marks_data = function(collection_path, repo_names = NULL, question_names = NULL) {
-  data = with_database(collection_path, function(conn) {
-    list(
-      grades = load_most_recent_grades(conn),
-      comments = load_most_recent_comments(conn),
-      private_comments = load_most_recent_private_comments(conn),
-      items = DBI::dbGetQuery(conn, paste0("
-        SELECT question_name, item_id, description FROM items
-        ORDER BY question_name, ", items_display_order_sql))
-    )
+  with_database(collection_path, function(conn) {
+    marks_data_from_conn(conn, repo_names = repo_names, question_names = question_names)
   })
+}
+
+# collect_marks_data() on an open connection
+#
+# conn: DBI connection object
+# repo_names: See collect_marks_data()
+# question_names: See collect_marks_data()
+
+marks_data_from_conn = function(conn, repo_names = NULL, question_names = NULL) {
+  data = list(
+    grades = load_most_recent_grades(conn),
+    comments = load_most_recent_comments(conn),
+    private_comments = load_most_recent_private_comments(conn),
+    items = DBI::dbGetQuery(conn, paste0("
+      SELECT question_name, item_id, description FROM items
+      ORDER BY question_name, ", items_display_order_sql))
+  )
 
   comments = nonempty_comments(data$comments)
   private_comments = nonempty_comments(data$private_comments)

@@ -4,7 +4,13 @@
 \alias{marks_export}
 \title{Export a project's grading marks to YAML}
 \usage{
-marks_export(path, project = ".", repo = NULL, question = NULL)
+marks_export(
+  path,
+  project = ".",
+  repo = NULL,
+  question = NULL,
+  snapshot = NULL
+)
 }
 \arguments{
 \item{path}{Output path for the marks \code{.yaml} file.}
@@ -14,6 +20,9 @@ marks_export(path, project = ".", repo = NULL, question = NULL)
 \item{repo}{Optional character vector of repository names to export.}
 
 \item{question}{Optional character vector of question names to export.}
+
+\item{snapshot}{Optional snapshot reference (see \code{\link[=snapshot_info]{snapshot_info()}}): export
+the marks that snapshot recorded instead of the live ones.}
 }
 \value{
 The output \code{path}, invisibly.

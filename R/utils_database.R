@@ -12,8 +12,11 @@
 #   3: items.group_id and the item_groups table (rubric item groups; see
 #      migrate_items_group())
 #   4: settings.optional (optional questions; see migrate_settings_optional())
+#   5: the snapshot tables (snapshots, snapshot_blobs, snapshot_parts,
+#      snapshot_notes, snapshot_stats; see migrate_snapshots() and
+#      snapshots.R)
 
-markermd_db_version = function() "4"
+markermd_db_version = function() "5"
 
 # ORDER BY clause giving a question's rubric items in display order. position
 # is authoritative; a row without one (written before schema version 2 and
@@ -76,7 +79,7 @@ initialize_database = function(collection_path) {
   DBI::dbExecute(conn, "PRAGMA busy_timeout = 5000")
 
   if (fresh || !isTRUE(.initialized_dbs[[db_path]])) {
-    create_tables_if_needed(conn)
+    create_tables_if_needed(conn, collection_path)
     .initialized_dbs[[db_path]] = TRUE
   }
 
@@ -90,8 +93,10 @@ initialize_database = function(collection_path) {
 # Create database tables if they don't exist
 #
 # conn: DBI connection object
+# collection_path: Project root the database belongs to, for the baseline
+#   snapshot the schema 5 migration takes (NULL skips it)
 
-create_tables_if_needed = function(conn) {
+create_tables_if_needed = function(conn, collection_path = NULL) {
   # Settings table - stores markermd_grade_state properties
   if (!DBI::dbExistsTable(conn, "settings")) {
     DBI::dbExecute(conn, "
@@ -234,9 +239,153 @@ create_tables_if_needed = function(conn) {
     set_metadata(conn, "schema_version", markermd_db_version())
   }
 
+  snapshots_are_new = create_snapshot_tables(conn)
+
   migrate_items_position(conn)
   migrate_items_group(conn)
   migrate_settings_optional(conn)
+  migrate_snapshots(conn, collection_path, baseline = snapshots_are_new)
+}
+
+# Snapshot tables (schema version 5): named, timestamped, annotated copies of
+# the grading state (the template, rubric and marks exchange documents) kept
+# inside the project database. See snapshots.R for the writer and readers.
+#
+#   snapshots       one row per snapshot; created_at is UTC ISO 8601 with
+#                   milliseconds and created_tz the creator's zone (for
+#                   display); event_id is the grades log's max id at creation,
+#                   so the events recorded since are countable
+#   snapshot_blobs  content-addressed payloads (canonical JSON, gzip when
+#                   smaller), shared by every snapshot whose part is identical
+#                   (most snapshots change only the marks); a blob is deleted
+#                   once no part references it (gc_snapshot_blobs())
+#   snapshot_parts  which blob holds each of a snapshot's parts
+#   snapshot_notes  append-only log of notes and keyed metadata per snapshot
+#   snapshot_stats  the per-repository, per-question scores at creation,
+#                   with "(total)" rows, so listing and comparing snapshots
+#                   need no re-scoring
+#
+# conn: DBI connection object
+# Returns: TRUE when the snapshots table was created by this call (the
+#   database had no snapshot tables before), FALSE otherwise
+
+create_snapshot_tables = function(conn) {
+  created = !DBI::dbExistsTable(conn, "snapshots")
+  if (created) {
+    DBI::dbExecute(conn, "
+      CREATE TABLE snapshots (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        snapshot_id TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        created_tz TEXT NOT NULL,
+        username TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('manual', 'auto')),
+        trigger TEXT,
+        label TEXT,
+        summary TEXT,
+        parent_snapshot_id TEXT,
+        schema_version TEXT NOT NULL,
+        markermd_version TEXT NOT NULL,
+        content_hash TEXT NOT NULL,
+        event_id INTEGER,
+        pinned INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1))
+      )
+    ")
+  }
+
+  if (!DBI::dbExistsTable(conn, "snapshot_blobs")) {
+    DBI::dbExecute(conn, "
+      CREATE TABLE snapshot_blobs (
+        hash TEXT PRIMARY KEY,
+        encoding TEXT NOT NULL CHECK (encoding IN ('json', 'json+gzip')),
+        content BLOB NOT NULL,
+        size INTEGER NOT NULL
+      )
+    ")
+  }
+
+  if (!DBI::dbExistsTable(conn, "snapshot_parts")) {
+    DBI::dbExecute(conn, "
+      CREATE TABLE snapshot_parts (
+        snapshot_id TEXT NOT NULL REFERENCES snapshots(snapshot_id) ON DELETE CASCADE,
+        part TEXT NOT NULL CHECK (part IN ('template', 'rubric', 'marks')),
+        format_version TEXT NOT NULL,
+        hash TEXT NOT NULL REFERENCES snapshot_blobs(hash),
+        PRIMARY KEY (snapshot_id, part)
+      )
+    ")
+  }
+
+  if (!DBI::dbExistsTable(conn, "snapshot_notes")) {
+    DBI::dbExecute(conn, "
+      CREATE TABLE snapshot_notes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        snapshot_id TEXT NOT NULL REFERENCES snapshots(snapshot_id) ON DELETE CASCADE,
+        timestamp TEXT NOT NULL,
+        username TEXT NOT NULL,
+        key TEXT,
+        value TEXT NOT NULL
+      )
+    ")
+    DBI::dbExecute(conn, "
+      CREATE INDEX idx_snapshot_notes_lookup ON snapshot_notes (snapshot_id, id)
+    ")
+  }
+
+  if (!DBI::dbExistsTable(conn, "snapshot_stats")) {
+    DBI::dbExecute(conn, "
+      CREATE TABLE snapshot_stats (
+        snapshot_id TEXT NOT NULL REFERENCES snapshots(snapshot_id) ON DELETE CASCADE,
+        assignment_repo TEXT NOT NULL,
+        question_name TEXT NOT NULL,
+        score REAL,
+        PRIMARY KEY (snapshot_id, assignment_repo, question_name)
+      )
+    ")
+  }
+
+  created
+}
+
+# Schema version 4 -> 5: stamp the new schema version (the snapshot tables
+# themselves are created on first touch by create_snapshot_tables()) and,
+# when the snapshot tables have just been added to a database that already
+# holds grading state, take a baseline automatic snapshot, so every existing
+# project's history starts from the state it had when snapshots arrived. A
+# fresh database is stamped 5 by create_tables_if_needed() and has nothing
+# to snapshot; a legacy database with no schema version gets its baseline
+# all the same. Same shape as the earlier migrations: runs on first touch
+# per session, is a no-op once stamped and baselined, and holds an
+# immediate transaction across the check and the writes.
+#
+# conn: DBI connection object
+# collection_path: Project root, for the baseline snapshot's cached scores
+#   (NULL takes no baseline)
+# baseline: Whether the snapshot tables were created just now
+
+migrate_snapshots = function(conn, collection_path = NULL, baseline = FALSE) {
+  stored = get_metadata(conn, "schema_version")
+  needs_stamp = !is.null(stored) && utils::compareVersion(stored, "5") < 0
+  needs_baseline = baseline && !is.null(collection_path)
+  if (!needs_stamp && !needs_baseline) {
+    return(invisible(FALSE))
+  }
+
+  DBI::dbExecute(conn, "BEGIN IMMEDIATE")
+  if (needs_baseline && snapshot_has_state(conn) && is.null(latest_snapshot_row(conn))) {
+    snapshot_write(
+      conn, collection_path, kind = "auto",
+      trigger = "migrate to schema 5",
+      summary = "Baseline taken when the grading database gained snapshots (schema version 5)."
+    )
+  }
+  stored = get_metadata(conn, "schema_version")
+  if (!is.null(stored) && utils::compareVersion(stored, "5") < 0) {
+    set_metadata(conn, "schema_version", "5")
+  }
+  DBI::dbExecute(conn, "COMMIT")
+
+  invisible(TRUE)
 }
 
 # Schema version 1 -> 2: add items.position to a database created by an
@@ -355,6 +504,27 @@ get_current_username = function() {
 
 get_current_timestamp = function() {
   format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+}
+
+# Current time as UTC ISO 8601 with milliseconds ("2026-09-29T23:55:40.123Z"),
+# the format the snapshot tables use so ordering is unambiguous across
+# graders and machines
+#
+# Returns: Character string
+
+utc_timestamp = function() {
+  format(Sys.time(), "%Y-%m-%dT%H:%M:%OS3Z", tz = "UTC")
+}
+
+# Parse UTC ISO 8601 timestamps written by utc_timestamp() into POSIXct in
+# the session's time zone
+#
+# x: Character vector of timestamps (NA passes through)
+
+parse_utc_timestamp = function(x) {
+  out = as.POSIXct(x, format = "%Y-%m-%dT%H:%M:%OSZ", tz = "UTC")
+  attr(out, "tzone") = ""
+  out
 }
 
 # Safely close database connection

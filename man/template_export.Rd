@@ -4,12 +4,15 @@
 \alias{template_export}
 \title{Export a project's grading template to YAML}
 \usage{
-template_export(path, project = ".")
+template_export(path, project = ".", snapshot = NULL)
 }
 \arguments{
 \item{path}{Output path for the template \code{.yaml} file.}
 
 \item{project}{Path to the project directory. Defaults to the working directory.}
+
+\item{snapshot}{Optional snapshot reference (see \code{\link[=snapshot_info]{snapshot_info()}}): export
+the template that snapshot recorded instead of the stored one.}
 }
 \value{
 The output \code{path}, invisibly.

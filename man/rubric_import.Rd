@@ -8,7 +8,9 @@ rubric_import(
   path,
   project = ".",
   mode = c("append", "replace"),
-  question = NULL
+  question = NULL,
+  snapshot = TRUE,
+  summary = NULL
 )
 }
 \arguments{
@@ -22,6 +24,13 @@ project root.}
 
 \item{question}{Optional character vector restricting the import to those
 question names within the file.}
+
+\item{snapshot}{Whether to take an automatic snapshot before the import.
+\code{FALSE} is for scripts that take their own snapshot once before several
+imports.}
+
+\item{summary}{Optional text recorded on the automatic snapshot: what the
+import changes and why.}
 }
 \value{
 The parsed rubric list, invisibly.
@@ -51,13 +60,18 @@ before anything is written, listing those repositories.
 
 Question names in the file must exactly match question names in the
 project's stored template; mismatches abort before anything is written.
+
+An automatic snapshot of the state being changed is taken in the same
+transaction as the import (see \code{\link[=snapshot_create]{snapshot_create()}}), so a replace import
+can be undone with \code{\link[=snapshot_restore]{snapshot_restore()}}.
 }
 \examples{
 \dontrun{
 rubric_import("hw01-rubric.yaml", project = "hw01")
 
-# Replace each affected question's existing items
-rubric_import("hw01-rubric.yaml", project = "hw01", mode = "replace")
+# Replace each affected question's existing items, recording why
+rubric_import("hw01-rubric.yaml", project = "hw01", mode = "replace",
+  summary = "Feedback review: reworded the Q1 items and capped the examples group")
 }
 }
 \seealso{
