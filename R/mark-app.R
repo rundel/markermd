@@ -378,8 +378,6 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
           }
           .rubric-score-breakdown td { padding: 2px 6px; font-size: 12px; }
 
-          /* The Assignments table marker on a score the group bounds changed */
-          .rubric-cap-mark { color: #b35c00; font-size: 9px; vertical-align: super; margin-left: 1px; }
         
         '))
       ),
@@ -559,7 +557,7 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       if (is.null(template_obj) || length(template_obj@questions) == 0) {
         return(list(
           question_names = NULL, graded_pairs = NULL, all_progress = NULL,
-          totals = numeric(0), scores = NULL, capped = NULL, summary = NULL
+          totals = numeric(0), optional = character(0), scores = NULL, summary = NULL
         ))
       }
       question_names = template_question_names(template_obj)
@@ -571,9 +569,8 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
         graded_pairs = graded_pairs,
         all_progress = calculate_grading_progress(root, question_names, repo_list, graded_pairs = graded_pairs),
         totals = question_total_scores(root, question_names),
+        optional = optional_question_names(root, question_names),
         scores = scores,
-        # What the item group bounds changed per pair, for the score marker
-        capped = build_scores_table_data(score_data, question_names, repo_list, value = "bound_adjustment"),
         summary = build_scores_summary_rows(scores, question_names)
       )
     })
@@ -613,11 +610,13 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
         all_progress = state$all_progress,
         graded_pairs = state$graded_pairs,
         question_names = state$question_names,
-        scores_table = state$scores,
-        capped_table = state$capped
+        scores_table = state$scores
       )
 
-      repo_table_reactable(table_data, state$summary, state$totals, click_input = "score_clicked")
+      repo_table_reactable(
+        table_data, state$summary, state$totals,
+        click_input = "score_clicked", optional = state$optional
+      )
     })
 
     # A click on a score cell in the table opens that repository and question

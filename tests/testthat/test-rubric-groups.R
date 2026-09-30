@@ -749,7 +749,7 @@ test_that("marks_import and marks_set reject two selected items of an exclusive 
   expect_false(sel$item_5)
 })
 
-test_that("collect_score_data and export_scores apply the group bounds and report the adjustment", {
+test_that("collect_score_data and export_scores apply the group bounds", {
   d = rg_project()
   suppressMessages(rubric_import(rg_grouped_yaml(), project = d))
   # team01: all three sample-game items (-2.5, floored to -2) and the
@@ -761,22 +761,16 @@ test_that("collect_score_data and export_scores apply the group bounds and repor
   markermd:::save_grade_selection(d, "Q1", "hw01-team02", "item_2", TRUE)
 
   scores = markermd:::collect_score_data(d, c("Q1", "Q2"), c("hw01-team01", "hw01-team02"))
-  expect_equal(names(scores), c("question_name", "assignment_repo", "score", "bound_adjustment"))
+  expect_equal(names(scores), c("question_name", "assignment_repo", "score"))
   team01 = scores[scores$question_name == "Q1" & scores$assignment_repo == "hw01-team01", ]
   expect_equal(team01$score, 8.5)
-  expect_equal(team01$bound_adjustment, 0.5)
   team02 = scores[scores$question_name == "Q1" & scores$assignment_repo == "hw01-team02", ]
   expect_equal(team02$score, 11)
-  expect_equal(team02$bound_adjustment, 0)
-  expect_true(all(is.na(scores$bound_adjustment[scores$question_name == "Q2"])))
+  expect_true(all(is.na(scores$score[scores$question_name == "Q2"])))
 
   suppressMessages(export_scores(d))
   csv = utils::read.csv(file.path(d, "scores.csv"), check.names = FALSE)
   expect_equal(csv$Q1, c(8.5, 11))
-
-  capped = build_scores_table_data(scores, c("Q1", "Q2"), c("hw01-team01", "hw01-team02"), value = "bound_adjustment")
-  expect_equal(capped$Q1, c(0.5, 0))
-  expect_true(all(is.na(capped$Q2)))
 })
 
 test_that("export_comments lists items as before by default and under group headings on request", {
@@ -832,58 +826,6 @@ test_that("export_comments lists items as before by default and under group head
 
 
 # --- The Assignments table marker -------------------------------------------
-
-test_that("the Assignments table marks scores the group bounds changed", {
-  fx = list(
-    repo_list = c("repoA", "repoB"),
-    validation_results = list(),
-    repo_errors = list(),
-    all_progress = c(repoA = 1L, repoB = 1L),
-    question_names = "Q1",
-    graded_pairs = data.frame(assignment_repo = c("repoA", "repoB"), question_name = "Q1", stringsAsFactors = FALSE)
-  )
-  score_data = data.frame(
-    question_name = "Q1", assignment_repo = c("repoA", "repoB"),
-    score = c(8.5, 11), bound_adjustment = c(0.5, 0), stringsAsFactors = FALSE
-  )
-  scores = build_scores_table_data(score_data, "Q1", fx$repo_list)
-  capped = build_scores_table_data(score_data, "Q1", fx$repo_list, value = "bound_adjustment")
-
-  df = markermd:::build_repo_table_data(
-    visible = fx$repo_list, visible_idx = 1:2, repo_list = fx$repo_list,
-    collection = list(repo = fx$repo_list), artifact_paths = list(repoA = NA, repoB = NA),
-    repo_to_github = list(), validation_results = fx$validation_results,
-    template_obj = mt_template_for_groups("Q1"), repo_errors = fx$repo_errors,
-    all_progress = fx$all_progress, graded_pairs = fx$graded_pairs, question_names = "Q1",
-    scores_table = scores, capped_table = capped
-  )
-  expect_equal(df$Q1, c(8.5, 11))
-  expect_equal(df$capped_Q1, c(0.5, 0))
-
-  summary = build_scores_summary_rows(scores, "Q1")
-  html = as.character(htmltools::renderTags(htmltools::as.tags(
-    markermd:::repo_table_reactable(df, summary, c(Q1 = 12), click_input = "score_clicked")
-  ))$html)
-  expect_match(html, "rubric-cap-mark")
-  expect_match(html, "Group bounds applied: 0.5 pts", fixed = TRUE)
-  # the adjustment column travels with the data but is hidden
-  expect_match(html, '"id":"capped_Q1"[^}]*"show":false')
-
-  # without a capped table there is no marker
-  plain = markermd:::build_repo_table_data(
-    visible = fx$repo_list, visible_idx = 1:2, repo_list = fx$repo_list,
-    collection = list(repo = fx$repo_list), artifact_paths = list(repoA = NA, repoB = NA),
-    repo_to_github = list(), validation_results = fx$validation_results,
-    template_obj = mt_template_for_groups("Q1"), repo_errors = fx$repo_errors,
-    all_progress = fx$all_progress, graded_pairs = fx$graded_pairs, question_names = "Q1",
-    scores_table = scores
-  )
-  expect_false("capped_Q1" %in% names(plain))
-  html = as.character(htmltools::renderTags(htmltools::as.tags(
-    markermd:::repo_table_reactable(plain, summary, c(Q1 = 12))
-  ))$html)
-  expect_no_match(html, "rubric-cap-mark")
-})
 
 test_that("format_points_signed and the group chips and subtotal render as designed", {
   expect_equal(markermd:::format_points_signed(-2), "-2 pts")

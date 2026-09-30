@@ -91,23 +91,33 @@ question_total_scores = function(collection_path, question_names) {
   stats::setNames(totals, question_names)
 }
 
+# Names of the optional questions (see markermd_grade_state) among
+# question_names, in their order, from the settings table
+#
+# collection_path: Project root holding the grading database
+# question_names: Character vector of question names
+
+optional_question_names = function(collection_path, question_names) {
+  settings = with_database(collection_path, load_all_settings)
+  flagged = settings$question_name[is_true_flag(settings$optional)]
+  question_names[question_names %in% flagged]
+}
+
 # Wide per-repository score table: one row per repository, one column per
 # question (NA for a pair that does not count as graded), the total over the
 # graded questions (NA when none are) and how many questions are graded
 #
 # scores: Data frame from collect_score_data() (question_name,
-#   assignment_repo, score, bound_adjustment)
+#   assignment_repo, score)
 # question_names: Character vector of question names, in template order
 # repo_names: Character vector of repository names, in display order
-# value: Which column of scores to tabulate: "score" (the default) or
-#   "bound_adjustment" (what the group bounds changed, for the table marker)
 # Returns: Data frame with columns Repository, one per question, Total, Graded
 
-build_scores_table_data = function(scores, question_names, repo_names, value = "score") {
+build_scores_table_data = function(scores, question_names, repo_names) {
   out = data.frame(Repository = repo_names, stringsAsFactors = FALSE, check.names = FALSE)
   for (question_name in question_names) {
     rows = scores[scores$question_name == question_name, , drop = FALSE]
-    out[[question_name]] = rows[[value]][match(repo_names, rows$assignment_repo)]
+    out[[question_name]] = rows$score[match(repo_names, rows$assignment_repo)]
   }
   by_question = as.matrix(out[, question_names, drop = FALSE])
   n_graded = rowSums(!is.na(by_question))

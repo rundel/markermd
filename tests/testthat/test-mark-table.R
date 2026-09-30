@@ -276,3 +276,26 @@ test_that("grading_progress_cell renders a progress bar with the graded/total co
   expect_match(html, "progress-bar")
   expect_match(html, "1/2")
 })
+
+test_that("repo_table_reactable tags optional questions in their headers", {
+  fx = mt_fixture()
+  scores = mt_scores(fx)
+  df = mt_build(fx, c("repoA", "repoB"), scores_table = scores)
+  summary = markermd:::build_scores_summary_rows(scores, fx$question_names)
+  totals = c(Q1 = 10, Q2 = 5)
+
+  plain = mt_render(markermd:::repo_table_reactable(df, summary, totals))
+  expect_no_match(plain, "markermd-optional-tag")
+
+  tagged = mt_render(markermd:::repo_table_reactable(df, summary, totals, optional = "Q2"))
+  expect_equal(lengths(regmatches(tagged, gregexpr("markermd-optional-tag", tagged))), 1)
+  expect_match(tagged, "nothing selected still counts as graded")
+})
+
+test_that("optional_question_names reads the optional flag from the settings", {
+  d = tempfile("optnames_"); dir.create(d)
+  markermd:::save_grade_state(d, "Q1", markermd::markermd_grade_state(total_score = 10))
+  markermd:::save_grade_state(d, "Doc", markermd::markermd_grade_state(total_score = 0, optional = TRUE))
+  expect_equal(markermd:::optional_question_names(d, c("Q1", "Doc", "Q3")), "Doc")
+  expect_equal(markermd:::optional_question_names(d, "Q1"), character(0))
+})

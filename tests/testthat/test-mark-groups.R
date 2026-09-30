@@ -147,14 +147,12 @@ test_that("groups render as sections, cap their subtotal live and flag the score
   expect_match(breakdown, "Without group bounds: 9.5", fixed = TRUE)
 
   # The recorded selections score the same way headlessly, and the
-  # Assignments table marks the capped pair
+  # Assignments table shows the score without a bounds marker
   scores = markermd:::collect_score_data(root, "Q2", "student1-excellent")
   expect_equal(scores$score, 10)
-  expect_equal(scores$bound_adjustment, 0.5)
   app$set_inputs(main_navbar = "assignments")
   app$wait_for_idle()
-  expect_match(app$get_html("#repo_table"), "rubric-cap-mark")
-  expect_match(app$get_html("#repo_table"), "Group bounds applied: 0.5 pts", fixed = TRUE)
+  expect_no_match(app$get_html("#repo_table"), "Group bounds applied", fixed = TRUE)
 })
 
 

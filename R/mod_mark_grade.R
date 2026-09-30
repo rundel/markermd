@@ -230,7 +230,7 @@ mark_grade_ui = function(id, grade_state, capped = 0, breakdown = NULL) {
             # selected, for a document-level question most submissions skip
             shiny::checkboxInput(
               ns("grade_optional"),
-              "Optional question (ungraded counts as no items selected)",
+              "Optional: nothing selected still counts as graded",
               value = grade_state@optional
             )
           )

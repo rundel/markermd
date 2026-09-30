@@ -113,16 +113,12 @@ validation_sort_key = function(repo, validation_results, repo_errors) {
 # scores_table: Data frame from build_scores_table_data() covering every
 #   repo (Repository, one column per question, Total, Graded), or NULL when
 #   the template has no questions
-# capped_table: Data frame in the same layout holding what the item group
-#   bounds changed per pair (build_scores_table_data() over
-#   bound_adjustment), copied into hidden capped_<question> columns that the
-#   score cells read for their marker; NULL for no markers
 
 build_repo_table_data = function(visible, visible_idx, repo_list, collection,
                                  artifact_paths, repo_to_github,
                                  validation_results, template_obj, repo_errors,
                                  all_progress, graded_pairs, question_names,
-                                 scores_table = NULL, capped_table = NULL) {
+                                 scores_table = NULL) {
   # Repository names stay plain text (reactable escapes them, so a directory
   # name cannot inject markup); the row's links live in the icon cells and
   # the validation marker
@@ -228,25 +224,10 @@ build_repo_table_data = function(visible, visible_idx, repo_list, collection,
     for (column in c(question_names, "Total")) {
       repo_df[[column]] = scores_table[[column]][rows]
     }
-    if (!is.null(capped_table)) {
-      rows = match(visible, capped_table$Repository)
-      for (question_name in question_names) {
-        repo_df[[capped_column_name(question_name)]] = capped_table[[question_name]][rows]
-      }
-    }
   }
 
   rownames(repo_df) = NULL
   repo_df
-}
-
-# Name of the hidden column carrying what the group bounds changed for a
-# question's scores
-#
-# question_name: Character. Question name
-
-capped_column_name = function(question_name) {
-  paste0("capped_", question_name)
 }
 
 # JavaScript click handler for the table: a click on a question's score cell
@@ -277,10 +258,8 @@ repo_table_click_js = function(input_id, question_names) {
 # icon buttons, progress bars and text line up; the Repository column absorbs
 # the width the fixed-size columns leave, up to a cap that keeps the link
 # icons near the name on a wide window. Score headers carry the points on a muted
-# second line, score cells are tinted by their shortfall (score_tint()), carry
-# a small marker with a tooltip when the item group bounds changed the score
-# (read from the hidden capped_<question> columns, when present) and are
-# clickable (class "score-link", styled by the app) when click_input is
+# second line (an optional question's name carries a small red dot), score
+# cells are tinted by their shortfall (score_tint()) and are clickable (class "score-link", styled by the app) when click_input is
 # given; totals are bold. Without questions there are no score columns,
 # footers or click handler.
 #
@@ -290,15 +269,31 @@ repo_table_click_js = function(input_id, question_names) {
 #   the template has no questions)
 # click_input: Shiny input id that score clicks report to, or NULL for a
 #   table with no click-through
+# optional: Names of the optional questions, whose names carry a small red
+#   dot marker with an explanatory tooltip
 
-repo_table_reactable = function(table_data, summary_rows, totals, click_input = NULL) {
+repo_table_reactable = function(table_data, summary_rows, totals, click_input = NULL,
+                                optional = character(0)) {
   question_names = names(totals)
   has_scores = length(question_names) > 0 && !is.null(summary_rows)
 
-  # Column name on one line, the points muted beneath
-  column_header = function(name, sub) {
+  # Column name on one line (an optional question's name followed by a small
+  # red dot), the points muted beneath
+  column_header = function(name, sub, is_optional = FALSE) {
     htmltools::tagList(
-      htmltools::div(name),
+      htmltools::div(
+        style = if (is_optional) "white-space: nowrap;",
+        name,
+        if (is_optional) {
+          htmltools::span(
+            class = "markermd-optional-tag text-danger",
+            style = "font-size: 6px; vertical-align: super; margin-left: 2px;",
+            title = "Optional: nothing selected still counts as graded",
+            `aria-label` = "optional",
+            "\u25cf"
+          )
+        }
+      ),
       htmltools::div(class = "fw-normal text-muted", style = "font-size: 11px;", sub)
     )
   }
@@ -335,25 +330,10 @@ repo_table_reactable = function(table_data, summary_rows, totals, click_input = 
     )
   }
 
-  score_column = function(column, name, sub, max_points = NA_real_, bold = FALSE, class = NULL,
-                          capped_column = NULL) {
+  score_column = function(column, name, sub, max_points = NA_real_, bold = FALSE, class = NULL) {
     reactable::colDef(
-      header = function(value) column_header(name, sub),
-      cell = function(value, index) {
-        text = format_score(value)
-        adjustment = if (!is.null(capped_column)) table_data[[capped_column]][index] else NA_real_
-        if (is.na(adjustment) || adjustment == 0) {
-          return(text)
-        }
-        htmltools::tagList(
-          text,
-          htmltools::span(
-            class = "rubric-cap-mark",
-            title = paste0("Group bounds applied: ", format_points(abs(adjustment))),
-            "\u25c6"
-          )
-        )
-      },
+      header = function(value) column_header(name, sub, column %in% optional),
+      cell = function(value, index) format_score(value),
       style = function(value) {
         c(if (bold) list(fontWeight = "bold"), score_tint(value, max_points))
       },
@@ -385,24 +365,17 @@ repo_table_reactable = function(table_data, summary_rows, totals, click_input = 
       Progress_html = reactable::colDef(show = FALSE)
     ),
     if (has_scores) {
-      capped_columns = intersect(capped_column_name(question_names), names(table_data))
       c(
         stats::setNames(
           lapply(question_names, function(question_name) {
-            capped_column = capped_column_name(question_name)
             score_column(
               question_name, question_name, format_points(totals[[question_name]]),
-              max_points = totals[[question_name]], class = link_class,
-              capped_column = if (capped_column %in% capped_columns) capped_column
+              max_points = totals[[question_name]], class = link_class
             )
           }),
           question_names
         ),
-        list(Total = score_column("Total", "Total", format_points(sum(totals)), bold = TRUE)),
-        stats::setNames(
-          lapply(capped_columns, function(column) reactable::colDef(show = FALSE)),
-          capped_columns
-        )
+        list(Total = score_column("Total", "Total", format_points(sum(totals)), bold = TRUE))
       )
     }
   )
