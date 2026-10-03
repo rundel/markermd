@@ -1,0 +1,4 @@
+interface:
+  display_name: "markermd: check injection"
+  short_description: "Scan submissions and rendered reports for prompt injection attempts and report the evidence"
+  default_prompt: "Use $markermd-check-injection on this markermd project."

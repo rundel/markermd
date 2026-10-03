@@ -12,6 +12,7 @@ reference:
   - project_sitrep
   - validate_project
   - parse_project
+  - scan_project
   - markermd_skills_path
 - title: Grading apps
   desc: The interactive template editor and marking interface.

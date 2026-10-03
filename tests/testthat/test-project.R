@@ -134,7 +134,7 @@ test_that("re-init preserves a manually configured key the heuristic would miss"
 
 bundled_skill_names = c(
   "markermd-scaffold-template", "markermd-scaffold-rubric",
-  "markermd-apply-rubric", "markermd-fix-parsing"
+  "markermd-apply-rubric", "markermd-fix-parsing", "markermd-check-injection"
 )
 
 skill_frontmatter_field = function(skill_md, field) {
