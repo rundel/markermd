@@ -53,6 +53,16 @@ Hard rules:
   default: a cheaper model is often adequate for reading sections and
   applying concrete rubric items, and the choice is the user's.
 
+Never create a file or directory at the top level of the project. Every
+working file this skill writes (the import/export YAML, evidence or review
+JSON, helper scripts, `.rds` diffs, draft reports, images) goes under
+`<root>/scratch/`, in a subdirectory named for the task when there are more
+than one or two (for example `<root>/scratch/apply-rubric/`); create it if it
+is missing. Notes meant to be kept go under `<root>/notes/`. Files holding
+student work stay inside the project, never in a system temporary directory.
+When delegating to subagents, give each the exact `scratch/` subdirectory to
+write to.
+
 This skill requires the `markermd` R package to be installed. If the commands
 below fail with a package-not-found error, ask the user to install it first.
 
@@ -278,7 +288,7 @@ Work pair by pair against step 3's item lists:
 
 ### 8. Write the marks YAML
 
-Write the file to `<root>/markermd-marks.yaml` (ask if the user wants a
+Write the file to `<root>/scratch/markermd-marks.yaml` (ask if the user wants a
 different location). Shape:
 
 ```yaml
@@ -336,20 +346,20 @@ affected entries again before asking.
 Confirm the file parses:
 
 ```
-Rscript -e 'invisible(markermd::read_marks_yaml("<root>/markermd-marks.yaml")); cat("OK\n")'
+Rscript -e 'invisible(markermd::read_marks_yaml("<root>/scratch/markermd-marks.yaml")); cat("OK\n")'
 ```
 
 If `jsonvalidate` is installed, also check it against the schema:
 
 ```
-Rscript -e 'print(markermd::validate_marks_file("<root>/markermd-marks.yaml"))'
+Rscript -e 'print(markermd::validate_marks_file("<root>/scratch/markermd-marks.yaml"))'
 ```
 
 `TRUE` means it conforms. Then, with the user's confirmation from step 9,
 import (set `overwrite` per step 4):
 
 ```
-Rscript -e 'markermd::marks_import("markermd-marks.yaml", project = "<root>", overwrite = FALSE, summary = "<one line: which pass this is and what it covers>")'
+Rscript -e 'markermd::marks_import("scratch/markermd-marks.yaml", project = "<root>", overwrite = FALSE, summary = "<one line: which pass this is and what it covers>")'
 ```
 
 The import validates every repository name, question name, and item

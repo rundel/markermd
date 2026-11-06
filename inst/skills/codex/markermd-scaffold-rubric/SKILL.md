@@ -59,6 +59,16 @@ Two hard rules:
   or the defect on its own terms ("uses `qnorm()` instead of `qt()`"), not as
   a comparison to the key.
 
+Never create a file or directory at the top level of the project. Every
+working file this skill writes (the import/export YAML, evidence or review
+JSON, helper scripts, `.rds` diffs, draft reports, images) goes under
+`<root>/scratch/`, in a subdirectory named for the task when there are more
+than one or two (for example `<root>/scratch/apply-rubric/`); create it if it
+is missing. Notes meant to be kept go under `<root>/notes/`. Files holding
+student work stay inside the project, never in a system temporary directory.
+When delegating to subagents, give each the exact `scratch/` subdirectory to
+write to.
+
 This skill requires the `markermd` R package to be installed. If the commands
 below fail with a package-not-found error, ask the user to install it first.
 
@@ -402,9 +412,9 @@ questions it affects. When the user agrees:
   import it again (this touches no rubric items or marks):
 
   ```
-  Rscript -e 'markermd::template_export("<root>/markermd-template.yaml", "<root>")'
-  # append the Document question to markermd-template.yaml, then
-  Rscript -e 'markermd::template_import("<root>/markermd-template.yaml", "<root>")'
+  Rscript -e 'markermd::template_export("<root>/scratch/markermd-template.yaml", "<root>")'
+  # append the Document question to scratch/markermd-template.yaml, then
+  Rscript -e 'markermd::template_import("<root>/scratch/markermd-template.yaml", "<root>")'
   ```
 
 - Give it scoring `total_score: 0`, `grading_mode: negative`,
@@ -420,7 +430,7 @@ Without such problems, add no document question.
 
 ### 8. The rubric YAML: shape, validation, and import mode
 
-Both workflows write the rubric to `<root>/markermd-rubric.yaml` (ask if the
+Both workflows write the rubric to `<root>/scratch/markermd-rubric.yaml` (ask if the
 user wants a different location) and import from that file; the
 question-at-a-time workflow grows it one question per round. Shape:
 
@@ -483,13 +493,13 @@ Rules and constraints:
 To validate the file (re-run after every edit), confirm it parses:
 
 ```
-Rscript -e 'invisible(markermd::read_rubric_yaml("<root>/markermd-rubric.yaml")); cat("OK\n")'
+Rscript -e 'invisible(markermd::read_rubric_yaml("<root>/scratch/markermd-rubric.yaml")); cat("OK\n")'
 ```
 
 If `jsonvalidate` is installed, also check it against the schema:
 
 ```
-Rscript -e 'print(markermd::validate_rubric_file("<root>/markermd-rubric.yaml"))'
+Rscript -e 'print(markermd::validate_rubric_file("<root>/scratch/markermd-rubric.yaml"))'
 ```
 
 `TRUE` means it conforms. Fix any reported problems (commonly a mistyped
@@ -544,7 +554,7 @@ have changed it. Never run `rubric_import()` without an explicit yes to this
 question. Then import, with the mode chosen in step 8:
 
 ```
-Rscript -e 'markermd::rubric_import("markermd-rubric.yaml", project = "<root>", mode = "append", summary = "<one line: what this rubric adds or changes, and why>")'
+Rscript -e 'markermd::rubric_import("scratch/markermd-rubric.yaml", project = "<root>", mode = "append", summary = "<one line: what this rubric adds or changes, and why>")'
 ```
 
 The import takes an automatic snapshot of the rubric and marks it replaces
@@ -577,7 +587,7 @@ Work through the template's questions in order. For each question:
    they confirm. This confirmation
    is the explicit yes that authorizes importing this question; never import
    without it.
-4. Add the confirmed question to `<root>/markermd-rubric.yaml` -- on the
+4. Add the confirmed question to `<root>/scratch/markermd-rubric.yaml` -- on the
    first question, create the file with its `format_version` header -- and
    validate the file (step 8). If fixing a validation problem changed the
    question's entry, show it again before importing.
@@ -585,7 +595,7 @@ Work through the template's questions in order. For each question:
    untouched, with the mode chosen in step 8:
 
    ```
-   Rscript -e 'markermd::rubric_import("markermd-rubric.yaml", project = "<root>", mode = "append", question = "<name>", summary = "<one line: what this question's rubric adds or changes>")'
+   Rscript -e 'markermd::rubric_import("scratch/markermd-rubric.yaml", project = "<root>", mode = "append", question = "<name>", summary = "<one line: what this question's rubric adds or changes>")'
    ```
 
    The `summary` is recorded on the automatic snapshot the import takes.
@@ -608,7 +618,7 @@ Summarize for the user: the basis (key only vs key + repos) and grading mode
 chosen, the assignment's total points, each imported question's total, item
 count and groups (label and bound or exclusive flag), any document-scope
 question added and the problems it holds, and that the rubric
-was written to `<root>/markermd-rubric.yaml`
+was written to `<root>/scratch/markermd-rubric.yaml`
 and imported into the project database (in the question-at-a-time workflow,
 also list any questions left for later). If subagents read the student
 repositories, say which model they ran on. Then tell them to start grading,

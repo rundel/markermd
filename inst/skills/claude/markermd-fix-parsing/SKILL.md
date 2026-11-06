@@ -57,6 +57,16 @@ Hard rules:
 - The key (solution) repository is the instructor's document: it gets no
   branch, and it is edited only with the user's permission (step 2).
 
+Never create a file or directory at the top level of the project. Every
+working file this skill writes (the import/export YAML, evidence or review
+JSON, helper scripts, `.rds` diffs, draft reports, images) goes under
+`<root>/scratch/`, in a subdirectory named for the task when there are more
+than one or two (for example `<root>/scratch/apply-rubric/`); create it if it
+is missing. Notes meant to be kept go under `<root>/notes/`. Files holding
+student work stay inside the project, never in a system temporary directory.
+When delegating to subagents, give each the exact `scratch/` subdirectory to
+write to.
+
 This skill requires the `markermd` R package to be installed. If the commands
 below fail with a package-not-found error, ask the user to install it first.
 

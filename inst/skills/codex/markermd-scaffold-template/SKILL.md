@@ -38,6 +38,16 @@ One hard rule: heading and div anchors must be the exact ids that Pandoc
 assigns. Never invent, guess, or hand-derive an anchor. Always take anchors from
 the `assignment_outline()` helper in step 3.
 
+Never create a file or directory at the top level of the project. Every
+working file this skill writes (the import/export YAML, evidence or review
+JSON, helper scripts, `.rds` diffs, draft reports, images) goes under
+`<root>/scratch/`, in a subdirectory named for the task when there are more
+than one or two (for example `<root>/scratch/apply-rubric/`); create it if it
+is missing. Notes meant to be kept go under `<root>/notes/`. Files holding
+student work stay inside the project, never in a system temporary directory.
+When delegating to subagents, give each the exact `scratch/` subdirectory to
+write to.
+
 This skill requires the `markermd` R package to be installed. If the commands
 below fail with a package-not-found error, ask the user to install it first.
 
@@ -169,7 +179,7 @@ guessing.
 
 ### 6. Write the template YAML and import it into the project
 
-Write the file to `<root>/markermd-template.yaml` (ask if the user wants a
+Write the file to `<root>/scratch/markermd-template.yaml` (ask if the user wants a
 different location). This YAML is the import source; the template is stored in
 the project database once imported. Set `source.path` to the key's assignment
 **relative to the project root** (the absolute `source_file` from step 3 with the
@@ -219,13 +229,13 @@ mistyped anchor passes here and only surfaces as a per-repo error in step 7's
 `validate_project()`:
 
 ```
-Rscript -e 'invisible(markermd::read_template_yaml("<root>/markermd-template.yaml", require_ast = TRUE)); cat("OK\n")'
+Rscript -e 'invisible(markermd::read_template_yaml("<root>/scratch/markermd-template.yaml", require_ast = TRUE)); cat("OK\n")'
 ```
 
 If `jsonvalidate` is installed, also check it against the schema:
 
 ```
-Rscript -e 'print(markermd::validate_template_file("<root>/markermd-template.yaml"))'
+Rscript -e 'print(markermd::validate_template_file("<root>/scratch/markermd-template.yaml"))'
 ```
 
 `TRUE` means it conforms. Fix any reported problems (commonly a missing value
@@ -236,7 +246,7 @@ step 7.
 Then import the template into the project database (its canonical store):
 
 ```
-Rscript -e 'markermd::template_import("markermd-template.yaml", project = "<root>", summary = "<one line: what this template covers, or what changed>")'
+Rscript -e 'markermd::template_import("scratch/markermd-template.yaml", project = "<root>", summary = "<one line: what this template covers, or what changed>")'
 ```
 
 If a template is already stored in the project, ask the user whether to
@@ -305,7 +315,7 @@ how many repos pass each question, and which rules fail widely. Interpretation:
 
 Summarize for the user: which sections became questions, the anchors used, the
 starter rules added, that the template was written to
-`<root>/markermd-template.yaml` and imported into the project database, and the
+`<root>/scratch/markermd-template.yaml` and imported into the project database, and the
 validation summary from step 7. Then tell them to open and refine it (passing
 the project root loads the stored template and saves edits back to the database):
 

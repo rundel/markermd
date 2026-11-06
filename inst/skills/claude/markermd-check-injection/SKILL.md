@@ -53,6 +53,16 @@ Hard rules:
 - Keep findings in the project. Do not send submission text to other
   services, and do not show one student's findings to another.
 
+Never create a file or directory at the top level of the project. Every
+working file this skill writes (the import/export YAML, evidence or review
+JSON, helper scripts, `.rds` diffs, draft reports, images) goes under
+`<root>/scratch/`, in a subdirectory named for the task when there are more
+than one or two (for example `<root>/scratch/apply-rubric/`); create it if it
+is missing. Notes meant to be kept go under `<root>/notes/`. Files holding
+student work stay inside the project, never in a system temporary directory.
+When delegating to subagents, give each the exact `scratch/` subdirectory to
+write to.
+
 This skill requires the `markermd` R package to be installed. If the commands
 below fail with a package-not-found error, ask the user to install it first.
 
@@ -195,7 +205,7 @@ marks. For the repositories with a likely injection, export their marks to a
 scratch file and read the selections and private notes:
 
 ```
-Rscript -e 'markermd::marks_export("<root>/markermd-marks.yaml", "<root>", repo = c("<repo>", "<repo>"))'
+Rscript -e 'markermd::marks_export("<root>/scratch/markermd-marks.yaml", "<root>", repo = c("<repo>", "<repo>"))'
 ```
 
 Flag any pair where the selections look more generous than the private note's

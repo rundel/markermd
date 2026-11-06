@@ -20,10 +20,14 @@ installed, ask the user to install it before doing anything else.
 - `repos/<name>/` (or whatever `paths.repos` names) holds one git repository
   per student submission. These are the students' work.
 - The key directory (`paths.key`) holds the instructor's solution.
-- `markermd-template.yaml`, `markermd-rubric.yaml`, and `markermd-marks.yaml`
-  at the project root are scratch import/export files written by the skills
-  and the export functions. They are not the source of truth and may be stale;
-  regenerate them with the export functions instead of trusting a copy.
+- `scratch/` holds every working file created while grading: the
+  `markermd-template.yaml`, `markermd-rubric.yaml`, and `markermd-marks.yaml`
+  import/export files the skills write, evidence and review JSON, helper
+  scripts, `.rds` diffs, draft reports, and images. Nothing in it is the
+  source of truth, and it may be stale or deleted at any time; regenerate the
+  YAML with the export functions instead of trusting a copy.
+- `notes/` holds notes worth keeping (decisions, follow-ups, records of
+  manual steps such as re-run workflows).
 - `.agents/skills/` holds the markermd skills. `init_project()` refreshes them
   to the packaged version on every run, so edits made there are lost.
 
@@ -275,6 +279,19 @@ repos:
 
 ## Rules
 
+- Keep the project root clean. Never create a file or directory at the top
+  level of the project. The root holds only what `init_project()`,
+  `ghclass::org_grade_assignment()` and the export functions create
+  (`.markermd/`, the repository, key, artifact and comments directories,
+  `scores.csv`, the agent instruction files and skills directories), plus
+  `scratch/` and `notes/`. Every intermediate file (import/export YAML,
+  evidence or marks JSON, helper scripts, `.rds` diffs, HTML or Markdown
+  review reports, images) goes under `scratch/`, in a subdirectory named for
+  the task when it produces more than one or two files (for example
+  `scratch/rubric-audit/`); notes meant to be kept go under `notes/`. Create
+  the directory if it is missing. Files that hold student work stay inside
+  the project, so they go in `scratch/`, not a system temporary directory.
+  Tell subagents the exact `scratch/` subdirectory to write to.
 - Student repositories are submissions. Never modify one except through the
   fix-parsing skill, which works on a `grading-fixes` branch and leaves the
   original branch untouched. Never push, stash, reset, or discard anything in
