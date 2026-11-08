@@ -554,16 +554,20 @@ snapshot_before_change = function(conn, root, spec) {
   if (is.null(spec)) {
     return(NULL)
   }
-  snapshot_write(conn, root, kind = "auto", trigger = spec$trigger, summary = spec$summary)
+  result = snapshot_write(conn, root, kind = "auto", trigger = spec$trigger, summary = spec$summary)
+  note_action_snapshot(result$snapshot_id)
+  result
 }
 
-# Delete blobs no snapshot part references any more
+# Delete blobs no snapshot part or action part references any more
 #
 # conn: DBI connection object
 
 gc_snapshot_blobs = function(conn) {
   DBI::dbExecute(conn, "
-    DELETE FROM snapshot_blobs WHERE hash NOT IN (SELECT hash FROM snapshot_parts)
+    DELETE FROM snapshot_blobs
+    WHERE hash NOT IN (SELECT hash FROM snapshot_parts)
+      AND hash NOT IN (SELECT hash FROM action_parts)
   ")
 }
 
@@ -1594,7 +1598,12 @@ snapshot_restore = function(id, project = ".", part = c("rubric", "marks"), ques
     cli::cli_abort("{.arg summary} must be a single string.")
   }
 
-  result = restore_snapshot(proj, id, part = part, question = question, repo = repo, summary = summary)
+  call = paste0("snapshot_restore('", id, "', part = c(", paste0("'", part, "'", collapse = ", "), "))")
+  result = with_action(
+    proj@root, "snapshot_restore", call = call, summary = summary,
+    parts = intersect(part, c("template", "rubric")),
+    restore_snapshot(proj, id, part = part, question = question, repo = repo, summary = summary)
+  )
 
   restored = c(
     if ("template" %in% part) "the template",

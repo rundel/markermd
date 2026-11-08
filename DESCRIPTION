@@ -25,7 +25,8 @@ Suggests:
     testthat (>= 3.0.0),
     withr,
     jsonvalidate,
-    ghclass
+    ghclass,
+    shinyterm (>= 0.0.0.9001)
 Config/testthat/edition: 3
 Imports:
     q2r,
@@ -48,9 +49,11 @@ Imports:
     RSQLite,
     stats,
     utils,
-    xml2
+    xml2,
+    later
 Remotes:
-    rundel/q2r
+    rundel/q2r,
+    rundel/shinyterm
 URL: https://rundel.github.io/markermd/, https://github.com/rundel/markermd
 BugReports: https://github.com/rundel/markermd/issues
-Config/roxygen2/version: 8.1.0
+Config/roxygen2/version: 8.1.1

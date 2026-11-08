@@ -83,6 +83,14 @@ Headless entry points, all taking the project root:
   regrouped, selections and comments changed, per-repository score deltas);
   `snapshot_restore()` is the undo. There is no need for hand-made backup
   copies of the database or of exported YAML before a change.
+- `project_activity()` / `activity_detail()`: the activity log. Every call
+  of a markermd function that changed the grading state is recorded with
+  who made it (you, as `claude` or `codex`), its `summary` and what it
+  touched, next to the grading done in `mark()`; `activity_detail(id)`
+  lists one entry's changes per repository and question. A running
+  `mark()` picks your changes up within a second, shows them in its
+  Activity tab and marks the items you selected until the grader reviews
+  them.
 
 ## File formats
 
@@ -310,8 +318,9 @@ repos:
 - Every change to grading state goes through the import functions or the
   apps, never through the SQLite file or hand-edited YAML that is not then
   imported.
-- Every import you run gets a `summary =` saying what it changes and why; it
-  is recorded on the automatic snapshot the import takes. After a change,
+- Every import you run (and every `marks_set()`) gets a `summary =` saying
+  what it changes and why; it is recorded on the automatic snapshot the
+  import takes and in the activity log. After a change,
   report what it did with `snapshot_diff("latest")` rather than by
   describing the file you imported. Take a named snapshot
   (`snapshot_create(label =, summary =)`) before a multi-step change, and

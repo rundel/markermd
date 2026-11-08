@@ -189,6 +189,9 @@ mark_rubric_item_ui = function(id, rubric_item, groups = list()) {
             "{rubric_item@points} pt{?s}"
           ))
         ),
+        # Marks an item a markermd call (an agent's import) selected and
+        # nobody has reviewed in the app since
+        shiny::uiOutput(ns("agent_badge"), inline = TRUE),
         # Description editable div
         shiny::div(
           id = ns("description_text"),
@@ -332,9 +335,12 @@ mark_rubric_item_ui = function(id, rubric_item, groups = list()) {
 # group_exclusive: function(group_id) returning whether that group of the
 #   item's question is exclusive (read reactively by the toggle button
 #   render, so a change in the group's setting restyles the button)
+# badge: function() returning NULL, or a list with actor and fn when a
+#   markermd call selected this item for the pair on screen and nobody has
+#   touched the pair in the app since (read reactively)
 
 mark_rubric_item_server = function(id, initial_item, collection_path = NULL, question_name = NULL, item_id = NULL,
-                                   group_exclusive = function(group_id) FALSE) {
+                                   group_exclusive = function(group_id) FALSE, badge = function() NULL) {
   ns = shiny::NS(id)
 
   shiny::moduleServer(id, function(input, output, session) {
@@ -375,6 +381,29 @@ mark_rubric_item_server = function(id, initial_item, collection_path = NULL, que
     }) |>
       shiny::bindEvent(input$points_text, ignoreInit = TRUE)
   
+    # The agent badge, re-rendered only when it actually changes (the badge
+    # source is re-read on every grading write)
+    badge_state = shiny::reactiveVal(NULL)
+    shiny::observe({
+      value = badge()
+      if (!identical(value, shiny::isolate(badge_state()))) {
+        badge_state(value)
+      }
+    })
+
+    output$agent_badge = shiny::renderUI({
+      value = badge_state()
+      if (is.null(value)) {
+        return(NULL)
+      }
+      who = if (is.na(value$fn)) value$actor else paste0(value$actor, " (", value$fn, ")")
+      shiny::span(
+        class = "agent-badge text-info ms-1",
+        title = paste0("Selected by ", who, " and not yet reviewed; any change to this question clears it"),
+        shiny::icon("robot")
+      )
+    })
+
     # Render the hotkey button so its styling tracks the selection state and
     # the exclusivity of the item's group
     output$hotkey_btn_ui = shiny::renderUI({

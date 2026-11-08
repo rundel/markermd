@@ -109,6 +109,16 @@ The Rubric tab is where grading happens. The left pane shows the student's rende
 
 Rubric items can be added, edited, reordered, and grouped while grading (Add Group creates a group whose settings popover holds its label, bounds and exclusivity; each item's group menu moves it in or out), and the rubric pane's menu offers YAML import and export for editing the rubric outside the app.
 
+### Activity
+
+The Activity tab is the project's activity log: every call of a markermd function that changed the grading state (an import, `marks_set()`, a restore), with who made it (`claude` or `codex` when an agent CLI ran it, `R` otherwise, or whatever `MARKERMD_ACTOR` names), its summary and what it touched, next to the grading done in the app, grouped into sessions. Selecting an entry shows what it changed: the items selected and deselected and the comments and private notes written, per repository and question, plus the rubric or template changes of a call that replaced them. The same log is available from R with `project_activity()` and `activity_detail()`.
+
+While `mark()` runs, it notices changes made from outside (an agent in a terminal, a script) within about a second: the Assignments table, History and Activity refresh, the pair on screen is re-read (an unsaved comment edit is kept), and items an agent selected carry a small robot badge until the pair is changed in the app. A changed rubric asks for a page reload, and a changed template for a restart of `mark()`.
+
+### Terminal
+
+`mark(path, terminal = TRUE)` adds a Terminal tab, using the optional [shinyterm](https://github.com/rundel/shinyterm) package, whose "+" menu opens a shell, Claude Code or Codex in the project root (each agent with its own sandbox confined to the project). The app is then protected by an access token in its URL. A terminal runs as you, so this is for your own machine only.
+
 ### History
 
 The History tab lists the project's snapshots: named, timestamped copies of the grading state (template, rubric and marks) kept inside the project database. Snapshots are taken automatically before every bulk change (a rubric import, deleting an item that has selections, deleting a group, a restore), and by hand from the camera button or the `s` key, with a label and a summary of what is about to change. Selecting a snapshot shows its fields and notes, what changed between it and the current state (or any other snapshot): items added, removed, reworded or re-pointed, selections and comments changed, and every repository's total before and after; and the scores it recorded. From there a snapshot can be restored (undoing every change since to the rubric and marks, or to chosen questions and repositories), exported to YAML files, pinned, or deleted, and the database file backed up. The navbar shows when the latest snapshot was taken and how many selections have been recorded since, turning amber when that number grows large, as a nudge to take a named checkpoint at the end of a session.

@@ -12,6 +12,22 @@
 #'   - A `markermd_template` S7 object
 #'   - NULL (use the project's configured template)
 #' @param use_qmd Logical. Whether to parse .qmd files (TRUE) or .Rmd files (FALSE). Default is TRUE.
+#' @param terminal Whether to add a Terminal tab that runs a shell or an agent
+#'   CLI (`claude`, `codex`) in the project root, using the optional
+#'   [shinyterm](https://github.com/rundel/shinyterm) package. One of:
+#'   - `FALSE` (the default): no Terminal tab
+#'   - `TRUE`: offer the user's shell plus `claude` and `codex` when they are
+#'     on the `PATH`, each agent with its own sandbox confined to the project
+#'     (see [shinyterm::default_commands()])
+#'   - A named list of commands, as accepted by
+#'     [shinyterm::terminal_tabs_server()], e.g.
+#'     `list(Claude = shinyterm::claude_command(wd = path, permission_mode = "acceptEdits"))`
+#'
+#'   A terminal runs as you, with your files and credentials, so only use it
+#'   on your own machine; shinyterm refuses to run on a hosted server. With
+#'   the tab on, the app is protected by a random access token: the browser
+#'   opens at a URL ending in `?shinyterm_token=...` (also printed when the
+#'   app starts), and a page opened without it gets no terminal process.
 #' @param ... Additional arguments passed to shiny::runApp()
 #'
 #' @return The value returned by [shiny::runApp()] when the app exits; called
@@ -28,9 +44,12 @@
 #'
 #' # Override the project's configured template
 #' mark("/path/to/project/", template = "template.yaml")
+#'
+#' # Add a Terminal tab for a shell, Claude Code or Codex
+#' mark("/path/to/project/", terminal = TRUE)
 #' }
-mark = function(path, template = NULL, use_qmd = TRUE, ...) {
-  app = mark_app(path, template = template, use_qmd = use_qmd)
+mark = function(path, template = NULL, use_qmd = TRUE, terminal = FALSE, ...) {
+  app = mark_app(path, template = template, use_qmd = use_qmd, terminal = terminal)
   shiny::runApp(app, ...)
 }
 
@@ -43,8 +62,12 @@ mark = function(path, template = NULL, use_qmd = TRUE, ...) {
 # path: Path to a markermd project directory (containing .markermd/)
 # template: markermd_template object or path overriding the project's template
 # use_qmd: Whether to match .qmd files (TRUE) or .Rmd files (FALSE)
+# terminal: FALSE, TRUE or a named list of commands (see mark())
+# terminal_token: The Terminal tab's access token, as for
+#   shinyterm::terminal_token(); FALSE turns it off (the browser tests do,
+#   since AppDriver cannot add the token's query string)
 
-mark_app = function(path, template = NULL, use_qmd = TRUE) {
+mark_app = function(path, template = NULL, use_qmd = TRUE, terminal = FALSE, terminal_token = TRUE) {
 
   if (missing(path)) {
     cli::cli_abort("path is required")
@@ -53,6 +76,7 @@ mark_app = function(path, template = NULL, use_qmd = TRUE) {
   # Load and resolve the project configuration (errors if not a project)
   project = project_config(path)
   root = project@root
+  terminal_commands = resolve_mark_terminal(terminal, root)
 
   repos_dir = project_repos_dir(project)
 
@@ -184,7 +208,9 @@ mark_app = function(path, template = NULL, use_qmd = TRUE) {
     artifact_paths,
     repo_to_github,
     database_state = database_state,
-    repo_errors = repo_errors
+    repo_errors = repo_errors,
+    terminal_commands = terminal_commands,
+    terminal_token = if (!is.null(terminal_commands)) shinyterm::terminal_token(terminal_token)
   )
 }
 
@@ -245,8 +271,11 @@ resolve_mark_template = function(project, template) {
 # database_state: Database state loaded from SQLite (optional)
 # repo_errors: Named list mapping repos to their missing-document or parse
 #   error message; repos absent from it parsed cleanly
+# terminal_commands: Named list of shinyterm commands for the Terminal tab,
+#   or NULL for no tab (see resolve_mark_terminal())
+# terminal_token: The Terminal tab's access token, or NULL for none
 
-create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collection, repo_list, validation_results, initial_repo_ast, initial_repo_name, artifact_paths, repo_to_github, database_state = NULL, repo_errors = list()) {
+create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collection, repo_list, validation_results, initial_repo_ast, initial_repo_name, artifact_paths, repo_to_github, database_state = NULL, repo_errors = list(), terminal_commands = NULL, terminal_token = NULL) {
 
   # Serve each repo's artifact via addResourcePath so the report's sibling
   # resources resolve; both viewers embed these URLs in same-origin iframes
@@ -487,6 +516,15 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       )
     ),
 
+    # Activity tab (right aligned): what changed the grading state, the calls
+    # of markermd functions (agents, scripts) and the app's own grading, with
+    # what each entry changed (see mod_mark_activity.R)
+    bslib::nav_panel(
+      title = "Activity",
+      value = "activity",
+      mark_activity_ui("activity_module")
+    ),
+
     # History tab (right aligned): the project's snapshots, with the detail,
     # compare, restore and export actions (see mod_mark_history.R)
     bslib::nav_panel(
@@ -495,9 +533,22 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       mark_history_ui("history_module")
     ),
 
+    # Terminal tab (only when mark(terminal = ...) opts in): a shinyterm
+    # tabset for a shell or an agent CLI in the project root
+    if (!is.null(terminal_commands)) {
+      bslib::nav_panel(
+        title = "Terminal",
+        value = "terminal",
+        mark_terminal_ui("terminal_module")
+      )
+    },
+
     # The snapshot status: when the latest snapshot was taken and how far the
     # grading has moved since; opens the History tab
     bslib::nav_item(shiny::uiOutput("snapshot_status", inline = TRUE)),
+
+    # Notices about changes made outside the app that it cannot show in place
+    header = shiny::uiOutput("external_change_banner"),
 
     # Footer with project info
     footer = shiny::div(
@@ -517,6 +568,23 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
         vapply(repo_res, function(q) q$status, character(1))
       })
     )
+
+    # Changes made outside this session (an agent's import, a script, another
+    # browser tab): the watcher bumps db_changed on every commit by another
+    # connection, and the observer below reads the action log for recorded
+    # calls and bumps external_version when there are new ones, which every
+    # database-backed display depends on
+    db_changed = shiny::reactiveVal(0L)
+    external_version = shiny::reactiveVal(0L)
+    external_notice = shiny::reactiveVal(NULL)
+    last_action_id = with_database(root, latest_action_row_id)
+    template_stamp = function() {
+      with_database(root, function(conn) {
+        DBI::dbGetQuery(conn, "SELECT updated_at FROM metadata WHERE key = 'template'")$updated_at
+      })
+    }
+    initial_template_stamp = template_stamp()
+    watch_project_db(root, session, function() db_changed(shiny::isolate(db_changed()) + 1L))
 
     # Reactive values for user selections
     current_repo_ast = shiny::reactiveVal(initial_repo_ast)
@@ -569,6 +637,7 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
     # so tabbing back recomputes at most once.
     table_state = shiny::reactive({
       rubric_result$grading_data_version()
+      external_version()
       input$main_navbar
 
       if (is.null(template_obj) || length(template_obj@questions) == 0) {
@@ -819,11 +888,92 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       external_repo = current_repo_name
     )
 
-    # Initialize the rubric module, keyed on the content pane's repo selection
+    # Initialize the rubric module, keyed on the content pane's repo
+    # selection. The rubric is read afresh for each session (database_state
+    # only records that the database opened), so reloading the page shows
+    # changes made outside the app since it started.
+    session_database_state = if (is.null(database_state)) NULL else initialize_database_state(root, template_obj)
     rubric_result = mark_rubric_server(
-      "rubric_module", template_obj, repo_list, root, database_state,
+      "rubric_module", template_obj, repo_list, root, session_database_state,
       selected_repo = content_result$selected_repo,
-      set_repo_labels = content_result$set_repo_labels
+      set_repo_labels = content_result$set_repo_labels,
+      external_version = shiny::reactive(external_version())
+    )
+
+    # A commit by another connection: list the markermd calls recorded since
+    # the last look, announce each, and refresh what can be refreshed in
+    # place (the table, History, Activity and the badges follow
+    # external_version; the pair on screen is re-read). A changed rubric or
+    # template cannot be swapped into a running session, so those raise a
+    # banner instead.
+    shiny::observe({
+      rows = with_database(root, function(conn) action_rows(conn, "id > ?", list(last_action_id)))
+      changed_template = !identical(template_stamp(), initial_template_stamp)
+      if (nrow(rows) == 0 && !changed_template) {
+        return()
+      }
+      if (nrow(rows) > 0) {
+        last_action_id <<- max(rows$id)
+        external_version(shiny::isolate(external_version()) + 1L)
+        lines = vapply(seq_len(nrow(rows)), function(i) action_notice_text(rows[i, , drop = FALSE]), character(1))
+        shiny::showNotification(
+          htmltools::tagList(
+            shiny::div(class = "fw-semibold", if (nrow(rows) == 1) "Changed outside the app" else paste(nrow(rows), "changes made outside the app")),
+            lapply(utils::head(lines, 5), shiny::div),
+            if (length(lines) > 5) shiny::div(class = "text-muted", paste0("and ", length(lines) - 5, " more")),
+            shiny::actionLink("activity_notice_link", "Show in Activity")
+          ),
+          id = "external_change_notice", duration = 10, type = "message"
+        )
+        kept = rubric_result$refresh_pair()
+        if (isTRUE(kept)) {
+          shiny::showNotification(
+            "Your unsaved comment was kept; it will be saved over the outside change.",
+            duration = 8, type = "warning"
+          )
+        }
+      }
+      parts = unique(unlist(rows$parts))
+      notice = shiny::isolate(external_notice())
+      if ("rubric" %in% parts || "template" %in% parts || changed_template) {
+        who = rows[vapply(rows$parts, function(p) length(p) > 0, logical(1)), , drop = FALSE]
+        external_notice(list(
+          rubric = isTRUE(notice$rubric) || "rubric" %in% parts,
+          template = isTRUE(notice$template) || "template" %in% parts || changed_template,
+          by = unique(c(notice$by, paste0(who$fn, " by ", who$actor)))
+        ))
+      }
+    }) |> shiny::bindEvent(db_changed(), ignoreInit = TRUE)
+
+    output$external_change_banner = shiny::renderUI({
+      notice = external_notice()
+      if (is.null(notice)) {
+        return(NULL)
+      }
+      by = if (length(notice$by) > 0) paste0(" (", paste(notice$by, collapse = ", "), ")") else ""
+      shiny::div(
+        class = "alert alert-warning d-flex align-items-center gap-2 small mb-0 py-2 px-3 rounded-0",
+        shiny::icon("triangle-exclamation"),
+        if (notice$template) {
+          shiny::span(paste0("The grading template was changed outside the app", by, ". Restart mark() to apply it."))
+        } else {
+          shiny::span(paste0("The rubric was changed outside the app", by, ". Reload the page to show it; saved grading is kept."))
+        },
+        if (!notice$template) shiny::actionButton("external_reload", "Reload", class = "btn-sm btn-warning ms-auto")
+      )
+    })
+
+    shiny::observe({
+      session$reload()
+    }) |> shiny::bindEvent(input$external_reload)
+
+    shiny::observe({
+      bslib::nav_select("main_navbar", "activity")
+    }) |> shiny::bindEvent(input$activity_notice_link)
+
+    mark_activity_server(
+      "activity_module", root,
+      refresh = shiny::reactive(list(rubric_result$grading_data_version(), external_version(), input$main_navbar))
     )
 
     # Reverse sync: z/x navigation (or the dropdown) in the Rubric tab moves
@@ -845,7 +995,7 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
     history_result = mark_history_server(
       "history_module", root,
       question_names = if (is.null(template_obj)) character(0) else template_question_names(template_obj),
-      refresh = shiny::reactive(list(rubric_result$grading_data_version(), input$main_navbar)),
+      refresh = shiny::reactive(list(rubric_result$grading_data_version(), external_version(), input$main_navbar)),
       reload_rubric = rubric_result$reload_from_db,
       reserved_ids = rubric_result$reserved_ids
     )
@@ -880,6 +1030,10 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       bslib::nav_select("main_navbar", "history")
     }) |> shiny::bindEvent(input$snapshot_status_link)
 
+    if (!is.null(terminal_commands)) {
+      mark_terminal_server("terminal_module", terminal_commands, root, token = terminal_token)
+    }
+
     # The Rubric tab's camera button opens the same Take snapshot modal
     shiny::observe({
       history_result$open_take_snapshot()
@@ -887,7 +1041,10 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
 
   }
   
-  # Return the app
-  shiny::shinyApp(ui = ui, server = server)
+  app = shiny::shinyApp(ui = ui, server = server)
+  if (!is.null(terminal_commands)) {
+    app = shinyterm::token_app(app, terminal_token)
+  }
+  app
 }
 

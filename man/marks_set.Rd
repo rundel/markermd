@@ -11,7 +11,8 @@ marks_set(
   comment = NULL,
   private_comment = NULL,
   project = ".",
-  overwrite = FALSE
+  overwrite = FALSE,
+  summary = NULL
 )
 }
 \arguments{
@@ -33,6 +34,9 @@ empty string clears it, \code{NULL} leaves it unchanged.}
 
 \item{overwrite}{When \code{TRUE}, a pair with existing grading activity is
 re-marked instead of raising an error.}
+
+\item{summary}{Optional text recorded in the project's activity log (see
+\code{\link[=project_activity]{project_activity()}}): what the change is and why.}
 }
 \value{
 Invisibly, a one-row data frame with columns \code{repo}, \code{question},

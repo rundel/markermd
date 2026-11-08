@@ -563,7 +563,7 @@ project_set = function(path = ".", repos = NULL, comments = NULL, template = NUL
     }
     project@comments = rel
   }
-  if (!is.null(template)) {
+  if (!is.null(template)) with_action(project@root, "project_set", call = "project_set(template = ...)", parts = "template", {
     spec = list(trigger = "project_set(template = ...)")
     if (S7::S7_inherits(template, markermd_template)) {
       assert_template_compatible(template)
@@ -580,7 +580,7 @@ project_set = function(path = ".", repos = NULL, comments = NULL, template = NUL
     } else {
       import_template_yaml_to_db(project@root, as.character(template), snapshot = spec)
     }
-  }
+  })
   if (!is.null(key)) {
     if (is_clear_sentinel(key)) {
       project@key = NA_character_
@@ -672,9 +672,10 @@ import_snapshot_spec = function(snapshot, trigger, summary = NULL) {
 #' }
 template_import = function(path, project = ".", snapshot = TRUE, summary = NULL) {
   proj = project_config(project)
-  import_template_yaml_to_db(
-    proj@root, path,
-    snapshot = import_snapshot_spec(snapshot, "template_import()", summary)
+  spec = import_snapshot_spec(snapshot, "template_import()", summary)
+  with_action(
+    proj@root, "template_import", call = "template_import()", summary = summary, parts = "template",
+    import_template_yaml_to_db(proj@root, path, snapshot = spec)
   )
 }
 
@@ -906,7 +907,10 @@ rubric_import = function(path, project = ".", mode = c("append", "replace"), que
     )
   }
 
-  summaries = apply_rubric_import(proj@root, rubric, mode, snapshot = spec)
+  summaries = with_action(
+    proj@root, "rubric_import", call = as.character(trigger), summary = summary, parts = "rubric",
+    apply_rubric_import(proj@root, rubric, mode, snapshot = spec)
+  )
 
   n_items = sum(vapply(summaries, function(s) length(s$new_ids), integer(1)))
   cli::cli_alert_success(
@@ -1251,7 +1255,11 @@ marks_import = function(path, project = ".", overwrite = FALSE, repo = NULL, que
 
   if (length(plan) > 0) {
     # Only an import that replaces existing grading needs the snapshot
-    apply_marks_import(proj@root, plan, snapshot = if (any(is_marked)) spec else NULL)
+    with_action(
+      proj@root, "marks_import", call = as.character(glue::glue("marks_import(overwrite = {overwrite})")),
+      summary = summary,
+      apply_marks_import(proj@root, plan, snapshot = if (any(is_marked)) spec else NULL)
+    )
   }
 
   n_selected = sum(vapply(plan, function(e) sum(e$selections), integer(1)))
@@ -1385,6 +1393,8 @@ marks_export = function(path, project = ".", repo = NULL, question = NULL, snaps
 #' @param project Path to the project directory. Defaults to the working directory.
 #' @param overwrite When `TRUE`, a pair with existing grading activity is
 #'   re-marked instead of raising an error.
+#' @param summary Optional text recorded in the project's activity log (see
+#'   [project_activity()]): what the change is and why.
 #'
 #' @return Invisibly, a one-row data frame with columns `repo`, `question`,
 #'   `action` (`"written"`), and `n_selected` (`NA` when `items` is `NULL`).
@@ -1400,7 +1410,7 @@ marks_export = function(path, project = ".", repo = NULL, question = NULL, snaps
 #' )
 #' }
 marks_set = function(repo, question, items = NULL, comment = NULL, private_comment = NULL,
-                     project = ".", overwrite = FALSE) {
+                     project = ".", overwrite = FALSE, summary = NULL) {
   proj = project_config(project)
 
   if (!is.character(repo) || length(repo) != 1 || !nzchar(trimws(repo))) {
@@ -1451,7 +1461,14 @@ marks_set = function(repo, question, items = NULL, comment = NULL, private_comme
     }
   }
 
-  apply_marks_import(proj@root, plan)
+  if (!is.null(summary) && (!is.character(summary) || length(summary) != 1)) {
+    cli::cli_abort("{.arg summary} must be a single string.")
+  }
+  with_action(
+    proj@root, "marks_set", call = as.character(glue::glue("marks_set(repo = '{repo}', question = '{question}')")),
+    summary = summary,
+    apply_marks_import(proj@root, plan)
+  )
 
   n_selected = if (is.null(items)) "no selection changes" else "{sum(plan[[1]]$selections)} item{?s} selected"
   cli::cli_alert_success(paste0("Marked {.val {repo}} / {.val {question}} (", n_selected, ")."))

@@ -359,7 +359,8 @@ rubric_hotkeys_js = function(rubric_ns, content_ns) {
 # set_repo_labels: function(choices, selected) rewriting the content pane's
 #   repo selector labels (the content module's set_repo_labels)
 
-mark_rubric_server = function(id, template, repos, root, database_state = NULL, selected_repo, set_repo_labels) {
+mark_rubric_server = function(id, template, repos, root, database_state = NULL, selected_repo, set_repo_labels,
+                              external_version = shiny::reactive(0L)) {
   shiny::moduleServer(id, function(input, output, session) {
 
     # Global id index
@@ -623,7 +624,8 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
         collection_path = root,
         question_name = question_name,
         item_id = item_id,
-        group_exclusive = group_exclusive_for(question_name)
+        group_exclusive = group_exclusive_for(question_name),
+        badge = function() agent_badges()[[item_id]]
       )
       question_item_servers[[question_name]][[item_id]] = server
       wire_item_signals(question_name, server)
@@ -1272,12 +1274,43 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
         save_pending()
       }) |>
         shiny::bindEvent(text_debounced(), ignoreInit = TRUE)
+
+      # Re-read the pair on screen after a change made outside this session.
+      # An unsaved edit is kept (it is saved on the next pause, over the
+      # outside change); returns TRUE when it was
+      function() {
+        current = shiny::isolate(pair())
+        if (is.null(current)) {
+          return(FALSE)
+        }
+        if (!is.null(shiny::isolate(pending_edit()))) {
+          return(TRUE)
+        }
+        loaded = load_fn(root, current$question, current$repo)
+        if (is.null(loaded)) loaded = ""
+        if (!identical(loaded, shiny::isolate(stored()))) {
+          stored(loaded)
+          pending_echoes(utils::tail(c(shiny::isolate(pending_echoes()), loaded), 8))
+          shiny::updateTextAreaInput(session, input_id, value = loaded)
+        }
+        FALSE
+      }
     }
 
     # Only the public channel feeds grading progress: a non-empty public
     # comment counts the pair as graded, while private notes never do
-    bind_comment_autosave("question_comment", load_comment, save_comment, on_saved = bump_grading_version)
-    bind_comment_autosave("question_private_comment", load_private_comment, save_private_comment)
+    refresh_comment = bind_comment_autosave("question_comment", load_comment, save_comment, on_saved = bump_grading_version)
+    refresh_private_comment = bind_comment_autosave("question_private_comment", load_private_comment, save_private_comment)
+
+    # Items of the pair on screen that a markermd call selected and nobody
+    # has touched here since (see pair_agent_badges()); re-read on every
+    # grading write here and on every change noticed outside
+    agent_badges = shiny::reactive({
+      shiny::req(input$question_select, selected_repo())
+      grading_data_version()
+      external_version()
+      with_database(root, function(conn) pair_agent_badges(conn, input$question_select, selected_repo()))
+    })
 
     # Store previous selection states to detect changes
     previous_selections = shiny::reactiveVal(list())
@@ -1498,6 +1531,14 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
       # For the History tab: rebuild from the database after a restore, and
       # the ids a restore must not reuse
       reload_from_db = reload_from_db,
+      # After marks changed outside this session: put the pair on screen
+      # back in the state the database holds. Returns TRUE when an unsaved
+      # comment edit was kept over the outside change.
+      refresh_pair = function() {
+        apply_saved_selections()
+        kept = c(refresh_comment(), refresh_private_comment())
+        any(kept)
+      },
       reserved_ids = function() session_item_ids,
       current_grade = shiny::reactive({
         shiny::req(input$question_select)

@@ -286,7 +286,7 @@ test_that("a database created before snapshots gains a baseline on first touch",
   items = markermd:::load_rubric_items(d, "Q1")
   expect_named(items, "item_0")
   rows = markermd:::with_database(d, function(conn) {
-    expect_equal(markermd:::get_metadata(conn, "schema_version"), "5")
+    expect_equal(markermd:::get_metadata(conn, "schema_version"), markermd:::markermd_db_version())
     markermd:::snapshot_rows(conn)
   })
   expect_equal(nrow(rows), 1)
@@ -704,9 +704,9 @@ test_that("pin, delete and prune respect manual and pinned snapshots", {
   expect_true(auto_id %in% remaining$snapshot_id)
   expect_true(manual %in% remaining$snapshot_id)
   expect_false(any(pruned %in% remaining$snapshot_id))
-  # Blobs no snapshot references were collected
+  # Blobs no snapshot (or activity log entry) references were collected
   blobs = sn_query(d, "SELECT COUNT(*) AS n FROM snapshot_blobs")$n
-  referenced = sn_query(d, "SELECT COUNT(DISTINCT hash) AS n FROM snapshot_parts")$n
+  referenced = sn_query(d, "SELECT COUNT(*) AS n FROM (SELECT hash FROM snapshot_parts UNION SELECT hash FROM action_parts)")$n
   expect_equal(blobs, referenced)
 
   suppressMessages(snapshot_delete("Keep", project = d, force = TRUE))

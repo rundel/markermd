@@ -15,8 +15,11 @@
 #   5: the snapshot tables (snapshots, snapshot_blobs, snapshot_parts,
 #      snapshot_notes, snapshot_stats; see migrate_snapshots() and
 #      snapshots.R)
+#   6: the action log (actions, action_parts) and the action_id column on
+#      grades, comments and private_comments (see migrate_actions() and
+#      actions.R)
 
-markermd_db_version = function() "5"
+markermd_db_version = function() "6"
 
 # ORDER BY clause giving a question's rubric items in display order. position
 # is authoritative; a row without one (written before schema version 2 and
@@ -77,6 +80,11 @@ initialize_database = function(collection_path) {
   # Wait up to 5s for a competing writer (e.g. a grading skill running while
   # mark() is open) instead of failing immediately with "database is locked".
   DBI::dbExecute(conn, "PRAGMA busy_timeout = 5000")
+
+  # Write-ahead logging, so the app's reads and a concurrent import by an
+  # agent do not block each other. Persistent once set; backups use VACUUM
+  # INTO, which reads through the log.
+  DBI::dbGetQuery(conn, "PRAGMA journal_mode = WAL")
 
   if (fresh || !isTRUE(.initialized_dbs[[db_path]])) {
     create_tables_if_needed(conn, collection_path)
@@ -245,6 +253,8 @@ create_tables_if_needed = function(conn, collection_path = NULL) {
   migrate_items_group(conn)
   migrate_settings_optional(conn)
   migrate_snapshots(conn, collection_path, baseline = snapshots_are_new)
+  create_action_tables(conn)
+  migrate_actions(conn)
 }
 
 # Snapshot tables (schema version 5): named, timestamped, annotated copies of
@@ -744,15 +754,16 @@ delete_item_records = function(conn, question_name, item_id) {
 
 insert_grade = function(conn, question_name, assignment_repo, item_id, selected) {
   DBI::dbExecute(conn, "
-    INSERT INTO grades (question_name, assignment_repo, item_id, selected, timestamp, username)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO grades (question_name, assignment_repo, item_id, selected, timestamp, username, action_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   ", params = list(
     question_name,
     assignment_repo,
     item_id,
     as.integer(selected),
     get_current_timestamp(),
-    get_current_username()
+    get_current_username(),
+    current_action_id()
   ))
 }
 
@@ -765,14 +776,15 @@ insert_grade = function(conn, question_name, assignment_repo, item_id, selected)
 
 insert_comment = function(conn, question_name, assignment_repo, comment_text) {
   DBI::dbExecute(conn, "
-    INSERT INTO comments (question_name, assignment_repo, comment_text, timestamp, username)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO comments (question_name, assignment_repo, comment_text, timestamp, username, action_id)
+    VALUES (?, ?, ?, ?, ?, ?)
   ", params = list(
     question_name,
     assignment_repo,
     comment_text,
     get_current_timestamp(),
-    get_current_username()
+    get_current_username(),
+    current_action_id()
   ))
 }
 
@@ -785,14 +797,15 @@ insert_comment = function(conn, question_name, assignment_repo, comment_text) {
 
 insert_private_comment = function(conn, question_name, assignment_repo, comment_text) {
   DBI::dbExecute(conn, "
-    INSERT INTO private_comments (question_name, assignment_repo, comment_text, timestamp, username)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO private_comments (question_name, assignment_repo, comment_text, timestamp, username, action_id)
+    VALUES (?, ?, ?, ?, ?, ?)
   ", params = list(
     question_name,
     assignment_repo,
     comment_text,
     get_current_timestamp(),
-    get_current_username()
+    get_current_username(),
+    current_action_id()
   ))
 }
 

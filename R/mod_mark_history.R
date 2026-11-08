@@ -285,8 +285,12 @@ history_small_table = function(df, names = colnames(df)) {
 # grouped the way the print method groups them, and the totals that changed
 #
 # diff: markermd_snapshot_diff object
+# scores: Whether to show the score changes (the Activity tab's diffs carry
+#   none)
+# private_text: Whether to show the private notes' text, not just which
+#   pairs changed (the Activity tab shows what an agent wrote)
 
-snapshot_diff_ui = function(diff) {
+snapshot_diff_ui = function(diff, scores = TRUE, private_text = FALSE) {
   heading = function(text) shiny::h6(class = "mt-3 mb-1", text)
   none = function(text) shiny::div(class = "text-muted", text)
 
@@ -338,7 +342,14 @@ snapshot_diff_ui = function(diff) {
           c("Repository", "Question", "Before", "After")
         )
       ),
-      if (nrow(private) > 0) shiny::div(class = "text-muted", paste0(
+      if (nrow(private) > 0 && private_text) htmltools::tagList(
+        shiny::div(paste0(nrow(private), " private note", if (nrow(private) == 1) "" else "s", " changed")),
+        history_small_table(
+          data.frame(private$repo, private$question, private$before, private$after, stringsAsFactors = FALSE),
+          c("Repository", "Question", "Before", "After")
+        )
+      ),
+      if (nrow(private) > 0 && !private_text) shiny::div(class = "text-muted", paste0(
         nrow(private), " private note", if (nrow(private) == 1) "" else "s", " changed (",
         paste(unique(paste0(private$repo, " / ", private$question)), collapse = ", "), ")"
       ))
@@ -367,7 +378,7 @@ snapshot_diff_ui = function(diff) {
     template_ui,
     heading("Rubric"), rubric_ui,
     heading("Marks"), marks_ui,
-    heading("Scores"), scores_ui
+    if (scores) htmltools::tagList(heading("Scores"), scores_ui)
   )
 }
 

@@ -4,7 +4,7 @@
 \alias{mark}
 \title{Launch the markermd Marking Application}
 \usage{
-mark(path, template = NULL, use_qmd = TRUE, ...)
+mark(path, template = NULL, use_qmd = TRUE, terminal = FALSE, ...)
 }
 \arguments{
 \item{path}{Character string. Path to a markermd project directory.}
@@ -18,6 +18,25 @@ over the project's configured template. Can be:
 }}
 
 \item{use_qmd}{Logical. Whether to parse .qmd files (TRUE) or .Rmd files (FALSE). Default is TRUE.}
+
+\item{terminal}{Whether to add a Terminal tab that runs a shell or an agent
+CLI (\code{claude}, \code{codex}) in the project root, using the optional
+\href{https://github.com/rundel/shinyterm}{shinyterm} package. One of:
+\itemize{
+\item \code{FALSE} (the default): no Terminal tab
+\item \code{TRUE}: offer the user's shell plus \code{claude} and \code{codex} when they are
+on the \code{PATH}, each agent with its own sandbox confined to the project
+(see \code{\link[shinyterm:default_commands]{shinyterm::default_commands()}})
+\item A named list of commands, as accepted by
+\code{\link[shinyterm:terminal_tabs_server]{shinyterm::terminal_tabs_server()}}, e.g.
+\code{list(Claude = shinyterm::claude_command(wd = path, permission_mode = "acceptEdits"))}
+}
+
+A terminal runs as you, with your files and credentials, so only use it
+on your own machine; shinyterm refuses to run on a hosted server. With
+the tab on, the app is protected by a random access token: the browser
+opens at a URL ending in \code{?shinyterm_token=...} (also printed when the
+app starts), and a page opened without it gets no terminal process.}
 
 \item{...}{Additional arguments passed to shiny::runApp()}
 }
@@ -41,5 +60,8 @@ mark("/path/to/project/", use_qmd = FALSE)
 
 # Override the project's configured template
 mark("/path/to/project/", template = "template.yaml")
+
+# Add a Terminal tab for a shell, Claude Code or Codex
+mark("/path/to/project/", terminal = TRUE)
 }
 }
