@@ -8,8 +8,10 @@
 # Open the read-only Monaco preview modal for a single q2r node
 #
 # node: A q2r pandoc node
+# back_id: Optional full input id of a Back button in the footer, for a
+#   preview opened from another modal (which the preview replaces)
 
-show_node_preview = function(node) {
+show_node_preview = function(node, back_id = NULL) {
   content = node_to_qmd(node) |>
     as.character() |>
     paste(collapse = "\n")
@@ -36,7 +38,10 @@ show_node_preview = function(node) {
       title = shiny::span(q2r_node_label(node), class = "fs-6 fw-bold"),
       size = "l",
       easyClose = TRUE,
-      footer = shiny::modalButton("Close"),
+      footer = htmltools::tagList(
+        if (!is.null(back_id)) shiny::actionButton(back_id, "Back", icon = shiny::icon("arrow-left"), class = "btn-outline-secondary"),
+        shiny::modalButton("Close")
+      ),
       shiny::div(
         style = "height: 400px;",
         shiny::div(
@@ -68,8 +73,10 @@ show_node_preview = function(node) {
 # id_prefix: Optional prefix matching node_preview_button()'s button ids
 # node_at: Optional function(index) returning the current node for that index
 # indices: Button indices to wire (defaults to seq_along(nodes))
+# back_id: Optional full input id of a Back button for the preview modal (see
+#   show_node_preview())
 
-ast_preview_observers = function(input, nodes, id_prefix = NULL, node_at = NULL, indices = NULL) {
+ast_preview_observers = function(input, nodes, id_prefix = NULL, node_at = NULL, indices = NULL, back_id = NULL) {
   resolve = if (!is.null(node_at)) node_at else function(k) nodes[[k]]
   wire = if (!is.null(indices)) indices else seq_along(nodes)
 
@@ -85,7 +92,7 @@ ast_preview_observers = function(input, nodes, id_prefix = NULL, node_at = NULL,
       shiny::observe({
         node = resolve(node_index)
         if (!is.null(node)) {
-          show_node_preview(node)
+          show_node_preview(node, back_id = back_id)
         }
       }) |>
         shiny::bindEvent(input[[button_id]], ignoreInit = TRUE)

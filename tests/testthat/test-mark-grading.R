@@ -386,92 +386,106 @@ test_that("the Assignments table tabulates rubric scores per repository and per 
 })
 
 
-test_that("the Validation tab follows the app-wide repo selection and the table opens it", {
+test_that("the table's validation marker opens the repo's results in a modal", {
   testthat::skip_if_not_installed("shinytest2")
   testthat::skip_on_cran()
 
   root = mg_make_fixture()
-  app = new_app_driver(markermd:::mark_app(root), name = "mark_validation_tab")
+  app = new_app_driver(markermd:::mark_app(root), name = "mark_validation_modal")
   app$wait_for_idle()
 
-  # The landing tab holds the table, whose validation markers are buttons
-  expect_equal(app$get_value(input = "main_navbar"), "assignments")
+  # There is no Validation tab; the table's validation markers are buttons
+  expect_false(app$get_js("!!document.querySelector('a[data-value=\"validation\"]')"))
   expect_match(app$get_html("#repo_table"), "validation_clicked(&#39;|'), 3,")
 
-  # Clicking the third repo's marker opens it in the Validation tab
-  app$run_js("Shiny.setInputValue('validation_clicked', 3, {priority: 'event'})")
-  app$wait_for_idle()
-  expect_equal(app$get_value(input = "main_navbar"), "validation")
-  expect_equal(app$get_value(input = "validation_repo_select"), "student3-poor")
-  expect_equal(app$get_value(input = "content_module-content_repo_select"), "student3-poor")
-  expect_match(app$get_html("#explore_module-template_validation_ui"), "Q2")
-
-  # Choosing another repository in the tab moves the app-wide selection
-  app$set_inputs(validation_repo_select = "student2-average")
-  app$wait_for_idle()
-  expect_equal(app$get_value(input = "content_module-content_repo_select"), "student2-average")
-
-  # The repository select labels each repository with its passed-question
-  # count (selectize holds the full option list; the underlying select only
-  # keeps the chosen option)
-  option_labels_for = function(id) {
-    app$get_js(paste0("
-      var sel = document.getElementById('", id, "').selectize;
-      Object.keys(sel.options).map(function(k) { return sel.options[k].label; }).join('|');
-    "))
+  open_validation = function(index) {
+    app$run_js(paste0("Shiny.setInputValue('validation_clicked', ", index, ", {priority: 'event'})"))
+    app$wait_for_js("!!document.querySelector('#shiny-modal.show #explore_module-template_validation_ui .card')")
+    app$wait_for_idle()
   }
-  expect_equal(
-    option_labels_for("validation_repo_select"),
-    "student1-excellent (2/2)|student2-average (2/2)|student3-poor (0/2)|student4-incomplete (1/2)|student5-messy (1/2)"
-  )
+  close_modal = function() {
+    app$run_js("document.querySelector('#shiny-modal [data-bs-dismiss=\"modal\"]').click()")
+    app$wait_for_js("!document.getElementById('shiny-modal')")
+  }
+  modal_title = function() app$get_js("document.querySelector('#shiny-modal .modal-title').innerText")
 
-  # The question shortcut select labels each question with the current
-  # repository's result, coloured, and follows the repository selection
-  option_labels = function() option_labels_for("explore_module-question_select")
-  app$set_inputs(validation_repo_select = "student4-incomplete")
-  app$wait_for_idle()
+  # Clicking the third repo's marker shows its results without moving the
+  # app-wide selection or the tab
+  open_validation(3)
+  expect_match(modal_title(), "student3-poor")
+  expect_equal(app$get_value(input = "main_navbar"), "assignments")
+  expect_equal(app$get_value(input = "content_module-content_repo_select"), "student1-excellent")
+  expect_match(app$get_html("#explore_module-template_validation_ui"), "Q2")
+  close_modal()
+
+  # The question shortcut select labels each question with the repository's
+  # result, coloured
+  option_labels = function() {
+    app$get_js("
+      var sel = document.getElementById('explore_module-question_select').selectize;
+      Object.keys(sel.options).map(function(k) { return sel.options[k].label; }).join('|');
+    ")
+  }
+  open_validation(4)
+  expect_match(modal_title(), "student4-incomplete")
   expect_equal(option_labels(), "\u2713 Q2|\u2717 Q3")
-  app$set_inputs(validation_repo_select = "student1-excellent")
-  app$wait_for_idle()
-  expect_equal(option_labels(), "\u2713 Q2|\u2713 Q3")
-  expect_match(
-    app$get_js("document.getElementById('explore_module-question_select').parentElement.querySelector('.selectize-control .item').outerHTML"),
-    "text-success", fixed = TRUE
-  )
+  close_modal()
 
-  # Each question has an addressable card, and choosing one scrolls to it
+  # Opening the same repository twice renders its results again
+  open_validation(1)
+  close_modal()
+  open_validation(1)
+  expect_equal(option_labels(), "\u2713 Q2|\u2713 Q3")
+  expect_equal(app$get_value(input = "explore_module-question_select"), "")
+
+  # Choosing a question scrolls its card into view
   expect_true(app$get_js("document.getElementById('explore_module-qcard_Q3') !== null"))
   app$run_js("
-    var body = document.getElementById('explore_module-qcard_Q3').closest('.card-body');
+    var body = document.querySelector('#shiny-modal .modal-body');
     body.style.maxHeight = '120px'; body.style.overflow = 'auto';
   ")
   app$set_inputs(`explore_module-question_select` = "Q3")
   app$wait_for_idle()
   Sys.sleep(1)
-  expect_gt(app$get_js("document.getElementById('explore_module-qcard_Q3').closest('.card-body').scrollTop"), 0)
+  expect_gt(app$get_js("document.querySelector('#shiny-modal .modal-body').scrollTop"), 0)
+  expect_match(
+    app$get_js("document.getElementById('explore_module-question_select').parentElement.querySelector('.selectize-control .item').outerHTML"),
+    "text-success", fixed = TRUE
+  )
 
-  # A card collapses from its header chevron, stays collapsed when another
-  # repository's cards are rendered, and the question shortcut re-expands it
+  # Cards start collapsed with their rule results in the header (the
+  # question shortcut expanded Q3). Expanding one from its chevron keeps it
+  # expanded for the next repository opened, and collapsing it again sticks
   is_shown = function(q) {
     app$get_js(paste0("document.getElementById('explore_module-qcard_", q, "_body').classList.contains('show')"))
   }
-  app$run_js("document.querySelector('#explore_module-qcard_Q2 .validation-collapse-toggle').click()")
-  app$wait_for_idle()
-  Sys.sleep(1)
-  expect_false(is_shown("Q2"))
-  expect_equal(unlist(app$get_value(input = "explore_module-collapsed_questions")), "Q2")
-
-  app$set_inputs(validation_repo_select = "student4-incomplete")
-  app$wait_for_idle()
+  toggle = function(q) {
+    app$run_js(paste0("document.querySelector('#explore_module-qcard_", q, " .validation-collapse-toggle').click()"))
+    app$wait_for_idle()
+    Sys.sleep(1)
+  }
   expect_false(is_shown("Q2"))
   expect_true(is_shown("Q3"))
+  expect_true(app$get_js("document.querySelector('#explore_module-qcard_Q2 .card-header').innerText.trim().split('\\n').length > 1"))
 
-  app$set_inputs(`explore_module-question_select` = "Q2")
-  app$wait_for_idle()
-  Sys.sleep(1)
+  toggle("Q2")
   expect_true(is_shown("Q2"))
-})
+  expect_setequal(unlist(app$get_value(input = "explore_module-expanded_questions")), c("Q2", "Q3"))
+  toggle("Q3")
+  expect_equal(unlist(app$get_value(input = "explore_module-expanded_questions")), "Q2")
+  close_modal()
 
+  open_validation(4)
+  expect_true(is_shown("Q2"))
+  expect_false(is_shown("Q3"))
+
+  # A node preview replaces the modal; its Back button returns to it
+  app$run_js("document.querySelector('#explore_module-template_validation_ui button[id^=\"explore_module-preview_\"]').click()")
+  app$wait_for_js("!!document.getElementById('explore_module-preview_back')")
+  app$run_js("document.getElementById('explore_module-preview_back').click()")
+  app$wait_for_js("!!document.querySelector('#shiny-modal.show #explore_module-template_validation_ui .card')")
+  expect_match(modal_title(), "student4-incomplete")
+})
 
 test_that("a rubric item's toggle button keeps its size under a long description", {
   testthat::skip_if_not_installed("shinytest2")

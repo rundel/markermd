@@ -414,7 +414,7 @@ repo_table_reactable = function(table_data, summary_rows, totals, click_input = 
 # template_obj: markermd_template object, or NULL
 # repo_errors: Named list of per-repo missing-document/parse error messages
 # row_index: Integer. The repo's position in repo_list; when given, the
-#   marker becomes a button that opens the repo in the Validation tab (the
+#   marker becomes a button that opens the repo's validation modal (the
 #   validation_clicked input in mark-app.R). NULL renders the bare marker.
 
 validation_status_cell = function(repo, validation_results, template_obj, repo_errors = list(), row_index = NULL) {

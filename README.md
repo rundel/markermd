@@ -91,15 +91,13 @@ When the app is opened on an initialized project, saving writes the template dir
 
 ### Assignments
 
-The app opens on the Assignments tab, one table with a row per repository: links to its folder, GitHub repository, rendered report and source, its validation status, its grading progress, and its score per question and in total, computed from the rubric selections exactly as `export_scores()` would. The class summary is pinned beneath the rows: how many repositories are graded, then the mean, median and standard deviation per question and for the total. The table filters by name and by status (failed validation, incomplete, complete), sorts by any column, and updates as grading proceeds. Clicking a repository's validation marker opens it in the Validation tab, and clicking a score opens that repository and question in the Rubric tab.
+The app opens on the Assignments tab, one table with a row per repository: links to its folder, GitHub repository, rendered report and source, its validation status, its grading progress, and its score per question and in total, computed from the rubric selections exactly as `export_scores()` would. The class summary is pinned beneath the rows: how many repositories are graded, then the mean, median and standard deviation per question and for the total. The table filters by name and by status (failed validation, incomplete, complete), sorts by any column, and updates as grading proceeds. Clicking a repository's validation marker opens its validation results, and clicking a score opens that repository and question in the Rubric tab.
 
 ![The mark app's Assignments tab: one row per repository with folder, GitHub, report and source links, validation status, grading progress and per-question scores, with the class summary pinned beneath](man/figures/mark_assignments_screenshot.png)
 
 ### Validation
 
-The Validation tab checks the selected repository against the template's rules, so structural problems (missing sections, missing chunks, absent content) are visible before any grading starts. Its repository selector, whose entries carry each repository's count of passed questions, stays in step with the rest of the app, and a question selector beside it, whose entries carry each question's pass or fail mark for that repository, jumps to a question's results. Each question's results collapse behind their header, and a collapsed question stays collapsed while moving between repositories.
-
-![The mark app's Validation tab: the selected repository's per-question rule results](man/figures/mark_validation_screenshot.png)
+Validation checks each repository against the template's rules, so structural problems (missing sections, missing chunks, absent content) are visible before any grading starts. The table's validation column shows each repository's passed-question count, and clicking it opens that repository's per-question results in a modal, with a question selector, whose entries carry each question's pass or fail mark, that jumps to a question's results. Each question's card shows its pass or fail and its rule results in the header, with the matched document content collapsed beneath it by default; a question expanded stays expanded for the next repository opened. A content node's preview button shows the node's source, with a Back button to the results.
 
 ### Rubric
 

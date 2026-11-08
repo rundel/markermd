@@ -1,18 +1,5 @@
-# Coverage for the Validation tab's select helpers (R/mod_mark_validate.R):
-# the question card ids, the pass/fail labelled question choices, and the
-# repository choices carrying each repository's passed-question count.
-
-test_that("validation_repo_choices labels repositories with their passed count", {
-  results = list(
-    repoA = list(Q1 = list(status = "pass"), Q2 = list(status = "pass")),
-    repoB = list(Q1 = list(status = "fail"), Q2 = list(status = "error"))
-  )
-  choices = markermd:::validation_repo_choices(
-    c("repoA", "repoB", "repoC", "repoD"), results, repo_errors = list(repoC = "boom")
-  )
-  expect_equal(unname(choices), c("repoA", "repoB", "repoC", "repoD"))
-  expect_equal(names(choices), c("repoA (2/2)", "repoB (0/2)", "repoC (error)", "repoD"))
-})
+# Coverage for the validation modal's select helpers (R/mod_mark_validate.R):
+# the question card ids and the pass/fail labelled question choices.
 
 test_that("question_card_id sanitises the question name", {
   expect_equal(markermd:::question_card_id("Q1"), "qcard_Q1")

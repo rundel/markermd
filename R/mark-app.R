@@ -113,7 +113,6 @@ mark_app = function(path, template = NULL, use_qmd = TRUE, terminal = FALSE, ter
   }
 
   validation_results = list()
-  initial_repo_ast = NULL
   initial_repo_name = NULL
 
   # Every top-level directory under repos/ is a repository, so students with a
@@ -182,18 +181,10 @@ mark_app = function(path, template = NULL, use_qmd = TRUE, terminal = FALSE, ter
   # Resolve each repo's rendered HTML report from the project's artifacts dirs
   artifact_paths = resolve_repo_artifacts(project, repo_list)
 
-  # Set initial current repo AST: the first repository that parsed. When every
-  # repo failed, the app still launches with the first repo selected so its
-  # error is shown in the Validation card.
+  # The initially selected repository: the first that parsed. When every repo
+  # failed, the app still launches with the first repo selected.
   ok_repos = setdiff(repo_list, names(repo_errors))
-  if (length(ok_repos) > 0) {
-    first_repo_rows = collection$repo == ok_repos[1]
-    initial_repo_ast = collection$ast[first_repo_rows][[1]]
-    initial_repo_name = ok_repos[1]
-  } else {
-    initial_repo_ast = NULL
-    initial_repo_name = repo_list[1]
-  }
+  initial_repo_name = if (length(ok_repos) > 0) ok_repos[1] else repo_list[1]
 
   app = create_markermd_app(
     root,
@@ -203,7 +194,6 @@ mark_app = function(path, template = NULL, use_qmd = TRUE, terminal = FALSE, ter
     collection,
     repo_list,
     validation_results,
-    initial_repo_ast,
     initial_repo_name,
     artifact_paths,
     repo_to_github,
@@ -263,7 +253,6 @@ resolve_mark_template = function(project, template) {
 # collection: Parsed collection data (data frame with path and ast columns)
 # repo_list: Character vector of repository names
 # validation_results: List of validation results for each repository
-# initial_repo_ast: Initial repository AST to display
 # initial_repo_name: Name of initial repository
 # artifact_paths: Named character vector mapping each repo to its local HTML
 #   report path, or NA when none was found
@@ -275,7 +264,7 @@ resolve_mark_template = function(project, template) {
 #   or NULL for no tab (see resolve_mark_terminal())
 # terminal_token: The Terminal tab's access token, or NULL for none
 
-create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collection, repo_list, validation_results, initial_repo_ast, initial_repo_name, artifact_paths, repo_to_github, database_state = NULL, repo_errors = list(), terminal_commands = NULL, terminal_token = NULL) {
+create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collection, repo_list, validation_results, initial_repo_name, artifact_paths, repo_to_github, database_state = NULL, repo_errors = list(), terminal_commands = NULL, terminal_token = NULL) {
 
   # Serve each repo's artifact via addResourcePath so the report's sibling
   # resources resolve; both viewers embed these URLs in same-origin iframes
@@ -302,6 +291,7 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       shiny::tags$head(
         shinyjs::useShinyjs(),
         markermd_modal_css(),
+        mark_validate_script("explore_module"),
         shiny::tags$style(shiny::HTML('
           /* Content repo select styling - selectize */
           .selectize-control.single .selectize-input {
@@ -455,53 +445,6 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       )
     ),
 
-    # Validation tab (right aligned): the selected repository's per-question
-    # rule results. Its repo select, labelled with each repository's count
-    # of passed questions, is kept in step with the app-wide selection (table
-    # clicks, rubric navigation); the question select beside it is a shortcut
-    # that scrolls to a question's card, its labels marking each question's
-    # pass or fail for the current repository
-    bslib::nav_panel(
-      title = "Validation",
-      value = "validation",
-      bslib::card(
-        class = "h-100",
-        bslib::card_header(
-          class = "bg-light",
-          shiny::div(
-            class = "d-flex justify-content-between align-items-center gap-2 w-100",
-            shiny::span("Validation"),
-            shiny::div(
-              class = "d-flex align-items-center gap-2",
-              shiny::div(
-                style = "width: 260px;",
-                shiny::selectInput(
-                  "validation_repo_select", NULL,
-                  choices = validation_repo_choices(repo_list, validation_results, repo_errors),
-                  selected = initial_repo_name, width = "100%"
-                )
-              ),
-              shiny::div(
-                style = "width: 200px;",
-                mark_validate_question_select_ui(
-                  "explore_module",
-                  validation_question_choices(
-                    if (is.null(template_obj)) character(0) else template_question_names(template_obj),
-                    validation_results[[initial_repo_name]]
-                  )
-                )
-              )
-            )
-          )
-        ),
-        bslib::card_body(
-          class = "overflow-auto",
-          shiny::uiOutput("repo_parse_error"),
-          mark_validate_ui("explore_module")
-        )
-      )
-    ),
-    
     # Rubric tab (right aligned): the content pane and rubric are sibling
     # modules; the hotkey script drives ids in both, so it gets both namespaces
     bslib::nav_panel(
@@ -587,27 +530,58 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
     watch_project_db(root, session, function() db_changed(shiny::isolate(db_changed()) + 1L))
 
     # Reactive values for user selections
-    current_repo_ast = shiny::reactiveVal(initial_repo_ast)
     current_repo_name = shiny::reactiveVal(initial_repo_name)
 
-    # The one way to change the app-wide repository selection: the name and
-    # the AST (NULL for a repo whose document is missing or failed to parse,
-    # so its error shows instead) move together. Used by the table's
-    # validation marker and score click-through, the Validation tab's select
-    # and the rubric's navigation sync.
+    # The one way to change the app-wide repository selection. Used by the
+    # table's score click-through and the rubric's navigation sync.
     select_repo = function(repo) {
       if (length(repo) != 1 || !repo %in% repo_list) {
         return(invisible(FALSE))
       }
       current_repo_name(repo)
-      current_repo_ast(collection_ast_for(collection, repo))
       invisible(TRUE)
     }
 
-    # Surface a missing-document or parse error for the selected repo in place
+    # The validation modal: one repository's per-question rule results,
+    # opened from that repository's validation marker in the table, without
+    # moving the app-wide selection. validation_shown is bumped on every
+    # opening, so the results render afresh into the modal's new DOM even
+    # when the same repository is opened twice.
+    validation_repo = shiny::reactiveVal(initial_repo_name)
+    validation_shown = shiny::reactiveVal(0L)
+
+    show_validation_modal = function() {
+      repo = shiny::isolate(validation_repo())
+      validation_shown(shiny::isolate(validation_shown()) + 1L)
+      shiny::showModal(shiny::modalDialog(
+        title = shiny::div(
+          class = "d-flex justify-content-between align-items-center gap-3",
+          shiny::span("Validation: ", shiny::tags$code(repo)),
+          shiny::div(
+            class = "fs-6 fw-normal",
+            style = "width: 220px;",
+            mark_validate_question_select_ui(
+              "explore_module",
+              validation_question_choices(
+                if (is.null(template_obj)) character(0) else template_question_names(template_obj),
+                validation_results[[repo]]
+              )
+            )
+          )
+        ),
+        size = "xl",
+        easyClose = TRUE,
+        footer = shiny::modalButton("Close"),
+        shiny::uiOutput("repo_parse_error"),
+        mark_validate_ui("explore_module")
+      ))
+    }
+
+    # Surface a missing-document or parse error for the modal's repo in place
     # of its validation results, quoting the parser's message verbatim
     output$repo_parse_error = shiny::renderUI({
-      err = repo_errors[[current_repo_name()]]
+      validation_shown()
+      err = repo_errors[[validation_repo()]]
       if (is.null(err)) return(NULL)
       shiny::div(
         class = "alert alert-danger d-flex align-items-start gap-2 small mb-2",
@@ -715,25 +689,14 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       bslib::nav_select("main_navbar", "rubric")
     }) |> shiny::bindEvent(input$score_clicked)
 
-    # A click on a repo's validation marker in the table opens that repo in
-    # the Validation tab
+    # A click on a repo's validation marker in the table opens its
+    # validation results in the modal
     shiny::observe({
-      select_repo(repo_list[input$validation_clicked])
-      bslib::nav_select("main_navbar", "validation")
+      repo = repo_list[input$validation_clicked]
+      shiny::req(length(repo) == 1, !is.na(repo))
+      validation_repo(repo)
+      show_validation_modal()
     }) |> shiny::bindEvent(input$validation_clicked)
-
-    # Keep the Validation tab's repo select in step with the app-wide
-    # selection, both ways. Selecting the already-current value does not
-    # re-fire the client input, so the pair cannot loop.
-    shiny::observe({
-      shiny::updateSelectInput(session, "validation_repo_select", selected = current_repo_name())
-    }) |> shiny::bindEvent(current_repo_name())
-
-    shiny::observe({
-      if (!identical(input$validation_repo_select, shiny::isolate(current_repo_name()))) {
-        select_repo(input$validation_repo_select)
-      }
-    }) |> shiny::bindEvent(input$validation_repo_select, ignoreInit = TRUE)
 
     # Handle artifact button clicks
     shiny::observe({
@@ -864,19 +827,23 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       }
     }) |> shiny::bindEvent(input$folder_clicked)
     
-    # Create reactive for current repository validation results
-    current_repo_validation = shiny::reactive({
-      repo_name = current_repo_name()
-      if (!is.null(repo_name) && !is.null(validation_results) && repo_name %in% names(validation_results)) {
-        validation_results[[repo_name]]
-      } else {
-        NULL
-      }
-    })
-    
-    # Mark validation module - pass validation data
-    mark_validate_server("explore_module", current_repo_ast, current_repo_validation, shiny::reactiveVal(template_obj))
-    
+    # The validation modal's content, for the modal's repository. A node
+    # preview replaces the modal (only one modal shows at a time), so the
+    # preview's Back button re-opens it.
+    mark_validate_server(
+      "explore_module",
+      ast = shiny::reactive({
+        validation_shown()
+        collection_ast_for(collection, validation_repo())
+      }),
+      validation_results = shiny::reactive({
+        validation_shown()
+        validation_results[[validation_repo()]]
+      }),
+      template = shiny::reactiveVal(template_obj),
+      on_back = show_validation_modal
+    )
+
     
     # Initialize the content module, sharing the table's repo selection so
     # both tabs always point at the same repository. selected_question is a
@@ -977,8 +944,8 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
     )
 
     # Reverse sync: z/x navigation (or the dropdown) in the Rubric tab moves
-    # the app-wide selection too, so the Validation tab stays honest when
-    # tabbing back
+    # the app-wide selection too, so a later score click on the repository
+    # the rubric already shows still counts as a change
     shiny::observe({
       repo = rubric_result$selected_content_repo()
       shiny::req(repo)
