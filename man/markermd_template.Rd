@@ -7,6 +7,7 @@
 markermd_template(
   original_ast = NULL,
   questions = list(),
+  files = character(0),
   metadata = markermd_metadata()
 )
 }
@@ -14,6 +15,10 @@ markermd_template(
 \item{original_ast}{pandoc. The original parsed AST from q2r}
 
 \item{questions}{List of question objects}
+
+\item{files}{Character vector. The assignment's files besides its Quarto
+document, as paths relative to the repository root, that questions can
+target (see the \code{file} property of \code{\link[=markermd_question]{markermd_question()}}).}
 
 \item{metadata}{template_metadata. Template metadata}
 }

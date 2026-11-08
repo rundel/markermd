@@ -19,7 +19,13 @@ A data frame with one row per anchorable section and columns \code{type}
 content counts \code{n_chunk}, \code{n_code_block}, \code{n_markdown}, \code{n_list},
 \code{n_table}, \code{n_div}, \code{n_other} and \code{n_content} (all non-heading blocks;
 HTML comments, which never render, are not counted anywhere). The
-resolved source file is attached as the \code{"source_file"} attribute.
+resolved source file is attached as the \code{"source_file"} attribute, and
+the assignment's other files (everything else in the document's
+directory, which a template question can cover with \verb{file:}) as the
+\code{"files"} attribute: a data frame with \code{path} (relative to that
+directory), \code{size} (bytes), \code{filtered} (\code{TRUE} for hidden files, render
+output, lock files, project files and the README, which are seldom
+graded) and \code{reason}.
 }
 \description{
 Parses an assignment document and returns one row per anchorable section: a

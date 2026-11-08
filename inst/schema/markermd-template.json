@@ -9,7 +9,7 @@
   "properties": {
     "format_version": {
       "type": "string",
-      "description": "Template format version (e.g. \"3.0\", or \"3.1\" when a question has scope: document)."
+      "description": "Template format version (e.g. \"3.0\"; \"3.1\" when a question has scope: document; \"3.2\" when the template lists files)."
     },
     "source": {
       "type": "object",
@@ -22,6 +22,12 @@
           "description": "Path to the assignment .qmd/.Rmd, absolute or relative to this template file."
         }
       }
+    },
+    "files": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/file_path" },
+      "description": "The assignment's files besides its Quarto document, as paths relative to the repository root, that questions can target with file. Added in format 3.2."
     },
     "metadata": {
       "type": "object",
@@ -42,6 +48,12 @@
     }
   },
   "$defs": {
+    "file_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?![A-Za-z]:)(?!/)(?!.*\\\\)(?!(.*/)?\\.\\.?(/|$)).+$",
+      "description": "A path relative to the repository root, with forward slashes, that stays inside the repository."
+    },
     "node_type_enum": {
       "type": "string",
       "enum": [
@@ -94,6 +106,10 @@
           "enum": ["sections", "document"],
           "description": "What the question covers: \"sections\" (the default) targets the headings/divs in node_ids; \"document\" covers the whole document (the YAML header, render settings, and other issues that belong to no single question) and must not have node_ids. Its filters and rules, if any, evaluate against the whole document. Added in format 3.1."
         },
+        "file": {
+          "$ref": "#/$defs/file_path",
+          "description": "The file this question covers, one of the template's files; omitted for the Quarto document. A question on a file covers the whole file: it has no node_ids, rules or filters and is not document-scope, and it fails validation when a repository lacks the file. Added in format 3.2."
+        },
         "node_ids": {
           "type": "array",
           "uniqueItems": true,
@@ -114,13 +130,28 @@
           "description": "Deprecated per-question points. Scoring moved into the rubric; accepted for backward compatibility with older templates and ignored on load."
         }
       },
-      "if": {
-        "properties": { "scope": { "const": "document" } },
-        "required": ["scope"]
-      },
-      "then": {
-        "properties": { "node_ids": { "maxItems": 0 } }
-      }
+      "allOf": [
+        {
+          "if": {
+            "properties": { "scope": { "const": "document" } },
+            "required": ["scope"]
+          },
+          "then": {
+            "properties": { "node_ids": { "maxItems": 0 } }
+          }
+        },
+        {
+          "if": { "required": ["file"] },
+          "then": {
+            "properties": {
+              "node_ids": { "maxItems": 0 },
+              "rules": { "maxItems": 0 },
+              "filters": { "maxItems": 0 },
+              "scope": { "const": "sections" }
+            }
+          }
+        }
+      ]
     },
     "rule": {
       "type": "object",

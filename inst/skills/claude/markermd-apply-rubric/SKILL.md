@@ -103,7 +103,9 @@ From the printed YAML record, per question:
 
 - `name` -- copy verbatim; this is the marks file's question key.
 - `node_ids` -- the heading/div anchors locating the question's section in the
-  assignment documents (used to slice each repo in step 6).
+  assignment documents (used to slice each repo in step 6), or `file` -- for
+  a question on one of the assignment's other files (listed under the
+  template's `files:`), the file it covers as a whole.
 
 Also note the top-level `source.path`: the assignment document's path, whose
 basename is how each repository's document is matched.
@@ -208,8 +210,9 @@ the unparseable ones, suggest the `markermd-fix-parsing` skill first: it
 repairs the document on a `grading-fixes` branch in the repository so it can
 be read here. Those still failing, and the missing ones, cannot be read and
 are excluded; list them in the final report (step 11) so the user grades them
-by hand. Per-question `fail` results indicate missing sections or
-rule violations -- useful pointers for which rubric items are likely to apply,
+by hand. Per-question `fail` results indicate missing sections, a missing
+file (for a question with `file:`, whose `detail` reads "not found in the
+repository"), or rule violations -- useful pointers for which rubric items are likely to apply,
 but read the actual answer before selecting anything.
 
 ### 6. Read each repository, question by question
@@ -233,7 +236,10 @@ For every in-scope repository under `<root>/<paths.repos>`:
   diff.
 - Slice each question's section from its anchor heading (the template's
   `node_ids`) to the next same-or-higher-level heading -- the same technique
-  the scaffold skills use. Students sometimes edit headings so an anchor is
+  the scaffold skills use. A question with `file:` instead grades that whole
+  file: read `<repo>/<file>` (or a file with the same name elsewhere in the
+  repo, which is what `mark()` shows), and treat a repo without it as not
+  attempted. Students sometimes edit headings so an anchor is
   absent; fall back to matching heading text, and treat a question whose
   section is missing entirely as exactly that (often a "not attempted" rubric
   item).

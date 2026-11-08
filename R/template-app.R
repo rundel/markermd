@@ -10,6 +10,21 @@
 
 template_app = function(ast, template_obj = NULL, source_path = NULL, project = NULL) {
 
+  # Where the assignment's other files are listed from: the project's key
+  # directory, else the Quarto document's directory; the document's path
+  # relative to it is never offered as a file
+  files_root = if (!is.null(project) && !is.na(project@key)) {
+    as.character(fs::path(project@root, project@key))
+  } else if (!is.null(source_path)) {
+    dirname(source_path)
+  }
+  doc_rel = if (!is.null(files_root) && !is.null(source_path)) {
+    as.character(fs::path_rel(normalizePath(source_path, winslash = "/", mustWork = FALSE), normalizePath(files_root, winslash = "/")))
+  } else {
+    character(0)
+  }
+  doc_label = if (length(doc_rel) == 1) doc_rel else if (!is.null(source_path)) basename(source_path) else "Assignment"
+
   # UI. A tagList (not a wrapper div) so the layout_columns is a direct fill
   # item of the enclosing fillable page and sizes itself to the remaining
   # viewport instead of a hard-coded vh formula.
@@ -37,6 +52,9 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
         overflow: visible !important;
       }
       
+      /* The question header's file label: smaller text than the name */
+      .question-file-label { font-size: 12px; }
+
       .rule-item .form-group,
       .filter-condition .form-group,
       .filter-group .form-group { margin-bottom: 0 !important; }
@@ -145,13 +163,17 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     bslib::layout_columns(
       col_widths = c(6, 6),
       class = "h-100",
-      ast_module_ui(
+      template_files_pane_ui(ast_module_ui(
         "ast_panel",
         header_extra = shiny::uiOutput("active_question_badge", inline = TRUE)
-      ),
+      )),
       bslib::card(
         class = "h-100",
-        bslib::card_header("Questions", class = "bg-light"),
+        bslib::card_header(
+          class = "bg-light d-flex justify-content-between align-items-center",
+          "Questions",
+          template_files_button_ui()
+        ),
         bslib::card_body(
           class = "flex-fill overflow-auto p-0",
           shiny::div(
@@ -229,6 +251,37 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     
     # Question modules storage
     question_modules = shiny::reactiveVal(list())
+
+    # The template's other files (questions can cover one each), the File
+    # selects' choices, and the file pane over the document tree
+    template_files = shiny::reactiveVal(if (is.null(template_obj)) character(0) else template_obj@files)
+    file_choices = shiny::reactive(question_file_choices(doc_label, template_files()))
+
+    # The file of each question on one, named by question
+    question_files = function() {
+      out = character(0)
+      for (m in shiny::isolate(question_modules())) {
+        q = if (!is.null(m$server)) shiny::isolate(m$server$question()) else m$initial_question
+        if (is_file_question(q)) out[[q@name]] = q@file
+      }
+      out
+    }
+
+    # The active entry's file ("" for the document), which the left pane
+    # shows: the document tree, or the file's source
+    shown_file = shiny::reactive({
+      current_module = question_modules()[[as.character(current_question_id())]]
+      if (is.null(current_module) || is.null(current_module$server)) {
+        return("")
+      }
+      file = current_module$server$question()@file
+      if (is.na(file)) "" else file
+    })
+
+    template_files_server(
+      input, output, session, files_root, doc_rel,
+      template_files, question_files, shown_file
+    )
     
     # Reactive value for pending node clicks
     pending_node_click = shiny::reactiveVal(NULL)
@@ -276,21 +329,48 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     }) |>
       shiny::bindEvent(template_obj, once = TRUE, ignoreNULL = TRUE)
     
+    # The name a new question gets when the Add modal leaves it blank
+    default_question_name = function(scope, file, id) {
+      base = if (!is.na(file)) basename(file) else if (scope == "document") "Document" else paste("Question", id)
+      taken = character(0)
+      for (m in shiny::isolate(question_modules())) {
+        q = if (!is.null(m$server)) shiny::isolate(m$server$question()) else m$initial_question
+        taken = c(taken, q@name)
+      }
+      name = base
+      k = 2
+      while (name %in% taken) {
+        name = paste0(base, " (", k, ")")
+        k = k + 1
+      }
+      name
+    }
+
     # Add a new question to the modules list
     #
     # scope: "sections" for a question over selected headings/divs, or
     #   "document" for a document-level question (see markermd_question)
-    add_new_question = function(scope = "sections") {
+    # file: One of the template's files for a question covering it, or NA for
+    #   a question on the Quarto document
+    # name: The question's name, or NULL for the default ("Document" for a
+    #   document-scope question, the file's name for one on a file, else
+    #   "Question <id>")
+    add_new_question = function(scope = "sections", file = NA_character_, name = NULL) {
       next_id = last_question_id() + 1
       last_question_id(next_id)
+
+      if (is.null(name)) {
+        name = default_question_name(scope, file, next_id)
+      }
 
       # Create initial question object
       initial_question = markermd_question(
         id = as.integer(next_id),
-        name = if (scope == "document") "Document" else paste("Question", next_id),
+        name = name,
         selected_nodes = markermd_node_selection(),
         rules = list(),
-        scope = scope
+        scope = scope,
+        file = file
       )
 
       # Create question module
@@ -492,16 +572,6 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
             "Add Question",
             icon = shiny::icon("plus"),
             class = "btn-outline-primary btn-sm"
-          ),
-          # A document-level question grades what belongs to no single
-          # question (the YAML header, render settings); add one only when a
-          # submission needs it
-          shiny::actionButton(
-            "add_document_question",
-            "Add Document Entry",
-            icon = shiny::icon("file-lines"),
-            class = "btn-outline-secondary btn-sm ms-1",
-            title = "Add an entry covering the entire document (YAML header, render settings, and other issues that do not belong to another question). Used for document-level validation and feedback."
           )
         )
       )
@@ -571,7 +641,12 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
               id = paste0("question_card_", q_id),
               class = card_class,
               style = "border-radius: 0.375rem;",
-              question_ui(question_module$module_id, q_id, name = question_module$initial_question@name)
+              question_ui(
+                question_module$module_id, q_id,
+                name = question_module$initial_question@name,
+                file_label = if (is.na(question_module$initial_question@file)) doc_label else question_module$initial_question@file,
+                file = question_module$initial_question@file
+              )
             )
           )
         )
@@ -582,16 +657,59 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       }
     })
     
-    # Add new question handler
+    # Add new question handler: a new entry starts on the document; its File
+    # select moves it onto another file
+    # Add Question asks which file the entry covers and, on the Quarto
+    # document, whether it covers selected sections or the entire document
+    # (the latter grades what belongs to no single question: the YAML header,
+    # render settings). The file and coverage are fixed once added.
     shiny::observe({
-      add_new_question()
+      doc_js = jsonlite::toJSON(doc_label, auto_unbox = TRUE)
+      shiny::showModal(shiny::modalDialog(
+        title = "Add a question",
+        easyClose = TRUE,
+        shiny::textInput("new_entry_name", "Name", placeholder = "Default: Question N, Document, or the file name", width = "100%"),
+        shiny::selectInput("new_entry_file", "File", choices = file_choices(), width = "100%", selectize = FALSE),
+        shiny::conditionalPanel(
+          paste0("input.new_entry_file == ", doc_js),
+          shiny::radioButtons(
+            "new_entry_coverage", "Covers",
+            choices = c("Selected sections" = "sections", "The entire document" = "document"),
+            selected = "sections"
+          )
+        ),
+        shiny::div(
+          class = "small text-muted",
+          "Other files are covered entire and take no rules; the Files button in the Questions header adds files to choose from."
+        ),
+        footer = shiny::tagList(
+          shiny::modalButton("Cancel"),
+          shiny::actionButton("confirm_add_entry", "Add", class = "btn-primary")
+        )
+      ))
     }) |>
       shiny::bindEvent(input$add_question)
 
     shiny::observe({
-      add_new_question(scope = "document")
+      file = input$new_entry_file
+      on_document = is.null(file) || identical(file, doc_label)
+      scope = if (on_document && identical(input$new_entry_coverage, "document")) "document" else "sections"
+      file = if (on_document) NA_character_ else file
+      name = trimws(input$new_entry_name)
+      if (nzchar(name)) {
+        taken = vapply(question_modules(), function(m) {
+          q = if (!is.null(m$server)) m$server$question() else m$initial_question
+          q@name
+        }, character(1))
+        if (name %in% taken) {
+          shiny::showNotification(paste0("There is already a question named \"", name, "\"."), type = "error")
+          return()
+        }
+      }
+      shiny::removeModal()
+      add_new_question(scope = scope, file = file, name = if (nzchar(name)) name else NULL)
     }) |>
-      shiny::bindEvent(input$add_document_question)
+      shiny::bindEvent(input$confirm_add_entry)
 
     # Reorder a question one position up or down. The modules list order is
     # the saved template order; the DOM wrapper is moved in place because
@@ -738,13 +856,20 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       markermd_template(
         original_ast = ast(),
         questions = questions_list,
+        files = template_files(),
         metadata = markermd_metadata(version = markermd_template_version())
       )
     }
 
-    # Replace the editor's questions with those from an imported template,
-    # renumbering ids so the question cards fully refresh.
-    load_questions_into_editor = function(questions) {
+    # Replace the editor's questions (and files) with those from an imported
+    # template, renumbering ids so the question cards fully refresh.
+    #
+    # questions: List of markermd_question objects
+    # files: The template's files; the files the questions cover are kept
+    #   in any case
+    load_questions_into_editor = function(questions, files = character(0)) {
+      covered = stats::na.omit(vapply(questions, function(q) q@file, character(1)))
+      template_files(union(files, covered))
       modules = list()
       start = last_question_id()
       for (k in seq_along(questions)) {

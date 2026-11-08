@@ -15,7 +15,7 @@ NULL
 # the lowest version that can represent it (template_format_version()), so
 # one without document-scope questions still loads in older markermd.
 
-markermd_template_version = function() "3.1"
+markermd_template_version = function() "3.2"
 
 markermd_template_min_version = function() "3.0"
 
@@ -64,6 +64,11 @@ markermd_node_selection = S7::new_class(
 #'   other issues that belong to no single question). A document-scope
 #'   question selects no nodes; its filters and rules, if any, evaluate
 #'   against the whole document.
+#' @param file Character. The assignment file the question covers, as a path
+#'   relative to the repository root (one of the template's `files`), or `NA`
+#'   (the default) for the assignment's Quarto document. A question on
+#'   another file covers the whole file: it selects no nodes and has no rules
+#'   or filters, and it fails validation when a repository lacks the file.
 #' @return A `markermd_question` S7 object.
 #' @export
 markermd_question = S7::new_class(
@@ -132,11 +137,35 @@ markermd_question = S7::new_class(
         }
         NULL
       }
+    ),
+    file = S7::new_property(
+      S7::class_character,
+      default = quote(NA_character_),
+      validator = function(value) {
+        if (length(value) != 1) {
+          return("@file must be a single path, or NA for the Quarto document")
+        }
+        if (!is.na(value)) {
+          return(template_file_path_problem(value))
+        }
+        NULL
+      }
     )
   ),
   validator = function(self) {
     if (self@scope == "document" && length(self@selected_nodes@node_ids) > 0) {
       return("A document-scope question cannot select nodes; it covers the whole document")
+    }
+    if (!is.na(self@file)) {
+      if (self@scope == "document") {
+        return("A question on a file cannot be document-scope; it already covers the whole file")
+      }
+      if (length(self@selected_nodes@node_ids) > 0) {
+        return("A question on a file cannot select nodes; it covers the whole file")
+      }
+      if (length(self@rules) > 0 || length(self@filters) > 0) {
+        return("A question on a file cannot have rules or filters; they are only available for the Quarto document")
+      }
     }
     NULL
   },
@@ -155,6 +184,37 @@ markermd_question_scopes = function() c("sections", "document")
 
 is_document_question = function(question) {
   identical(question@scope, "document")
+}
+
+# TRUE when a question covers one of the template's other files rather than
+# the Quarto document
+#
+# question: markermd_question S7 object
+
+is_file_question = function(question) {
+  !is.na(question@file)
+}
+
+# Why a template file path is not acceptable, or NULL when it is: a path
+# relative to the repository root, with forward slashes, that stays inside
+# the repository
+#
+# path: Character string
+
+template_file_path_problem = function(path) {
+  if (is.na(path) || !nzchar(path)) {
+    return("File paths cannot be empty")
+  }
+  if (grepl("\\\\", path)) {
+    return(paste0("File path '", path, "' must use forward slashes"))
+  }
+  if (startsWith(path, "/") || grepl("^[A-Za-z]:", path)) {
+    return(paste0("File path '", path, "' must be relative to the repository root"))
+  }
+  if (any(strsplit(path, "/", fixed = TRUE)[[1]] %in% c("..", "."))) {
+    return(paste0("File path '", path, "' must not contain '.' or '..' components"))
+  }
+  NULL
 }
 
 #' @title Template Metadata
@@ -213,6 +273,9 @@ markermd_metadata = S7::new_class(
 #' @description S7 class representing a complete markermd template with questions and metadata
 #' @param original_ast pandoc. The original parsed AST from q2r
 #' @param questions List of question objects
+#' @param files Character vector. The assignment's files besides its Quarto
+#'   document, as paths relative to the repository root, that questions can
+#'   target (see the `file` property of [markermd_question()]).
 #' @param metadata template_metadata. Template metadata
 #' @return A `markermd_template` S7 object.
 #' @export
@@ -258,11 +321,35 @@ markermd_template = S7::new_class(
         NULL
       }
     ),
+    files = S7::new_property(
+      S7::class_character,
+      default = quote(character(0)),
+      validator = function(value) {
+        for (path in value) {
+          problem = template_file_path_problem(path)
+          if (!is.null(problem)) {
+            return(problem)
+          }
+        }
+        if (any(duplicated(value))) {
+          return("Template files must be unique")
+        }
+        NULL
+      }
+    ),
     metadata = S7::new_property(
       markermd_metadata,
       default = quote(markermd_metadata())
     )
   ),
+  validator = function(self) {
+    targets = vapply(self@questions, function(q) q@file, character(1))
+    missing = setdiff(stats::na.omit(targets), self@files)
+    if (length(missing) > 0) {
+      return(paste0("Questions target files that are not among the template's files: ", paste0("'", missing, "'", collapse = ", ")))
+    }
+    NULL
+  },
   package = "markermd"
 )
 

@@ -1862,7 +1862,7 @@ validate_project = function(path = ".", template = NULL, use_qmd = TRUE) {
       next
     }
 
-    res = purrr::safely(function() validate_repo_against_rules(parse_assignment_document(file), template_obj))()
+    res = purrr::safely(function() validate_repo_against_rules(parse_assignment_document(file), template_obj, repo_dir = repo_dir))()
 
     if (!is.null(res$error)) {
       rows[[length(rows) + 1]] = data.frame(

@@ -53,6 +53,10 @@ S7::method(print, markermd_template) = function(x, ...) {
         paste(section_count, if (section_count == 1) "section" else "sections")
       }
       rule_text = if (rule_count == 1) "rule" else "rules"
+      if (is_file_question(q)) {
+        cat("  - ", q@name, " (file: ", q@file, ")\n", sep = "")
+        next
+      }
       cat("  - ", q@name, " (", section_text, ", ", rule_count, " ", rule_text, ")\n", sep = "")
     }
   }

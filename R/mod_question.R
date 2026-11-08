@@ -9,8 +9,12 @@
 # name: Character. The question's name to show; defaults to "Question <name_id>"
 #   so a freshly added question keeps its positional default, while a loaded or
 #   imported question shows its own saved name
+# file_label: The name of the file the question covers, shown beside its
+#   name (the Quarto document's name for a question on the document)
+# file: The question's file, or NA for the Quarto document. A question on
+#   another file covers the whole file and has no body
 
-question_ui = function(id, name_id, name = paste("Question", name_id)) {
+question_ui = function(id, name_id, name = paste("Question", name_id), file_label, file = NA_character_) {
   ns = shiny::NS(id)
 
   bslib::card(
@@ -23,14 +27,25 @@ question_ui = function(id, name_id, name = paste("Question", name_id)) {
       class = "bg-light",
       style = "gap: 0.75rem; justify-content: space-between;",
 
-      # Question name input
+      # Question name input, and beside it the file the question covers
       shiny::div(
-        style = "flex: 0 1 14rem; min-width: 0;",
-        shiny::textInput(
-          ns("question_name"),
-          NULL,
-          value = name,
-          width = "100%"
+        class = "d-flex align-items-center gap-3",
+        style = "flex: 1 1 auto; min-width: 0;",
+        shiny::div(
+          style = "flex: 0 1 14rem; min-width: 0;",
+          shiny::textInput(
+            ns("question_name"),
+            NULL,
+            value = name,
+            width = "100%"
+          )
+        ),
+        # The file the question covers, fixed when it is added
+        shiny::div(
+          class = "question-file-label d-flex align-items-center gap-1 text-muted",
+          style = "min-width: 0;",
+          shiny::icon("file-lines", class = "fs-5", title = "File the question covers"),
+          shiny::span(class = "text-truncate", file_label)
         )
       ),
 
@@ -73,7 +88,13 @@ question_ui = function(id, name_id, name = paste("Question", name_id)) {
     # Question content (full body, shown when the card is active)
     bslib::card_body(
       class = "question-body",
-      style = "padding: 12px;",
+      style = "padding: 0;",
+
+      # A question on another file covers the whole file: it has no nodes,
+      # filters or rules, so its body stays empty (the padding lives on this
+      # div so an empty body takes no space)
+      if (is.na(file)) shiny::div(
+        style = "padding: 12px;",
 
       # Selected nodes display with an adjacent clear control
       shiny::div(
@@ -155,7 +176,28 @@ question_ui = function(id, name_id, name = paste("Question", name_id)) {
           shiny::uiOutput(ns("rules_ui"))
         )
       )
+      )
     )
+  )
+}
+
+# Choices for the Add entry modal's File select: the Quarto document (its
+# value is its own name, so it shows like any other choice) and then the
+# template's other files
+#
+# doc_label: The Quarto document's name
+# files: The template's files
+
+question_file_choices = function(doc_label, files) {
+  c(stats::setNames(doc_label, doc_label), stats::setNames(files, files))
+}
+
+# Tell the user a question on a file has no document nodes
+
+notify_file_question = function(file) {
+  shiny::showNotification(
+    paste0("This question covers ", file, " as a whole, so document nodes cannot be selected for it."),
+    type = "message"
   )
 }
 
@@ -164,7 +206,7 @@ question_ui = function(id, name_id, name = paste("Question", name_id)) {
 
 notify_document_entry = function() {
   shiny::showNotification(
-    "This is a document entry: it covers the entire document, so nodes cannot be selected for it.",
+    "This entry covers the entire document, so headings cannot be selected for it.",
     type = "message"
   )
 }
@@ -200,13 +242,15 @@ question_server = function(id, ast, initial_question = NULL) {
       n_nodes = length(q@selected_nodes@node_ids)
       n_filters = length(q@filters)
       n_rules = length(q@rules)
-      nodes_text = if (is_document_question(q)) {
-        "Entire document"
+      # An entry covering a whole file (the Quarto document's entire-document
+      # entry, or any other file) has no nodes to count
+      nodes_text = if (is_file_question(q) || is_document_question(q)) {
+        "Entire document \u00b7 "
       } else {
-        glue::glue("{n_nodes} node{if (n_nodes == 1) '' else 's'} selected")
+        glue::glue("{n_nodes} node{if (n_nodes == 1) '' else 's'} selected \u00b7 ")
       }
       shiny::span(glue::glue(
-        "{nodes_text} \u00b7 ",
+        "{nodes_text}",
         "{n_filters} filter{if (n_filters == 1) '' else 's'} \u00b7 ",
         "{n_rules} rule{if (n_rules == 1) '' else 's'}"
       ))
@@ -300,9 +344,13 @@ question_server = function(id, ast, initial_question = NULL) {
       # nodes' q2r ids (heading or div ids), converted at this boundary.
       add_node = function(node_index) {
         # A document-scope question covers the entire document and never
-        # selects nodes
+        # selects nodes, nor does a question on another file
         if (is_document_question(state())) {
           notify_document_entry()
+          return(invisible(NULL))
+        }
+        if (is_file_question(state())) {
+          notify_file_question(state()@file)
           return(invisible(NULL))
         }
         id = node_id_for_index(ast(), node_index)
@@ -322,6 +370,10 @@ question_server = function(id, ast, initial_question = NULL) {
           notify_document_entry()
           return(invisible(NULL))
         }
+        if (is_file_question(state())) {
+          notify_file_question(state()@file)
+          return(invisible(NULL))
+        }
         id = node_id_for_index(ast(), node_index)
         cur_state = state()
         cur_state@selected_nodes = markermd_node_selection(
@@ -335,6 +387,9 @@ question_server = function(id, ast, initial_question = NULL) {
       get_selected_nodes = shiny::reactive({
         if (is_document_question(state())) {
           return(0L)
+        }
+        if (is_file_question(state())) {
+          return(integer(0))
         }
         node_ids_to_indices(ast(), state()@selected_nodes@node_ids)
       }),

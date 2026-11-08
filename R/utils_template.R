@@ -467,19 +467,27 @@ assert_template_compatible = function(template) {
   }
 }
 
-# Validates a parsed repository AST against template rules using section-based matching
+# Validates a parsed repository AST against template rules using section-based
+# matching; a question on one of the template's other files passes when the
+# repository has the file (see validate_file_question())
 #
 # ast: q2r pandoc AST object from parsing a repository document
 # template: markermd_template S7 object with questions and rules
+# repo_dir: The repository directory, where file questions look for their
+#   file (NULL fails every file question: there is nowhere to look)
 
-validate_repo_against_rules = function(ast, template) {
+validate_repo_against_rules = function(ast, template, repo_dir = NULL) {
 
   stopifnot(S7::S7_inherits(template, markermd_template))
-    
+
   results = list()
 
   for (question in template@questions) {
-    result = validate_question_rules(ast, question)
+    result = if (is_file_question(question)) {
+      validate_file_question(question, repo_dir)
+    } else {
+      validate_question_rules(ast, question)
+    }
     results[[question@name]] = result
   }
 
@@ -623,6 +631,11 @@ apply_question_filters = function(question_ast, question) {
 get_question_ast = function(current_ast, question) {
 
   stopifnot(S7::S7_inherits(question, markermd_question))
+
+  # A question on another file has no part of the document
+  if (is_file_question(question)) {
+    return(empty_pandoc_ast())
+  }
 
   ids = question@selected_nodes@node_ids
 

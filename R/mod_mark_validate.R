@@ -180,6 +180,26 @@ create_question_card = function(question, question_result, current_ast, session,
     shiny::icon("circle-question", class = "fa-fw text-muted")  # Default for unknown status
   )
   
+  # A question on another file has no document content: the header alone
+  # carries its result (whether the repository has the file)
+  if (is_file_question(question)) {
+    return(bslib::card(
+      id = card_id,
+      class = "mb-0",
+      wrapper = NULL,
+      bslib::card_header(
+        class = "bg-light",
+        shiny::div(
+          class = "d-flex align-items-center",
+          shiny::span(status_icon, class = "me-2"),
+          shiny::span(question_name, class = "my-0 text-dark fw-semibold"),
+          shiny::tags$code(class = "ms-2 small", question@file)
+        ),
+        create_rule_details(question, question_result)
+      )
+    ))
+  }
+
   # Get the document nodes for this question using section selection
   question_nodes_content = get_question_content(current_ast, question, session)
   

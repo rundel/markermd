@@ -20,7 +20,13 @@
 #'   content counts `n_chunk`, `n_code_block`, `n_markdown`, `n_list`,
 #'   `n_table`, `n_div`, `n_other` and `n_content` (all non-heading blocks;
 #'   HTML comments, which never render, are not counted anywhere). The
-#'   resolved source file is attached as the `"source_file"` attribute.
+#'   resolved source file is attached as the `"source_file"` attribute, and
+#'   the assignment's other files (everything else in the document's
+#'   directory, which a template question can cover with `file:`) as the
+#'   `"files"` attribute: a data frame with `path` (relative to that
+#'   directory), `size` (bytes), `filtered` (`TRUE` for hidden files, render
+#'   output, lock files, project files and the README, which are seldom
+#'   graded) and `reason`.
 #' @export
 #'
 #' @examples
@@ -88,6 +94,9 @@ assignment_outline = function(assignment_path, filename = "*.[Rq]md") {
   }
 
   attr(out, "source_file") = file
+  files = assignment_file_candidates(dirname(file), exclude = basename(file))
+  files$size = file.size(file.path(dirname(file), files$path))
+  attr(out, "files") = files[c("path", "size", "filtered", "reason")]
   out
 }
 

@@ -214,8 +214,11 @@ mark_content_ui = function(id) {
 #   rubric module), driving the scroll/highlight targets
 # external_repo: Reactive returning the repo selected in the Assignments
 #   table, so both tabs stay on the same repository (optional)
+# repos_dir: The directory holding the repositories, where a question on one
+#   of the template's other files finds that file (optional)
 
-mark_content_server = function(id, template, collection, artifact_paths, artifact_urls, use_qmd, selected_question, external_repo = NULL) {
+mark_content_server = function(id, template, collection, artifact_paths, artifact_urls, use_qmd, selected_question, external_repo = NULL,
+                               repos_dir = NULL) {
   shiny::moduleServer(id, function(input, output, session) {
 
     # Populate the repo selector, starting on the repo selected in the
@@ -368,8 +371,27 @@ mark_content_server = function(id, template, collection, artifact_paths, artifac
     }) |>
       shiny::bindEvent(highlight_ranges_reactive(), ignoreNULL = FALSE, ignoreInit = TRUE)
 
+    # The current question when it covers one of the template's other files:
+    # the pane then shows that file from the repository, whatever the
+    # html/source toggle says
+    file_question = shiny::reactive({
+      question = if (is.null(template) || is.null(selected_question())) NULL else template_question(template, selected_question())
+      if (!is.null(question) && is_file_question(question)) question else NULL
+    })
+
     # Display content based on HTML toggle state
     output$content_display = shiny::renderUI({
+      question = file_question()
+      if (!is.null(question)) {
+        shiny::req(input$content_repo_select, repos_dir)
+        repo_dir = file.path(repos_dir, input$content_repo_select)
+        found = find_repo_file(repo_dir, question@file)
+        relative = if (is.na(found)) NA_character_ else as.character(fs::path_rel(found, normalizePath(repo_dir, winslash = "/")))
+        return(file_view_ui(
+          found, question@file, editor_id = "markermd-file-editor",
+          note = if (!is.na(relative) && !identical(relative, question@file)) paste0("(found at ", relative, ")")
+        ))
+      }
       if (input$html_toggle) {
         html_content_reactive()
       } else {

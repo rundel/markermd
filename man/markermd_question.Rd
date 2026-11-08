@@ -10,7 +10,8 @@ markermd_question(
   selected_nodes = markermd_node_selection(),
   rules = list(),
   filters = list(),
-  scope = "sections"
+  scope = "sections",
+  file = NA_character_
 )
 }
 \arguments{
@@ -32,6 +33,12 @@ about the document as a whole (the YAML header, render settings, and
 other issues that belong to no single question). A document-scope
 question selects no nodes; its filters and rules, if any, evaluate
 against the whole document.}
+
+\item{file}{Character. The assignment file the question covers, as a path
+relative to the repository root (one of the template's \code{files}), or \code{NA}
+(the default) for the assignment's Quarto document. A question on
+another file covers the whole file: it selects no nodes and has no rules
+or filters, and it fails validation when a repository lacks the file.}
 }
 \value{
 A \code{markermd_question} S7 object.

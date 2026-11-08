@@ -87,11 +87,13 @@ The template is built from the key/solution repository's assignment document.
 Run this, replacing KEYDIR with `<root>/<paths.key>`:
 
 ```
-Rscript -e 'o <- markermd::assignment_outline("KEYDIR"); cat(jsonlite::toJSON(list(source_file = attr(o, "source_file"), sections = o), dataframe = "rows", auto_unbox = TRUE, pretty = TRUE))'
+Rscript -e 'o <- markermd::assignment_outline("KEYDIR"); cat(jsonlite::toJSON(list(source_file = attr(o, "source_file"), sections = o, files = attr(o, "files")), dataframe = "rows", auto_unbox = TRUE, pretty = TRUE))'
 ```
 
 It resolves the single assignment file in the key directory and prints its
-`source_file` plus a `sections` array. If it instead aborts with a parser
+`source_file`, a `sections` array, and a `files` array of the key's other
+files (each with its `path`, `size`, and `filtered`, true for hidden files,
+render output, lock files, project files and the README). If it instead aborts with a parser
 diagnostic (a bracketed code such as `[Q-2-10] Closed Quote Without Matching
 Open Quote` and a source excerpt), the key itself does not parse and nothing
 downstream works, since `source.path` is re-parsed whenever the template is
@@ -142,6 +144,17 @@ question; prefer its children.
 
 Use each chosen section's `id` verbatim as the question's single `node_id`, and
 give the question a short `name` derived from its title (for example `Q1`).
+
+When the assignment asks for work in files besides the document (the
+README or the document's prose names scripts students write, such as
+`get_data.R` or `parse_lq.py`), add one question per graded file: list the
+file under the template's top-level `files:`, give the question
+`file: <path>` (the path from the `files` array, relative to the key root)
+and no `node_ids`, and name it after the file or the task it serves. Such a
+question takes no rules; it covers the whole file, and validation only
+checks that each repository has it. Leave out support files nobody grades
+(lock files, project files, a provided Makefile or data file), and do not
+make a file question for code that lives in the document's chunks.
 
 Do not add a document-scope question (`scope: document`) here. It exists for
 problems outside every question, such as a render setting in the YAML header,
@@ -288,6 +301,11 @@ how many repos pass each question, and which rules fail widely. Interpretation:
   repository, and re-runs this validation.
 - Scattered failures are expected (those students genuinely did not meet the
   rule) and are the point of grading.
+- A question with `file:` fails where the repo lacks that file (`detail`
+  reads "not found in the repository"); a file found elsewhere in the repo
+  passes and its `detail` names where. A file question that fails for almost
+  every repo usually has the wrong path: check it against a few student
+  repos.
 - A repo that **fails the write-up rule on every question** usually wrote its
   answers inside `{=html}` raw blocks, which are `Raw Block` nodes rather than
   `Markdown`. Node kinds are never template problems to fix by loosening

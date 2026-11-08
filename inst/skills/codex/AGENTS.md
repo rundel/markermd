@@ -162,6 +162,15 @@ questions:
   has run against the whole document. A template with such a question is
   written as `format_version: "3.1"`; `"3.0"` files are still read. Add one
   only when some submission needs it (see Rules).
+- An assignment made of more than the document (scripts such as
+  `get_data.R` or `clean.py`, data, images) lists those files under a
+  top-level `files:` (paths relative to the repository root), and a question
+  on one of them has `file: get_data.R` instead of `node_ids`. Such a
+  question covers the whole file: it has no `node_ids`, `rules` or
+  `filters`, `mark()` shows that file from each repository while grading
+  it, and validation fails a repository that lacks it. A template with
+  files is written as `format_version: "3.2"`.
+  `attr(assignment_outline(key), "files")` lists the key's other files.
 - Import with `template_import(path, project)`; export the stored template
   with `template_export()`. The import re-parses `source.path` but does not
   check that each `node_id` exists; a wrong anchor surfaces as a per-repo

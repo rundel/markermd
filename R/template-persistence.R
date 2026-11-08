@@ -18,8 +18,8 @@
 # question_modules: Reactive. The app's question-module registry
 # build_current_template: Function. Assembles a markermd_template from the
 #   live question modules
-# load_questions_into_editor: Function(questions). Replaces the editor's
-#   questions with the supplied list
+# load_questions_into_editor: Function(questions, files). Replaces the editor's
+#   questions (and the template's files) with the supplied ones
 #
 # Returns list(dirty = reactive dirty flag, mark_saved = function resetting
 # the saved snapshot to the current serialized state)
@@ -199,8 +199,8 @@ template_persistence = function(input, output, session,
     contentType = "text/yaml"
   )
 
-  apply_import = function(questions, file_name) {
-    load_questions_into_editor(questions)
+  apply_import = function(questions, file_name, files = character(0)) {
+    load_questions_into_editor(questions, files = files)
     shiny::showNotification(
       glue::glue("Imported {length(questions)} question{if (length(questions) == 1) '' else 's'} from {file_name}."),
       type = "message"
@@ -227,9 +227,10 @@ template_persistence = function(input, output, session,
     }
 
     questions = parsed$result@questions
+    template_files = parsed$result@files
     n_existing = length(question_modules())
     if (n_existing > 0) {
-      pending_import(list(questions = questions, name = file$name))
+      pending_import(list(questions = questions, name = file$name, files = template_files))
       shiny::showModal(shiny::modalDialog(
         title = "Replace existing questions?",
         glue::glue(
@@ -244,7 +245,7 @@ template_persistence = function(input, output, session,
         )
       ))
     } else {
-      apply_import(questions, file$name)
+      apply_import(questions, file$name, files = template_files)
     }
   }) |> shiny::bindEvent(input$import_file)
 
@@ -252,7 +253,7 @@ template_persistence = function(input, output, session,
     shiny::removeModal()
     pending = pending_import()
     pending_import(NULL)
-    apply_import(pending$questions, pending$name)
+    apply_import(pending$questions, pending$name, files = pending$files)
   }) |> shiny::bindEvent(input$confirm_import)
 
   list(
@@ -271,8 +272,8 @@ template_persistence = function(input, output, session,
 # project: markermd_project S7 object
 # question_modules: Reactive. The app's question-module registry
 # template_dirty: Reactive. Whether the editor has unsaved changes
-# load_questions_into_editor: Function(questions). Replaces the editor's
-#   questions with the supplied list
+# load_questions_into_editor: Function(questions, files). Replaces the editor's
+#   questions (and the template's files) with the supplied ones
 
 template_snapshot_controls = function(input, output, session, project, question_modules, template_dirty,
                                       load_questions_into_editor) {
@@ -349,7 +350,7 @@ template_snapshot_controls = function(input, output, session, project, question_
       )
       return()
     }
-    load_questions_into_editor(parsed$result)
+    load_questions_into_editor(parsed$result, files = as.character(unlist(part$files)))
     shiny::showNotification(
       glue::glue("Loaded {length(parsed$result)} question{if (length(parsed$result) == 1) '' else 's'} from snapshot {id}. Save to keep them."),
       type = "message"

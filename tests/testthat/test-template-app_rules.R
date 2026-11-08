@@ -12,7 +12,7 @@ test_that("A rule shows a live pass/fail status against the document", {
 
   # Create a question, scope it to the Question 1 section, and add a default
   # rule ("Any node" / "has at least" / 1), which passes on that section.
-  app$click("add_question")
+  add_entry(app)
   app$click("ast_panel-select_children_3")
   app$click("question_1-add_rule")
 
@@ -35,7 +35,7 @@ test_that("Rule edits are captured into state before an add re-renders the rows"
     app$get_values(export = "rules_per_question")$export$rules_per_question[[1]]
   }
 
-  app$click("add_question")
+  add_entry(app)
   app$click("ast_panel-select_children_3")
   app$click("question_1-add_rule")
   app$wait_for_idle()
@@ -70,7 +70,7 @@ test_that("Deleting a rule preserves the re-indexed survivor's own values", {
     app$get_values(export = "rules_per_question")$export$rules_per_question[[1]]
   }
 
-  app$click("add_question")
+  add_entry(app)
   app$click("ast_panel-select_children_3")
   app$click("question_1-add_rule")
   app$wait_for_idle()

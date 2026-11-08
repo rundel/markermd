@@ -72,7 +72,7 @@ test_that("template() saves into the project database", {
     name = "template_project_save"
   )
 
-  app$click("add_question")
+  add_entry(app)
   app$click("save_to_project")
   app$wait_for_idle()
 
@@ -193,7 +193,7 @@ test_that("template() tracks unsaved changes and clears the flag on save", {
   app$wait_for_idle(duration = 1000)
   expect_false(app$get_values(export = "template_dirty") |> unlist(use.names = FALSE))
 
-  app$click("add_question")
+  add_entry(app)
   app$wait_for_idle(duration = 1000)
   expect_true(app$get_values(export = "template_dirty") |> unlist(use.names = FALSE))
 

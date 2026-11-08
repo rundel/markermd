@@ -18,7 +18,7 @@ test_that("Add 1 question", {
 
   expect_equal(get_n_questions(app), 0)
 
-  app$click("add_question")
+  add_entry(app)
 
   expect_equal(get_n_questions(app), 1)
 
@@ -37,8 +37,8 @@ test_that("Add 2 questions", {
   
   expect_equal(get_n_questions(app), 0)
 
-  app$click("add_question")
-  app$click("add_question")
+  add_entry(app)
+  add_entry(app)
 
   expect_equal(get_n_questions(app), 2)
 
@@ -57,8 +57,8 @@ test_that("Add 2 questions, delete 1", {
   
   expect_equal(get_n_questions(app), 0)
 
-  app$click("add_question")
-  app$click("add_question")
+  add_entry(app)
+  add_entry(app)
 
   expect_equal(get_n_questions(app), 2)
 
@@ -85,8 +85,8 @@ test_that("Add 2 questions, delete 1, add 1", {
 
   expect_equal(get_n_questions(app), 0)
   
-  app$click("add_question")
-  app$click("add_question")
+  add_entry(app)
+  add_entry(app)
 
   expect_equal(get_n_questions(app), 2)
 
@@ -98,7 +98,7 @@ test_that("Add 2 questions, delete 1, add 1", {
   expect_equal(get_n_questions(app), 1)
 
   app$wait_for_idle()
-  app$click("add_question")
+  add_entry(app)
 
   expect_equal(get_n_questions(app), 2)
 
@@ -116,7 +116,7 @@ test_that("Save Template downloads a readable YAML template", {
     name = "save_yaml"
   )
 
-  app$click("add_question")
+  add_entry(app)
   expect_equal(get_n_questions(app), 1)
 
   path = app$get_download("save_template")
@@ -137,7 +137,7 @@ test_that("Add a document question", {
     name  = "add_document"
   )
 
-  app$click("add_document_question")
+  add_entry(app, coverage = "document")
 
   expect_equal(get_n_questions(app), 1)
   expect_equal(unname(unlist(app$get_values(export = "question_names"))), "Document")
@@ -157,7 +157,7 @@ test_that("an active document entry highlights the entire tree", {
     sum(gregexpr(" selected\"", html)[[1]] > 0)
   }
 
-  app$click("add_document_question")
+  add_entry(app, coverage = "document")
   expect_gt(n_selected(), 0)
 
   # every non-root node of the document is highlighted
@@ -165,6 +165,6 @@ test_that("an active document entry highlights the entire tree", {
   expect_equal(n_selected(), 2 * length(markermd:::q2r_flatten(ast)))
 
   # a sections question with nothing selected highlights nothing
-  app$click("add_question")
+  add_entry(app)
   expect_equal(n_selected(), 0)
 })

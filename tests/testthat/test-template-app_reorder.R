@@ -17,8 +17,8 @@ test_that("moving a question down reorders the saved template, and the top guard
 
   app = new_app_driver(template(tr_file), name = "question_reorder")
 
-  app$click("add_question")
-  app$click("add_question")
+  add_entry(app)
+  add_entry(app)
   expect_equal(tr_n_questions(app), 2)
   app$wait_for_idle()
 

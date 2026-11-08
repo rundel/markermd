@@ -362,6 +362,10 @@ diff_template = function(from, to) {
   if (is.null(from) && !is.null(to)) push("(template)", "template added")
   if (!is.null(from) && is.null(to)) push("(template)", "template removed")
   if (!is.null(from) && !is.null(to)) {
+    files_a = as.character(unlist(from$files))
+    files_b = as.character(unlist(to$files))
+    for (path in setdiff(files_b, files_a)) push("(template)", "file added", path)
+    for (path in setdiff(files_a, files_b)) push("(template)", "file removed", path)
     by_id = function(x) stats::setNames(x$questions, vapply(x$questions, function(q) as.character(q$id), character(1)))
     a = by_id(from)
     b = by_id(to)
@@ -376,7 +380,8 @@ diff_template = function(from, to) {
         if (!same("node_ids")) "nodes",
         if (!same("rules")) "rules",
         if (!same("filters")) "filters",
-        if (!same("scope")) "scope"
+        if (!same("scope")) "scope",
+        if (!same("file")) "file"
       )
       if (length(changed) > 0) push(qb$name, "question changed", paste(changed, collapse = ", "))
     }

@@ -98,7 +98,8 @@ filter_group_from_list = function(x) {
 # id still serializes as a YAML sequence rather than a scalar. filters is only
 # emitted when at least one group has conditions, so filter-less templates
 # serialize exactly as before. scope is only emitted for a document-scope
-# question (which has no node_ids to write).
+# question (which has no node_ids to write), and file only for a question on
+# one of the template's other files (which has no node_ids, rules or filters).
 #
 # question: markermd_question S7 object
 
@@ -107,6 +108,10 @@ question_to_list = function(question) {
     id = as.integer(question@id),
     name = question@name
   )
+  if (is_file_question(question)) {
+    out$file = question@file
+    return(out)
+  }
   if (is_document_question(question)) {
     out$scope = "document"
   } else {
@@ -142,6 +147,9 @@ question_from_list = function(x) {
   )
   if (!is.null(x$scope)) {
     args$scope = as.character(x$scope)
+  }
+  if (!is.null(x$file)) {
+    args$file = as.character(x$file)
   }
 
   do.call(markermd_question, args)
@@ -186,14 +194,17 @@ metadata_from_list = function(x, version, total_nodes) {
   do.call(markermd_metadata, args)
 }
 
-# The lowest template format version that can represent a template: "3.1"
-# when any question is document-scope, otherwise "3.0" (so the file still
-# loads in older markermd). The version recorded in the template's metadata
-# is informational.
+# The lowest template format version that can represent a template: "3.2"
+# when it lists other files, "3.1" when any question is document-scope,
+# otherwise "3.0" (so the file still loads in older markermd). The version
+# recorded in the template's metadata is informational.
 #
 # template: markermd_template S7 object
 
 template_format_version = function(template) {
+  if (length(template@files) > 0) {
+    return("3.2")
+  }
   has_document = any(vapply(template@questions, is_document_question, logical(1)))
   if (has_document) "3.1" else markermd_template_min_version()
 }
@@ -210,6 +221,10 @@ template_to_list = function(template, source_path = NULL) {
 
   if (!is.null(source_path)) {
     out$source = list(path = source_path)
+  }
+
+  if (length(template@files) > 0) {
+    out$files = as.list(template@files)
   }
 
   out$metadata = metadata_to_list(template@metadata)
@@ -288,6 +303,7 @@ template_from_list = function(x, base_dir = ".", assignment = NULL, require_ast 
   template = markermd_template(
     original_ast = ast,
     questions = questions,
+    files = if (is.null(x$files)) character(0) else as.character(unlist(x$files)),
     metadata = metadata
   )
   attr(template, "markermd_source_path") = source_path
@@ -381,6 +397,9 @@ validate_template_file = function(path) {
   # jsonlite::toJSON(auto_unbox = TRUE) would then emit as JSON scalars. Keep
   # node_ids (and filter group/condition sequences) as arrays so single-element
   # cases still validate against the schema's array requirements.
+  if (!is.null(x$files)) {
+    x$files = as.list(x$files)
+  }
   if (!is.null(x$questions)) {
     x$questions = lapply(x$questions, function(q) {
       if (!is.null(q$node_ids)) q$node_ids = as.list(q$node_ids)

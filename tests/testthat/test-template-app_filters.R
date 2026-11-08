@@ -11,7 +11,7 @@ test_that("Filters build a q2r expression and narrow the rule evaluation set", {
 
   # Create a question, scope it to the Question 1 section, and add a default
   # rule ("Any node" / "has at least" / 1), which passes on that section.
-  app$click("add_question")
+  add_entry(app)
   app$click("ast_panel-select_children_3")
   app$click("question_1-add_rule")
   app$wait_for_idle()

@@ -144,7 +144,7 @@ mark_app = function(path, template = NULL, use_qmd = TRUE, terminal = FALSE, ter
       repo_rows = collection$repo == repo
       if (any(repo_rows)) {
         repo_ast = collection$ast[repo_rows][[1]]
-        repo_validation = validate_repo_against_rules(repo_ast, template_obj)
+        repo_validation = validate_repo_against_rules(repo_ast, template_obj, repo_dir = file.path(repos_dir, repo))
         validation_results[[repo]] = repo_validation
       }
     }
@@ -852,7 +852,8 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
     content_result = mark_content_server(
       "content_module", template_obj, collection, artifact_paths, artifact_urls, use_qmd,
       selected_question = shiny::reactive(rubric_result$selected_question()),
-      external_repo = current_repo_name
+      external_repo = current_repo_name,
+      repos_dir = repos_dir
     )
 
     # Initialize the rubric module, keyed on the content pane's repo

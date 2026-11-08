@@ -106,7 +106,9 @@ From the printed YAML record, per question:
 
 - `name` -- copy verbatim; this is the rubric's question key.
 - `node_ids` -- the heading/div anchors locating the question's section in the
-  assignment documents (used to slice the key in step 4).
+  assignment documents (used to slice the key in step 4), or `file` -- for a
+  question on one of the assignment's other files (listed under the
+  template's `files:`), the file it covers as a whole.
 
 Templates exported by older markermd versions may also carry a per-question
 `points` field; ignore it -- question points live in the rubric's scoring
@@ -186,7 +188,10 @@ Rscript -e 'o <- markermd::assignment_outline("KEYDIR"); cat(jsonlite::toJSON(li
 
 Then read the key's assignment document (`<root>/<source.path>` from step 2)
 directly, slicing each question's section from its anchor's heading to the
-next same-or-higher-level heading. For each question capture three things:
+next same-or-higher-level heading; for a question with `file:`, read that
+file in the key (`<root>/<paths.key>/<file>`) whole, along with whatever the
+README or the document says it should do. For each question capture three
+things:
 
 - the **question prose** -- what the assignment asks for;
 - the **solution code** -- the specific functions, arguments, and approach the
