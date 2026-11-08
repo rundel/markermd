@@ -4,8 +4,12 @@
 #' Quarto parser accepts them, and parses it into a q2r `pandoc` AST.
 #'
 #' Parse diagnostics are surfaced rather than stripped: error-kind
-#' diagnostics from q2r are raised as R errors and warnings as R warnings.
-#' If parsing yields an empty AST (no blocks) an error is reported.
+#' diagnostics from q2r are raised as R errors. Warning-kind diagnostics
+#' are not signalled (they would otherwise print to the console from inside
+#' the apps); they stay attached to the returned AST's `@diagnostics` slot,
+#' labelled with the document's file name, and [mark()], [template()] and
+#' [parse_project()] report them. If parsing yields an empty AST (no
+#' blocks) an error is reported.
 #'
 #' @param file_path Character. Path to the assignment file
 #' @return A q2r `pandoc` AST object for the parsed document.
@@ -17,7 +21,14 @@ parse_assignment_document = function(file_path) {
 
   lines = readLines(file_path, warn = FALSE)
   text = paste(normalize_knitr_chunks(lines), collapse = "\n")
-  ast = q2r::parse_qmd(text, quiet = FALSE)
+  ast = withCallingHandlers(
+    q2r::parse_qmd(text, quiet = FALSE),
+    q2r_parse_warning = function(w) invokeRestart("muffleWarning")
+  )
+  ast@diagnostics = lapply(ast@diagnostics, function(d) {
+    d@source_filename = basename(file_path)
+    d
+  })
 
   if (length(ast@blocks@content) == 0) {
     cli::cli_abort("Failed to parse assignment file (empty AST): {file_path}")
@@ -217,3 +228,50 @@ collection_ast_for = function(collection, repo) {
   }
 }
 
+
+# The warning-kind parse diagnostics of a parsed document (see
+# parse_assignment_document(), which keeps them instead of signalling them)
+#
+# ast: A q2r pandoc AST, or NULL
+
+document_parse_warnings = function(ast) {
+  if (is.null(ast)) {
+    return(list())
+  }
+  Filter(function(d) identical(d@kind, "warning"), ast@diagnostics)
+}
+
+# Parse diagnostics as plain text, one string each: q2r's rendering of the
+# message, the source excerpt and the hints, without ANSI styling
+#
+# diagnostics: List of q2r pampa_diagnostic objects
+
+format_parse_diagnostics = function(diagnostics) {
+  vapply(diagnostics, function(d) cli::ansi_strip(format(d, color = FALSE)), character(1))
+}
+
+# Parse warnings for the apps: an amber notice whose summary line counts
+# them and which expands to each warning's text. NULL when there are none.
+#
+# diagnostics: List of q2r pampa_diagnostic objects (warnings)
+# what: Short description of the document, for the summary line
+
+parse_warnings_ui = function(diagnostics, what = "the document") {
+  if (length(diagnostics) == 0) {
+    return(NULL)
+  }
+  n = length(diagnostics)
+  htmltools::div(
+    class = "alert alert-warning small py-2 mb-2",
+    htmltools::tags$details(
+      htmltools::tags$summary(
+        shiny::icon("triangle-exclamation", class = "me-1"),
+        paste0(n, " parser warning", if (n == 1) "" else "s", " in ", what),
+        htmltools::span(class = "text-muted ms-1", "(the document still parsed; click for details)")
+      ),
+      lapply(format_parse_diagnostics(diagnostics), function(text) {
+        htmltools::tags$pre(class = "small bg-body border rounded p-2 mt-2 mb-0", style = "white-space: pre-wrap;", text)
+      })
+    )
+  )
+}

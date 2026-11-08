@@ -18,6 +18,10 @@ Quarto parser accepts them, and parses it into a q2r \code{pandoc} AST.
 }
 \details{
 Parse diagnostics are surfaced rather than stripped: error-kind
-diagnostics from q2r are raised as R errors and warnings as R warnings.
-If parsing yields an empty AST (no blocks) an error is reported.
+diagnostics from q2r are raised as R errors. Warning-kind diagnostics
+are not signalled (they would otherwise print to the console from inside
+the apps); they stay attached to the returned AST's \verb{@diagnostics} slot,
+labelled with the document's file name, and \code{\link[=mark]{mark()}}, \code{\link[=template]{template()}} and
+\code{\link[=parse_project]{parse_project()}} report them. If parsing yields an empty AST (no
+blocks) an error is reported.
 }

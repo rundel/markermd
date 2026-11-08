@@ -573,9 +573,20 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
         easyClose = TRUE,
         footer = shiny::modalButton("Close"),
         shiny::uiOutput("repo_parse_error"),
+        shiny::uiOutput("repo_parse_warnings"),
         mark_validate_ui("explore_module")
       ))
     }
+
+    # The modal repo's parser warnings: the document parsed, but the parser
+    # flagged something (q2r keeps them on the AST rather than printing them)
+    output$repo_parse_warnings = shiny::renderUI({
+      validation_shown()
+      parse_warnings_ui(
+        document_parse_warnings(collection_ast_for(collection, validation_repo())),
+        what = "this repository's document"
+      )
+    })
 
     # Surface a missing-document or parse error for the modal's repo in place
     # of its validation results, quoting the parser's message verbatim

@@ -165,7 +165,11 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       class = "h-100",
       template_files_pane_ui(ast_module_ui(
         "ast_panel",
-        header_extra = shiny::uiOutput("active_question_badge", inline = TRUE)
+        header_extra = shiny::div(
+          class = "d-flex align-items-center gap-2",
+          shiny::uiOutput("parse_warnings_badge", inline = TRUE),
+          shiny::uiOutput("active_question_badge", inline = TRUE)
+        )
       )),
       bslib::card(
         class = "h-100",
@@ -518,6 +522,35 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     }) |>
       shiny::bindEvent(ast_result$node_clicked(), ignoreNULL = TRUE, ignoreInit = TRUE)
     
+    # The document's parser warnings: a badge in the tree's header that
+    # opens them in a modal (q2r keeps them on the AST rather than printing
+    # them to the console)
+    output$parse_warnings_badge = shiny::renderUI({
+      n = length(document_parse_warnings(ast()))
+      if (n == 0) {
+        return(NULL)
+      }
+      shiny::actionLink(
+        "show_parse_warnings",
+        paste0(n, " parser warning", if (n == 1) "" else "s"),
+        icon = shiny::icon("triangle-exclamation"),
+        class = "badge text-bg-warning fw-normal text-decoration-none"
+      )
+    })
+
+    shiny::observe({
+      shiny::showModal(shiny::modalDialog(
+        title = "Parser warnings",
+        size = "l",
+        easyClose = TRUE,
+        footer = shiny::modalButton("Close"),
+        shiny::p(class = "small text-muted", "The document parsed, but the parser flagged these. Rendering may differ from what was intended."),
+        lapply(format_parse_diagnostics(document_parse_warnings(ast())), function(text) {
+          shiny::tags$pre(class = "small bg-body-tertiary border rounded p-2", style = "white-space: pre-wrap;", text)
+        })
+      ))
+    }) |> shiny::bindEvent(input$show_parse_warnings)
+
     # Show which question tree selections will land on, since the tree's
     # highlights always reflect the active question
     output$active_question_badge = shiny::renderUI({

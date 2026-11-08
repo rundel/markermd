@@ -203,7 +203,8 @@ build_repo_table_data = function(visible, visible_idx, repo_list, collection,
   repo_df$Validation_html = purrr::map_chr(seq_along(visible), function(k) {
     validation_status_cell(
       visible[k], validation_results, template_obj, repo_errors,
-      row_index = visible_idx[k]
+      row_index = visible_idx[k],
+      n_warnings = length(document_parse_warnings(collection_ast_for(collection, visible[k])))
     )
   })
 
@@ -416,8 +417,11 @@ repo_table_reactable = function(table_data, summary_rows, totals, click_input = 
 # row_index: Integer. The repo's position in repo_list; when given, the
 #   marker becomes a button that opens the repo's validation modal (the
 #   validation_clicked input in mark-app.R). NULL renders the bare marker.
+# n_warnings: Number of parser warnings for the repo's document, shown as an
+#   amber mark after the count (the modal lists them)
 
-validation_status_cell = function(repo, validation_results, template_obj, repo_errors = list(), row_index = NULL) {
+validation_status_cell = function(repo, validation_results, template_obj, repo_errors = list(), row_index = NULL,
+                                  n_warnings = 0) {
   as_cell = function(tag) {
     if (!is.null(row_index)) {
       tag = htmltools::tags$button(
@@ -482,21 +486,35 @@ validation_status_cell = function(repo, validation_results, template_obj, repo_e
   # question names cannot inject markup.
   tooltip_text = paste(tooltip_parts, collapse = "\n")
 
+  warnings_mark = if (n_warnings > 0) {
+    htmltools::span(
+      class = "text-warning-emphasis ms-1",
+      title = paste0(n_warnings, " parser warning", if (n_warnings == 1) "" else "s", " (open to see)"),
+      shiny::icon("triangle-exclamation")
+    )
+  }
+
   if (fail_count == 0) {
     # All passed
     as_cell(htmltools::span(
-      class = "text-success",
-      title = tooltip_text,
-      shiny::icon("circle-check"),
-      paste0(" ", pass_count, "/", total_count)
+      htmltools::span(
+        class = "text-success",
+        title = tooltip_text,
+        shiny::icon("circle-check"),
+        paste0(" ", pass_count, "/", total_count)
+      ),
+      warnings_mark
     ))
   } else {
     # Has failures (including errors)
     as_cell(htmltools::span(
-      class = "text-danger",
-      title = tooltip_text,
-      shiny::icon("circle-xmark"),
-      paste0(" ", pass_count, "/", total_count)
+      htmltools::span(
+        class = "text-danger",
+        title = tooltip_text,
+        shiny::icon("circle-xmark"),
+        paste0(" ", pass_count, "/", total_count)
+      ),
+      warnings_mark
     ))
   }
 }

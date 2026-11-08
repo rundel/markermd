@@ -1926,7 +1926,7 @@ parse_project = function(path = ".", use_qmd = TRUE) {
   assignment_file = basename_or_null(attr(template_obj, "markermd_source_raw"))
   ext = if (use_qmd) "\\.qmd$" else "\\.Rmd$"
 
-  parse_captured = purrr::safely(purrr::quietly(parse_assignment_document))
+  parse_captured = purrr::safely(parse_assignment_document)
 
   rows = lapply(fs::dir_ls(repos_dir, type = "directory"), function(repo_dir) {
     repo = fs::path_file(repo_dir)
@@ -1943,9 +1943,9 @@ parse_project = function(path = ".", use_qmd = TRUE) {
     if (!is.null(res$error)) {
       status = "error"
       detail = conditionMessage(res$error)
-    } else if (length(res$result$warnings) > 0) {
+    } else if (length(document_parse_warnings(res$result)) > 0) {
       status = "warning"
-      detail = paste(res$result$warnings, collapse = "\n")
+      detail = paste(format_parse_diagnostics(document_parse_warnings(res$result)), collapse = "\n")
     } else {
       status = "ok"
       detail = NA_character_
