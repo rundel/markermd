@@ -23,9 +23,9 @@ Writes a snapshot's parts as the project's exchange files, validated by the
 same readers the imports use: \code{markermd-template.yaml} (when the snapshot
 holds a template), \code{markermd-rubric.yaml} and \code{markermd-marks.yaml}, plus a
 \code{snapshot.yaml} sidecar with the snapshot's fields and notes, so the
-directory stands alone as an archive. The rubric file drops the item and
-group ids a snapshot carries internally, so it validates against the
-published schema.
+directory stands alone as an archive. The rubric and marks files drop the
+item and group ids a snapshot carries internally, so they validate against
+the published schemas.
 }
 \examples{
 \dontrun{

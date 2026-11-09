@@ -141,16 +141,19 @@ test_that("build_repo_table_data keys buttons to the full repo_list positions", 
   expect_match(df$Progress_html[1], "1/2")
 
   # without a scores table there are no score columns
-  expect_false(any(c("Q1", "Q2", "Total") %in% names(df)))
+  expect_false(any(c("score_Q1", "score_Q2", "Total") %in% names(df)))
 })
 
 test_that("build_repo_table_data folds in the score columns and total by repository", {
   fx = mt_fixture()
   df = mt_build(fx, c("repoB", "repoA"), scores_table = mt_scores(fx))
 
-  expect_equal(df$Q1, c(6, 8))
-  expect_equal(df$Q2, c(NA, 4))
-  expect_equal(df$Total, c(6, 12))
+  # the score columns are named by question id (score_column_id()), so a
+  # question named "Total" or "Source" cannot collide with a fixed column
+  expect_equal(df$score_Q1, c(6, 8))
+  expect_equal(df$score_Q2, c(NA, 4))
+  expect_equal(df$Total, c(NA, 12))
+  expect_equal(df$Total_partial, c(6, 12))
   # the scores table's own graded count is not carried over (Progress has it)
   expect_false("Graded" %in% names(df))
   expect_equal(df$Progress, c(1L, 2L))
@@ -160,7 +163,7 @@ test_that("build_repo_table_data copes with no visible rows", {
   fx = mt_fixture()
   df = mt_build(fx, character(0), scores_table = mt_scores(fx))
   expect_equal(nrow(df), 0)
-  expect_true(all(c("Repository", "Validation", "Progress", "Q1", "Q2", "Total") %in% names(df)))
+  expect_true(all(c("Repository", "Validation", "Progress", "score_Q1", "score_Q2", "Total") %in% names(df)))
 })
 
 test_that("validation_sort_key ranks parse errors below every result and passes highest", {
@@ -202,7 +205,7 @@ test_that("repo_table_reactable renders the rows, score headers, footer and clic
   expect_match(html, "score_clicked", fixed = TRUE)
 
   js = as.character(markermd:::repo_table_click_js("score_clicked", c("Q1", "Q2")))
-  expect_match(js, '["Q1","Q2"]', fixed = TRUE)
+  expect_match(js, '{"score_Q1":"Q1","score_Q2":"Q2"}', fixed = TRUE)
   expect_match(js, "priority: 'event'", fixed = TRUE)
   expect_no_match(js, "Repository'", fixed = TRUE)
 })

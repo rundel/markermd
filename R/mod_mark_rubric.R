@@ -262,7 +262,25 @@ mark_rubric_editor_ui = function(id) {
     class = "h-100",
     bslib::card_header(
       class = "bg-light d-flex justify-content-between align-items-center",
-      shiny::span("Rubric"),
+      shiny::div(
+        class = "d-flex align-items-center gap-2",
+        shiny::span("Rubric"),
+        # The same YAML import / export as the Grade tab's rubric card, with
+        # this tab's own input ids (both tabs' panes are in the page)
+        io_menu_ui(
+          id = ns("editor_io_menu"),
+          title = "Rubric YAML",
+          export_buttons = list(
+            shiny::downloadButton(ns("editor_export_all"), "Export all", class = "btn-outline-secondary btn-sm")
+          ),
+          import_input_id = ns("editor_import_file"),
+          button_title = "Import / Export rubric"
+        ),
+        shiny::div(
+          class = "visually-hidden",
+          shiny::fileInput(ns("editor_import_file"), NULL, accept = c(".yaml", ".yml", "text/yaml"))
+        )
+      ),
       shiny::div(
         class = "rubric-editor-jump",
         shiny::selectizeInput(
@@ -315,6 +333,10 @@ rubric_hotkeys_js = function(rubric_ns, content_ns) {
 
           // Also check if there's a text selection in the page
           var hasSelection = window.getSelection && window.getSelection().toString().length > 0;
+
+          // Browser and OS shortcuts (Cmd/Ctrl+1..9 switch tabs, Cmd+Z undoes)
+          // are not ours
+          if (e.metaKey || e.ctrlKey || e.altKey) return;
 
           // Only proceed if nothing is being edited and rubric pane is visible
           if (!isInputFocused && !hasSelection) {
@@ -387,9 +409,15 @@ rubric_hotkeys_js = function(rubric_ns, content_ns) {
 #   content module's selected_repo), which grading and comments key on
 # set_repo_labels: function(choices, selected) rewriting the content pane's
 #   repo selector labels (the content module's set_repo_labels)
+# external_version: Reactive bumped when the database changed outside the app
+# active_tab: Reactive returning the app's selected navbar tab
+# app_action: Function(fn, code, call, summary, parts) running a bulk
+#   operation as a recorded action of the app (see mark-app.R); the default
+#   just runs the code
 
 mark_rubric_server = function(id, template, repos, root, database_state = NULL, selected_repo, set_repo_labels,
-                              external_version = shiny::reactive(0L), active_tab = shiny::reactive("grade")) {
+                              external_version = shiny::reactive(0L), active_tab = shiny::reactive("grade"),
+                              app_action = function(fn, code, ...) code) {
   shiny::moduleServer(id, function(input, output, session) {
 
     # Which tab draws the rubric's items, groups and scoring inputs: the
@@ -454,7 +482,7 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
         }
 
         question_grade_servers[[question_name]] = mark_grade_server(
-          paste0("grade_", question_name),
+          paste0("grade_", question_dom_id(question_name)),
           initial_grade_state,
           ui_ns = session$ns,
           collection_path = root,
@@ -572,34 +600,71 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
       reorder_items(question_name, moved$ids)
     }
 
-    # A user toggle (button click or hotkey). In an exclusive group,
-    # selecting an item deselects its selected siblings; loading a
-    # repository's stored selections goes through update_item() instead, so
-    # it never triggers this.
+    # A user toggle (button click or hotkey) for the repository on screen:
+    # the item's new state, and in an exclusive group the deselection of its
+    # selected siblings, are written as grade rows at once, here where the
+    # action happens. Loading a repository's stored selections goes through
+    # update_item() instead (apply_saved_selections()), so a load never
+    # writes.
     toggle_item = function(question_name, server) {
+      repo = shiny::isolate(selected_repo())
+      if (is.null(repo) || !identical(question_name, shiny::isolate(input$question_select))) {
+        return()
+      }
       item = server$item()
       item@selected = !item@selected
       server$update_item(item)
-      if (!item@selected || !group_is_exclusive(question_name, item@group)) {
-        return()
-      }
-      for (sibling in question_item_servers[[question_name]]) {
-        if (identical(sibling$id, server$id)) {
-          next
+      writes = stats::setNames(list(item@selected), server$id)
+      if (item@selected && group_is_exclusive(question_name, item@group)) {
+        for (sibling in question_item_servers[[question_name]]) {
+          if (identical(sibling$id, server$id)) {
+            next
+          }
+          other = sibling$item()
+          if (identical(other@group, item@group) && other@selected) {
+            other@selected = FALSE
+            sibling$update_item(other)
+            writes[[sibling$id]] = FALSE
+          }
         }
-        other = sibling$item()
-        if (identical(other@group, item@group) && other@selected) {
-          other@selected = FALSE
-          sibling$update_item(other)
-        }
       }
+      save_grade_selections(root, question_name, repo, writes)
+      bump_grading_version()
     }
 
-    # A points or description edit: persist it when it changes the item.
-    # The hotkey, group and selection are carried over untouched.
+    # Put a row's description text back to what is stored, after an edit
+    # was refused
+    reset_description = function(server) {
+      session$sendCustomMessage("markermd_item_text", list(
+        id = session$ns(paste0(server$id, "-description_text")),
+        text = server$item()@description
+      ))
+    }
+
+    # A points or description edit: persist it when it changes the item,
+    # as a recorded action. Descriptions identify items in the exchange
+    # formats, so a blank one or one another item of the question already
+    # uses is refused and the row put back. The hotkey, group and selection
+    # are carried over untouched.
     edit_item = function(question_name, server, description = NULL, points = NULL) {
       item = server$item()
       if (!is.null(description)) {
+        description = trimws(description)
+        if (!nzchar(description)) {
+          shiny::showNotification("A rubric item needs a description.", type = "warning")
+          reset_description(server)
+          return()
+        }
+        others = question_item_servers[[question_name]]
+        others = others[setdiff(names(others), server$id)]
+        if (description %in% vapply(others, function(other) other$item()@description, character(1))) {
+          shiny::showNotification(
+            glue::glue("Another item of {question_name} is already described \"{description}\"; descriptions identify items, so they must differ."),
+            type = "warning"
+          )
+          reset_description(server)
+          return()
+        }
         item@description = description
       }
       if (!is.null(points)) {
@@ -609,7 +674,12 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
         return()
       }
       server$update_item(item)
-      save_rubric_item(root, question_name, server$id, item)
+      app_action(
+        "edit rubric item",
+        call = glue::glue("mark(): edit item \"{item@description}\" of {question_name}"),
+        parts = "rubric",
+        save_rubric_item(root, question_name, server$id, item)
+      )
     }
 
     # Confirm before deleting: the item is shared across all repos and its
@@ -624,12 +694,21 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
       } else {
         "Delete this rubric item?"
       }
+      n_selected = item_selection_count(root, question_name, server$id)
+      undo = if (n_selected > 0) {
+        glue::glue(
+          "{n_selected} repositor{if (n_selected == 1) 'y has' else 'ies have'} it selected; ",
+          "a snapshot is taken first, so the deletion can be undone from the History tab."
+        )
+      } else {
+        "No repository has it selected."
+      }
       shiny::showModal(shiny::modalDialog(
         title = "Delete rubric item?",
         paste(
           label,
           "This removes it, and any recorded selections of it, for every repository.",
-          "This cannot be undone."
+          undo
         ),
         easyClose = TRUE,
         footer = shiny::tagList(
@@ -657,7 +736,12 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
           )
         )
       }
-      delete_rubric_item(root, question_name, server$id, snapshot = snapshot)
+      app_action(
+        "delete rubric item",
+        call = glue::glue("mark(): delete item \"{server$item()@description}\" of {question_name}"),
+        summary = snapshot$summary, parts = "rubric",
+        delete_rubric_item(root, question_name, server$id, snapshot = snapshot)
+      )
       bump_grading_version()
 
       # Renumber the remaining items' hotkeys (the toggle buttons are
@@ -751,10 +835,15 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
           server$update_item(item)
         }
       }
-      delete_item_group(root, question_name, group_id, snapshot = list(
-        trigger = "mark(): delete group",
-        summary = glue::glue("Removed group \"{label}\" of {question_name}; its items are now ungrouped")
-      ))
+      app_action(
+        "delete item group",
+        call = glue::glue("mark(): delete group \"{label}\" of {question_name}"),
+        parts = "rubric",
+        delete_item_group(root, question_name, group_id, snapshot = list(
+          trigger = "mark(): delete group",
+          summary = glue::glue("Removed group \"{label}\" of {question_name}; its items are now ungrouped")
+        ))
+      )
       remove_group_server(question_name, group_id)
       if (length(servers) > 0) {
         persist_item_order(root, question_name, servers)
@@ -817,6 +906,7 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
         collection_path = root,
         question_name = question_name,
         group_id = group_id,
+        app_action = app_action,
         label_available = function(label) {
           others = groups_of(question_name)
           others = others[setdiff(names(others), group_id)]
@@ -1111,13 +1201,28 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
       }
 
       # The new item goes last (ungrouped); past the tenth position it has
-      # no hotkey and is toggled by clicking (there is no cap on items)
-      new_item = markermd_rubric_item(position_hotkey(length(current_servers) + 1), 0, "")
+      # no hotkey and is toggled by clicking (there is no cap on items). It
+      # starts with a placeholder description unique in the question
+      # (descriptions identify items, so a blank one is never stored); the
+      # row selects it on focus so typing replaces it.
+      descriptions = vapply(current_servers, function(server) server$item()@description, character(1))
+      description = "New item"
+      k = 2
+      while (description %in% descriptions) {
+        description = paste("New item", k)
+        k = k + 1
+      }
+      new_item = markermd_rubric_item(position_hotkey(length(current_servers) + 1), 0, description)
 
       server = add_question_item_server(question_name, server_id, new_item)
 
       # Save new item to database (appended after the question's last item)
-      save_rubric_item(root, question_name, server_id, new_item)
+      app_action(
+        "add rubric item",
+        call = glue::glue("mark(): add item to {question_name}"),
+        parts = "rubric",
+        save_rubric_item(root, question_name, server_id, new_item)
+      )
 
       id_idx <<- id_idx + 1
 
@@ -1134,7 +1239,7 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
       shiny::insertUI(
         selector = paste0("#", session$ns("rubric_blocks")),
         where = "beforeEnd",
-        ui = mark_rubric_item_ui(session$ns(server$id), new_item)
+        ui = mark_rubric_item_ui(session$ns(server$id), new_item, fresh = TRUE)
       )
       invisible(server)
     }
@@ -1155,7 +1260,12 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
       group_id = next_item_ids(session_item_ids, 1, prefix = "group_")
       group = markermd_rubric_group(label = label)
 
-      save_item_group(root, question_name, group_id, group)
+      app_action(
+        "add item group",
+        call = glue::glue("mark(): add group to {question_name}"),
+        parts = "rubric",
+        save_item_group(root, question_name, group_id, group)
+      )
       add_question_group_server(question_name, group_id, group)
       redraw()
 
@@ -1215,10 +1325,18 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
     # A parsed rubric import awaiting confirmation while the modal is open
     pending_rubric_import = shiny::reactiveVal(NULL)
 
-    # Import: the menu button triggers the hidden file picker; parse and
-    # validate the upload, then confirm mode (append/replace) before applying
-    shiny::observe({
-      file = input$rubric_import_file
+    output$editor_export_all = shiny::downloadHandler(
+      filename = function() "markermd_rubric.yaml",
+      content = function(file) {
+        write_rubric_yaml(collect_rubric_data(root, question_names), file)
+      },
+      contentType = "text/yaml"
+    )
+
+    # Import: a menu button (in either tab) triggers its hidden file picker;
+    # parse and validate the upload, then confirm mode (append/replace)
+    # before applying
+    handle_rubric_upload = function(file) {
       parsed = purrr::safely(read_rubric_yaml)(file$datapath)
 
       if (!is.null(parsed$error)) {
@@ -1289,11 +1407,33 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
         easyClose = TRUE,
         footer = shiny::tagList(
           shiny::modalButton("Cancel"),
-          shiny::actionButton(session$ns("confirm_rubric_import"), "Import", class = "btn-danger")
+          shiny::actionButton(session$ns("confirm_rubric_import"), "Import", class = "btn-primary")
         )
       ))
+    }
+
+    shiny::observe({
+      handle_rubric_upload(input$rubric_import_file)
     }) |>
       shiny::bindEvent(input$rubric_import_file)
+
+    shiny::observe({
+      handle_rubric_upload(input$editor_import_file)
+    }) |>
+      shiny::bindEvent(input$editor_import_file)
+
+    # Replace deletes and re-records; the confirm button says so
+    shiny::observe({
+      shinyjs::toggleClass(
+        session$ns("confirm_rubric_import"), "btn-danger", asis = TRUE,
+        condition = identical(input$rubric_import_mode, "replace")
+      )
+      shinyjs::toggleClass(
+        session$ns("confirm_rubric_import"), "btn-primary", asis = TRUE,
+        condition = !identical(input$rubric_import_mode, "replace")
+      )
+    }) |>
+      shiny::bindEvent(input$rubric_import_mode)
 
     # Apply a confirmed import, then bring the live module state back in sync
     # with the database
@@ -1304,14 +1444,19 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
       shiny::req(pending)
       mode = input$rubric_import_mode
 
-      applied = purrr::safely(apply_rubric_import)(
-        root, pending$rubric, mode,
-        reserved_ids = session_item_ids,
-        snapshot = list(
-          trigger = glue::glue("mark(): Rubric import ({mode})"),
-          summary = if (nzchar(trimws(input$rubric_import_summary))) trimws(input$rubric_import_summary)
+      summary = if (nzchar(trimws(input$rubric_import_summary))) trimws(input$rubric_import_summary)
+      applied = purrr::safely(function() {
+        app_action(
+          "rubric_import",
+          call = glue::glue("mark(): rubric import (mode = '{mode}')"),
+          summary = summary, parts = "rubric",
+          apply_rubric_import(
+            root, pending$rubric, mode,
+            reserved_ids = session_item_ids,
+            snapshot = list(trigger = glue::glue("mark(): Rubric import ({mode})"), summary = summary)
+          )
         )
-      )
+      })()
       if (!is.null(applied$error)) {
         shiny::showNotification(
           paste0("Could not import rubric: ", conditionMessage(applied$error)),
@@ -1373,9 +1518,6 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
         }
       }
 
-      # Re-baseline selection tracking so the save observer records the fresh
-      # item set without writing spurious grade rows
-      previous_selections(list())
       redraw()
       if (scoring_updated) {
         grade_redraw(grade_redraw() + 1)
@@ -1624,71 +1766,9 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
       }, once = TRUE)
     })
 
-    # Store previous selection states to detect changes
-    previous_selections = shiny::reactiveVal(list())
-
-    # Observer to log grade selection changes to database
-    shiny::observe({
-      shiny::req(input$question_select,
-                 selected_repo(),
-                 cancelOutput = TRUE)
-
-      current_question = input$question_select
-      current_repo = selected_repo()
-
-      # Ensure question_item_servers is available and has the current question
-      shiny::req(length(question_item_servers) > 0, 
-                 current_question %in% names(question_item_servers),
-                 cancelOutput = TRUE)
-
-      current_servers = question_item_servers[[current_question]]
-
-      if (length(current_servers) == 0) {
-        return()
-      }
-
-      # Get current selection states
-      current_selections = purrr::map_lgl(current_servers, function(server) {
-        server$item()@selected
-      })
-      names(current_selections) = names(current_servers)
-
-      # Get previous selections for this question/repo combination
-      prev_key = paste(current_question, current_repo, sep = ":")
-      all_prev = previous_selections()
-      prev_selections = if (!is.null(all_prev) && prev_key %in% names(all_prev)) {
-        all_prev[[prev_key]]
-      } else {
-        NULL
-      }
-
-      if (!is.null(prev_selections) && length(prev_selections) > 0) {
-        # Compare with previous state and log changes
-        any_saved = FALSE
-        for (item_id in names(current_selections)) {
-          current_selected = current_selections[[item_id]]
-          prev_selected = if (item_id %in% names(prev_selections)) prev_selections[[item_id]] else NULL
-
-          # Log to database if selection state changed
-          if (is.null(prev_selected) || current_selected != prev_selected) {
-            save_grade_selection(root, current_question, current_repo, item_id, current_selected)
-            any_saved = TRUE
-          }
-        }
-        if (any_saved) {
-          bump_grading_version()
-        }
-      }
-
-      # Update stored selections
-      if (is.null(all_prev)) all_prev = list()
-      all_prev[[prev_key]] = current_selections
-      previous_selections(all_prev)
-    })
-
     # Put the current question's item servers in the selection state the
-    # database holds for the current repository and re-baseline the change
-    # tracking, so no grade rows are written for the load itself
+    # database holds for the current repository. Nothing is written: grade
+    # rows are written by toggle_item() alone.
     apply_saved_selections = function() {
       current_question = shiny::isolate(input$question_select)
       current_repo = shiny::isolate(selected_repo())
@@ -1724,18 +1804,6 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
           server$update_item(current_item)
         }
       }
-
-      # Initialize current selections in tracking
-      current_selections = purrr::map_lgl(current_servers, function(server) {
-        server$item()@selected
-      })
-      names(current_selections) = names(current_servers)
-
-      prev_key = paste(current_question, current_repo, sep = ":")
-      all_prev = shiny::isolate(previous_selections())
-      if (is.null(all_prev)) all_prev = list()
-      all_prev[[prev_key]] = current_selections
-      previous_selections(all_prev)
       invisible(NULL)
     }
 
@@ -1767,7 +1835,6 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
           grade_server$update_grade(state$grade_states[[question_name]])
         }
       }
-      previous_selections(list())
       apply_saved_selections()
       redraw()
       grade_redraw(shiny::isolate(grade_redraw()) + 1)
@@ -1804,8 +1871,8 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
         capped = result$score - result$without_groups
 
         if (result$score != current_grade_state@current_score) {
-          current_grade_state@current_score = result$score
-          current_grade_server$update_grade(current_grade_state, capped = capped)
+          # The live score is per repository; it is shown, never persisted
+          current_grade_server$set_score(result$score, capped = capped)
         } else {
           current_grade_server$refresh_display(capped)
         }
@@ -1841,8 +1908,7 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
       selected_content_repo = selected_repo,
       grading_data_version = shiny::reactive(grading_data_version()),
       question_grade_servers = question_grade_servers,
-      # For the History tab: rebuild from the database after a restore, and
-      # the ids a restore must not reuse
+      # For the History tab: rebuild from the database after a restore
       reload_from_db = reload_from_db,
       # After marks changed outside this session: put the pair on screen
       # back in the state the database holds. Returns TRUE when an unsaved
@@ -1852,7 +1918,6 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
         kept = c(refresh_comment(), refresh_private_comment())
         any(kept)
       },
-      reserved_ids = function() session_item_ids,
       current_grade = shiny::reactive({
         shiny::req(input$question_select)
         current_server = question_grade_servers[[input$question_select]]

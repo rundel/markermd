@@ -37,10 +37,10 @@ test_that("markermd_actor() reads the explicit actor and the agent markers", {
   expect_equal(markermd:::markermd_actor(c(HOME = "/tmp")), "R")
 })
 
-test_that("a fresh database is at schema 6 with action columns", {
+test_that("a fresh database is at the current schema with action columns", {
   d = make_action_project()
   markermd:::with_database(d, function(conn) {
-    expect_equal(markermd:::get_metadata(conn, "schema_version"), "6")
+    expect_equal(markermd:::get_metadata(conn, "schema_version"), markermd:::markermd_db_version())
     for (table in c("grades", "comments", "private_comments")) {
       expect_true("action_id" %in% DBI::dbListFields(conn, table))
     }
@@ -137,7 +137,7 @@ test_that("app grading is grouped by idle gaps and diffed from its events", {
   expect_equal(recent@marks$after[recent@marks$change == "comment"], "Well done")
 })
 
-test_that("a schema 5 database migrates to 6 keeping its events", {
+test_that("a schema 5 database migrates to the current schema keeping its events", {
   d = make_action_project()
   markermd:::save_grade_selection(d, "Q1", "hw01-team01", "item_0", TRUE)
   db = file.path(d, ".markermd", "markermd.sqlite")
@@ -151,7 +151,7 @@ test_that("a schema 5 database migrates to 6 keeping its events", {
   rm(list = ls(markermd:::.initialized_dbs), envir = markermd:::.initialized_dbs)
 
   markermd:::with_database(d, function(conn) {
-    expect_equal(markermd:::get_metadata(conn, "schema_version"), "6")
+    expect_equal(markermd:::get_metadata(conn, "schema_version"), markermd:::markermd_db_version())
     expect_true("action_id" %in% DBI::dbListFields(conn, "grades"))
     expect_equal(nrow(DBI::dbGetQuery(conn, "SELECT * FROM grades")), 1)
   })

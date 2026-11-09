@@ -121,7 +121,7 @@ snapshot_select_choices = function(rows) {
     return(stats::setNames(character(0), character(0)))
   }
   what = ifelse(!is.na(rows$label), rows$label, ifelse(!is.na(rows$trigger), rows$trigger, rows$kind))
-  stats::setNames(rows$snapshot_id, paste0(format(rows$created_at, "%b %d %H:%M"), " · ", what))
+  stats::setNames(rows$snapshot_id, paste0(format(rows$created_at, "%b %d %H:%M"), " \u00b7 ", what))
 }
 
 # One-line text: whitespace collapsed and cut to width with an ellipsis
@@ -145,12 +145,13 @@ history_reactable = function(data, open_input) {
     icon = switch(
       value,
       manual = "hand", auto = "gear", app = "user",
-      action = if (actor %in% c("claude", "codex")) "robot" else "terminal"
+      action = if (actor %in% c("claude", "codex")) "robot" else if (identical(actor, "app")) "pen-to-square" else "terminal"
     )
     title = switch(
       value,
       manual = "Manual snapshot", auto = "Automatic snapshot",
-      app = "Grading in the app", action = paste("A markermd call by", actor)
+      app = "Grading in the app",
+      action = if (identical(actor, "app")) "A change made in the app" else paste("A markermd call by", actor)
     )
     htmltools::tagList(
       fa_icon(icon, class = "fa-fw text-muted", title = title),
@@ -159,7 +160,7 @@ history_reactable = function(data, open_input) {
   }
   reactable::reactable(
     data[, c("created_at", "kind", "label", "summary", "trigger", "username", "mean_total", "delta_mean", "pinned", "snapshot_id"), drop = FALSE],
-    onClick = htmlwidgets::JS(glue::glue(
+    onClick = reactable::JS(glue::glue(
       "function(rowInfo) { Shiny.setInputValue('<<open_input>>', rowInfo.original.snapshot_id, {priority: 'event'}); }",
       .open = "<<", .close = ">>"
     )),
@@ -515,13 +516,15 @@ parse_metadata_lines = function(text) {
 #   writes) re-read the snapshot listing
 # reload_rubric: Function rebuilding the rubric module's state from the
 #   database after a restore
-# reserved_ids: Function returning the item and group ids the rubric module
-#   has bound this session, which a restore must not reuse
+# on_action: Zero-argument function the app passes, called after a restore
+#   made here so the app can tell its own recorded action from one noticed
+#   in the database (see note_own_action() in mark-app.R)
 # Returns: List with history_version (reactive, bumped on every snapshot
-#   change made here), status (reactive snapshot_state_status() of the
-#   live database) and open_take_snapshot (function opening the modal)
+#   change made here), status (reactive: the latest snapshot and the events
+#   since it, without the content comparison) and open_take_snapshot
+#   (function opening the modal)
 
-mark_history_server = function(id, root, question_names, refresh, reload_rubric, reserved_ids) {
+mark_history_server = function(id, root, question_names, refresh, reload_rubric, on_action) {
   shiny::moduleServer(id, function(input, output, session) {
     proj = project_config(root)
 
@@ -541,12 +544,13 @@ mark_history_server = function(id, root, question_names, refresh, reload_rubric,
       })
     })
 
-    # Whether the live state differs from the latest snapshot, and how many
-    # selection events were recorded since; the navbar indicator reads it
+    # The latest snapshot and how many selection events were recorded since
+    # it; the navbar indicator reads it after every grading write, so the
+    # content comparison (a hash of the whole grading state) is left out
     status = shiny::reactive({
       history_version()
       refresh()
-      with_database(root, snapshot_state_status)
+      with_database(root, function(conn) snapshot_state_status(conn, content = FALSE))
     })
 
     timeline = shiny::reactive({
@@ -899,7 +903,7 @@ mark_history_server = function(id, root, question_names, refresh, reload_rubric,
         ),
         shiny::p(class = "small text-muted mb-2", "The template is restored from R with ", shiny::tags$code("snapshot_restore(part = \"template\")"), " or from the template editor, since the open app was built for the current template."),
         shiny::selectizeInput(session$ns("restore_questions"), "Only these questions (optional)", choices = snap_questions, multiple = TRUE, width = "100%"),
-        shiny::selectizeInput(session$ns("restore_repos"), "Only these repositories (optional)", choices = snap_repos, multiple = TRUE, width = "100%"),
+        shiny::selectizeInput(session$ns("restore_repos"), "Only these repositories (optional; the others are left as they are)", choices = snap_repos, multiple = TRUE, width = "100%"),
         shiny::textAreaInput(session$ns("restore_summary"), "Why (required, recorded on the snapshot taken before restoring)", width = "100%", rows = 2),
         shiny::p(class = "small text-muted", preview),
         shiny::p(class = "text-danger small mb-0", "Every change since the snapshot to the chosen parts is undone. The current state is snapshotted first, so the restore can itself be undone."),
@@ -919,14 +923,15 @@ mark_history_server = function(id, root, question_names, refresh, reload_rubric,
       shiny::removeModal()
       id = selected_id()
       shiny::req(id)
-      res = purrr::safely(purrr::quietly(restore_snapshot))(
+      res = purrr::safely(purrr::quietly(snapshot_restore_action))(
         proj, id,
         part = input$restore_parts,
         question = if (length(input$restore_questions) > 0) input$restore_questions else NULL,
         repo = if (length(input$restore_repos) > 0) input$restore_repos else NULL,
         summary = trimws(input$restore_summary),
-        reserved_ids = reserved_ids()
+        actor = "app"
       )
+      on_action()
       if (notify_result(res, paste0("Restored snapshot ", id, "."))) {
         reload_rubric()
         bump()
@@ -987,7 +992,8 @@ mark_history_server = function(id, root, question_names, refresh, reload_rubric,
 
     shiny::observe({
       res = purrr::safely(purrr::quietly(project_backup))(root)
-      if (notify_result(res, paste0("Database backed up to ", fs::path_rel(res$result$result, root), "."))) {
+      message = if (is.null(res$error)) paste0("Database backed up to ", fs::path_rel(res$result$result, root), ".")
+      if (notify_result(res, message)) {
         bump()
       }
     }) |> shiny::bindEvent(input$backup)
@@ -995,7 +1001,11 @@ mark_history_server = function(id, root, question_names, refresh, reload_rubric,
     shiny::exportTestValues(
       snapshot_ids = snapshots()$snapshot_id,
       selected_snapshot = selected_id(),
-      state_changed = status()$changed
+      state_changed = with_database(root, function(conn) {
+        history_version()
+        refresh()
+        snapshot_state_status(conn)$changed
+      })
     )
 
     list(

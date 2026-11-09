@@ -6,6 +6,16 @@ insert_grade = function(conn, question, repo, item, selected, ts) {
   )
 }
 
+# Graded pairs count only selections of items the rubric has, so every
+# fixture question gets the item its grade rows name
+insert_item = function(conn, question, item) {
+  DBI::dbExecute(
+    conn,
+    "INSERT OR IGNORE INTO items (question_name, item_id, hotkey, position, points, description, created_at, updated_at) VALUES (?,?,1,1,1,?,?,?)",
+    params = list(question, item, paste(question, item), "2024-01-01 00:00:00", "2024-01-01 00:00:00")
+  )
+}
+
 insert_comment = function(conn, question, repo, text, ts) {
   DBI::dbExecute(
     conn,
@@ -28,6 +38,7 @@ test_that("calculate_grading_progress counts graded questions by most-recent sta
   dir.create(dir)
 
   markermd:::with_database(dir, function(conn) {
+    for (q in c("Q1", "Q2", "Q3")) insert_item(conn, q, "i1")
     # repoA / Q1: a selected rubric item -> graded
     insert_grade(conn, "Q1", "repoA", "i1", 1, "2024-01-01 00:00:01")
     # repoA / Q2: selected then deselected (latest grade is 0) -> not graded
@@ -55,6 +66,7 @@ test_that("calculate_grading_progress restricts to requested questions and repos
   dir.create(dir)
 
   markermd:::with_database(dir, function(conn) {
+    for (q in c("Q1", "Q2", "Q3")) insert_item(conn, q, "i1")
     insert_grade(conn, "Q1", "repoA", "i1", 1, "2024-01-01 00:00:01")
     insert_grade(conn, "Q3", "repoA", "i1", 1, "2024-01-01 00:00:01")
     invisible()
@@ -73,6 +85,7 @@ test_that("marked_question_pairs counts activity that graded_question_pairs igno
   dir.create(dir)
 
   markermd:::with_database(dir, function(conn) {
+    for (q in c("Q1", "Q2", "Q3")) insert_item(conn, q, "i1")
     # repoA / Q1: selected then deselected -> marked, not graded
     insert_grade(conn, "Q1", "repoA", "i1", 1, "2024-01-01 00:00:01")
     insert_grade(conn, "Q1", "repoA", "i1", 0, "2024-01-01 00:00:02")

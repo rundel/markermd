@@ -628,7 +628,11 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
         modules_list[[q_id_str]]$server = question_server(
           modules_list[[q_id_str]]$module_id,
           ast,
-          initial_question = modules_list[[q_id_str]]$initial_question
+          initial_question = modules_list[[q_id_str]]$initial_question,
+          name_available = local({
+            own = q_id_str
+            function(name) !name %in% question_names_except(shiny::isolate(question_modules()), own)
+          })
         )
       }
       question_modules(modules_list)
@@ -732,10 +736,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       file = if (on_document) NA_character_ else file
       name = trimws(input$new_entry_name)
       if (nzchar(name)) {
-        taken = vapply(question_modules(), function(m) {
-          q = if (!is.null(m$server)) m$server$question() else m$initial_question
-          q@name
-        }, character(1))
+        taken = question_names_except(question_modules(), NULL)
         if (name %in% taken) {
           shiny::showNotification(paste0("There is already a question named \"", name, "\"."), type = "error")
           return()
@@ -1042,6 +1043,20 @@ template_app_standalone = function(ast, template_obj = NULL, assignment_path = N
   )
 
   return(list(ui = ui, server = app_components$server))
+}
+
+# The names of the editor's questions, from the live servers where they
+# exist, leaving out one module (the question being renamed)
+#
+# modules: The question-module registry (a list keyed by question id)
+# except: The key to leave out, or NULL
+
+question_names_except = function(modules, except = NULL) {
+  modules = modules[setdiff(names(modules), except)]
+  vapply(modules, function(m) {
+    q = if (!is.null(m$server)) m$server$question() else m$initial_question
+    q@name
+  }, character(1), USE.NAMES = FALSE)
 }
 
 #' Launch the markermd Template Creation Application

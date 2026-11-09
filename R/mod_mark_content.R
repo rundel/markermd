@@ -33,34 +33,36 @@ group_consecutive_lines = function(line_numbers) {
 
 # Map a question's selected nodes to line ranges in the repo document
 #
-# Highlights every line of the displayed (normalised) document whose
-# enclosing node-id chain contains one of the question's selected ids (a
-# selected heading covers its whole section, nested subsections included; a
-# selected id'd div covers the lines between its fences).
+# Highlights every line of the document as written whose enclosing node-id
+# chain contains one of the question's selected ids (a selected heading
+# covers its whole section, nested subsections included; a selected id'd div
+# covers the lines between its fences). The chains are found on the
+# normalised text the parser saw (knitr chunk headers rewritten, see
+# normalize_knitr_chunks()) and the ranges mapped back to the file's lines.
 #
-# raw_content_lines: Character vector of the displayed (normalised) document
+# document_lines: Character vector of the document's lines as written
 # node_ids: Character vector of selected node ids (header or div ids)
 # repo_ast: q2r pandoc AST of the repo document
 
-map_content_to_lines = function(raw_content_lines, node_ids, repo_ast) {
+map_content_to_lines = function(document_lines, node_ids, repo_ast) {
   if (length(node_ids) == 0) {
     return(list())
   }
 
-  chains = line_node_id_chains(raw_content_lines, repo_ast)
+  normalized = normalize_knitr_chunks(document_lines)
+  chains = line_node_id_chains(normalized, repo_ast)
   matched = which(vapply(chains, function(chain) {
     any(node_ids %in% chain)
   }, logical(1)))
 
-  group_consecutive_lines(matched)
+  map_ranges_to_original(group_consecutive_lines(matched), attr(normalized, "line_map"))
 }
 
-# Normalised source lines of a repo's document (so knitr chunk headers match
-# the parsed AST and section-based highlighting lines up), or NULL when the
-# repo has no document on disk
+# The source lines of a repo's document as written, or NULL when the repo
+# has no document on disk
 #
 # repo_name: Character. Repository name
-# collection: Collection data frame (see parse_assignment_collection())
+# collection: Collection data frame (see parse_repo_documents())
 
 repo_document_lines = function(repo_name, collection) {
   repo_rows = collection$repo == repo_name
@@ -73,15 +75,15 @@ repo_document_lines = function(repo_name, collection) {
     return(NULL)
   }
 
-  normalize_knitr_chunks(readLines(file_path, warn = FALSE))
+  readLines(file_path, warn = FALSE)
 }
 
 # Source-view content for a repo: the Monaco editor HTML (with the given line
-# ranges decorated) plus the normalised document lines, or NULL when the repo
-# has no document
+# ranges decorated) plus the document lines, or NULL when the repo has no
+# document
 #
 # repo_name: Character. Repository name
-# collection: Collection data frame (see parse_assignment_collection())
+# collection: Collection data frame (see parse_repo_documents())
 # highlight_ranges: Optional list of start/end line ranges to decorate
 
 get_raw_document_content = function(repo_name, collection, highlight_ranges = NULL) {
@@ -127,6 +129,17 @@ mark_content_ui = function(id) {
   bslib::card(
     class = "h-100",
     full_screen = TRUE,
+    # The report frame is sandboxed and so cross-origin: the question
+    # highlight is sent to it as a message (see artifact_frame_script())
+    shiny::tags$script(shiny::HTML("
+      $(document).ready(function() {
+        Shiny.addCustomMessageHandler('markermd_frame_highlight', function(msg) {
+          var frame = document.getElementById('artifact-content-frame');
+          if (!frame || !frame.contentWindow) return;
+          frame.contentWindow.postMessage({type: 'markermd-highlight', targets: msg.targets}, '*');
+        });
+      });
+    ")),
     bslib::card_header(
       class = "bg-light",
       shiny::div(
@@ -204,7 +217,8 @@ mark_content_ui = function(id) {
 #
 # id: Character. Module namespace ID
 # template: markermd_template. Static template object containing questions
-# collection: Parsed collection data (data frame with path and ast columns)
+# collection: Reactive returning the parsed collection (data frame with repo,
+#   path and ast columns; see parse_repo_documents())
 # artifact_paths: Named character vector mapping each repo to its local HTML
 #   report path, or NA when none was found
 # artifact_urls: Named character vector mapping each repo to the URL its
@@ -247,9 +261,10 @@ mark_content_server = function(id, template, collection, artifact_paths, artifac
     }
 
     # HTML content reactive (only depends on repo and toggle, not question).
-    # The served report is embedded in a same-origin iframe so its figures and
-    # styles load while staying isolated from the app document; data-loaded
-    # tells the scroll/highlight JS when the document is ready.
+    # The report is embedded in a sandboxed iframe (see artifact_iframe()):
+    # its figures, styles and scripts work, but it cannot reach the app. The
+    # frame shows a served copy with the highlight script injected
+    # (artifact_frame_url()); its load event re-sends the current highlight.
     html_content_reactive = shiny::reactive({
       shiny::req(input$content_repo_select)
       selected_repo = input$content_repo_select
@@ -262,13 +277,13 @@ mark_content_server = function(id, template, collection, artifact_paths, artifac
         shiny::div(
           class = "d-flex flex-column h-100",
           artifact_ambiguity_note(artifact_paths, selected_repo),
-          shiny::tags$iframe(
+          artifact_iframe(
+            src = artifact_frame_url(html_path, artifact_urls[[selected_repo]]),
             id = "artifact-content-frame",
-            src = artifact_urls[[selected_repo]],
             class = "w-100 flex-grow-1 border-0 bg-white",
             style = "min-height: 70vh;",
             onload = glue::glue(
-              "this.dataset.loaded = '1'; Shiny.setInputValue('<<session$ns(\"artifact_loaded\")>>', Date.now(), {priority: 'event'});",
+              "Shiny.setInputValue('<<session$ns(\"artifact_loaded\")>>', Date.now(), {priority: 'event'});",
               .open = "<<", .close = ">>"
             )
           )
@@ -309,7 +324,7 @@ mark_content_server = function(id, template, collection, artifact_paths, artifac
       selected_repo = input$content_repo_select
 
       raw_content = get_raw_document_content(
-        selected_repo, collection,
+        selected_repo, collection(),
         highlight_ranges = shiny::isolate(highlight_ranges_reactive())
       )
 
@@ -337,11 +352,11 @@ mark_content_server = function(id, template, collection, artifact_paths, artifac
 
 
         if (!is.null(question_obj) && length(question_obj@selected_nodes@node_ids) > 0) {
-          repo_ast = collection_ast_for(collection, selected_repo)
+          repo_ast = collection_ast_for(collection(), selected_repo)
           if (!is.null(repo_ast)) {
             # Map against the raw content lines (without paying for the full
             # Monaco editor build that get_raw_document_content() does)
-            document_lines = repo_document_lines(selected_repo, collection)
+            document_lines = repo_document_lines(selected_repo, collection())
             if (!is.null(document_lines)) {
               highlight_ranges = map_content_to_lines(
                 document_lines,
@@ -373,10 +388,17 @@ mark_content_server = function(id, template, collection, artifact_paths, artifac
 
     # The current question when it covers one of the template's other files:
     # the pane then shows that file from the repository, whatever the
-    # html/source toggle says
-    file_question = shiny::reactive({
+    # html/source toggle says. Held in a reactiveVal, which only invalidates
+    # when the value changes: a plain reactive over selected_question() would
+    # rebuild the report frame (or the editor) on every question switch, even
+    # between two questions on the document.
+    file_question = shiny::reactiveVal(NULL)
+    shiny::observe({
       question = if (is.null(template) || is.null(selected_question())) NULL else template_question(template, selected_question())
-      if (!is.null(question) && is_file_question(question)) question else NULL
+      question = if (!is.null(question) && is_file_question(question)) question else NULL
+      if (!identical(question, shiny::isolate(file_question()))) {
+        file_question(question)
+      }
     })
 
     # Display content based on HTML toggle state
@@ -399,130 +421,43 @@ mark_content_server = function(id, template, collection, artifact_paths, artifac
       }
     })
 
-    # Create scrolling callback function
+    # Send the current question's targets to the report frame, which scrolls
+    # to the first and highlights them all (artifact_frame_script()). The
+    # frame is sandboxed and cross-origin, so this is a postMessage rather
+    # than a reach into its document. In the Source view the decorations are
+    # handled by the observer above.
     scroll_to_question = function(question_name) {
       shiny::req(input$content_repo_select)
-      # Handle both HTML and raw content modes
       if (!input$html_toggle) {
-        # Raw content mode - highlighting is handled by content display reactive
-        # Just trigger a content update by invalidating the reactive
         return()
       }
 
       question_obj = template_question(template, question_name)
-
-
-      if (!is.null(question_obj)) {
-        # The stored node ids are the rendered element ids to scroll to
-        node_ids = question_obj@selected_nodes@node_ids
-        if (length(node_ids) > 0) {
-          # Resolve node titles (used only as a text fallback in the scroll JS):
-          # a heading's text, or a div's first class label.
-          template_records = q2r_flatten(template@original_ast)
-          id_to_title = function(id) {
-            for (record in template_records) {
-              if (S7::S7_inherits(record$node, q2r::pandoc_header) && record$node@attr@id == id) {
-                return(q2r::ast_text(record$node))
-              }
-              if (S7::S7_inherits(record$node, q2r::pandoc_div) && nzchar(record$node@attr@id) && record$node@attr@id == id) {
-                cls = node_classes(record$node)
-                return(if (length(cls) > 0) paste0(".", cls[1]) else id)
-              }
-            }
-            id
-          }
-
-          all_target_data = lapply(node_ids, function(id) {
-            list(text = id_to_title(id), id = id)
-          })
-
-          js_target_data = jsonlite::toJSON(all_target_data, auto_unbox = TRUE)
-
-          # Scroll and highlight inside the artifact iframe. The frame is
-          # same-origin (served via addResourcePath), so this JS can reach its
-          # document; the highlight style is injected into the report itself
-          # because the app stylesheet does not apply inside the frame.
-          scroll_js = glue::glue("
-            (function attempt(retries) {
-              retries = retries || 0;
-              var frame = document.getElementById('artifact-content-frame');
-              if (!frame || frame.dataset.loaded !== '1' || !frame.contentDocument || !frame.contentDocument.body) {
-                if (retries < 50) setTimeout(function() { attempt(retries + 1); }, 200);
-                return;
-              }
-              var doc = frame.contentDocument;
-              var win = frame.contentWindow;
-
-              if (!doc.getElementById('markermd-highlight-style')) {
-                var st = doc.createElement('style');
-                st.id = 'markermd-highlight-style';
-                st.textContent =
-                  '.section-highlight-wrapper { background-color: rgba(255, 235, 59, 0.15); border-left: 3px solid rgba(255, 193, 7, 0.8); padding: 8px; padding-left: 12px; margin: 8px 0; }' +
-                  '.section-highlight-wrapper > * { margin-top: 0; }' +
-                  '.section-highlight-wrapper > *:not(:last-child) { margin-bottom: 1rem; }' +
-                  '.section-highlight-wrapper > *:last-child { margin-bottom: 0; }';
-                doc.head.appendChild(st);
-              }
-
-              // Clear any existing highlights by unwrapping previous wrappers
-              doc.querySelectorAll('.section-highlight-wrapper').forEach(function(wrapper) {
-                var parent = wrapper.parentNode;
-                while (wrapper.firstChild) parent.insertBefore(wrapper.firstChild, wrapper);
-                parent.removeChild(wrapper);
-              });
-
-              // Find a target by data-anchor-id, then element id (a rendered
-              // id'd div is <div id=...>), then heading text
-              function findTarget(target) {
-                var el = doc.querySelector('[data-anchor-id=\"' + target.id + '\"]') || doc.getElementById(target.id);
-                if (!el) {
-                  var headings = doc.querySelectorAll('h1, h2, h3, h4, h5, h6');
-                  for (var i = 0; i < headings.length; i++) {
-                    if (headings[i].textContent.trim().toLowerCase() === target.text.toLowerCase()) { el = headings[i]; break; }
-                  }
-                }
-                return el;
-              }
-
-              var targetData = <<js_target_data>>;
-
-              var firstTarget = targetData.length > 0 ? findTarget(targetData[0]) : null;
-              if (firstTarget) {
-                var rect = firstTarget.getBoundingClientRect();
-                win.scrollTo({ top: win.scrollY + rect.top - 20, behavior: 'smooth' });
-              }
-
-              targetData.forEach(function(target) {
-                var targetElement = findTarget(target);
-                if (!targetElement) return;
-
-                // A heading selects its whole section (its siblings until the
-                // next same-or-higher heading); a rendered div already
-                // contains its children, so wrap just the div element.
-                var elementsToWrap = [targetElement];
-                if (targetElement.tagName && targetElement.tagName.match(/^H[1-6]$/)) {
-                  var currentElement = targetElement.nextElementSibling;
-                  var targetLevel = parseInt(targetElement.tagName.charAt(1));
-                  while (currentElement) {
-                    if (currentElement.tagName && currentElement.tagName.match(/^H[1-6]$/)) {
-                      if (parseInt(currentElement.tagName.charAt(1)) <= targetLevel) break;
-                    }
-                    elementsToWrap.push(currentElement);
-                    currentElement = currentElement.nextElementSibling;
-                  }
-                }
-
-                var wrapper = doc.createElement('div');
-                wrapper.className = 'section-highlight-wrapper';
-                targetElement.parentNode.insertBefore(wrapper, targetElement);
-                elementsToWrap.forEach(function(element) { wrapper.appendChild(element); });
-              });
-            })(0);
-          ", .open = "<<", .close = ">>")
-
-          shinyjs::runjs(scroll_js)
-        }
+      if (is.null(question_obj)) {
+        return()
       }
+      node_ids = question_obj@selected_nodes@node_ids
+      if (length(node_ids) == 0) {
+        return()
+      }
+
+      # Node titles are the text fallback for a target the ids do not find:
+      # a heading's text, or a div's first class label
+      template_records = q2r_flatten(template@original_ast)
+      id_to_title = function(id) {
+        for (record in template_records) {
+          if (S7::S7_inherits(record$node, q2r::pandoc_header) && record$node@attr@id == id) {
+            return(q2r::ast_text(record$node))
+          }
+          if (S7::S7_inherits(record$node, q2r::pandoc_div) && nzchar(record$node@attr@id) && record$node@attr@id == id) {
+            cls = node_classes(record$node)
+            return(if (length(cls) > 0) paste0(".", cls[1]) else id)
+          }
+        }
+        id
+      }
+      targets = lapply(node_ids, function(id) list(text = id_to_title(id), id = id))
+      session$sendCustomMessage("markermd_frame_highlight", list(targets = targets))
     }
 
     # Handle question selection change for scrolling
@@ -532,9 +467,8 @@ mark_content_server = function(id, template, collection, artifact_paths, artifac
       shiny::bindEvent(selected_question(), ignoreInit = FALSE)
 
     # Re-apply the current question's highlight whenever the artifact frame
-    # (re)loads. The frame first renders only once the Grade tab is shown,
-    # which can be after the init-time scroll JS has given up retrying; it is
-    # also re-inserted on repo switches and when toggling back from the
+    # (re)loads: the frame first renders only once the Grade tab is shown, and
+    # it is re-inserted on repo switches and when toggling back from the
     # Source view, so this keeps the highlight in sync for all three cases.
     shiny::observe({
       scroll_to_question(selected_question())

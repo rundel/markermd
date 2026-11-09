@@ -188,9 +188,12 @@ artifact_ambiguity_note = function(artifact_paths, repo) {
 #
 # Serving the reports (instead of injecting their text into the page) lets a
 # non-self-contained report's sibling resources ("<name>_files/" figures, libs
-# CSS/JS) resolve, and displaying them in an iframe keeps the report's own
-# CSS/JS out of the grading app document. Same-origin on purpose: the
-# question scroll/highlight JS reaches into the report document.
+# CSS/JS) resolve. The reports are student-produced, so they are shown in
+# sandboxed iframes without allow-same-origin (see artifact_iframe()): their
+# scripts run, but in an opaque origin that cannot reach the app's page,
+# inputs or session. The grading pane's question highlight therefore runs
+# inside the frame, from a script injected into a served copy of the report
+# (artifact_frame_url()), driven by postMessage.
 #
 # artifact_paths: Named character vector from resolve_repo_artifacts()
 #
@@ -233,4 +236,162 @@ open_folder = function(folder_path) {
   # explorer.exe exits non-zero even when it successfully opens the folder, so
   # its status is not authoritative; every other launcher reports 0 on success.
   cmd == "explorer" || identical(as.integer(status), 0L)
+}
+
+# The sandbox attribute every report frame carries: scripts run (htmlwidgets,
+# MathJax, Quarto's own scripts), links may open new tabs and forms work,
+# but without allow-same-origin the frame is cross-origin to the app, so a
+# script in a report cannot reach the grading page, its inputs or its
+# session
+
+artifact_sandbox = "allow-scripts allow-popups allow-forms allow-downloads"
+
+# A sandboxed iframe showing a served report
+#
+# src: The report's URL (register_artifact_resources() or artifact_frame_url())
+# ...: Further attributes (id, class, style, onload)
+
+artifact_iframe = function(src, ...) {
+  shiny::tags$iframe(src = src, sandbox = artifact_sandbox, referrerpolicy = "no-referrer", ...)
+}
+
+# The directory the grading pane's report copies are served from (one per R
+# session, registered under the markermd_artifact_frames prefix)
+
+artifact_frame_dir = function() {
+  dir = file.path(tempdir(), "markermd_artifact_frames")
+  if (!dir.exists(dir)) {
+    dir.create(dir, recursive = TRUE)
+    shiny::addResourcePath("markermd_artifact_frames", dir)
+  }
+  dir
+}
+
+# The URL of the grading pane's copy of a report: the HTML file with a
+# <base> pointing at the served original directory (so its relative
+# resources still resolve) and the highlight script (artifact_frame_script())
+# injected into its head. The copy is keyed by the file's path and
+# modification time, so a re-rendered report gets a fresh copy and an
+# unchanged one is written once per session.
+#
+# path: The report's local path
+# url: The URL the original is served under (register_artifact_resources())
+# Returns: The copy's URL
+
+artifact_frame_url = function(path, url) {
+  dir = artifact_frame_dir()
+  key = substr(rlang::hash(list(normalizePath(path, winslash = "/"), file.mtime(path))), 1, 16)
+  copy = file.path(dir, paste0(key, ".html"))
+  if (!file.exists(copy)) {
+    html = paste(readLines(path, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+    # The copy lives one directory down from the original's prefix, so the
+    # base is a sibling path; a root-relative one would break under a proxy
+    # that serves the app below a path
+    injected = paste0(
+      "<base href=\"../", dirname(url), "/\">\n",
+      "<script>", artifact_frame_script(), "</script>\n"
+    )
+    head = regexpr("<head[^>]*>", html, ignore.case = TRUE)
+    html = if (head > 0) {
+      at = head + attr(head, "match.length")
+      paste0(substr(html, 1, at - 1), "\n", injected, substr(html, at, nchar(html)))
+    } else {
+      paste0(injected, html)
+    }
+    writeLines(enc2utf8(html), copy, useBytes = TRUE)
+  }
+  paste0("markermd_artifact_frames/", basename(copy))
+}
+
+# The script injected into the grading pane's copy of a report: on a
+# markermd-highlight message from the embedding page it clears the previous
+# highlight, scrolls to the first target and wraps every target (a heading
+# with its section, or an id'd div) in a highlighted block. Targets are found
+# by data-anchor-id, then element id, then heading text. The copy carries a
+# <base> for its resources, which would send the report's own "#section"
+# links (its table of contents) to the base URL, so those are scrolled to
+# in place instead. Nothing here reads the embedding page: the frame is
+# sandboxed and cross-origin.
+
+artifact_frame_script = function() {
+  "(function() {
+    var STYLE = '.section-highlight-wrapper { background-color: rgba(255, 235, 59, 0.15); border-left: 3px solid rgba(255, 193, 7, 0.8); padding: 8px; padding-left: 12px; margin: 8px 0; }' +
+      '.section-highlight-wrapper > * { margin-top: 0; }' +
+      '.section-highlight-wrapper > *:not(:last-child) { margin-bottom: 1rem; }' +
+      '.section-highlight-wrapper > *:last-child { margin-bottom: 0; }';
+    function ensureStyle() {
+      if (document.getElementById('markermd-highlight-style')) return;
+      var st = document.createElement('style');
+      st.id = 'markermd-highlight-style';
+      st.textContent = STYLE;
+      (document.head || document.documentElement).appendChild(st);
+    }
+    function clearHighlights() {
+      document.querySelectorAll('.section-highlight-wrapper').forEach(function(wrapper) {
+        var parent = wrapper.parentNode;
+        while (wrapper.firstChild) parent.insertBefore(wrapper.firstChild, wrapper);
+        parent.removeChild(wrapper);
+      });
+    }
+    function findTarget(target) {
+      var el = document.querySelector('[data-anchor-id=\"' + target.id + '\"]') || document.getElementById(target.id);
+      if (!el && target.text) {
+        var headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
+        for (var i = 0; i < headings.length; i++) {
+          if (headings[i].textContent.trim().toLowerCase() === target.text.toLowerCase()) { el = headings[i]; break; }
+        }
+      }
+      return el;
+    }
+    function highlight(targets) {
+      ensureStyle();
+      clearHighlights();
+      var first = targets.length > 0 ? findTarget(targets[0]) : null;
+      if (first) {
+        var rect = first.getBoundingClientRect();
+        window.scrollTo({ top: window.scrollY + rect.top - 20, behavior: 'smooth' });
+      }
+      targets.forEach(function(target) {
+        var el = findTarget(target);
+        if (!el) return;
+        // A heading selects its whole section (its siblings until the next
+        // same-or-higher heading); a rendered div already contains its
+        // children, so wrap just the div element
+        var toWrap = [el];
+        if (el.tagName && el.tagName.match(/^H[1-6]$/)) {
+          var level = parseInt(el.tagName.charAt(1));
+          var cur = el.nextElementSibling;
+          while (cur) {
+            if (cur.tagName && cur.tagName.match(/^H[1-6]$/) && parseInt(cur.tagName.charAt(1)) <= level) break;
+            toWrap.push(cur);
+            cur = cur.nextElementSibling;
+          }
+        }
+        var wrapper = document.createElement('div');
+        wrapper.className = 'section-highlight-wrapper';
+        el.parentNode.insertBefore(wrapper, el);
+        toWrap.forEach(function(node) { wrapper.appendChild(node); });
+      });
+    }
+    document.addEventListener('click', function(e) {
+      var link = e.target.closest && e.target.closest('a[href^=\"#\"]');
+      if (!link) return;
+      var id = decodeURIComponent(link.getAttribute('href').slice(1));
+      if (!id) return;
+      var el = document.getElementById(id) || document.querySelector('[name=\"' + id + '\"]');
+      if (!el) return;
+      e.preventDefault();
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    var pending = null;
+    window.addEventListener('message', function(e) {
+      var msg = e.data;
+      if (!msg || msg.type !== 'markermd-highlight' || !Array.isArray(msg.targets)) return;
+      if (document.readyState === 'loading') { pending = msg.targets; return; }
+      highlight(msg.targets);
+    });
+    document.addEventListener('DOMContentLoaded', function() {
+      if (pending) { highlight(pending); pending = null; }
+    });
+  })();"
 }

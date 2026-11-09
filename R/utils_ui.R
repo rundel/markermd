@@ -91,7 +91,7 @@ io_menu_ui = function(id, title, export_buttons, import_input_id, button_title =
 #
 # message: Text beside the spinner
 
-app_loading_overlay = function(message = "Loading…") {
+app_loading_overlay = function(message = "Loading\u2026") {
   htmltools::tagList(
     htmltools::div(
       id = "markermd-loading",
@@ -109,4 +109,19 @@ app_loading_overlay = function(message = "Loading…") {
       });
     "))
   )
+}
+
+# A DOM-safe id for a question, unique per name: the name with everything
+# outside [A-Za-z0-9_-] replaced by "_", plus a short hash of the full name
+# whenever that replacement lost information, so "Q1 (a)" and "Q1 [a]" get
+# different ids while a plain "Q2" stays "Q2". Shared by the grade servers,
+# the validation cards and the table's score columns.
+#
+# question_name: Character vector of question names
+
+question_dom_id = function(question_name) {
+  safe = gsub("[^A-Za-z0-9_-]", "_", question_name)
+  lossy = safe != question_name
+  safe[lossy] = paste0(safe[lossy], "_", substr(vapply(question_name[lossy], rlang::hash, character(1)), 1, 6))
+  safe
 }

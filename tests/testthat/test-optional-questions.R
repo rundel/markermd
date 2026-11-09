@@ -58,7 +58,7 @@ test_that("optional questions count as graded for every given repository", {
   expect_equal(unname(progress), c(2L, 2L, 1L))
 })
 
-test_that("an ungraded optional pair scores its starting score and totals stay defined", {
+test_that("an ungraded optional pair scores its starting score and does not hold the total back", {
   dir = oq_project()
   repos = c("repoA", "repoB", "repoC")
   scores = markermd:::collect_score_data(dir, c("Q1", "Document"), repos)
@@ -66,7 +66,9 @@ test_that("an ungraded optional pair scores its starting score and totals stay d
   expect_equal(doc$score, c(0, -5, 0))
 
   tbl = markermd:::build_scores_table_data(scores, c("Q1", "Document"), repos)
-  expect_equal(tbl$Total, c(10, 3, 0))
+  # repoC's Q1 is still ungraded, so only its running sum is defined
+  expect_equal(tbl$Total, c(10, 3, NA))
+  expect_equal(tbl$Total_partial, c(10, 3, 0))
   expect_equal(tbl$Graded, c(2L, 2L, 1L))
 })
 

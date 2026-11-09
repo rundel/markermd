@@ -15,8 +15,10 @@ find_repo_file = function(repo_dir, path) {
   if (file.exists(exact) && !dir.exists(exact)) {
     return(normalizePath(exact, winslash = "/"))
   }
+  # Dependency and render-output trees are skipped: they can hold thousands
+  # of files and never the submission's own
   candidates = list.files(repo_dir, recursive = TRUE, all.files = TRUE, full.names = FALSE)
-  candidates = candidates[!grepl("(^|/)\\.git(/|$)", candidates)]
+  candidates = candidates[!grepl("(^|/)(\\.git|renv|node_modules|\\.quarto|_freeze|[^/]*_files)(/|$)", candidates)]
   candidates = candidates[basename(candidates) == basename(path)]
   if (length(candidates) == 0) {
     return(NA_character_)
@@ -98,9 +100,14 @@ validate_file_question = function(question, repo_dir) {
   )
 }
 
+# The largest text file the file view embeds in the editor (the whole text
+# is sent to the browser)
+
+file_view_max_bytes = 2 * 1024^2
+
 # A read-only view of one file: its source in a Monaco editor (language from
-# the extension), an image preview, or a note for other binaries, under a
-# header naming the file. Used by the template editor's file view and by the
+# the extension), an image preview, or a note for other binaries (and for a
+# text file over file_view_max_bytes), under a header naming the file. Used by the template editor's file view and by the
 # mark app's content pane for a question on a file.
 #
 # path: Absolute path of the file, or NA when it was not found
@@ -144,6 +151,15 @@ file_view_ui = function(path, label, editor_id, note = NULL) {
     htmltools::div(
       class = "text-muted small p-3",
       paste0("Binary file, ", format(structure(file.size(path), class = "object_size"), units = "auto"), ".")
+    )
+  } else if (file.size(path) > file_view_max_bytes) {
+    htmltools::div(
+      class = "text-muted small p-3",
+      paste0(
+        "Text file of ", format(structure(file.size(path), class = "object_size"), units = "auto"),
+        ", too large to show here (the limit is ",
+        format(structure(file_view_max_bytes, class = "object_size"), units = "auto"), ")."
+      )
     )
   } else {
     content = paste(readLines(path, warn = FALSE, encoding = "UTF-8"), collapse = "\n")

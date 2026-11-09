@@ -102,8 +102,9 @@ validation_sort_key = function(repo, validation_results, repo_errors) {
 # they never sort. Validation and Progress do sort, so they hold a numeric
 # sort key (validation_sort_key(); the graded-question count) and their
 # rendered HTML sits in the hidden Validation_html / Progress_html columns
-# that the table's cell renderers read. The per-question score columns and
-# Total are copied from scores_table when the template has questions.
+# that the table's cell renderers read. The per-question score columns
+# (named score_column_id() of each question), Total and Total_partial are
+# copied from scores_table when the template has questions.
 # Every action button reports its row index through one shared input per
 # column (priority: 'event' so re-clicking the same row re-fires), keeping
 # the server at one observer per column instead of one per repo. Button ids
@@ -236,13 +237,26 @@ build_repo_table_data = function(visible, visible_idx, repo_list, collection,
 
   if (!is.null(scores_table) && length(question_names) > 0) {
     rows = match(visible, scores_table$Repository)
-    for (column in c(question_names, "Total")) {
-      repo_df[[column]] = scores_table[[column]][rows]
+    # The score columns carry ids derived from the question names, so a
+    # question named like a fixed column ("Total", "Source") cannot collide
+    # with it; the headers show the names
+    for (k in seq_along(question_names)) {
+      repo_df[[score_column_id(question_names[k])]] = scores_table[[question_names[k]]][rows]
     }
+    repo_df$Total = scores_table$Total[rows]
+    repo_df$Total_partial = scores_table$Total_partial[rows]
   }
 
   rownames(repo_df) = NULL
   repo_df
+}
+
+# The table column id of a question's score column
+#
+# question_name: Character vector of question names
+
+score_column_id = function(question_name) {
+  paste0("score_", question_dom_id(question_name))
 }
 
 # JavaScript click handler for the table: a click on a question's score cell
@@ -251,14 +265,16 @@ build_repo_table_data = function(visible, visible_idx, repo_list, collection,
 # buttons handle their own clicks) and the summary footer are ignored.
 #
 # input_id: Shiny input id to set
-# question_names: Character vector of the question column ids
+# question_names: Character vector of the question names (their columns are
+#   score_column_id() of each)
 
 repo_table_click_js = function(input_id, question_names) {
+  columns = stats::setNames(as.list(question_names), score_column_id(question_names))
   reactable::JS(glue::glue("
     function(rowInfo, column) {
-      var questions = <<jsonlite::toJSON(question_names)>>;
-      if (questions.indexOf(column.id) !== -1) {
-        Shiny.setInputValue('<<input_id>>', {repo: rowInfo.values.Repository, question: column.id}, {priority: 'event'});
+      var questions = <<jsonlite::toJSON(columns, auto_unbox = TRUE)>>;
+      if (Object.prototype.hasOwnProperty.call(questions, column.id)) {
+        Shiny.setInputValue('<<input_id>>', {repo: rowInfo.values.Repository, question: questions[column.id]}, {priority: 'event'});
       }
     }
   ", .open = "<<", .close = ">>"))
@@ -272,10 +288,12 @@ repo_table_click_js = function(input_id, question_names) {
 # with the header and footer sticky; every cell is vertically centred so the
 # icon buttons, progress bars and text line up; the Repository column absorbs
 # the width the fixed-size columns leave, up to a cap that keeps the link
-# icons near the name on a wide window. Score headers carry the points on a muted
-# second line (an optional question's name carries a small red dot), score
-# cells are tinted by their shortfall (score_tint()) and are clickable (class "score-link", styled by the app) when click_input is
-# given; totals are bold. Without questions there are no score columns,
+# icons near the name on a wide window. Score headers carry the points on a
+# muted second line (an optional question's name carries a small red dot),
+# score cells are tinted by their shortfall (score_tint()) and are clickable
+# and keyboard-reachable (class "score-link", styled by the app) when
+# click_input is given; totals are bold, and an incomplete repository's
+# running total shows in grey. Without questions there are no score columns,
 # footers or click handler.
 #
 # table_data: Data frame from build_repo_table_data()
@@ -323,7 +341,7 @@ repo_table_reactable = function(table_data, summary_rows, totals, click_input = 
     htmltools::div(class = class, lapply(values, function(value) {
       htmltools::div(
         style = "white-space: nowrap;",
-        if (nzchar(value)) value else " "
+        if (nzchar(value)) value else "\u00a0"
       )
     }))
   }
@@ -348,18 +366,55 @@ repo_table_reactable = function(table_data, summary_rows, totals, click_input = 
     )
   }
 
-  score_column = function(column, name, sub, max_points = NA_real_, bold = FALSE, class = NULL) {
+  # A score cell; with click_input it is a focusable button-like span so the
+  # click-through is reachable from the keyboard as well as the mouse (the
+  # app's page script turns Enter or Space on it into a click). Cells return
+  # tags, never HTML strings: an html = TRUE column would make reactable
+  # inject the header as a string too, breaking its two-line layout.
+  score_cell = function(value) {
+    text = format_score(value)
+    if (is.null(click_input) || !nzchar(text)) {
+      return(text)
+    }
+    htmltools::span(
+      tabindex = "0", role = "button", class = "score-link",
+      title = "Open this question for this repository in the Grade tab",
+      text
+    )
+  }
+
+  score_column = function(column, name, sub, max_points = NA_real_, bold = FALSE, class = NULL,
+                          summary_column = column, cell = function(value, index) score_cell(value)) {
     reactable::colDef(
-      header = function(value) column_header(name, sub, column %in% optional),
-      cell = function(value, index) format_score(value),
+      header = function(value) column_header(name, sub, name %in% optional),
+      cell = cell,
       style = function(value) {
         c(if (bold) list(fontWeight = "bold"), score_tint(value, max_points))
       },
       class = class,
-      footer = footer_lines(format_score(summary_rows[[column]])),
+      footer = footer_lines(format_score(summary_rows[[summary_column]])),
       sortNALast = TRUE,
       minWidth = 84,
       maxWidth = 120
+    )
+  }
+
+  # The Total column: the complete total, or the running sum so far in grey
+  # with how many questions it covers, so an incomplete repository is never
+  # mistaken for a low one
+  total_cell = function(value, index) {
+    if (!is.na(value)) {
+      return(format_score(value))
+    }
+    partial = table_data$Total_partial[index]
+    if (is.na(partial)) {
+      return("")
+    }
+    n = table_data$Progress[index]
+    htmltools::span(
+      class = "text-muted fw-normal",
+      title = paste0("Total so far: ", n, " of ", length(question_names), " questions graded"),
+      format_score(partial)
     )
   }
 
@@ -387,13 +442,16 @@ repo_table_reactable = function(table_data, summary_rows, totals, click_input = 
         stats::setNames(
           lapply(question_names, function(question_name) {
             score_column(
-              question_name, question_name, format_points(totals[[question_name]]),
-              max_points = totals[[question_name]], class = link_class
+              score_column_id(question_name), question_name, format_points(totals[[question_name]]),
+              max_points = totals[[question_name]], class = link_class, summary_column = question_name
             )
           }),
-          question_names
+          score_column_id(question_names)
         ),
-        list(Total = score_column("Total", "Total", format_points(sum(totals)), bold = TRUE))
+        list(
+          Total = score_column("Total", "Total", format_points(sum(totals)), bold = TRUE, cell = total_cell),
+          Total_partial = reactable::colDef(show = FALSE)
+        )
       )
     }
   )
@@ -492,7 +550,7 @@ validation_status_cell = function(repo, validation_results, template_obj, repo_e
   if (fail_count > 0) {
     if (length(failed_questions) > 0) {
       tooltip_parts = c(tooltip_parts, "Failed validation:")
-      tooltip_parts = c(tooltip_parts, paste("•", failed_questions))
+      tooltip_parts = c(tooltip_parts, paste("\u2022", failed_questions))
     }
   } else {
     tooltip_parts = paste("All", total_count, "validation rules passed")
@@ -578,7 +636,7 @@ grading_progress_cell = function(repo, template_obj, all_progress, graded_pairs,
   } else {
     if (length(ungraded_questions) > 0) {
       tooltip_parts = c(tooltip_parts, "Ungraded questions:")
-      tooltip_parts = c(tooltip_parts, paste("•", ungraded_questions))
+      tooltip_parts = c(tooltip_parts, paste("\u2022", ungraded_questions))
     }
   }
 

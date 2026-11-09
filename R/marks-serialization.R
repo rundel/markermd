@@ -40,6 +40,9 @@ markermd_marks_version = function() {
 
 marks_question_to_list = function(question) {
   out = list(name = question$name, items = as.list(question$items))
+  if (!is.null(question$item_ids)) {
+    out$item_ids = as.list(question$item_ids)
+  }
   if (!is.null(question$comment)) {
     out$comment = question$comment
   }
@@ -84,12 +87,35 @@ marks_question_from_list = function(x) {
     value
   }
 
-  list(
+  out = list(
     name = name,
     items = items,
     comment = read_comment("comment"),
     private_comment = read_comment("private_comment")
   )
+  # A snapshot's marks carry the selected items' database ids beside the
+  # descriptions (never the public format; see marks_without_ids())
+  if (!is.null(x$item_ids)) {
+    out$item_ids = as.character(unlist(x$item_ids))
+  }
+  out
+}
+
+# A plain marks list without the item ids a snapshot carries, for the
+# public YAML format and the content hash (a rubric replace re-mints ids
+# for identical items, which must not count as a change of the marks)
+#
+# marks: Plain marks list (marks_to_list() shape)
+
+marks_without_ids = function(marks) {
+  marks$repos = lapply(marks$repos, function(repo) {
+    repo$questions = lapply(repo$questions, function(question) {
+      question$item_ids = NULL
+      question
+    })
+    repo
+  })
+  marks
 }
 
 # One exchange-list repo entry -> plain list
@@ -176,73 +202,82 @@ marks_from_list = function(x) {
 # collection_path: Project root containing the grading database
 # repo_names: Repository names to include, in output order (NULL = all, sorted)
 # question_names: Question names to include, in output order (NULL = all, sorted)
+# ids: Whether each question entry also carries item_ids, the selected
+#   items' database ids (snapshots only; the public format never does)
 
-collect_marks_data = function(collection_path, repo_names = NULL, question_names = NULL) {
+collect_marks_data = function(collection_path, repo_names = NULL, question_names = NULL, ids = FALSE) {
   with_database(collection_path, function(conn) {
-    marks_data_from_conn(conn, repo_names = repo_names, question_names = question_names)
+    marks_data_from_conn(conn, repo_names = repo_names, question_names = question_names, ids = ids)
   })
 }
 
-# collect_marks_data() on an open connection
+# collect_marks_data() on an open connection. Every lookup is done once up
+# front (the selected ids split by pair, the comments keyed by pair), so the
+# cost is linear in the number of rows rather than pairs times rows.
 #
 # conn: DBI connection object
 # repo_names: See collect_marks_data()
 # question_names: See collect_marks_data()
+# ids: See collect_marks_data()
 
-marks_data_from_conn = function(conn, repo_names = NULL, question_names = NULL) {
-  data = list(
-    grades = load_most_recent_grades(conn),
-    comments = load_most_recent_comments(conn),
-    private_comments = load_most_recent_private_comments(conn),
-    items = DBI::dbGetQuery(conn, paste0("
-      SELECT question_name, item_id, description FROM items
-      ORDER BY question_name, ", items_display_order_sql))
-  )
+marks_data_from_conn = function(conn, repo_names = NULL, question_names = NULL, ids = FALSE) {
+  grades = load_most_recent_grades(conn)
+  comments = nonempty_comments(load_most_recent_comments(conn))
+  private_comments = nonempty_comments(load_most_recent_private_comments(conn))
+  items = DBI::dbGetQuery(conn, paste0("
+    SELECT question_name, item_id, description FROM items
+    ORDER BY question_name, ", items_display_order_sql))
 
-  comments = nonempty_comments(data$comments)
-  private_comments = nonempty_comments(data$private_comments)
-
-  pairs = unique(rbind(
-    data$grades[, c("question_name", "assignment_repo"), drop = FALSE],
-    comments[, c("question_name", "assignment_repo"), drop = FALSE],
-    private_comments[, c("question_name", "assignment_repo"), drop = FALSE]
+  pair_key = function(question, repo) paste(question, repo, sep = "\x1f")
+  active = unique(c(
+    pair_key(grades$question_name, grades$assignment_repo),
+    pair_key(comments$question_name, comments$assignment_repo),
+    pair_key(private_comments$question_name, private_comments$assignment_repo)
   ))
+  selected = grades[grades$selected == 1, , drop = FALSE]
+  selected_by_pair = split(selected$item_id, pair_key(selected$question_name, selected$assignment_repo))
+  comment_by_pair = stats::setNames(comments$comment_text, pair_key(comments$question_name, comments$assignment_repo))
+  private_by_pair = stats::setNames(
+    private_comments$comment_text, pair_key(private_comments$question_name, private_comments$assignment_repo)
+  )
+  items_by_question = split(items[c("item_id", "description")], items$question_name)
 
   if (is.null(repo_names)) {
-    repo_names = sort(unique(pairs$assignment_repo))
+    repo_names = sort(unique(c(grades$assignment_repo, comments$assignment_repo, private_comments$assignment_repo)))
   }
   if (is.null(question_names)) {
-    question_names = sort(unique(pairs$question_name))
+    question_names = sort(unique(c(grades$question_name, comments$question_name, private_comments$question_name)))
   }
 
-  lookup_comment = function(df, question_name, repo_name) {
-    hit = df$question_name == question_name & df$assignment_repo == repo_name
-    if (any(hit)) df$comment_text[hit][1] else NULL
+  lookup = function(table, key) {
+    hit = table[key]
+    if (length(hit) == 0 || is.na(hit)) NULL else unname(hit)
   }
 
   repos = list()
   for (repo_name in repo_names) {
     questions = list()
     for (question_name in question_names) {
-      active = any(pairs$question_name == question_name & pairs$assignment_repo == repo_name)
-      if (!active) {
+      key = pair_key(question_name, repo_name)
+      if (!key %in% active) {
         next
       }
-
-      selected_ids = data$grades$item_id[
-        data$grades$question_name == question_name &
-          data$grades$assignment_repo == repo_name &
-          data$grades$selected == 1
-      ]
-      question_items = data$items[data$items$question_name == question_name, , drop = FALSE]
-      selected = question_items$description[question_items$item_id %in% selected_ids]
-
-      questions[[length(questions) + 1]] = list(
+      question_items = items_by_question[[question_name]]
+      chosen = if (is.null(question_items)) {
+        character(0)
+      } else {
+        question_items$item_id %in% selected_by_pair[[key]]
+      }
+      entry = list(
         name = question_name,
-        items = selected,
-        comment = lookup_comment(comments, question_name, repo_name),
-        private_comment = lookup_comment(private_comments, question_name, repo_name)
+        items = if (is.null(question_items)) character(0) else question_items$description[chosen],
+        comment = lookup(comment_by_pair, key),
+        private_comment = lookup(private_by_pair, key)
       )
+      if (ids) {
+        entry$item_ids = if (is.null(question_items)) character(0) else question_items$item_id[chosen]
+      }
+      questions[[length(questions) + 1]] = entry
     }
 
     if (length(questions) > 0) {

@@ -127,16 +127,28 @@ create_rule_verb_inputs = function(verb, value, values_id) {
   }
 
   switch(verb,
+    # Two plain numeric inputs (<values_id>_min, <values_id>_max); the row
+    # machine reads them back together as c(min, max)
     "has between" = {
+      bound = function(suffix, bound_value, label) {
+        shiny::div(
+          style = "flex: 1 1 0; min-width: 0;",
+          shiny::numericInput(
+            paste0(values_id, "_", suffix),
+            NULL,
+            value = bound_value,
+            min = 0,
+            step = 1,
+            width = "100%"
+          )
+        )
+      }
       input_wrapper(
-        shinyWidgets::numericRangeInput(
-          values_id,
-          NULL,
-          value = value,
-          min = 0,
-          max = 100,
-          step = 1,
-          width = "100%"
+        shiny::div(
+          class = "d-flex align-items-center gap-1 rule-range-inputs",
+          bound("min", value[1], "minimum"),
+          shiny::span(class = "text-muted", "to"),
+          bound("max", value[2], "maximum")
         )
       )
     },

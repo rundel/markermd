@@ -135,13 +135,17 @@ question_rules_server = function(input, output, session, state, ast) {
       picked_node_types
     }
     final_verb = if (!is.null(input[[verb_input]])) input[[verb_input]] else rule@verb
-    final_values = if (!is.null(input[[values_input]])) {
-      values_value = input[[values_input]]
-      if (is.null(validate_rule_values(final_verb, values_value))) {
-        values_value
-      } else {
-        invalid_values_fallback(final_verb, rule)
-      }
+    # "has between" is two numeric inputs (see create_rule_verb_inputs()),
+    # read back together; a half-filled pair falls back like a missing input
+    values_value = if (identical(final_verb, "has between")) {
+      lo = input[[paste0(values_input, "_min")]]
+      hi = input[[paste0(values_input, "_max")]]
+      if (!is.null(lo) && !is.null(hi) && !is.na(lo) && !is.na(hi)) c(lo, hi) else NULL
+    } else {
+      input[[values_input]]
+    }
+    final_values = if (!is.null(values_value) && is.null(validate_rule_values(final_verb, values_value))) {
+      values_value
     } else {
       invalid_values_fallback(final_verb, rule)
     }
@@ -192,7 +196,7 @@ question_rules_server = function(input, output, session, state, ast) {
   # unchanged.
   freeze_rule_inputs = function(rule_ids) {
     for (rule_id in rule_ids) {
-      for (field in c("node_types", "verb", "values")) {
+      for (field in c("node_types", "verb", "values", "values_min", "values_max")) {
         shiny::freezeReactiveValue(input, paste0("rule_", rule_id, "-", field))
       }
     }

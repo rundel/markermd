@@ -164,16 +164,43 @@ template_persistence = function(input, output, session,
   # (skipped when nothing changed since the latest snapshot).
   shiny::observe({
     src_rel = if (!is.null(source_path)) as.character(fs::path_rel(source_path, project@root)) else NULL
-    save_template_to_db(
+    saved = purrr::safely(save_template_to_db)(
       project@root, build_current_template(), source_path = src_rel,
       snapshot = list(trigger = "template(): save")
     )
+    if (!is.null(saved$error)) {
+      shiny::showNotification(
+        paste0("Could not save the template: ", conditionMessage(saved$error)),
+        type = "error", duration = NULL
+      )
+      return()
+    }
     mark_saved()
 
-    shiny::showNotification(
-      "Saved template to the project database.",
-      type = "message"
-    )
+    changes = saved$result
+    shiny::showNotification("Saved template to the project database.", type = "message")
+    for (i in seq_len(nrow(changes$renamed))) {
+      shiny::showNotification(
+        glue::glue("Carried the grading of \"{changes$renamed$from[i]}\" over to its new name \"{changes$renamed$to[i]}\"."),
+        type = "message", duration = 10
+      )
+    }
+    for (i in seq_len(nrow(changes$skipped))) {
+      shiny::showNotification(
+        glue::glue("\"{changes$skipped$from[i]}\" was renamed to \"{changes$skipped$to[i]}\", which already holds grading; its own grading stays under the old name."),
+        type = "warning", duration = NULL
+      )
+    }
+    if (length(changes$orphaned) > 0) {
+      shiny::showNotification(
+        glue::glue(
+          "Removed question{if (length(changes$orphaned) == 1) '' else 's'} ",
+          "{paste0('\"', changes$orphaned, '\"', collapse = ', ')} still hold{if (length(changes$orphaned) == 1) 's' else ''} grading, ",
+          "which mark() and the exports no longer show; add the question back under the same name to see it again."
+        ),
+        type = "warning", duration = NULL
+      )
+    }
   }) |> shiny::bindEvent(input$save_to_project)
 
   # Snapshots (project sessions): take a named snapshot of the project's

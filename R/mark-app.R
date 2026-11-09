@@ -94,27 +94,6 @@ mark_app = function(path, template = NULL, use_qmd = TRUE, terminal = FALSE, ter
     })
   }
 
-  # Parse the collection (knitr-style chunk headers are normalised per file).
-  # Parse failures are captured per document, not raised, so one bad student
-  # qmd does not abort the app; failing repos stay visible with their error.
-  collection = parse_assignment_collection(repos_dir, use_qmd)
-
-  # Attribute each document to the top-level repo directory it lives under:
-  # the search is recursive, so a document may sit in a subdirectory of its
-  # repo and basename(dirname(path)) would misattribute it
-  collection$repo = if (nrow(collection) > 0) {
-    vapply(
-      fs::path_split(fs::path_rel(collection$path, repos_dir)),
-      function(parts) parts[[1]],
-      character(1)
-    )
-  } else {
-    character(0)
-  }
-
-  validation_results = list()
-  initial_repo_name = NULL
-
   # Every top-level directory under repos/ is a repository, so students with a
   # missing or unparseable document still get a row in the table instead of
   # silently vanishing.
@@ -126,29 +105,17 @@ mark_app = function(path, template = NULL, use_qmd = TRUE, terminal = FALSE, ter
     cli::cli_abort("No repositories found in repos directory: {repos_dir}")
   }
 
-  # Per-repo problem messages: a missing document or the parse error verbatim
-  doc_ext = if (use_qmd) ".qmd" else ".Rmd"
-  repo_errors = list()
-  for (repo in repo_list) {
-    repo_rows = which(collection$repo == repo)
-    if (length(repo_rows) == 0) {
-      repo_errors[[repo]] = paste0("No ", doc_ext, " document found in this repository.")
-    } else if (is.null(collection$ast[repo_rows][[1]])) {
-      repo_errors[[repo]] = collection$error[repo_rows[1]]
-    }
-  }
+  # Parse one document per repository (knitr-style chunk headers are
+  # normalised per file): the document validate_project() and parse_project()
+  # pick, so the app and the headless checks agree. Parse failures are
+  # captured per repository, not raised, so one bad student qmd does not
+  # abort the app; failing repos stay visible with their error.
+  assignment_file = basename_or_null(attr(template_obj, "markermd_source_raw"))
+  collection = parse_repo_documents(repos_dir, repo_list, assignment_file, use_qmd)
 
-  # Validate all repositories that parsed if a template is available
-  if (!is.null(template_obj)) {
-    for (repo in setdiff(repo_list, names(repo_errors))) {
-      repo_rows = collection$repo == repo
-      if (any(repo_rows)) {
-        repo_ast = collection$ast[repo_rows][[1]]
-        repo_validation = validate_repo_against_rules(repo_ast, template_obj, repo_dir = file.path(repos_dir, repo))
-        validation_results[[repo]] = repo_validation
-      }
-    }
-  }
+  checked = check_repo_documents(collection, repo_list, template_obj, repos_dir, use_qmd)
+  repo_errors = checked$errors
+  validation_results = checked$validation
 
   # Detect GitHub remotes so the table can link each repo to its GitHub page
   repo_to_github = list()
@@ -244,6 +211,37 @@ resolve_mark_template = function(project, template) {
 }
 
 
+# The per-repository problem messages (a missing document or the parse error
+# verbatim) and validation results for a parsed collection. Shared by the
+# app's startup and its per-repository re-check.
+#
+# collection: Data frame from parse_repo_documents()
+# repo_list: The repository names to report on
+# template_obj: markermd_template object, or NULL (no validation)
+# repos_dir: The directory holding the repositories
+# use_qmd: Whether the documents are .qmd (TRUE) or .Rmd (FALSE)
+# Returns: List with errors (named list by repo) and validation (named list
+#   by repo of validate_repo_against_rules() results)
+
+check_repo_documents = function(collection, repo_list, template_obj, repos_dir, use_qmd) {
+  doc_ext = if (use_qmd) ".qmd" else ".Rmd"
+  errors = list()
+  validation = list()
+  for (repo in repo_list) {
+    repo_rows = which(collection$repo == repo)
+    if (length(repo_rows) == 0) {
+      errors[[repo]] = paste0("No ", doc_ext, " document found in this repository.")
+    } else if (is.null(collection$ast[repo_rows][[1]])) {
+      errors[[repo]] = collection$error[repo_rows[1]]
+    } else if (!is.null(template_obj)) {
+      validation[[repo]] = validate_repo_against_rules(
+        collection$ast[repo_rows][[1]], template_obj, repo_dir = file.path(repos_dir, repo)
+      )
+    }
+  }
+  list(errors = errors, validation = validation)
+}
+
 # Create the Shiny application object for the marking interface
 #
 # root: Project root directory (base for the grading database, under .markermd/)
@@ -267,7 +265,7 @@ resolve_mark_template = function(project, template) {
 create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collection, repo_list, validation_results, initial_repo_name, artifact_paths, repo_to_github, database_state = NULL, repo_errors = list(), terminal_commands = NULL, terminal_token = NULL) {
 
   # Serve each repo's artifact via addResourcePath so the report's sibling
-  # resources resolve; both viewers embed these URLs in same-origin iframes
+  # resources resolve; the viewers embed these URLs in sandboxed iframes
   artifact_urls = register_artifact_resources(artifact_paths)
 
   # Define UI
@@ -295,6 +293,16 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
         fa_dependency(),
         mark_validate_script("explore_module"),
         rubric_item_editing_head(),
+        # A focused score cell in the Assignments table opens on Enter or
+        # Space like a click (the cells are plain spans; see score_cell())
+        shiny::tags$script(shiny::HTML("
+          document.addEventListener('keydown', function(e) {
+            if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('#repo_table .score-link')) {
+              e.preventDefault();
+              e.target.click();
+            }
+          });
+        ")),
         shiny::tags$style(shiny::HTML('
           /* Content repo select styling - selectize */
           .selectize-control.single .selectize-input {
@@ -534,6 +542,52 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
     initial_template_stamp = template_stamp()
     watch_project_db(root, session, function() db_changed(shiny::isolate(db_changed()) + 1L))
 
+    # The parsed documents and their validation, re-read for one repository
+    # on request (the validation modal's Re-check, after a submission was
+    # repaired in place); everything that shows them reads these
+    collection_rv = shiny::reactiveVal(collection)
+    validation_rv = shiny::reactiveVal(validation_results)
+    errors_rv = shiny::reactiveVal(repo_errors)
+    assignment_file = basename_or_null(attr(template_obj, "markermd_source_raw"))
+
+    recheck_repo = function(repo) {
+      fresh = parse_repo_documents(repos_dir, repo, assignment_file, use_qmd)
+      rows = collection_rv()
+      rows = rbind(rows[rows$repo != repo, , drop = FALSE], fresh)
+      rows = rows[order(match(rows$repo, repo_list)), , drop = FALSE]
+      rownames(rows) = NULL
+      collection_rv(rows)
+      checked = check_repo_documents(fresh, repo, template_obj, repos_dir, use_qmd)
+      errors = errors_rv()
+      errors[[repo]] = checked$errors[[repo]]
+      errors_rv(errors)
+      validation = validation_rv()
+      validation[[repo]] = checked$validation[[repo]]
+      validation_rv(validation)
+      invisible(NULL)
+    }
+
+    # The actions this session recorded itself (rubric edits and imports,
+    # restores; see with_action()), so the external-change watcher below does
+    # not announce them as changes made outside the app
+    own_action_ids = character(0)
+    note_own_action = function() {
+      id = last_recorded_action_id()
+      if (!is.null(id)) {
+        own_action_ids <<- c(own_action_ids, id)
+      }
+      invisible(id)
+    }
+
+    # Run a bulk operation of the app as a recorded action with the actor
+    # "app" (see with_action()); the rubric module's imports, edits and
+    # deletions go through it
+    app_action = function(fn, code, call = fn, summary = NULL, parts = character(0)) {
+      result = withVisible(with_action(root, fn, code, call = call, summary = summary, parts = parts, actor = "app"))
+      note_own_action()
+      if (result$visible) result$value else invisible(result$value)
+    }
+
     # Reactive values for user selections
     current_repo_name = shiny::reactiveVal(initial_repo_name)
 
@@ -569,14 +623,22 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
               "explore_module",
               validation_question_choices(
                 if (is.null(template_obj)) character(0) else template_question_names(template_obj),
-                validation_results[[repo]]
+                shiny::isolate(validation_rv())[[repo]]
               )
             )
           )
         ),
         size = "xl",
         easyClose = TRUE,
-        footer = shiny::modalButton("Close"),
+        footer = shiny::tagList(
+          # Re-parse and re-validate this repository, for a submission
+          # repaired while the app is open (the Terminal tab, an editor)
+          bslib::tooltip(
+            shiny::actionButton("revalidate_repo", "Re-check", icon = fa_icon("rotate"), class = "btn-outline-secondary"),
+            "Parse and validate this repository's document again"
+          ),
+          shiny::modalButton("Close")
+        ),
         shiny::uiOutput("repo_parse_error"),
         shiny::uiOutput("repo_parse_warnings"),
         mark_validate_ui("explore_module")
@@ -588,16 +650,24 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
     output$repo_parse_warnings = shiny::renderUI({
       validation_shown()
       parse_warnings_ui(
-        document_parse_warnings(collection_ast_for(collection, validation_repo())),
+        document_parse_warnings(collection_ast_for(collection_rv(), validation_repo())),
         what = "this repository's document"
       )
     })
+
+    shiny::observe({
+      repo = validation_repo()
+      shiny::req(repo)
+      recheck_repo(repo)
+      show_validation_modal()
+      shiny::showNotification(paste0("Re-checked ", repo, "."), type = "message")
+    }) |> shiny::bindEvent(input$revalidate_repo)
 
     # Surface a missing-document or parse error for the modal's repo in place
     # of its validation results, quoting the parser's message verbatim
     output$repo_parse_error = shiny::renderUI({
       validation_shown()
-      err = repo_errors[[validation_repo()]]
+      err = errors_rv()[[validation_repo()]]
       if (is.null(err)) return(NULL)
       shiny::div(
         class = "alert alert-danger d-flex align-items-start gap-2 small mb-2",
@@ -676,8 +746,8 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
         repo_list,
         name_filter = repo_name_filter(),
         status_filter = input$repo_status_filter,
-        validation_results = validation_results,
-        repo_errors = repo_errors,
+        validation_results = validation_rv(),
+        repo_errors = errors_rv(),
         all_progress = state$all_progress,
         question_names = state$question_names
       )
@@ -686,12 +756,12 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
         visible = visible,
         visible_idx = match(visible, repo_list),
         repo_list = repo_list,
-        collection = collection,
+        collection = collection_rv(),
         artifact_paths = artifact_paths,
         repo_to_github = repo_to_github,
-        validation_results = validation_results,
+        validation_results = validation_rv(),
         template_obj = template_obj,
-        repo_errors = repo_errors,
+        repo_errors = errors_rv(),
         all_progress = state$all_progress,
         graded_pairs = state$graded_pairs,
         question_names = state$question_names,
@@ -731,8 +801,8 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       # Only process if this repo has a resolved local report
       if (!is.na(cached_path)) {
         if (file.exists(cached_path)) {
-          # Show the served report in an iframe so its figures and
-          # styles load without touching the app document
+          # Show the served report in a sandboxed iframe so its figures
+          # and styles load without its scripts reaching the app
           shiny::showModal(
             shiny::modalDialog(
               title = repo,
@@ -750,7 +820,7 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
               artifact_ambiguity_note(artifact_paths, repo),
               shiny::div(
                 style = "height: 70vh;",
-                shiny::tags$iframe(
+                artifact_iframe(
                   src = artifact_urls[[repo]],
                   class = "w-100 h-100 border rounded bg-white"
                 )
@@ -779,9 +849,10 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       repo = repo_list[input$source_clicked]
 
       # Find the source file path from collection
-      repo_rows = collection$repo == repo
+      rows = collection_rv()
+      repo_rows = rows$repo == repo
       if (any(repo_rows)) {
-        file_path = collection$path[repo_rows][1]
+        file_path = rows$path[repo_rows][1]
 
         if (file.exists(file_path)) {
           # Read the raw source content
@@ -859,11 +930,11 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       "explore_module",
       ast = shiny::reactive({
         validation_shown()
-        collection_ast_for(collection, validation_repo())
+        collection_ast_for(collection_rv(), validation_repo())
       }),
       validation_results = shiny::reactive({
         validation_shown()
-        validation_results[[validation_repo()]]
+        validation_rv()[[validation_repo()]]
       }),
       template = shiny::reactiveVal(template_obj),
       on_back = show_validation_modal
@@ -875,7 +946,7 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
     # lazy forward reference: reactives only evaluate at flush time, after
     # rubric_result is assigned below.
     content_result = mark_content_server(
-      "content_module", template_obj, collection, artifact_paths, artifact_urls, use_qmd,
+      "content_module", template_obj, collection_rv, artifact_paths, artifact_urls, use_qmd,
       selected_question = shiny::reactive(rubric_result$selected_question()),
       external_repo = current_repo_name,
       repos_dir = repos_dir
@@ -891,7 +962,8 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       selected_repo = content_result$selected_repo,
       set_repo_labels = content_result$set_repo_labels,
       external_version = shiny::reactive(external_version()),
-      active_tab = shiny::reactive(input$main_navbar)
+      active_tab = shiny::reactive(input$main_navbar),
+      app_action = app_action
     )
 
     # A commit by another connection: list the markermd calls recorded since
@@ -902,12 +974,16 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
     # banner instead.
     shiny::observe({
       rows = with_database(root, function(conn) action_rows(conn, "id > ?", list(last_action_id)))
+      if (nrow(rows) > 0) {
+        last_action_id <<- max(rows$id)
+        # This session's own actions already show in place
+        rows = rows[!rows$action_id %in% own_action_ids, , drop = FALSE]
+      }
       changed_template = !identical(template_stamp(), initial_template_stamp)
       if (nrow(rows) == 0 && !changed_template) {
         return()
       }
       if (nrow(rows) > 0) {
-        last_action_id <<- max(rows$id)
         external_version(shiny::isolate(external_version()) + 1L)
         lines = vapply(seq_len(nrow(rows)), function(i) action_notice_text(rows[i, , drop = FALSE]), character(1))
         shiny::showNotification(
@@ -986,7 +1062,7 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       question_names = if (is.null(template_obj)) character(0) else template_question_names(template_obj),
       refresh = shiny::reactive(list(rubric_result$grading_data_version(), external_version(), input$main_navbar)),
       reload_rubric = rubric_result$reload_from_db,
-      reserved_ids = rubric_result$reserved_ids
+      on_action = note_own_action
     )
 
     output$snapshot_status = shiny::renderUI({

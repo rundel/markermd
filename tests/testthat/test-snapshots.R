@@ -2,62 +2,6 @@
 # imports take, listing and resolving, diffing, restoring, exporting and
 # retention (snapshots.R, snapshot-diff.R).
 
-# An initialized project with a two-question template, a rubric (Q1 with an
-# exclusive group, Q2 plain) and marks for two repositories
-sn_project = function() {
-  d = tempfile("snapproj_")
-  dir.create(file.path(d, "repos", "hw01-team01"), recursive = TRUE)
-  dir.create(file.path(d, "repos", "hw01-team02"))
-  d = normalizePath(d, winslash = "/")
-  writeLines(c(
-    sprintf("format_version: '%s'", markermd:::markermd_template_version()),
-    "source:", "  path: hw1.qmd", "questions:",
-    "  - id: 1", "    name: Q1", "  - id: 2", "    name: Q2"
-  ), file.path(d, "template.yaml"))
-  suppressMessages(init_project(d))
-  suppressMessages(template_import("template.yaml", project = d))
-  d
-}
-
-sn_rubric_yaml = function() {
-  path = tempfile(fileext = ".yaml")
-  writeLines(c(
-    "format_version: '1.1'", "questions:",
-    "- name: Q1", "  scoring:", "    total_score: 10", "    grading_mode: negative",
-    "  items:", "  - points: 0", "    description: Looks good", "  - points: -3", "    description: Issue A",
-    "  - group: Tiers", "    exclusive: true", "    items:",
-    "    - points: -1", "      description: Minor", "    - points: -4", "      description: Major",
-    "- name: Q2", "  items:", "  - points: 5", "    description: Half credit", "  - points: 10", "    description: Full credit"
-  ), path)
-  path
-}
-
-# The project above with the rubric imported and three pairs marked
-sn_graded_project = function() {
-  d = sn_project()
-  suppressMessages(rubric_import(sn_rubric_yaml(), project = d, summary = "Initial rubric"))
-  suppressMessages({
-    marks_set("hw01-team01", "Q1", items = c("Issue A", "Minor"), private_comment = "note", project = d)
-    marks_set("hw01-team02", "Q1", items = "Looks good", comment = "Nice", project = d)
-    marks_set("hw01-team01", "Q2", items = "Full credit", project = d)
-  })
-  d
-}
-
-sn_query = function(d, sql) {
-  markermd:::with_database(d, function(conn) DBI::dbGetQuery(conn, sql))
-}
-
-# Descriptions of the items currently selected for a pair (a restore mints
-# fresh item ids, so selections are compared by description)
-sn_selected = function(d, question, repo) {
-  items = markermd:::load_rubric_items(d, question)
-  sel = markermd:::load_grade_selections(d, question, repo)
-  chosen = names(sel)[unlist(sel)]
-  unname(vapply(items[intersect(names(items), chosen)], function(item) item@description, character(1)))
-}
-
-
 # --- Payload, hashing and the writer ------------------------------------------
 
 test_that("canonical_json sorts keys recursively so construction order does not matter", {
@@ -509,13 +453,24 @@ test_that("snapshot_restore brings the rubric, marks and scores back and snapsho
   after = snapshot_scores(project = d)
   expect_equal(after, before[order(before$assignment_repo, before$question_name), ], ignore_attr = TRUE)
 
-  # The exports equal the exports taken at snapshot time: the rubric replace
-  # dropped the grade events of the pair the snapshot did not know, and its
-  # private note was cleared, so it no longer counts as marked
+  # The exports equal the exports taken at snapshot time: the pair the
+  # snapshot did not know was cleared (its selections deselected and its
+  # private note emptied), so it no longer counts as marked
   rubric_after = tempfile(fileext = ".yaml"); marks_after = tempfile(fileext = ".yaml")
   rubric_export(rubric_after, project = d); marks_export(marks_after, project = d)
   expect_identical(readLines(rubric_after), readLines(rubric_before))
-  expect_identical(readLines(marks_after), readLines(marks_before))
+  # The pair graded after the snapshot was cleared in place (the tables are
+  # append-only logs), so it exports as items: [] while every other pair is
+  # exactly as before
+  after = read_marks_yaml(marks_after)
+  team02 = after$repos[[which(vapply(after$repos, function(r) r$name, character(1)) == "hw01-team02")]]
+  cleared = team02$questions[[which(vapply(team02$questions, function(q) q$name, character(1)) == "Q2")]]
+  expect_equal(cleared$items, character(0))
+  expect_null(cleared$comment)
+  expect_null(cleared$private_comment)
+  team02$questions = Filter(function(q) q$name != "Q2", team02$questions)
+  after$repos[[2]] = team02
+  expect_equal(after, read_marks_yaml(marks_before))
   expect_null(markermd:::load_private_comment(d, "Q2", "hw01-team02") |> (\(x) if (identical(x, "")) NULL else x)())
 
   # Nothing changed between the snapshot and now
@@ -539,9 +494,9 @@ test_that("snapshot_restore narrows to questions and repositories and validates 
   suppressMessages(snapshot_restore("Before", project = d, question = "Q1"))
   expect_setequal(sn_selected(d, "Q1", "hw01-team01"), c("Issue A", "Minor"))
   expect_equal(sn_selected(d, "Q2", "hw01-team01"), "Half credit")
-  # Q2's items were left alone (same ids), Q1's were re-created
+  # Every item keeps its id: the restore writes the snapshot's items in place
   expect_named(markermd:::load_rubric_items(d, "Q2"), c("item_4", "item_5"))
-  expect_false(any(c("item_0", "item_1") %in% names(markermd:::load_rubric_items(d, "Q1"))))
+  expect_named(markermd:::load_rubric_items(d, "Q1"), c("item_0", "item_1", "item_2", "item_3"))
 
   expect_error(snapshot_restore("Before", project = d, question = "Q9"), "not in this snapshot")
   expect_error(snapshot_restore("Before", project = d, repo = "nobody"), "not in this snapshot")
@@ -636,7 +591,8 @@ test_that("snapshot_scores returns cached or live scores in the same layout", {
   expect_true("(total)" %in% cached$question_name)
   wide = markermd:::snapshot_scores_wide(cached, c("Q1", "Q2"))
   expect_equal(wide$Repository, c("hw01-team01", "hw01-team02"))
-  expect_equal(wide$Total, c(16, 10))
+  expect_equal(wide$Total, c(16, NA))
+  expect_equal(wide$Total_partial, c(16, 10))
   expect_equal(wide$Graded, c(2L, 1L))
 })
 
@@ -758,7 +714,7 @@ test_that("the history table helpers derive deltas, search text and metadata", {
   expect_equal(data$delta_mean[1], 15.5 - 16)
   expect_true(is.na(data$delta_mean[nrow(data)]))
   expect_match(data$search_text[2], "one first")
-  expect_s3_class(markermd:::history_reactable(data), "reactable")
+  expect_s3_class(markermd:::history_reactable(data, "open"), "reactable")
   expect_length(markermd:::snapshot_select_choices(data[0, ]), 0)
   expect_equal(unname(markermd:::snapshot_select_choices(data)[1]), data$snapshot_id[1])
   expect_match(names(markermd:::snapshot_select_choices(data))[2], "One$")

@@ -11,13 +11,15 @@ ms_scores = function() {
   )
 }
 
-test_that("build_scores_table_data lays out one column per question with totals over graded questions", {
+test_that("build_scores_table_data lays out one column per question with complete and running totals", {
   tbl = build_scores_table_data(ms_scores(), c("Q1", "Q2"), c("repoA", "repoB", "repoC"))
-  expect_equal(names(tbl), c("Repository", "Q1", "Q2", "Total", "Graded"))
+  expect_equal(names(tbl), c("Repository", "Q1", "Q2", "Total", "Total_partial", "Graded"))
   expect_equal(tbl$Q1, c(8, 10, NA))
   expect_equal(tbl$Q2, c(4.5, NA, NA))
-  # a partially graded repo totals what is graded; an ungraded one has no total
-  expect_equal(tbl$Total, c(12.5, 10, NA))
+  # the total follows export_scores(): NA until every question is graded;
+  # the running sum covers whatever is graded so far
+  expect_equal(tbl$Total, c(12.5, NA, NA))
+  expect_equal(tbl$Total_partial, c(12.5, 10, NA))
   expect_equal(tbl$Graded, c(2L, 1L, 0L))
 })
 
@@ -49,7 +51,7 @@ test_that("build_scores_summary_rows handles nothing graded and no questions", {
   expect_equal(s$Total, c(0, NA, NA, NA))
 
   none = build_scores_summary_rows(build_scores_table_data(ms_scores()[0, ], character(0), "repoA"), character(0))
-  expect_equal(names(none), c("Repository", "Total", "Graded"))
+  expect_equal(names(none), c("Repository", "Total", "Total_partial", "Graded"))
   expect_equal(none$Total, c(0, NA, NA, NA))
 })
 

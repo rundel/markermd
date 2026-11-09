@@ -70,8 +70,10 @@ mark_rubric_item_hotkey_btn = function(id, rubric_item, exclusive = FALSE) {
     ),
     `data-action` = "toggle",
     title = if (state$hotkey) NULL else "No hotkey: click to toggle",
+    `aria-label` = if (state$hotkey) paste("Toggle item", state$label) else "Toggle item",
     role = if (state$exclusive) "radio" else NULL,
     `aria-checked` = if (state$exclusive) tolower(state$selected) else NULL,
+    `aria-pressed` = if (state$exclusive) NULL else tolower(state$selected),
     state$label
   )
 }
@@ -106,8 +108,11 @@ rubric_item_container_attrs = function(ns, groups) {
 #   selected, shown as "<count>/<repo_count>" beside the action buttons
 #   instead of the toggle
 # repo_count: With selected_count, the number of repositories
+# fresh: Whether the item was just added with a placeholder description,
+#   which the row selects on focus so typing replaces it
 
-mark_rubric_item_ui = function(id, rubric_item, exclusive = FALSE, selected_count = NULL, repo_count = NULL) {
+mark_rubric_item_ui = function(id, rubric_item, exclusive = FALSE, selected_count = NULL, repo_count = NULL,
+                               fresh = FALSE) {
   editor = !is.null(selected_count)
 
   shiny::div(
@@ -164,6 +169,8 @@ mark_rubric_item_ui = function(id, rubric_item, exclusive = FALSE, selected_coun
           id = paste0(id, "-points_text"),
           class = "rubric-points-edit",
           contenteditable = "true",
+          role = "textbox",
+          `aria-label` = "Points",
           `data-points` = rubric_item@points,
           style = paste0("color: ", if (rubric_item@points >= 0) POINTS_POSITIVE_COLOR else POINTS_NEGATIVE_COLOR, ";"),
           paste0(
@@ -179,7 +186,10 @@ mark_rubric_item_ui = function(id, rubric_item, exclusive = FALSE, selected_coun
         shiny::div(
           id = paste0(id, "-description_text"),
           contenteditable = "true",
-          class = "form-control-like rubric-desc-edit",
+          role = "textbox",
+          `aria-label` = "Description",
+          `aria-multiline` = "true",
+          class = paste("form-control-like rubric-desc-edit", if (fresh) "rubric-desc-fresh"),
           `data-placeholder` = "Enter description...",
           rubric_item@description
         )
@@ -204,6 +214,7 @@ rubric_item_action_btn = function(id, action, icon, title, class = NULL) {
     class = paste(c("btn btn-sm p-1 rubric-act-btn", class), collapse = " "),
     `data-action` = action,
     title = title,
+    `aria-label` = title,
     cached_icon(icon)
   )
 }
@@ -212,11 +223,13 @@ rubric_item_action_btn = function(id, action, icon, title, class = NULL) {
 # mark(). The script reports a row's interactions to its container's
 # item_event input as {item, action, value}: a click on a button carrying
 # data-action, a group menu choice ("group", the group id or "" for none),
-# each description edit ("description") and a committed points edit
-# ("points", on blur or Enter; the points show the bare number while
-# focused). Pastes are reduced to plain text. It also fills a group menu
-# when it opens, and handles the server's in-place patches of the toggle
-# buttons (markermd_item_buttons) and agent badges (markermd_agent_badges).
+# a description edit ("description", on blur and after a pause in typing,
+# not per keystroke) and a committed points edit ("points", on blur or
+# Enter; the points show the bare number while focused). Pastes are reduced
+# to plain text. It also fills a group menu when it opens, selects a fresh
+# item's placeholder description on focus, and handles the server's in-place
+# patches of the toggle buttons (markermd_item_buttons), agent badges
+# (markermd_agent_badges) and a refused description (markermd_item_text).
 
 rubric_item_editing_head = function() {
   shiny::tagList(
@@ -309,9 +322,22 @@ rubric_item_editing_head = function() {
           var btn = e.target.closest('.rubric-item-row button[data-action]');
           if (btn) send(btn, btn.dataset.action);
         });
+        var descTimer = null;
+        function sendDescription(el) {
+          send(el, 'description', el.innerText || el.textContent || '');
+        }
         document.addEventListener('input', function(e) {
           var el = e.target.closest && e.target.closest('.rubric-desc-edit');
-          if (el) send(el, 'description', el.innerText || el.textContent || '');
+          if (!el) return;
+          el.classList.remove('rubric-desc-fresh');
+          if (descTimer) clearTimeout(descTimer);
+          descTimer = setTimeout(function() { descTimer = null; sendDescription(el); }, 750);
+        });
+        document.addEventListener('focusout', function(e) {
+          var el = e.target.closest && e.target.closest('.rubric-desc-edit');
+          if (!el) return;
+          if (descTimer) { clearTimeout(descTimer); descTimer = null; }
+          sendDescription(el);
         });
         document.addEventListener('paste', function(e) {
           var el = e.target.closest && e.target.closest('.rubric-desc-edit, .rubric-points-edit');
@@ -319,10 +345,7 @@ rubric_item_editing_head = function() {
           e.preventDefault();
           document.execCommand('insertText', false, e.clipboardData.getData('text/plain'));
         });
-        document.addEventListener('focusin', function(e) {
-          var el = e.target.closest && e.target.closest('.rubric-points-edit');
-          if (!el) return;
-          el.innerHTML = points(el).toString();
+        function selectContents(el) {
           setTimeout(function() {
             var range = document.createRange();
             range.selectNodeContents(el);
@@ -330,6 +353,14 @@ rubric_item_editing_head = function() {
             selection.removeAllRanges();
             selection.addRange(range);
           }, 10);
+        }
+        document.addEventListener('focusin', function(e) {
+          var fresh = e.target.closest && e.target.closest('.rubric-desc-fresh');
+          if (fresh) { selectContents(fresh); return; }
+          var el = e.target.closest && e.target.closest('.rubric-points-edit');
+          if (!el) return;
+          el.innerHTML = points(el).toString();
+          selectContents(el);
         });
         document.addEventListener('keydown', function(e) {
           var el = e.target.closest && e.target.closest('.rubric-points-edit');
@@ -360,14 +391,21 @@ rubric_item_editing_head = function() {
               el.classList.toggle('rubric-hk-radio', b.exclusive);
               el.classList.toggle('rubric-hk-none', !b.hotkey);
               if (b.hotkey) el.removeAttribute('title'); else el.title = 'No hotkey: click to toggle';
+              el.setAttribute('aria-label', b.hotkey ? 'Toggle item ' + b.label : 'Toggle item');
               if (b.exclusive) {
                 el.setAttribute('role', 'radio');
                 el.setAttribute('aria-checked', b.selected ? 'true' : 'false');
+                el.removeAttribute('aria-pressed');
               } else {
                 el.removeAttribute('role');
                 el.removeAttribute('aria-checked');
+                el.setAttribute('aria-pressed', b.selected ? 'true' : 'false');
               }
             });
+          });
+          Shiny.addCustomMessageHandler('markermd_item_text', function(msg) {
+            var el = document.getElementById(msg.id);
+            if (el) el.textContent = msg.text;
           });
           Shiny.addCustomMessageHandler('markermd_agent_badges', function(msg) {
             var box = document.getElementById(msg.container);

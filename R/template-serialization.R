@@ -246,7 +246,10 @@ template_to_list = function(template, source_path = NULL) {
 resolve_template_source = function(path, base_dir = ".", assignment = NULL) {
   candidates = character(0)
   if (!is.null(assignment)) candidates = c(candidates, assignment)
-  if (!is.null(path)) candidates = c(candidates, path, file.path(base_dir, path))
+  # The template's own directory first: a stored path is relative to the
+  # project, and the working directory may hold a sibling project with the
+  # same layout
+  if (!is.null(path)) candidates = c(candidates, file.path(base_dir, path), path)
 
   for (cand in candidates) {
     if (nzchar(cand) && file.exists(cand)) {

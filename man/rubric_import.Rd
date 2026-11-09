@@ -46,9 +46,9 @@ limit on their number). This is the inverse of \code{\link[=rubric_export]{rubri
 With \code{mode = "append"} (the default) the file's items are added after each
 question's existing items. With \code{mode = "replace"} each affected question's
 existing items and item groups are deleted first; this also deletes any
-recorded selections of those items, for every repository, and cannot be
-undone. A question's scoring setup is only updated when the file provides
-a \code{scoring} block.
+recorded selections of those items, for every repository (recoverable
+only from the automatic snapshot, see below). A question's scoring setup
+is only updated when the file provides a \code{scoring} block.
 
 Item groups (format \code{"1.1"}; see \link{markermd_rubric_group}) are matched to
 the question's existing groups by label. Items for an existing group are

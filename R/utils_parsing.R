@@ -8,8 +8,10 @@
 #' are not signalled (they would otherwise print to the console from inside
 #' the apps); they stay attached to the returned AST's `@diagnostics` slot,
 #' labelled with the document's file name, and [mark()], [template()] and
-#' [parse_project()] report them. If parsing yields an empty AST (no
-#' blocks) an error is reported.
+#' [parse_project()] report them. Rewriting a knitr-style chunk header adds
+#' lines, so a diagnostic whose line number moved carries a hint giving the
+#' line of the file as written. If parsing yields an empty AST (no blocks)
+#' an error is reported.
 #'
 #' @param file_path Character. Path to the assignment file
 #' @return A q2r `pandoc` AST object for the parsed document.
@@ -20,21 +22,68 @@ parse_assignment_document = function(file_path) {
   }
 
   lines = readLines(file_path, warn = FALSE)
-  text = paste(normalize_knitr_chunks(lines), collapse = "\n")
+  normalized = normalize_knitr_chunks(lines)
+  line_map = attr(normalized, "line_map")
+  text = paste(normalized, collapse = "\n")
+  file_name = basename(file_path)
+  # The error is re-raised with the file name and the original line numbers
+  # on its diagnostics; the warning handler sits outside so warnings
+  # signalled before the error are still muffled
   ast = withCallingHandlers(
-    q2r::parse_qmd(text, quiet = FALSE),
+    tryCatch(
+      q2r::parse_qmd(text, quiet = FALSE),
+      q2r_parse_error = function(e) stop(relabel_parse_error(e, line_map, file_name))
+    ),
     q2r_parse_warning = function(w) invokeRestart("muffleWarning")
   )
-  ast@diagnostics = lapply(ast@diagnostics, function(d) {
-    d@source_filename = basename(file_path)
-    d
-  })
+  ast@diagnostics = lapply(ast@diagnostics, function(d) relabel_diagnostic(d, line_map, file_name))
 
   if (length(ast@blocks@content) == 0) {
     cli::cli_abort("Failed to parse assignment file (empty AST): {file_path}")
   }
 
   ast
+}
+
+# Relabel a q2r diagnostic with the document's file name and, when the
+# knitr rewrite moved its line, a hint giving the line of the file as
+# written (the diagnostic's own excerpt shows the rewritten text, which is
+# what the parser saw)
+#
+# d: A q2r pampa_diagnostic object
+# line_map: Integer vector from normalize_knitr_chunks(): the original line
+#   of each parsed line
+# file_name: The document's file name
+
+relabel_diagnostic = function(d, line_map, file_name) {
+  d@source_filename = file_name
+  row = d@location$start_row
+  if (!is.null(row) && length(row) == 1 && !is.na(row) && row >= 1 && row <= length(line_map)) {
+    original = line_map[row]
+    if (!is.na(original) && original != row) {
+      d@hints = c(
+        d@hints,
+        paste0(
+          "Line ", row, " here is line ", original, " of ", file_name,
+          " (knitr-style chunk headers are expanded before parsing)."
+        )
+      )
+    }
+  }
+  d
+}
+
+# A q2r parse error re-raised with its diagnostics relabelled (see
+# relabel_diagnostic()) and its message rendered from them without ANSI
+# styling, keeping the condition's class and fields
+#
+# e: A q2r_parse_error condition
+# line_map, file_name: See relabel_diagnostic()
+
+relabel_parse_error = function(e, line_map, file_name) {
+  diagnostics = lapply(e$diagnostics, relabel_diagnostic, line_map = line_map, file_name = file_name)
+  message = paste(vapply(diagnostics, function(d) format(d, color = FALSE), character(1)), collapse = "\n")
+  errorCondition(message, class = "q2r_parse_error", diagnostics = diagnostics, result = e$result, call = NULL)
 }
 
 # Rewrite knitr-style chunk headers into Quarto #| form
@@ -44,7 +93,10 @@ parse_assignment_document = function(file_path) {
 # rewrites the opening fence of every such chunk to a bare ```{engine} header
 # followed by #| label: / #| <option>: lines, leaving the chunk body and all
 # other content untouched. Plain fences (```r, ```), pandoc-attribute fences
-# ({.r ...}, {#id ...}) and chunks already in #| form are left as-is.
+# ({.r ...}, {#id ...}) and chunks already in #| form are left as-is. The
+# result carries a "line_map" attribute: for each output line, the input
+# line it came from (the inserted #| lines map to their header's line), so
+# positions in the parsed text can be traced back to the file.
 #
 # lines: Character vector of document lines
 
@@ -54,11 +106,14 @@ normalize_knitr_chunks = function(lines) {
   fence_close = "^\\s*(`{3,}|~{3,})\\s*$"
 
   out = character(0)
+  line_map = integer(0)
   in_block = FALSE
 
-  for (line in lines) {
+  for (i in seq_along(lines)) {
+    line = lines[i]
     if (in_block) {
       out = c(out, line)
+      line_map = c(line_map, i)
       if (grepl(fence_close, line)) in_block = FALSE
       next
     }
@@ -68,12 +123,14 @@ normalize_knitr_chunks = function(lines) {
       converted = convert_chunk_header(trimws(m[4]))
       if (is.null(converted)) {
         out = c(out, line)
+        line_map = c(line_map, i)
       } else {
-        out = c(
-          out,
+        added = c(
           paste0(m[2], m[3], "{", converted$engine, "}"),
           paste0(m[2], "#| ", converted$options)
         )
+        out = c(out, added)
+        line_map = c(line_map, rep(i, length(added)))
       }
       in_block = TRUE
       next
@@ -81,9 +138,28 @@ normalize_knitr_chunks = function(lines) {
 
     if (grepl(fence_any, line)) in_block = TRUE
     out = c(out, line)
+    line_map = c(line_map, i)
   }
 
+  attr(out, "line_map") = line_map
   out
+}
+
+# Translate line ranges of the normalized document (see
+# normalize_knitr_chunks()) back to ranges of the file as written
+#
+# ranges: List of start / end ranges over the normalized lines
+# line_map: The "line_map" attribute of the normalized lines
+# Returns: List of start / end ranges over the original lines
+
+map_ranges_to_original = function(ranges, line_map) {
+  if (length(ranges) == 0 || is.null(line_map)) {
+    return(ranges)
+  }
+  original = sort(unique(unlist(lapply(ranges, function(r) {
+    line_map[seq.int(max(1L, r$start), min(length(line_map), r$end))]
+  }))))
+  group_consecutive_lines(original)
 }
 
 # Convert the contents of a knitr chunk header into engine + Quarto options
@@ -205,6 +281,47 @@ parse_assignment_collection = function(collection_path, use_qmd = TRUE) {
 
   collection = data.frame(path = files, stringsAsFactors = FALSE)
   parsed = lapply(files, purrr::safely(parse_assignment_document))
+  collection$ast = lapply(parsed, function(p) p$result)
+  collection$error = vapply(parsed, function(p) {
+    if (is.null(p$error)) NA_character_ else conditionMessage(p$error)
+  }, character(1))
+  collection
+}
+
+# Parse one document per student repository: the file find_repo_assignment()
+# picks for each repository (the template's document by basename, else a
+# root-level document, else the first match), parsed with
+# parse_assignment_document(). The same choice validate_project() and
+# parse_project() make, so the app grades and validates the document the
+# headless checks report on. Parse failures are captured per repository
+# rather than raised, so one malformed document cannot block the others.
+#
+# repos_dir: The directory holding the repositories
+# repo_list: The repository names (directories under repos_dir)
+# assignment_file: The template document's basename, or NULL
+# use_qmd: Logical. Match .qmd files (TRUE) or .Rmd files (FALSE)
+# Returns: Data frame with one row per repository that has a document: repo,
+#   path, ast (list column, NULL on failure) and error (NA on success)
+
+parse_repo_documents = function(repos_dir, repo_list, assignment_file = NULL, use_qmd = TRUE) {
+  ext = if (use_qmd) "\\.qmd$" else "\\.Rmd$"
+  paths = vapply(repo_list, function(repo) {
+    find_repo_assignment(file.path(repos_dir, repo), assignment_file, ext)
+  }, character(1))
+  found = !is.na(paths)
+  rows = parse_repo_document_rows(repo_list[found], unname(paths[found]))
+  rows
+}
+
+# The collection rows for the given repositories and document paths (see
+# parse_repo_documents()); the app re-parses one repository through it
+#
+# repos: Repository names
+# paths: Their documents' paths
+
+parse_repo_document_rows = function(repos, paths) {
+  parsed = lapply(paths, purrr::safely(parse_assignment_document))
+  collection = data.frame(repo = repos, path = paths, stringsAsFactors = FALSE)
   collection$ast = lapply(parsed, function(p) p$result)
   collection$error = vapply(parsed, function(p) {
     if (is.null(p$error)) NA_character_ else conditionMessage(p$error)

@@ -37,12 +37,14 @@ template / rubric parts an action changed).
 \description{
 Lists what has changed the project's grading state: every call of a
 markermd function that changed it (\code{\link[=marks_import]{marks_import()}}, \code{\link[=marks_set]{marks_set()}},
-\code{\link[=rubric_import]{rubric_import()}}, \code{\link[=template_import]{template_import()}}, \code{project_set(template = ...)},
-\code{\link[=snapshot_restore]{snapshot_restore()}}), and the grading done in \code{\link[=mark]{mark()}}, grouped into
-sessions of activity. Each recorded call notes who made it: the
-\code{MARKERMD_ACTOR} environment variable when set, \code{"claude"} or \code{"codex"}
-when the call ran under one of those agent CLIs, and \code{"R"} otherwise.
-Grading recorded before the log existed lists as app grading.
+\code{\link[=rubric_import]{rubric_import()}}, \code{\link[=rubric_item_set]{rubric_item_set()}}, \code{\link[=template_import]{template_import()}},
+\code{project_set(template = ...)}, \code{\link[=snapshot_restore]{snapshot_restore()}}), the bulk operations
+made in \code{\link[=mark]{mark()}} (rubric imports and edits, item and group deletions,
+restores, recorded with the actor \code{"app"}), and the grading done in
+\code{\link[=mark]{mark()}}, grouped into sessions of activity. Each recorded call notes who
+made it: the \code{MARKERMD_ACTOR} environment variable when set, \code{"claude"}
+or \code{"codex"} when the call ran under one of those agent CLIs, and \code{"R"}
+otherwise. Grading recorded before the log existed lists as app grading.
 }
 \details{
 Use \code{\link[=activity_detail]{activity_detail()}} for what one entry changed.

@@ -102,6 +102,7 @@ test_that("same-second grade tie-break flips when insertion order reverses", {
   # Reverse order: deselect (id 1) then select (id 2). Latest id wins -> selected.
   cdb_insert_grade_row(dir, 1L, "Q1", "repoA", "item_0", 0L, ts)
   cdb_insert_grade_row(dir, 2L, "Q1", "repoA", "item_0", 1L, ts)
+  markermd:::save_rubric_item(dir, "Q1", "item_0", markermd::markermd_rubric_item(1L, 1, "Item"))
 
   sel = markermd:::load_grade_selections(dir, "Q1", "repoA")
   expect_equal(sel[["item_0"]], TRUE)

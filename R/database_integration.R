@@ -155,17 +155,12 @@ save_rubric_item = function(collection_path, question_name, item_id, rubric_item
 save_rubric_items = function(collection_path, question_name, items) {
   items = normalize_item_order(items)
   with_database(collection_path, function(conn) {
-    DBI::dbBegin(conn)
-    tryCatch({
+    with_transaction(conn, "Failed to save rubric items", {
       for (i in seq_along(items)) {
         item = items[[i]]
         item@hotkey = position_hotkey(i)
         upsert_items(conn, question_name, names(items)[i], item, position = i)
       }
-      DBI::dbCommit(conn)
-    }, error = function(e) {
-      DBI::dbRollback(conn)
-      cli::cli_abort("Failed to save rubric items: {conditionMessage(e)}")
     })
     invisible(TRUE)
   })
@@ -183,16 +178,11 @@ save_rubric_items = function(collection_path, question_name, items) {
 
 delete_rubric_item = function(collection_path, question_name, item_id, snapshot = NULL) {
   with_database(collection_path, function(conn) {
-    DBI::dbBegin(conn)
-    tryCatch({
+    with_transaction(conn, "Failed to delete the rubric item", {
       snapshot_before_change(conn, collection_path, snapshot)
       delete_item_records(conn, question_name, item_id)
-      DBI::dbCommit(conn)
-    }, error = function(e) {
-      DBI::dbRollback(conn)
-      cli::cli_abort("Failed to delete the rubric item: {conditionMessage(e)}")
     })
-    return(TRUE)
+    TRUE
   })
 }
 
@@ -254,16 +244,11 @@ save_item_group = function(collection_path, question_name, group_id, group) {
 
 delete_item_group = function(collection_path, question_name, group_id, snapshot = NULL) {
   with_database(collection_path, function(conn) {
-    DBI::dbBegin(conn)
-    tryCatch({
+    with_transaction(conn, "Failed to delete the item group", {
       snapshot_before_change(conn, collection_path, snapshot)
       delete_item_group_records(conn, question_name, group_id)
-      DBI::dbCommit(conn)
-    }, error = function(e) {
-      DBI::dbRollback(conn)
-      cli::cli_abort("Failed to delete the item group: {conditionMessage(e)}")
     })
-    return(TRUE)
+    TRUE
   })
 }
 
@@ -308,7 +293,45 @@ save_grade_selection = function(collection_path, question_name, assignment_repo,
   })
 }
 
-# Save comment to database
+# Save several grade selection events for one pair in one transaction (a
+# toggle in an exclusive group writes the item and its deselected siblings
+# together)
+#
+# collection_path: Path to collection directory
+# question_name: Character string
+# assignment_repo: Character string
+# selections: Named logical vector or list keyed by item id
+
+save_grade_selections = function(collection_path, question_name, assignment_repo, selections) {
+  if (length(selections) == 0) {
+    return(invisible(FALSE))
+  }
+  with_database(collection_path, function(conn) {
+    with_transaction(conn, "Failed to save the selection", {
+      for (item_id in names(selections)) {
+        insert_grade(conn, question_name, assignment_repo, item_id, isTRUE(selections[[item_id]]))
+      }
+    })
+    invisible(TRUE)
+  })
+}
+
+# Save a comment event to one of the comment tables
+#
+# collection_path: Path to collection directory
+# table: "comments" (public) or "private_comments"
+# question_name: Character string
+# assignment_repo: Character string
+# comment_text: Character string
+
+save_comment_row = function(collection_path, table, question_name, assignment_repo, comment_text) {
+  with_database(collection_path, function(conn) {
+    insert_comment_row(conn, table, question_name, assignment_repo, comment_text)
+    return(TRUE)
+  })
+}
+
+# Save comment to database (public, student-facing)
 #
 # collection_path: Path to collection directory
 # question_name: Character string
@@ -316,10 +339,7 @@ save_grade_selection = function(collection_path, question_name, assignment_repo,
 # comment_text: Character string
 
 save_comment = function(collection_path, question_name, assignment_repo, comment_text) {
-  with_database(collection_path, function(conn) {
-    insert_comment(conn, question_name, assignment_repo, comment_text)
-    return(TRUE)
-  })
+  save_comment_row(collection_path, "comments", question_name, assignment_repo, comment_text)
 }
 
 # Save private comment to database (grader-internal, never student-facing)
@@ -330,10 +350,7 @@ save_comment = function(collection_path, question_name, assignment_repo, comment
 # comment_text: Character string
 
 save_private_comment = function(collection_path, question_name, assignment_repo, comment_text) {
-  with_database(collection_path, function(conn) {
-    insert_private_comment(conn, question_name, assignment_repo, comment_text)
-    return(TRUE)
-  })
+  save_comment_row(collection_path, "private_comments", question_name, assignment_repo, comment_text)
 }
 
 # Load grade state from database
@@ -412,21 +429,7 @@ load_grade_selections = function(collection_path, question_name, assignment_repo
 # Returns: Character string or NULL if no comment found
 
 load_comment = function(collection_path, question_name, assignment_repo) {
-  with_database(collection_path, function(conn) {
-    comment_data = DBI::dbGetQuery(conn, "
-      SELECT comment_text
-      FROM comments
-      WHERE question_name = ? AND assignment_repo = ?
-      ORDER BY id DESC
-      LIMIT 1
-    ", params = list(question_name, assignment_repo))
-    
-    if (nrow(comment_data) == 0) {
-      return(NULL)
-    }
-    
-    return(comment_data$comment_text[1])
-  })
+  load_comment_row(collection_path, "comments", question_name, assignment_repo)
 }
 
 # Load private comment for a specific question and assignment
@@ -437,20 +440,32 @@ load_comment = function(collection_path, question_name, assignment_repo) {
 # Returns: Character string or NULL if no private comment found
 
 load_private_comment = function(collection_path, question_name, assignment_repo) {
+  load_comment_row(collection_path, "private_comments", question_name, assignment_repo)
+}
+
+# The latest comment of a pair in one of the comment tables, or NULL
+#
+# collection_path: Path to collection directory
+# table: "comments" or "private_comments"
+# question_name: Character string
+# assignment_repo: Character string
+
+load_comment_row = function(collection_path, table, question_name, assignment_repo) {
+  table = match.arg(table, comment_tables())
   with_database(collection_path, function(conn) {
-    comment_data = DBI::dbGetQuery(conn, "
+    comment_data = DBI::dbGetQuery(conn, glue::glue("
       SELECT comment_text
-      FROM private_comments
+      FROM {table}
       WHERE question_name = ? AND assignment_repo = ?
       ORDER BY id DESC
       LIMIT 1
-    ", params = list(question_name, assignment_repo))
+    "), params = list(question_name, assignment_repo))
 
     if (nrow(comment_data) == 0) {
       return(NULL)
     }
 
-    return(comment_data$comment_text[1])
+    comment_data$comment_text[1]
   })
 }
 
@@ -652,17 +667,9 @@ exclusive_import_conflicts = function(conn, rubric) {
 apply_rubric_import = function(collection_path, rubric, mode, reserved_ids = character(0), snapshot = NULL) {
   with_database(collection_path, function(conn) {
     check_exclusive_import_conflicts(conn, rubric, mode)
-
-    DBI::dbBegin(conn)
-
-    tryCatch({
+    with_transaction(conn, "Failed to import rubric", {
       snapshot_before_change(conn, collection_path, snapshot)
-      summaries = apply_rubric_import_conn(conn, rubric, mode, reserved_ids)
-      DBI::dbCommit(conn)
-      summaries
-    }, error = function(e) {
-      DBI::dbRollback(conn)
-      cli::cli_abort("Failed to import rubric: {conditionMessage(e)}")
+      apply_rubric_import_conn(conn, rubric, mode, reserved_ids)
     })
   })
 }
@@ -822,17 +829,11 @@ apply_rubric_import_conn = function(conn, rubric, mode, reserved_ids = character
 
 apply_marks_import = function(collection_path, plan, snapshot = NULL) {
   with_database(collection_path, function(conn) {
-    DBI::dbBegin(conn)
-
-    tryCatch({
+    with_transaction(conn, "Failed to import marks", {
       snapshot_before_change(conn, collection_path, snapshot)
       apply_marks_import_conn(conn, plan)
-      DBI::dbCommit(conn)
-      TRUE
-    }, error = function(e) {
-      DBI::dbRollback(conn)
-      cli::cli_abort("Failed to import marks: {conditionMessage(e)}")
     })
+    TRUE
   })
 }
 
@@ -885,8 +886,16 @@ graded_question_pairs = function(collection_path, assignment_repos = NULL) {
 # assignment_repos: See graded_question_pairs()
 
 graded_question_pairs_conn = function(conn, assignment_repos = NULL) {
-  # Pairs with a selected rubric item among the most recent grade per item
+  # Pairs with a selected rubric item among the most recent grade per item;
+  # a grade row naming an item that no longer exists (written by a session
+  # whose rubric was replaced under it) does not count
   latest_grades = load_most_recent_grades(conn)
+  items = load_all_items(conn)
+  latest_grades = latest_grades[
+    paste(latest_grades$question_name, latest_grades$item_id, sep = "\x1f") %in%
+      paste(items$question_name, items$item_id, sep = "\x1f"),
+    , drop = FALSE
+  ]
   selected_pairs = unique(latest_grades[
     latest_grades$selected == 1,
     c("question_name", "assignment_repo"),
@@ -1000,44 +1009,41 @@ collect_score_data_conn = function(conn, question_names, assignment_repos) {
   )
   graded = graded_question_pairs_conn(conn, assignment_repos)
   # Unit-separator join so a name containing spaces cannot collide across pairs.
-  graded_keys = paste(graded$question_name, graded$assignment_repo, sep = "\x1f")
+  pair_key = function(question, repo) paste(question, repo, sep = "\x1f")
+  graded_keys = pair_key(graded$question_name, graded$assignment_repo)
 
+  # The selected item ids of every pair, found once rather than by scanning
+  # the grades for each pair
   selected = data$grades[data$grades$selected == 1, , drop = FALSE]
+  selected_by_pair = split(selected$item_id, pair_key(selected$question_name, selected$assignment_repo))
 
-  rows = list()
+  out_question = rep(question_names, each = length(assignment_repos))
+  out_repo = rep(assignment_repos, times = length(question_names))
+  keys = pair_key(out_question, out_repo)
+  scores = rep(NA_real_, length(keys))
+
   for (question_name in question_names) {
+    rows = which(out_question == question_name & keys %in% graded_keys)
+    if (length(rows) == 0) {
+      next
+    }
     state = db_row_to_grade_state(data$settings[data$settings$question_name == question_name, , drop = FALSE])
     if (is.null(state)) {
       state = markermd_grade_state(current_score = 0, total_score = 10)
     }
     items = items_df_to_rubric_list(data$items, question_name)
     groups = groups_df_to_list(data$groups, data$items, question_name)
-
-    for (repo_name in assignment_repos) {
-      score = NA_real_
-      if (paste(question_name, repo_name, sep = "\x1f") %in% graded_keys) {
-        selected_ids = selected$item_id[
-          selected$question_name == question_name & selected$assignment_repo == repo_name
-        ]
-        score = score_question(items, selected_ids, groups, state)$score
-      }
-
-      rows[[length(rows) + 1]] = data.frame(
-        question_name = question_name,
-        assignment_repo = repo_name,
-        score = score,
-        stringsAsFactors = FALSE
-      )
+    for (i in rows) {
+      selected_ids = selected_by_pair[[keys[i]]]
+      if (is.null(selected_ids)) selected_ids = character(0)
+      scores[i] = score_question(items, selected_ids, groups, state)$score
     }
   }
 
-  if (length(rows) == 0) {
-    return(data.frame(
-      question_name = character(0), assignment_repo = character(0),
-      score = numeric(0), stringsAsFactors = FALSE
-    ))
-  }
-  do.call(rbind, rows)
+  data.frame(
+    question_name = out_question, assignment_repo = out_repo, score = scores,
+    stringsAsFactors = FALSE
+  )
 }
 
 # Calculate grading progress for all assignments
@@ -1076,7 +1082,12 @@ calculate_grading_progress = function(collection_path, question_names, assignmen
 # Save a grading template into the project database (its canonical store).
 #
 # Serializes the template with the format-agnostic template_to_list() converter
-# and stores it as a JSON blob under the "template" metadata key.
+# and stores it as a JSON blob under the "template" metadata key. The
+# grading tables key on question names, so a question the new template
+# renames (same id, new name) has its rubric, settings and marks carried
+# over to the new name in the same transaction (see
+# reconcile_question_names_conn()); the result says what was carried over
+# and which removed questions still hold grading under their old name.
 #
 # collection_path: Path to the project root
 # template: markermd_template S7 object
@@ -1084,22 +1095,93 @@ calculate_grading_progress = function(collection_path, question_names, assignmen
 #   prefer a root-relative path so it resolves on reload)
 # snapshot: NULL, or a list with trigger and summary for an automatic
 #   snapshot of the state being overwritten, taken in the same transaction
+# Returns: Invisibly, the list from reconcile_question_names_conn()
 
 save_template_to_db = function(collection_path, template, source_path = NULL, snapshot = NULL) {
   lst = template_to_list(template, source_path = source_path)
   json = as.character(jsonlite::toJSON(lst, auto_unbox = TRUE, null = "null"))
-  with_database(collection_path, function(conn) {
-    DBI::dbBegin(conn)
-    tryCatch({
+  invisible(with_database(collection_path, function(conn) {
+    with_transaction(conn, "Failed to save the template", {
       snapshot_before_change(conn, collection_path, snapshot)
+      changes = reconcile_question_names_conn(conn, db_template_list(conn), lst)
       set_metadata(conn, "template", json)
-      DBI::dbCommit(conn)
-    }, error = function(e) {
-      DBI::dbRollback(conn)
-      cli::cli_abort("Failed to save the template: {conditionMessage(e)}")
+      changes
     })
-    TRUE
-  })
+  }))
+}
+
+# The grading tables keyed by question name
+
+question_keyed_tables = function() c("settings", "items", "item_groups", "grades", "comments", "private_comments")
+
+# Whether any grading table holds rows for a question name
+#
+# conn: DBI connection object
+# question_name: Character string
+
+question_has_grading_conn = function(conn, question_name) {
+  for (table in question_keyed_tables()) {
+    n = DBI::dbGetQuery(
+      conn, glue::glue("SELECT COUNT(*) AS n FROM {table} WHERE question_name = ?"), params = list(question_name)
+    )$n
+    if (n > 0) {
+      return(TRUE)
+    }
+  }
+  FALSE
+}
+
+# Carry grading over when a stored template is replaced: a question present
+# in both templates by id under a new name has every grading row renamed
+# (unless rows already exist under the new name, in which case nothing is
+# moved and the pair is reported as skipped); a question dropped from the
+# template that still holds grading is reported as orphaned, its rows left
+# in place (they come back if the name is restored).
+#
+# conn: DBI connection object
+# previous: The stored template as a plain list (db_template_list()), or NULL
+# current: The template being stored, as a plain list (template_to_list())
+# Returns: List with renamed and skipped (data frames with from and to) and
+#   orphaned (character vector of names)
+
+reconcile_question_names_conn = function(conn, previous, current) {
+  empty = data.frame(from = character(0), to = character(0), stringsAsFactors = FALSE)
+  out = list(renamed = empty, skipped = empty, orphaned = character(0))
+  if (is.null(previous)) {
+    return(out)
+  }
+  ids = function(x) vapply(x$questions, function(q) as.integer(q$id), integer(1))
+  names_of = function(x) vapply(x$questions, function(q) as.character(q$name), character(1))
+  old_ids = ids(previous)
+  old_names = names_of(previous)
+  new_ids = ids(current)
+  new_names = names_of(current)
+
+  for (i in seq_along(old_ids)) {
+    j = match(old_ids[i], new_ids)
+    if (is.na(j)) {
+      if (!old_names[i] %in% new_names && question_has_grading_conn(conn, old_names[i])) {
+        out$orphaned = c(out$orphaned, old_names[i])
+      }
+      next
+    }
+    if (identical(old_names[i], new_names[j]) || !question_has_grading_conn(conn, old_names[i])) {
+      next
+    }
+    pair = data.frame(from = old_names[i], to = new_names[j], stringsAsFactors = FALSE)
+    if (new_names[j] %in% old_names || question_has_grading_conn(conn, new_names[j])) {
+      out$skipped = rbind(out$skipped, pair)
+      next
+    }
+    for (table in question_keyed_tables()) {
+      DBI::dbExecute(
+        conn, glue::glue("UPDATE {table} SET question_name = ? WHERE question_name = ?"),
+        params = list(new_names[j], old_names[i])
+      )
+    }
+    out$renamed = rbind(out$renamed, pair)
+  }
+  out
 }
 
 # Load the grading template from the project database.

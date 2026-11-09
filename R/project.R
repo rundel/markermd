@@ -622,10 +622,32 @@ import_template_yaml_to_db = function(root, path, snapshot = NULL) {
   template_path = resolve_project_file(root, path, "Template")
   template_obj = read_template_yaml(template_path, require_ast = FALSE)
   assert_template_compatible(template_obj)
-  save_template_to_db(
+  changes = save_template_to_db(
     root, template_obj, source_path = attr(template_obj, "markermd_source_raw"), snapshot = snapshot
   )
+  report_question_name_changes(changes)
   invisible(template_obj)
+}
+
+# Tell the user what a template save did to the grading keyed by question
+# name (see reconcile_question_names_conn())
+#
+# changes: The list save_template_to_db() returns
+
+report_question_name_changes = function(changes) {
+  for (i in seq_len(nrow(changes$renamed))) {
+    cli::cli_alert_info("Carried the grading of question {.val {changes$renamed$from[i]}} over to its new name {.val {changes$renamed$to[i]}}.")
+  }
+  for (i in seq_len(nrow(changes$skipped))) {
+    cli::cli_warn("Question {.val {changes$skipped$from[i]}} was renamed to {.val {changes$skipped$to[i]}}, which already holds grading; its own grading stays under the old name.")
+  }
+  if (length(changes$orphaned) > 0) {
+    cli::cli_warn(c(
+      "Question{?s} {.val {changes$orphaned}} {?is/are} no longer in the template but still hold{?s/} grading, which the app and the exports no longer show.",
+      "i" = "Add the question back under the same name to see it again."
+    ))
+  }
+  invisible(changes)
 }
 
 # The snapshot spec (trigger plus summary) an import passes down when it
@@ -813,9 +835,9 @@ rubric_export = function(path, project = ".", question = NULL, snapshot = NULL) 
 #' With `mode = "append"` (the default) the file's items are added after each
 #' question's existing items. With `mode = "replace"` each affected question's
 #' existing items and item groups are deleted first; this also deletes any
-#' recorded selections of those items, for every repository, and cannot be
-#' undone. A question's scoring setup is only updated when the file provides
-#' a `scoring` block.
+#' recorded selections of those items, for every repository (recoverable
+#' only from the automatic snapshot, see below). A question's scoring setup
+#' is only updated when the file provides a `scoring` block.
 #'
 #' Item groups (format `"1.1"`; see [markermd_rubric_group]) are matched to
 #' the question's existing groups by label. Items for an existing group are
@@ -890,9 +912,10 @@ rubric_import = function(path, project = ".", mode = c("append", "replace"), que
 
   # Validate question names against the stored template before any write, so a
   # typo'd name cannot create rubric rows the mark app would never display
-  template_obj = load_template_from_db(proj@root, base_dir = proj@root)
-  if (!is.null(template_obj)) {
-    template_names = template_question_names(template_obj)
+  # (the names are read off the stored JSON; the key document is not re-parsed)
+  stored = with_database(proj@root, db_question_names)
+  if (stored$had_template) {
+    template_names = stored$names
     unknown = setdiff(yaml_names, template_names)
     if (length(unknown) > 0) {
       cli::cli_abort(c(
@@ -1035,14 +1058,9 @@ rubric_item_set = function(question, item, description = NULL, points = NULL, pr
   with_action(
     proj@root, "rubric_item_set", call = call, summary = summary, parts = "rubric",
     with_database(proj@root, function(conn) {
-      DBI::dbBegin(conn)
-      tryCatch({
+      with_transaction(conn, "Failed to update the rubric item", {
         snapshot_before_change(conn, proj@root, spec)
         upsert_items(conn, question, item_id, updated)
-        DBI::dbCommit(conn)
-      }, error = function(e) {
-        DBI::dbRollback(conn)
-        cli::cli_abort("Failed to update the rubric item: {conditionMessage(e)}")
       })
     })
   )
@@ -1441,9 +1459,9 @@ marks_export = function(path, project = ".", repo = NULL, question = NULL, snaps
   proj = project_config(project)
 
   if (!is.null(snapshot)) {
-    marks = marks_from_list(with_database(proj@root, function(conn) {
+    marks = marks_from_list(marks_without_ids(with_database(proj@root, function(conn) {
       read_snapshot_part(conn, resolve_snapshot_id(conn, snapshot), "marks")
-    }))
+    })))
     repo_names = vapply(marks$repos, function(r) r$name, character(1))
     repo_names = restrict_names(
       repo, repo_names,
@@ -1655,12 +1673,14 @@ export_scores = function(project = ".") {
 
   scores = collect_score_data(proj@root, question_names, repo_names)
 
-  result = data.frame(repo = repo_names, stringsAsFactors = FALSE, check.names = FALSE)
+  # The same wide table the Assignments tab shows (build_scores_table_data());
+  # its Total is NA until every question is graded
+  table = build_scores_table_data(scores, question_names, repo_names)
+  result = data.frame(repo = table$Repository, stringsAsFactors = FALSE, check.names = FALSE)
   for (question_name in question_names) {
-    question_scores = scores[scores$question_name == question_name, , drop = FALSE]
-    result[[question_name]] = question_scores$score[match(repo_names, question_scores$assignment_repo)]
+    result[[question_name]] = table[[question_name]]
   }
-  result$total = rowSums(result[, question_names, drop = FALSE])
+  result$total = table$Total
 
   n_ungraded = sum(is.na(as.matrix(result[question_names])))
   if (n_ungraded == nrow(result) * length(question_names)) {
@@ -2054,8 +2074,8 @@ parse_project = function(path = ".", use_qmd = TRUE) {
   project = project_config(path)
   repos_dir = project_repos_dir(project)
 
-  template_obj = load_template_from_db(project@root, base_dir = project@root)
-  assignment_file = basename_or_null(attr(template_obj, "markermd_source_raw"))
+  stored = with_database(project@root, db_template_list)
+  assignment_file = basename_or_null(stored$source$path)
   ext = if (use_qmd) "\\.qmd$" else "\\.Rmd$"
 
   parse_captured = purrr::safely(parse_assignment_document)

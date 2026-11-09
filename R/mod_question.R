@@ -37,7 +37,8 @@ question_ui = function(id, name_id, name = paste("Question", name_id), file_labe
             ns("question_name"),
             NULL,
             value = name,
-            width = "100%"
+            width = "100%",
+            updateOn = "blur"
           )
         ),
         # The file the question covers, fixed when it is added
@@ -216,8 +217,11 @@ notify_document_entry = function() {
 # id: Character. Module namespace ID
 # ast: Reactive. The parsed AST object for building tree structure
 # initial_question: S7 markermd_question object. Optional initial question state
+# name_available: Function(name) telling whether no other question has the
+#   name; a rename to a taken (or blank) name is refused and the input put
+#   back, since the template's questions must be uniquely named
 
-question_server = function(id, ast, initial_question = NULL) {
+question_server = function(id, ast, initial_question = NULL, name_available = function(name) TRUE) {
   shiny::moduleServer(id, function(input, output, session) {
 
     # Question state - use initial_question if provided, otherwise default
@@ -296,10 +300,26 @@ question_server = function(id, ast, initial_question = NULL) {
       }
     })
         
+    # The name is committed on blur; a blank or taken name is refused
+    # rather than stored (the template class would reject it when built)
     shiny::observe({
-      shiny::req(input$question_name)
+      shiny::req(!is.null(input$question_name))
       cur_state = state()
-      cur_state@name = input$question_name
+      name = trimws(input$question_name)
+      if (identical(name, cur_state@name)) {
+        return()
+      }
+      if (!nzchar(name)) {
+        shiny::showNotification("A question needs a name.", type = "warning")
+        shiny::updateTextInput(session, "question_name", value = cur_state@name)
+        return()
+      }
+      if (!name_available(name)) {
+        shiny::showNotification(paste0("There is already a question named \"", name, "\"."), type = "warning")
+        shiny::updateTextInput(session, "question_name", value = cur_state@name)
+        return()
+      }
+      cur_state@name = name
       state(cur_state)
     }) |>
       shiny::bindEvent(input$question_name)

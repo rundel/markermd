@@ -14,22 +14,23 @@ test_that("normalize_knitr_chunks rewrites knitr-style headers to #| form", {
       "plot(1)",
       "```"
     )
+    , ignore_attr = TRUE
   )
 })
 
 
 test_that("normalize_knitr_chunks leaves non-knitr fences alone", {
   bare = c("```{r}", "1 + 1", "```")
-  expect_equal(markermd:::normalize_knitr_chunks(bare), bare)
+  expect_equal(markermd:::normalize_knitr_chunks(bare), bare, ignore_attr = TRUE)
 
   pandoc_attr = c("```{.r .numberLines}", "x", "```")
-  expect_equal(markermd:::normalize_knitr_chunks(pandoc_attr), pandoc_attr)
+  expect_equal(markermd:::normalize_knitr_chunks(pandoc_attr), pandoc_attr, ignore_attr = TRUE)
 
   already_quarto = c("```{r}", "#| label: foo", "1", "```")
-  expect_equal(markermd:::normalize_knitr_chunks(already_quarto), already_quarto)
+  expect_equal(markermd:::normalize_knitr_chunks(already_quarto), already_quarto, ignore_attr = TRUE)
 
   plain = c("```", "not a chunk, just text", "```")
-  expect_equal(markermd:::normalize_knitr_chunks(plain), plain)
+  expect_equal(markermd:::normalize_knitr_chunks(plain), plain, ignore_attr = TRUE)
 })
 
 
@@ -40,7 +41,7 @@ test_that("normalize_knitr_chunks does not rewrite fence-like lines inside a blo
     "````",
     "outside"
   )
-  expect_equal(markermd:::normalize_knitr_chunks(lines), lines)
+  expect_equal(markermd:::normalize_knitr_chunks(lines), lines, ignore_attr = TRUE)
 })
 
 
@@ -59,12 +60,14 @@ test_that("normalize_knitr_chunks preserves indentation and tilde fences", {
       "  x",
       "  ```"
     )
+    , ignore_attr = TRUE
   )
 
   tildes = c("~~~{r lab, eval=FALSE}", "x", "~~~")
   expect_equal(
     markermd:::normalize_knitr_chunks(tildes),
     c("~~~{r}", "#| label: lab", "#| eval: false", "x", "~~~")
+    , ignore_attr = TRUE
   )
 })
 

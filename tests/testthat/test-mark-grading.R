@@ -348,11 +348,13 @@ test_that("the Assignments table tabulates rubric scores per repository and per 
 
   exports = app$get_values(export = TRUE)$export
   tbl = exports[["scores_table"]]
-  expect_equal(names(tbl), c("Repository", "Q2", "Q3", "Total", "Graded"))
+  expect_equal(names(tbl), c("Repository", "Q2", "Q3", "Total", "Total_partial", "Graded"))
   first = tbl[tbl$Repository == "student1-excellent", ]
   expect_equal(first$Q2, 4)
   expect_true(is.na(first$Q3))
-  expect_equal(first$Total, 4)
+  # the total waits for every question; the running sum shows what is graded
+  expect_true(is.na(first$Total))
+  expect_equal(first$Total_partial, 4)
   expect_equal(first$Graded, 1L)
   expect_true(all(is.na(tbl$Q2[tbl$Repository != "student1-excellent"])))
 

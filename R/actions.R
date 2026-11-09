@@ -1,12 +1,15 @@
 # The action log (schema version 6): one row per call of an exported
 # markermd function that changed grading state (marks_import(), marks_set(),
-# rubric_import(), template_import(), project_set(template = ...),
-# snapshot_restore()), recording who made the call, what it was and what it
-# touched, so the marking app can show what an agent or an outside process
-# did. The grading event rows a call writes carry its action_id; the template
-# and rubric it replaced are kept as before / after blobs (shared with the
-# snapshot blob store) for a diff. The app's own writes are not actions: they
-# keep a NULL action_id and are grouped by idle gaps when listed.
+# rubric_import(), rubric_item_set(), template_import(),
+# project_set(template = ...), snapshot_restore()), recording who made the
+# call, what it was and what it touched, so the marking app can show what an
+# agent or an outside process did. The grading event rows a call writes carry
+# its action_id; the template and rubric it replaced are kept as before /
+# after blobs (shared with the snapshot blob store) for a diff. The app's own
+# grading (toggles and comments) is not an action: those rows keep a NULL
+# action_id and are grouped by idle gaps when listed. The app's bulk
+# operations (rubric imports and edits, item and group deletion, restores)
+# are recorded as actions with the actor "app".
 
 # Table definitions --------------------------------------------------------
 
@@ -184,7 +187,9 @@ action_part_key = function(part, x) {
 # with the action's id and, when it changed anything, one actions row is
 # written once it returns (a call that changed nothing, e.g. an import whose
 # pairs were all skipped, is not recorded). A call that errors records
-# nothing; its own transaction has rolled its writes back.
+# nothing; its own transaction has rolled its writes back. The code's value
+# is returned with its visibility kept, so an invisible result stays
+# invisible.
 #
 # root: Project root
 # fn: The exported function's name
@@ -192,8 +197,10 @@ action_part_key = function(part, x) {
 # call: A short rendering of the call, e.g. "rubric_import(mode = 'append')"
 # summary: The caller's summary text, or NULL
 # parts: Which of "template" and "rubric" the call may replace
+# actor: The actor to record, or NULL for markermd_actor() (the marking app
+#   records its own bulk operations as "app")
 
-with_action = function(root, fn, code, call = fn, summary = NULL, parts = character(0)) {
+with_action = function(root, fn, code, call = fn, summary = NULL, parts = character(0), actor = NULL) {
   if (!is.null(.action_state$current)) {
     return(code)
   }
@@ -204,11 +211,19 @@ with_action = function(root, fn, code, call = fn, summary = NULL, parts = charac
     .action_state$current = NULL
   }, add = TRUE)
 
-  result = code
+  result = withVisible(code)
 
   snapshot_id = .action_state$current$snapshot_id
-  record_action(root, id, fn, call, summary, before, parts, snapshot_id)
-  result
+  record_action(root, id, fn, call, summary, before, parts, snapshot_id, actor = actor)
+  if (result$visible) result$value else invisible(result$value)
+}
+
+# The id of the action most recently recorded in this R process, or NULL
+# when the last with_action() changed nothing (the marking app uses it to
+# tell its own actions from those noticed in the database)
+
+last_recorded_action_id = function() {
+  .action_state$last_recorded
 }
 
 # Write the actions row (and its before / after parts) for a finished call,
@@ -220,8 +235,10 @@ with_action = function(root, fn, code, call = fn, summary = NULL, parts = charac
 # before: Named list of the parts as they were before the call
 # parts: The parts it may have replaced
 # snapshot_id: The pre-change snapshot it took, or NULL
+# actor: The actor to record, or NULL for markermd_actor()
 
-record_action = function(root, id, fn, call, summary, before, parts, snapshot_id = NULL) {
+record_action = function(root, id, fn, call, summary, before, parts, snapshot_id = NULL, actor = NULL) {
+  .action_state$last_recorded = NULL
   with_database(root, function(conn) {
     DBI::dbBegin(conn)
     after = if (length(parts) > 0) action_part_lists(conn, parts)
@@ -241,7 +258,8 @@ record_action = function(root, id, fn, call, summary, before, parts, snapshot_id
                            scope, snapshot_id, markermd_version)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ", params = list(
-      id, utc_timestamp(), snapshot_timezone(), get_current_username(), markermd_actor(), fn,
+      id, utc_timestamp(), snapshot_timezone(), get_current_username(),
+      if (is.null(actor)) markermd_actor() else actor, fn,
       if (blank(call)) NA_character_ else call,
       if (blank(summary)) NA_character_ else summary,
       as.character(jsonlite::toJSON(scope, auto_unbox = TRUE)),
@@ -267,6 +285,7 @@ record_action = function(root, id, fn, call, summary, before, parts, snapshot_id
       }
     }
     DBI::dbCommit(conn)
+    .action_state$last_recorded = id
     invisible(id)
   })
 }
@@ -360,7 +379,7 @@ app_event_groups = function(conn, gap = 15 * 60) {
     return(list(groups = empty_groups, events = events))
   }
 
-  events$time = as.POSIXct(events$timestamp, format = "%Y-%m-%d %H:%M:%S", tz = "")
+  events$time = parse_event_timestamp(events$timestamp)
   events = events[order(events$username, events$time, events$table, events$id), , drop = FALSE]
   step = c(Inf, as.numeric(diff(events$time), units = "secs"))
   new_user = c(TRUE, events$username[-1] != events$username[-nrow(events)])
@@ -594,12 +613,14 @@ activity_diff_conn = function(conn, id, gap = 15 * 60) {
 #'
 #' Lists what has changed the project's grading state: every call of a
 #' markermd function that changed it ([marks_import()], [marks_set()],
-#' [rubric_import()], [template_import()], `project_set(template = ...)`,
-#' [snapshot_restore()]), and the grading done in [mark()], grouped into
-#' sessions of activity. Each recorded call notes who made it: the
-#' `MARKERMD_ACTOR` environment variable when set, `"claude"` or `"codex"`
-#' when the call ran under one of those agent CLIs, and `"R"` otherwise.
-#' Grading recorded before the log existed lists as app grading.
+#' [rubric_import()], [rubric_item_set()], [template_import()],
+#' `project_set(template = ...)`, [snapshot_restore()]), the bulk operations
+#' made in [mark()] (rubric imports and edits, item and group deletions,
+#' restores, recorded with the actor `"app"`), and the grading done in
+#' [mark()], grouped into sessions of activity. Each recorded call notes who
+#' made it: the `MARKERMD_ACTOR` environment variable when set, `"claude"`
+#' or `"codex"` when the call ran under one of those agent CLIs, and `"R"`
+#' otherwise. Grading recorded before the log existed lists as app grading.
 #'
 #' Use [activity_detail()] for what one entry changed.
 #'
@@ -706,7 +727,7 @@ pair_agent_badges = function(conn, question_name, assignment_repo) {
   ", params = c(pair, pair))$timestamp
 
   touched = (!is.na(last_app_grade) & last_app_grade > agent$id) |
-    (!is.na(last_app_comment) & last_app_comment > agent$timestamp)
+    (!is.na(last_app_comment) & parse_event_timestamp(last_app_comment) > parse_event_timestamp(agent$timestamp))
   agent = agent[!touched, , drop = FALSE]
   if (nrow(agent) == 0) {
     return(list())
@@ -716,6 +737,12 @@ pair_agent_badges = function(conn, question_name, assignment_repo) {
     "SELECT action_id, actor, fn FROM actions WHERE action_id IN ({paste(DBI::dbQuoteString(conn, unique(agent$action_id)), collapse = ',')})"
   ))
   hit = match(agent$action_id, who$action_id)
+  # A restore made in the app is the grader's own doing, not an agent's
+  agent = agent[is.na(hit) | who$actor[hit] != "app", , drop = FALSE]
+  hit = match(agent$action_id, who$action_id)
+  if (nrow(agent) == 0) {
+    return(list())
+  }
   stats::setNames(lapply(seq_len(nrow(agent)), function(i) {
     list(
       actor = if (is.na(hit[i])) "a markermd call" else who$actor[hit[i]],
@@ -785,6 +812,6 @@ action_notice_text = function(row) {
   paste0(
     row$actor, ": ", row$fn,
     if (nzchar(scope)) paste0(" (", scope, ")"),
-    if (!is.na(row$summary)) paste0(" – ", one_line_text(row$summary, 80))
+    if (!is.na(row$summary)) paste0(" \u2013 ", one_line_text(row$summary, 80))
   )
 }

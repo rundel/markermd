@@ -133,8 +133,10 @@ db_question_names = function(conn) {
 # template part is the stored template minus its metadata (created_at is
 # stamped on every save, so it would make every re-save a change); the rubric
 # part carries the database's item and group ids so a diff can tell a
-# reworded item from a delete plus an add. NULL for a part with nothing to
-# store (no template).
+# reworded item from a delete plus an add, and the marks part carries each
+# pair's selected item ids beside the descriptions so a restore and the
+# cached scores work by id, whatever the descriptions. NULL for a part with
+# nothing to store (no template).
 #
 # conn: DBI connection object
 # Returns: List with template, rubric and marks
@@ -148,7 +150,7 @@ snapshot_payload = function(conn) {
   list(
     template = template,
     rubric = rubric_to_list(rubric_data_from_conn(conn, question_names, ids = TRUE), ids = TRUE),
-    marks = marks_to_list(marks_data_from_conn(conn))
+    marks = marks_to_list(marks_data_from_conn(conn, ids = TRUE))
   )
 }
 
@@ -177,9 +179,9 @@ rubric_without_ids = function(rubric) {
 
 # Encode a payload's parts: canonical JSON, its hash and the part's format
 # version, plus the snapshot-level content hash. The part hashes address the
-# stored blobs (with the rubric's ids, so a diff can match items); the
-# content hash, which decides whether the state changed, is taken over the
-# rubric without its ids.
+# stored blobs (with the rubric's and marks' ids, so a diff and a restore can
+# match items); the content hash, which decides whether the state changed,
+# is taken over the rubric and marks without their ids.
 #
 # payload: List from snapshot_payload() (or read back from a snapshot)
 # Returns: List with parts (named list of json / hash / format_version) and
@@ -199,7 +201,12 @@ encode_snapshot_parts = function(payload) {
       hash = snapshot_hash(json),
       format_version = as.character(x$format_version)
     )
-    content[[part]] = if (identical(part, "rubric")) snapshot_hash(canonical_json(rubric_without_ids(x))) else parts[[part]]$hash
+    content[[part]] = switch(
+      part,
+      rubric = snapshot_hash(canonical_json(rubric_without_ids(x))),
+      marks = snapshot_hash(canonical_json(marks_without_ids(x))),
+      parts[[part]]$hash
+    )
   }
   list(
     parts = parts,
@@ -249,7 +256,8 @@ snapshot_repo_universe = function(root) {
 # takes. Tolerant of what the database allows (duplicate descriptions): no
 # S7 exchange round trip, the entries are read directly. Items are keyed by
 # their stored id when the snapshot carries ids (they always do), otherwise
-# by position.
+# by a "missing_<k>" placeholder that restore_rubric_conn() replaces with a
+# fresh id.
 #
 # question: One entry of a plain rubric list's questions
 # Returns: List with items (named list of markermd_rubric_item keyed by id),
@@ -262,7 +270,7 @@ rubric_question_parts = function(question) {
   k = 0
   add_item = function(entry, group_id) {
     k <<- k + 1
-    id = if (is.null(entry$id)) paste0("item_", k) else as.character(entry$id)
+    id = if (is.null(entry$id)) paste0("missing_", k) else as.character(entry$id)
     items[[id]] <<- markermd_rubric_item(
       hotkey = NA_integer_,
       points = as.numeric(entry$points),
@@ -272,7 +280,7 @@ rubric_question_parts = function(question) {
   }
   for (entry in question$items) {
     if (is_rubric_group_entry(entry)) {
-      group_id = if (is.null(entry$id)) paste0("group_", length(groups) + 1) else as.character(entry$id)
+      group_id = if (is.null(entry$id)) paste0("missing_group_", length(groups) + 1) else as.character(entry$id)
       groups[[group_id]] = rubric_group_from_list(entry)
       for (member in entry$items) {
         add_item(member, group_id)
@@ -297,9 +305,12 @@ rubric_question_parts = function(question) {
 # Score every (repository, question) pair of a rubric and marks document the
 # way collect_score_data() scores the live database: a pair counts as graded
 # when it has a selected item, a non-empty public comment, or an optional
-# question, and its score is score_question() over the selected items (matched
-# by description), the question's groups and its scoring setup (positive mode
-# out of 10 when the question has none). Ungraded pairs score NA.
+# question, and its score is score_question() over the selected items, the
+# question's groups and its scoring setup (positive mode out of 10 when the
+# question has none). Ungraded pairs score NA. Selections are matched by the
+# item ids a snapshot's marks carry (item_ids); a marks document without them
+# (an older snapshot) is matched by description, where a duplicated
+# description can only pick the first item.
 #
 # rubric: Plain rubric list (rubric_to_list() shape)
 # marks: Plain marks list (marks_to_list() shape)
@@ -317,34 +328,40 @@ score_snapshot_parts = function(rubric, marks, repo_names = character(0)) {
   mark_repos = vapply(marks$repos, function(repo) as.character(repo$name), character(1))
   repos = c(repo_names, sort(setdiff(mark_repos, repo_names)))
 
-  rows = list()
+  n = length(rubric$questions) * length(repos)
+  out_question = character(n)
+  out_repo = character(n)
+  out_score = rep(NA_real_, n)
+  k = 0L
   for (question in rubric$questions) {
     parts = rubric_question_parts(question)
     for (repo in repos) {
+      k = k + 1L
+      out_question[k] = as.character(question$name)
+      out_repo[k] = repo
       entry = by_pair[[paste(repo, question$name, sep = "\x1f")]]
       selected_ids = character(0)
       has_comment = FALSE
       if (!is.null(entry)) {
-        wanted = as.character(unlist(entry$items))
-        selected_ids = names(parts$items)[match(wanted, parts$descriptions, nomatch = 0)]
+        selected_ids = if (!is.null(entry$item_ids)) {
+          intersect(as.character(unlist(entry$item_ids)), names(parts$items))
+        } else {
+          wanted = as.character(unlist(entry$items))
+          names(parts$items)[match(wanted, parts$descriptions, nomatch = 0)]
+        }
         has_comment = !is.null(entry$comment) && nzchar(trimws(entry$comment))
       }
       graded = length(selected_ids) > 0 || has_comment || parts$state@optional
-      score = if (graded) score_question(parts$items, selected_ids, parts$groups, parts$state)$score else NA_real_
-      rows[[length(rows) + 1]] = data.frame(
-        question_name = as.character(question$name), assignment_repo = repo, score = score,
-        stringsAsFactors = FALSE
-      )
+      if (graded) {
+        out_score[k] = score_question(parts$items, selected_ids, parts$groups, parts$state)$score
+      }
     }
   }
 
-  if (length(rows) == 0) {
-    return(data.frame(
-      question_name = character(0), assignment_repo = character(0), score = numeric(0),
-      stringsAsFactors = FALSE
-    ))
-  }
-  do.call(rbind, rows)
+  data.frame(
+    question_name = out_question, assignment_repo = out_repo, score = out_score,
+    stringsAsFactors = FALSE
+  )
 }
 
 # Per-repository totals of a scores data frame, NA until every question is
@@ -725,24 +742,32 @@ read_snapshot_notes = function(conn, snapshot_id) {
 
 # Whether the live state differs from the latest snapshot, with the number
 # of grade events recorded since it. No snapshot counts as changed when the
-# database holds any state.
+# database holds any state. Deciding `changed` means building and hashing
+# the whole payload, which grows with the class; the marking app's navbar
+# indicator, refreshed on every grading write, asks for the cheap part only
+# (content = FALSE gives changed = NA when a snapshot exists).
 #
 # conn: DBI connection object
+# content: Whether to compare the live content with the latest snapshot's
 # Returns: List with changed, latest (the latest snapshot row or NULL) and
 #   events_since
 
-snapshot_state_status = function(conn) {
+snapshot_state_status = function(conn, content = TRUE) {
   latest = latest_snapshot_row(conn)
   if (is.null(latest)) {
     return(list(changed = snapshot_has_state(conn), latest = NULL, events_since = 0L))
   }
-  current = encode_snapshot_parts(snapshot_payload(conn))$content_hash
+  changed = NA
+  if (content) {
+    current = encode_snapshot_parts(snapshot_payload(conn))$content_hash
+    changed = !identical(current, latest$content_hash)
+  }
   events = if (is.na(latest$event_id)) {
     DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM grades")$n
   } else {
     DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM grades WHERE id > ?", params = list(latest$event_id))$n
   }
-  list(changed = !identical(current, latest$content_hash), latest = latest, events_since = as.integer(events))
+  list(changed = changed, latest = latest, events_since = as.integer(events))
 }
 
 # The number of recorded selection events since the latest snapshot beyond
@@ -1387,9 +1412,9 @@ current_snapshot_stats = function(conn, root) {
 #' same readers the imports use: `markermd-template.yaml` (when the snapshot
 #' holds a template), `markermd-rubric.yaml` and `markermd-marks.yaml`, plus a
 #' `snapshot.yaml` sidecar with the snapshot's fields and notes, so the
-#' directory stands alone as an archive. The rubric file drops the item and
-#' group ids a snapshot carries internally, so it validates against the
-#' published schema.
+#' directory stands alone as an archive. The rubric and marks files drop the
+#' item and group ids a snapshot carries internally, so they validate against
+#' the published schemas.
 #'
 #' @inheritParams snapshot_info
 #' @param dir Output directory, created when missing.
@@ -1432,7 +1457,7 @@ snapshot_export = function(id, dir, project = ".") {
   written = c(written, path)
 
   path = fs::path(dir, "markermd-marks.yaml")
-  write_marks_yaml(marks_from_list(data$parts$marks), path)
+  write_marks_yaml(marks_from_list(marks_without_ids(data$parts$marks)), path)
   written = c(written, path)
 
   row = data$row
@@ -1548,22 +1573,32 @@ record_export_note = function(root, what, path) {
 #' Writes a snapshot's rubric and marks (and optionally its template) back
 #' into the project database, undoing every change made since. An automatic
 #' snapshot of the current state is taken first, so a restore can itself be
-#' undone. The parts are written through the same paths as the imports, in
-#' one transaction: the template is stored, each chosen question's rubric
-#' items, groups and scoring are replaced, and each chosen repository's
-#' selections and comments are set to the snapshot's (pairs the snapshot did
-#' not know are cleared). The restored scores are then recomputed and
-#' compared with the scores the snapshot recorded; a mismatch aborts and
-#' rolls everything back.
+#' undone. Everything is written in one transaction: the template is stored,
+#' each chosen question's rubric items, groups and scoring are put back in
+#' place by id (an item the snapshot knows keeps its id, and with it every
+#' repository's recorded selections of it; items and groups the snapshot does
+#' not have are removed), and each chosen repository's selections and
+#' comments are set to the snapshot's, matched by the item ids the snapshot
+#' carries. Pairs with grading activity the snapshot did not record are
+#' cleared. The restored scores are then recomputed and compared with the
+#' scores the snapshot recorded; a mismatch aborts and rolls everything back.
 #'
 #' @details
-#' Restoring the rubric alone drops every selection of an item the snapshot
-#' does not have, and restoring the marks alone can leave selections that
-#' name items the current rubric lacks, so the default restores both and a
-#' partial restore warns. `question` and `repo` narrow the restore ("undo the
-#' review for Q1c only"). Repositories in the snapshot that no longer exist
-#' under the project's repos directory are skipped with a warning. A question
-#' the snapshot has that is not in the current template aborts unless
+#' Restoring the rubric alone keeps every repository's selections (of the
+#' items the snapshot still has), and restoring the marks alone aborts when
+#' the snapshot's selections name items the current rubric lacks, so the
+#' default restores both and a partial restore warns. `question` and `repo`
+#' narrow the restore ("undo the review for Q1c only", "for one student
+#' only"); repositories outside `repo` are left exactly as they are, and only
+#' the restored repositories are checked against the recorded scores.
+#' Without `repo`, every repository under the project's repos directory is
+#' restored, including repositories graded only after the snapshot, whose
+#' grading is cleared. Clearing appends deselection and empty-comment events
+#' (the grading tables are append-only logs), so a cleared pair still counts
+#' as having grading activity for [marks_import()]'s default skip; pass
+#' `overwrite = TRUE` to re-mark it. Repositories in the snapshot that no
+#' longer exist under the repos directory are skipped with a warning. A question the
+#' snapshot has that is not in the current template aborts unless
 #' `"template"` is among the parts.
 #'
 #' @inheritParams snapshot_info
@@ -1572,7 +1607,7 @@ record_export_note = function(root, what, path) {
 #' @param question Optional character vector of question names to restore
 #'   (rubric and marks). Defaults to every question in the snapshot.
 #' @param repo Optional character vector of repository names whose marks to
-#'   restore. Defaults to every repository in the snapshot.
+#'   restore. Defaults to every repository of the project.
 #' @param summary Optional summary recorded on the automatic pre-restore
 #'   snapshot: why the restore was needed.
 #'
@@ -1598,12 +1633,7 @@ snapshot_restore = function(id, project = ".", part = c("rubric", "marks"), ques
     cli::cli_abort("{.arg summary} must be a single string.")
   }
 
-  call = paste0("snapshot_restore('", id, "', part = c(", paste0("'", part, "'", collapse = ", "), "))")
-  result = with_action(
-    proj@root, "snapshot_restore", call = call, summary = summary,
-    parts = intersect(part, c("template", "rubric")),
-    restore_snapshot(proj, id, part = part, question = question, repo = repo, summary = summary)
-  )
+  result = snapshot_restore_action(proj, id, part = part, question = question, repo = repo, summary = summary)
 
   restored = c(
     if ("template" %in% part) "the template",
@@ -1617,17 +1647,31 @@ snapshot_restore = function(id, project = ".", part = c("rubric", "marks"), ques
   invisible(result[c("snapshot_id", "pre_restore")])
 }
 
-# The work of snapshot_restore(), shared with the marking app's History tab,
-# which passes the item and group ids its session has ever bound so the
-# re-created rubric items never reuse one (see mark_rubric_server())
+# A restore recorded as an action (see with_action()): the work of
+# snapshot_restore(), shared with the marking app's History tab so a restore
+# made there is in the activity log like one made from R
 #
 # proj: markermd_project object
 # id, part, question, repo, summary: See snapshot_restore() (part already validated)
-# reserved_ids: Item / group ids the restored rubric must not reuse
+# actor: The actor recorded on the action (NULL for markermd_actor())
+# Returns: See restore_snapshot()
+
+snapshot_restore_action = function(proj, id, part, question = NULL, repo = NULL, summary = NULL, actor = NULL) {
+  call = paste0("snapshot_restore('", id, "', part = c(", paste0("'", part, "'", collapse = ", "), "))")
+  with_action(
+    proj@root, "snapshot_restore", call = call, summary = summary,
+    parts = intersect(part, c("template", "rubric")), actor = actor,
+    restore_snapshot(proj, id, part = part, question = question, repo = repo, summary = summary)
+  )
+}
+
+# The work of snapshot_restore()
+#
+# proj: markermd_project object
+# id, part, question, repo, summary: See snapshot_restore() (part already validated)
 # Returns: List with snapshot_id, pre_restore, n_questions, n_repos, skipped
 
-restore_snapshot = function(proj, id, part, question = NULL, repo = NULL, summary = NULL,
-                            reserved_ids = character(0)) {
+restore_snapshot = function(proj, id, part, question = NULL, repo = NULL, summary = NULL) {
   grading_parts = intersect(part, c("rubric", "marks"))
   if (length(grading_parts) == 1) {
     other = setdiff(c("rubric", "marks"), grading_parts)
@@ -1662,17 +1706,24 @@ restore_snapshot = function(proj, id, part, question = NULL, repo = NULL, summar
       }
     }
 
+    # The repositories whose marks are restored: the project's (every pair
+    # the snapshot did not record is cleared), or the chosen subset
     repos = character(0)
     skipped_repos = character(0)
+    narrowed = !is.null(repo)
     if ("marks" %in% part) {
       snap_repos = vapply(parts$marks$repos, function(r) as.character(r$name), character(1))
-      repos = restrict_names(
-        repo, snap_repos,
-        "Repositor{?y/ies} {.val {unknown}} not in this snapshot.",
-        "The snapshot's repositories: {.val {available}}."
-      )
       universe = project_repo_names(proj)
-      skipped_repos = setdiff(repos, universe)
+      if (narrowed) {
+        repos = restrict_names(
+          repo, union(snap_repos, universe),
+          "Repositor{?y/ies} {.val {unknown}} not in this snapshot or under the project's repos directory.",
+          "The snapshot's repositories: {.val {available}}."
+        )
+      } else {
+        repos = universe
+      }
+      skipped_repos = setdiff(if (narrowed) repos else snap_repos, universe)
       repos = intersect(repos, universe)
       if (length(skipped_repos) > 0) {
         cli::cli_warn("Skipping {length(skipped_repos)} repositor{?y/ies} no longer under {.path {proj@repos}}: {.val {skipped_repos}}.")
@@ -1691,18 +1742,11 @@ restore_snapshot = function(proj, id, part, question = NULL, repo = NULL, summar
       }
 
       if ("rubric" %in% part) {
-        rubric = rubric_from_list(parts$rubric)
-        rubric$questions = rubric$questions[snap_questions %in% questions]
-        apply_rubric_import_conn(conn, rubric, mode = "replace", reserved_ids = reserved_ids)
-        for (q in rubric$questions) {
-          if (is.null(q$scoring)) {
-            DBI::dbExecute(conn, "DELETE FROM settings WHERE question_name = ?", params = list(q$name))
-          }
-        }
+        restore_rubric_conn(conn, parts$rubric, questions)
       }
 
       if ("marks" %in% part) {
-        restore_marks_conn(conn, proj, parts$marks, repos, questions)
+        restore_marks_conn(conn, parts$marks, repos, questions)
       }
 
       if (all(c("rubric", "marks") %in% part) && length(repos) > 0) {
@@ -1712,7 +1756,11 @@ restore_snapshot = function(proj, id, part, question = NULL, repo = NULL, summar
           paste(actual$assignment_repo, actual$question_name, sep = "\x1f"),
           paste(expected$assignment_repo, expected$question_name, sep = "\x1f")
         )]
-        same = (is.na(actual$score) & is.na(actual$expected)) |
+        # A repository the snapshot recorded no score for (it did not exist
+        # then) is restored to nothing, which no cached score describes
+        known = actual$assignment_repo %in% expected$assignment_repo
+        same = !known |
+          (is.na(actual$score) & is.na(actual$expected)) |
           (!is.na(actual$score) & !is.na(actual$expected) & abs(actual$score - actual$expected) < 1e-8)
         if (!all(same)) {
           bad = actual[!same, , drop = FALSE]
@@ -1729,25 +1777,146 @@ restore_snapshot = function(proj, id, part, question = NULL, repo = NULL, summar
            n_questions = length(questions), n_repos = length(repos), skipped = skipped_repos)
     }, error = function(e) {
       DBI::dbRollback(conn)
-      cli::cli_abort("Failed to restore snapshot {snapshot_id}: {conditionMessage(e)}")
+      cli::cli_abort("Failed to restore snapshot {snapshot_id}: {conditionMessage(e)}", parent = e, call = NULL)
     })
   })
+}
+
+# Write a snapshot's rubric for the chosen questions back into the database
+# in place, inside the caller's transaction: each item and group the
+# snapshot carries is upserted under its own id with the snapshot's
+# position, hotkey, group, points and description, so the recorded
+# selections of a surviving item are kept for every repository; items and
+# groups absent from the snapshot are deleted (an item's grade rows with it),
+# and the question's scoring is set to the snapshot's or removed when it had
+# none. An item without an id (not written by this package's snapshots) gets
+# a fresh one.
+#
+# conn: DBI connection object
+# rubric: Plain rubric list from the snapshot (rubric_to_list(ids = TRUE) shape)
+# questions: Questions to restore
+
+restore_rubric_conn = function(conn, rubric, questions) {
+  all_items = load_all_items(conn)
+  all_groups = load_all_item_groups(conn)
+  taken = all_items$item_id
+  taken_groups = all_groups$group_id
+
+  for (question in rubric$questions) {
+    question_name = as.character(question$name)
+    if (!question_name %in% questions) {
+      next
+    }
+    parts = rubric_question_parts(question)
+
+    # Ids this package did not mint (none in practice) are replaced by fresh ones
+    minted = !grepl("^item_[0-9]+$", names(parts$items)) | duplicated(names(parts$items))
+    if (any(minted)) {
+      fresh = next_item_ids(taken, sum(minted))
+      taken = union(taken, fresh)
+      names(parts$items)[minted] = fresh
+    }
+    minted_groups = !grepl("^group_[0-9]+$", names(parts$groups))
+    if (any(minted_groups)) {
+      fresh = next_item_ids(taken_groups, sum(minted_groups), prefix = "group_")
+      taken_groups = union(taken_groups, fresh)
+      old = names(parts$groups)[minted_groups]
+      names(parts$groups)[minted_groups] = fresh
+      parts$items = lapply(parts$items, function(item) {
+        if (!is.na(item@group) && item@group %in% old) {
+          item@group = fresh[match(item@group, old)]
+        }
+        item
+      })
+    }
+
+    existing = all_items$item_id[all_items$question_name == question_name]
+    existing_groups = all_groups$group_id[all_groups$question_name == question_name]
+    for (item_id in setdiff(existing, names(parts$items))) {
+      delete_item_records(conn, question_name, item_id)
+    }
+    for (group_id in setdiff(existing_groups, names(parts$groups))) {
+      delete_item_group_records(conn, question_name, group_id)
+    }
+    for (group_id in names(parts$groups)) {
+      upsert_item_group(conn, question_name, group_id, parts$groups[[group_id]])
+    }
+    for (i in seq_along(parts$items)) {
+      item = parts$items[[i]]
+      item@hotkey = position_hotkey(i)
+      upsert_items(conn, question_name, names(parts$items)[i], item, position = i)
+    }
+
+    if (is.null(question$scoring)) {
+      DBI::dbExecute(conn, "DELETE FROM settings WHERE question_name = ?", params = list(question_name))
+    } else {
+      upsert_settings(conn, question_name, parts$state)
+    }
+  }
+  invisible(NULL)
 }
 
 # Write a snapshot's marks for the chosen repositories and questions back
 # into the database, inside the caller's transaction: every chosen pair the
 # snapshot recorded gets its selections and both comments (a comment the
 # snapshot lacks is cleared), and every chosen pair with grading activity the
-# snapshot did not record is cleared. Pairs already in the target state are
-# left alone, so a restore adds no needless event rows.
+# snapshot did not record is cleared. Selections are matched by the item ids
+# the snapshot carries (by description for a snapshot without them); an id
+# the current rubric lacks aborts, since a marks-only restore cannot select
+# an item that is not there. Pairs already in the target state are left
+# alone, so a restore adds no needless event rows.
 #
 # conn: DBI connection object
-# proj: markermd_project object
 # marks: Plain marks list from the snapshot
 # repos: Repositories to restore
 # questions: Questions to restore
 
-restore_marks_conn = function(conn, proj, marks, repos, questions) {
+restore_marks_conn = function(conn, marks, repos, questions) {
+  all_items = load_all_items(conn)
+  items_of = function(question_name) {
+    rows = all_items[all_items$question_name == question_name, , drop = FALSE]
+    rows = rows[order(rows$position, rows$hotkey, rows$id), , drop = FALSE]
+    rows[c("item_id", "description")]
+  }
+  item_cache = list()
+  question_items = function(question_name) {
+    if (is.null(item_cache[[question_name]])) {
+      item_cache[[question_name]] <<- items_of(question_name)
+    }
+    item_cache[[question_name]]
+  }
+
+  # The item ids a snapshot entry selects, against the current rubric
+  entry_ids = function(repo_name, q) {
+    items = question_items(q$name)
+    if (!is.null(q$item_ids)) {
+      ids = as.character(unlist(q$item_ids))
+      unknown = setdiff(ids, items$item_id)
+      if (length(unknown) > 0) {
+        cli::cli_abort(c(
+          "The snapshot's marks for {.val {repo_name}} / {.val {q$name}} select items the current rubric does not have ({.val {unknown}}).",
+          "i" = "Restore the rubric as well (the default), or restore a snapshot taken with this rubric."
+        ))
+      }
+      return(ids)
+    }
+    wanted = as.character(unlist(q$items))
+    dupes = unique(items$description[duplicated(items$description)])
+    if (length(dupes) > 0 && any(wanted %in% dupes)) {
+      cli::cli_abort(
+        "Question {.val {q$name}} has rubric items with duplicate descriptions ({.val {dupes}}), so this snapshot's selections cannot be matched by description."
+      )
+    }
+    unknown = setdiff(wanted, items$description)
+    if (length(unknown) > 0) {
+      cli::cli_abort(c(
+        "The snapshot's marks for {.val {repo_name}} / {.val {q$name}} list items not in the current rubric: {.val {unknown}}.",
+        "i" = "Restore the rubric as well (the default), or restore a snapshot taken with this rubric."
+      ))
+    }
+    items$item_id[items$description %in% wanted]
+  }
+
   target = list()
   for (repo in marks$repos) {
     if (!repo$name %in% repos) {
@@ -1759,7 +1928,7 @@ restore_marks_conn = function(conn, proj, marks, repos, questions) {
       }
       target[[paste(repo$name, q$name, sep = "\x1f")]] = list(
         repo = repo$name, question = q$name,
-        items = as.character(unlist(q$items)),
+        items = entry_ids(repo$name, q),
         comment = if (is.null(q$comment)) "" else as.character(q$comment),
         private_comment = if (is.null(q$private_comment)) "" else as.character(q$private_comment)
       )
@@ -1782,7 +1951,7 @@ restore_marks_conn = function(conn, proj, marks, repos, questions) {
   }
 
   # The current state of every target pair, to skip no-op writes
-  current = marks_data_from_conn(conn, repo_names = repos, question_names = questions)
+  current = marks_data_from_conn(conn, repo_names = repos, question_names = questions, ids = TRUE)
   current_by = list()
   for (repo in current$repos) {
     for (q in repo$questions) {
@@ -1790,38 +1959,29 @@ restore_marks_conn = function(conn, proj, marks, repos, questions) {
     }
   }
 
-  entries = list()
+  plan = list()
   for (key in names(target)) {
     t = target[[key]]
     cur = current_by[[key]]
-    cur_items = if (is.null(cur)) character(0) else as.character(cur$items)
+    cur_items = if (is.null(cur)) character(0) else as.character(cur$item_ids)
     cur_comment = if (is.null(cur) || is.null(cur$comment)) "" else cur$comment
     cur_private = if (is.null(cur) || is.null(cur$private_comment)) "" else cur$private_comment
-    same_items = setequal(cur_items, t$items) && (!is.null(cur) || length(t$items) == 0)
-    entries[[length(entries) + 1]] = list(
-      name = t$question,
-      items = if (same_items && !is.null(cur)) NULL else t$items,
+    same_items = !is.null(cur) && setequal(cur_items, t$items)
+    items = question_items(t$question)$item_id
+    entry = list(
+      repo = t$repo,
+      question = t$question,
+      selections = if (same_items) NULL else stats::setNames(items %in% t$items, items),
       comment = if (identical(cur_comment, t$comment)) NULL else t$comment,
-      private_comment = if (identical(cur_private, t$private_comment)) NULL else t$private_comment,
-      repo = t$repo
+      private_comment = if (identical(cur_private, t$private_comment)) NULL else t$private_comment
     )
+    if (!is.null(entry$selections) || !is.null(entry$comment) || !is.null(entry$private_comment)) {
+      plan[[length(plan) + 1]] = entry
+    }
   }
-  entries = Filter(function(e) !is.null(e$items) || !is.null(e$comment) || !is.null(e$private_comment), entries)
-  if (length(entries) == 0) {
+  if (length(plan) == 0) {
     return(invisible(NULL))
   }
-
-  repo_names = unique(vapply(entries, function(e) e$repo, character(1)))
-  marks_list = list(repos = lapply(repo_names, function(repo_name) {
-    list(
-      name = repo_name,
-      questions = lapply(Filter(function(e) e$repo == repo_name, entries), function(e) {
-        e$repo = NULL
-        e
-      })
-    )
-  }))
-  plan = resolve_marks_plan_conn(conn, repos, db_question_names(conn)$names, marks_list)
   apply_marks_import_conn(conn, plan)
   invisible(length(plan))
 }

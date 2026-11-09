@@ -203,8 +203,9 @@ test_that("mark shows a file question's file and its validation", {
   # The validation modal lists the file questions with their result
   app$set_inputs(main_navbar = "assignments")
   app$run_js("Shiny.setInputValue('validation_clicked', 3, {priority: 'event'})")
-  app$wait_for_js("!!document.querySelector('#shiny-modal.show #explore_module-qcard_Datascript')", timeout = 10000)
-  card = app$get_js("document.getElementById('explore_module-qcard_Datascript').innerText")
+  card_id = paste0("explore_module-", markermd:::question_card_id("Data script"))
+  app$wait_for_js(paste0("!!document.querySelector('#shiny-modal.show #", card_id, "')"), timeout = 10000)
+  card = app$get_js(paste0("document.getElementById('", card_id, "').innerText"))
   expect_match(card, "not found in the repository")
 })
 

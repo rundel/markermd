@@ -18,8 +18,11 @@
 #   6: the action log (actions, action_parts) and the action_id column on
 #      grades, comments and private_comments (see migrate_actions() and
 #      actions.R)
+#   7: the grading event tables' timestamps in UTC ISO 8601 (see
+#      migrate_event_timestamps()); earlier rows were local wall-clock time
+#      with no zone
 
-markermd_db_version = function() "6"
+markermd_db_version = function() "7"
 
 # ORDER BY clause giving a question's rubric items in display order. position
 # is authoritative; a row without one (written before schema version 2 and
@@ -71,8 +74,11 @@ initialize_database = function(collection_path) {
   db_path = get_database_path(collection_path)
   fresh = !file.exists(db_path)
 
-  # Create connection
+  # Create connection; closed again if anything below fails, since the
+  # caller never sees it
   conn = DBI::dbConnect(RSQLite::SQLite(), db_path)
+  ready = FALSE
+  on.exit(if (!ready) close_database(conn))
 
   # Enable foreign key constraints
   DBI::dbExecute(conn, "PRAGMA foreign_keys = ON")
@@ -86,16 +92,21 @@ initialize_database = function(collection_path) {
   # INTO, which reads through the log.
   DBI::dbGetQuery(conn, "PRAGMA journal_mode = WAL")
 
+  # Checked before anything is written, and on every connection (one
+  # metadata read): a database written by a newer markermd must not be
+  # migrated or touched by this one, and a concurrent skill run may have
+  # upgraded the schema while this session held the table cache
+  if (DBI::dbExistsTable(conn, "metadata")) {
+    assert_db_compatible(conn)
+  }
+
   if (fresh || !isTRUE(.initialized_dbs[[db_path]])) {
     create_tables_if_needed(conn, collection_path)
     .initialized_dbs[[db_path]] = TRUE
   }
 
-  # Always re-checked (one metadata read): a concurrent skill run may have
-  # upgraded the schema while this session held the table cache
-  assert_db_compatible(conn)
-
-  return(conn)
+  ready = TRUE
+  conn
 }
 
 # Create database tables if they don't exist
@@ -255,6 +266,40 @@ create_tables_if_needed = function(conn, collection_path = NULL) {
   migrate_snapshots(conn, collection_path, baseline = snapshots_are_new)
   create_action_tables(conn)
   migrate_actions(conn)
+  migrate_event_timestamps(conn)
+}
+
+# Schema version 6 -> 7: rewrite the grading event tables' timestamps from
+# local wall-clock time ("2026-09-29 18:55:40", written by versions up to 6)
+# to UTC ISO 8601 with milliseconds (event_timestamp()), the format the
+# snapshot and action tables already use, so events from graders in
+# different time zones order correctly and the activity log groups them
+# right. SQLite's 'utc' modifier reads the stored text as local time of this
+# machine, which is where the rows were written in the common case. Same
+# shape as the earlier migrations: a no-op once stamped.
+#
+# conn: DBI connection object
+
+migrate_event_timestamps = function(conn) {
+  stored = get_metadata(conn, "schema_version")
+  if (!is.null(stored) && utils::compareVersion(stored, "7") >= 0) {
+    return(invisible(FALSE))
+  }
+
+  DBI::dbExecute(conn, "BEGIN IMMEDIATE")
+  stored = get_metadata(conn, "schema_version")
+  if (is.null(stored) || utils::compareVersion(stored, "7") < 0) {
+    for (table in c("grades", "comments", "private_comments")) {
+      DBI::dbExecute(conn, glue::glue("
+        UPDATE {table} SET timestamp = strftime('%Y-%m-%dT%H:%M:%fZ', timestamp, 'utc')
+        WHERE timestamp NOT LIKE '%T%'
+      "))
+    }
+    set_metadata(conn, "schema_version", "7")
+  }
+  DBI::dbExecute(conn, "COMMIT")
+
+  invisible(TRUE)
 }
 
 # Snapshot tables (schema version 5): named, timestamped, annotated copies of
@@ -469,8 +514,8 @@ migrate_items_group = function(conn) {
 # become non-optional, so their scores and graded status are unchanged. Same
 # shape as migrate_items_group(). A legacy database that had no settings
 # table gets one with the column from create_tables_if_needed(), so there is
-# nothing to add; it is stamped here all the same, since this is the last
-# migration and the schema is now current.
+# nothing to add; it is stamped here all the same so the later migrations
+# find the version they expect.
 #
 # conn: DBI connection object
 
@@ -508,12 +553,39 @@ get_current_username = function() {
   return(username)
 }
 
-# Get current timestamp in ISO format
+# Current local time as "YYYY-MM-DD HH:MM:SS", for the records a person
+# reads back (the project config, the settings and items rows' updated_at)
 #
 # Returns: Character string with current timestamp
 
 get_current_timestamp = function() {
   format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+}
+
+# The timestamp written on every grading event row (grades, comments,
+# private_comments): UTC ISO 8601 with milliseconds, like the snapshot and
+# action tables, so events order across machines and zones
+
+event_timestamp = function() {
+  utc_timestamp()
+}
+
+# Parse grading event timestamps into POSIXct: the UTC ISO 8601 form
+# written since schema version 7, or the zoneless local form of earlier
+# rows (read in this session's zone)
+#
+# x: Character vector of timestamps
+
+parse_event_timestamp = function(x) {
+  iso = grepl("T", x, fixed = TRUE)
+  out = as.POSIXct(rep(NA_character_, length(x)), tz = "")
+  if (any(iso)) {
+    out[iso] = parse_utc_timestamp(x[iso])
+  }
+  if (any(!iso)) {
+    out[!iso] = as.POSIXct(x[!iso], format = "%Y-%m-%d %H:%M:%S", tz = "")
+  }
+  out
 }
 
 # Current time as UTC ISO 8601 with milliseconds ("2026-09-29T23:55:40.123Z"),
@@ -556,6 +628,27 @@ with_database = function(collection_path, query_func) {
   conn = initialize_database(collection_path)
   on.exit(close_database(conn))
   query_func(conn)
+}
+
+# Run `code` inside one transaction on an open connection: committed when it
+# returns, rolled back when it errors, the error re-raised as "<what>: <its
+# message>" without the handler's own call (which would read as a meaningless
+# `value[[3L]]()`). Every bulk writer wraps its work in this.
+#
+# conn: DBI connection object
+# what: What failed, e.g. "Failed to import rubric"
+# code: The work (evaluated lazily, inside the transaction)
+
+with_transaction = function(conn, what, code) {
+  DBI::dbBegin(conn)
+  tryCatch({
+    result = code
+    DBI::dbCommit(conn)
+    result
+  }, error = function(e) {
+    DBI::dbRollback(conn)
+    cli::cli_abort("{what}: {conditionMessage(e)}", call = NULL)
+  })
 }
 
 # Upsert settings record
@@ -761,13 +854,42 @@ insert_grade = function(conn, question_name, assignment_repo, item_id, selected)
     assignment_repo,
     item_id,
     as.integer(selected),
-    get_current_timestamp(),
+    event_timestamp(),
     get_current_username(),
     current_action_id()
   ))
 }
 
-# Insert comment record
+# The two comment channels share one event-log layout: the public,
+# student-facing "comments" table and the grader-internal
+# "private_comments" table, which is never student-facing
+
+comment_tables = function() c(public = "comments", private = "private_comments")
+
+# Insert a comment event row into one of the comment tables
+#
+# conn: DBI connection object
+# table: "comments" or "private_comments"
+# question_name: Character string
+# assignment_repo: Character string
+# comment_text: Character string
+
+insert_comment_row = function(conn, table, question_name, assignment_repo, comment_text) {
+  table = match.arg(table, comment_tables())
+  DBI::dbExecute(conn, glue::glue("
+    INSERT INTO {table} (question_name, assignment_repo, comment_text, timestamp, username, action_id)
+    VALUES (?, ?, ?, ?, ?, ?)
+  "), params = list(
+    question_name,
+    assignment_repo,
+    comment_text,
+    event_timestamp(),
+    get_current_username(),
+    current_action_id()
+  ))
+}
+
+# Insert comment record (public, student-facing)
 #
 # conn: DBI connection object
 # question_name: Character string
@@ -775,17 +897,7 @@ insert_grade = function(conn, question_name, assignment_repo, item_id, selected)
 # comment_text: Character string
 
 insert_comment = function(conn, question_name, assignment_repo, comment_text) {
-  DBI::dbExecute(conn, "
-    INSERT INTO comments (question_name, assignment_repo, comment_text, timestamp, username, action_id)
-    VALUES (?, ?, ?, ?, ?, ?)
-  ", params = list(
-    question_name,
-    assignment_repo,
-    comment_text,
-    get_current_timestamp(),
-    get_current_username(),
-    current_action_id()
-  ))
+  insert_comment_row(conn, "comments", question_name, assignment_repo, comment_text)
 }
 
 # Insert private comment record (grader-internal, never student-facing)
@@ -796,17 +908,7 @@ insert_comment = function(conn, question_name, assignment_repo, comment_text) {
 # comment_text: Character string
 
 insert_private_comment = function(conn, question_name, assignment_repo, comment_text) {
-  DBI::dbExecute(conn, "
-    INSERT INTO private_comments (question_name, assignment_repo, comment_text, timestamp, username, action_id)
-    VALUES (?, ?, ?, ?, ?, ?)
-  ", params = list(
-    question_name,
-    assignment_repo,
-    comment_text,
-    get_current_timestamp(),
-    get_current_username(),
-    current_action_id()
-  ))
+  insert_comment_row(conn, "private_comments", question_name, assignment_repo, comment_text)
 }
 
 # Load all settings from database

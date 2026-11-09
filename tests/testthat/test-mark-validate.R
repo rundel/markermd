@@ -1,9 +1,10 @@
 # Coverage for the validation modal's select helpers (R/mod_mark_validate.R):
 # the question card ids and the pass/fail labelled question choices.
 
-test_that("question_card_id sanitises the question name", {
+test_that("question_card_id sanitises the question name and keeps lossy names apart", {
   expect_equal(markermd:::question_card_id("Q1"), "qcard_Q1")
-  expect_equal(markermd:::question_card_id("Question 1 (a)"), "qcard_Question1a")
+  expect_match(markermd:::question_card_id("Question 1 (a)"), "^qcard_Question_1__a__[0-9a-f]{6}$")
+  expect_false(identical(markermd:::question_card_id("Q1 (a)"), markermd:::question_card_id("Q1 [a]")))
 })
 
 test_that("validation_question_choices labels questions with the repository's result", {

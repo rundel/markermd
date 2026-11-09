@@ -104,14 +104,17 @@ optional_question_names = function(collection_path, question_names) {
 }
 
 # Wide per-repository score table: one row per repository, one column per
-# question (NA for a pair that does not count as graded), the total over the
-# graded questions (NA when none are) and how many questions are graded
+# question (NA for a pair that does not count as graded), the total (NA until
+# every question is graded, the export_scores() convention: the total a
+# student would receive), the running sum over the graded questions so far
+# (Total_partial, NA when none is graded) and how many questions are graded
 #
 # scores: Data frame from collect_score_data() (question_name,
 #   assignment_repo, score)
 # question_names: Character vector of question names, in template order
 # repo_names: Character vector of repository names, in display order
-# Returns: Data frame with columns Repository, one per question, Total, Graded
+# Returns: Data frame with columns Repository, one per question, Total,
+#   Total_partial, Graded
 
 build_scores_table_data = function(scores, question_names, repo_names) {
   out = data.frame(Repository = repo_names, stringsAsFactors = FALSE, check.names = FALSE)
@@ -121,7 +124,9 @@ build_scores_table_data = function(scores, question_names, repo_names) {
   }
   by_question = as.matrix(out[, question_names, drop = FALSE])
   n_graded = rowSums(!is.na(by_question))
-  out$Total = ifelse(n_graded > 0, rowSums(by_question, na.rm = TRUE), NA_real_)
+  complete = length(question_names) > 0 & n_graded == length(question_names)
+  out$Total = ifelse(complete, rowSums(by_question, na.rm = TRUE), NA_real_)
+  out$Total_partial = ifelse(n_graded > 0, rowSums(by_question, na.rm = TRUE), NA_real_)
   out$Graded = as.integer(n_graded)
   out
 }
@@ -145,9 +150,10 @@ score_stats = function(x) {
 
 # Summary rows for the score table, in the table's own column layout: how
 # many repositories are graded, then the mean, median and standard deviation
-# of their scores, per question. The Total column summarises only the
-# repositories with every question graded (a partial total would drag the
-# statistics down); the Graded column has no summary.
+# of their scores, per question. The Total column summarises the
+# repositories with every question graded (its Total is NA otherwise, so a
+# partial total cannot drag the statistics down); the Graded column has no
+# summary.
 #
 # table_data: Data frame from build_scores_table_data()
 # question_names: Character vector of question names
@@ -160,13 +166,12 @@ build_scores_summary_rows = function(table_data, question_names) {
     s = score_stats(x)
     c(s$n, s$mean, s$median, s$sd)
   }
-  complete = length(question_names) > 0 & table_data$Graded == length(question_names)
-
   rows = data.frame(Repository = stat_names, stringsAsFactors = FALSE, check.names = FALSE)
   for (question_name in question_names) {
     rows[[question_name]] = column_stats(table_data[[question_name]])
   }
-  rows$Total = column_stats(table_data$Total[complete])
+  rows$Total = column_stats(table_data$Total)
+  rows$Total_partial = rep(NA_real_, length(stat_names))
   rows$Graded = rep(NA_real_, length(stat_names))
   rows
 }

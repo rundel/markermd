@@ -1,13 +1,13 @@
 # Shiny module for displaying validation results during marking
 
 # DOM id (before namespacing) of a question's validation card, the target of
-# the question shortcut select. Uses the same sanitisation as the question's
-# tree id prefix in get_question_content().
+# the question shortcut select; question_dom_id() keeps two questions whose
+# names differ only in punctuation apart
 #
 # question_name: Character. Question name
 
 question_card_id = function(question_name) {
-  paste0("qcard_", gsub("[^A-Za-z0-9]", "", question_name))
+  paste0("qcard_", question_dom_id(question_name))
 }
 
 # Choices for the question shortcut select: the question names as values,
@@ -84,7 +84,7 @@ get_question_content = function(repo_ast, question, session) {
 
   question_ast = get_question_ast(repo_ast, question)
   tree_items = build_ast_tree_structure(question_ast)
-  question_id = paste0("q_", gsub("[^A-Za-z0-9]", "", question@name))
+  question_id = paste0("q_", question_dom_id(question@name))
 
   # The card collapses as a whole, so the tree is shown in full rather than
   # capped in height
@@ -391,7 +391,7 @@ mark_validate_server = function(id, ast, validation_results = shiny::reactiveVal
       shiny::req(template(), ast())
 
       for (question in template()@questions) {
-        question_id = paste0("q_", gsub("[^A-Za-z0-9]", "", question@name))
+        question_id = paste0("q_", question_dom_id(question@name))
 
         question_ast = get_question_ast(ast(), question)
         n = if (is.null(question_ast)) 0L else length(q2r_flatten(question_ast))

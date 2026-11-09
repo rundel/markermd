@@ -22,6 +22,8 @@ diagnostics from q2r are raised as R errors. Warning-kind diagnostics
 are not signalled (they would otherwise print to the console from inside
 the apps); they stay attached to the returned AST's \verb{@diagnostics} slot,
 labelled with the document's file name, and \code{\link[=mark]{mark()}}, \code{\link[=template]{template()}} and
-\code{\link[=parse_project]{parse_project()}} report them. If parsing yields an empty AST (no
-blocks) an error is reported.
+\code{\link[=parse_project]{parse_project()}} report them. Rewriting a knitr-style chunk header adds
+lines, so a diagnostic whose line number moved carries a hint giving the
+line of the file as written. If parsing yields an empty AST (no blocks)
+an error is reported.
 }

@@ -83,6 +83,16 @@ score_breakdown_ui = function(result, state) {
   )
 }
 
+# The score display's text: both numbers rounded as format_score() does
+# (floating-point sums such as 9.700000000000001 read as 9.7)
+#
+# current: The current score
+# total: The question's total points
+
+score_display_text = function(current, total) {
+  paste0(format_score(current), " / ", format_score(total), " ", if (total == 1) "pt" else "pts")
+}
+
 # Creates UI for displaying current score and grading configuration options
 #
 # id: Character. Module namespace ID
@@ -154,10 +164,7 @@ mark_grade_ui = function(id, grade_state, capped = 0, breakdown = NULL) {
                 `data-total` = grade_state@total_score,
                 class = "fw-bold d-inline-block py-2",
                 style = "font-size: 20px;",
-                paste0(
-                  grade_state@current_score, " / ", grade_state@total_score, " ",
-                  if (grade_state@total_score == 1) "pt" else "pts"
-                )
+                score_display_text(grade_state@current_score, grade_state@total_score)
               ),
               fa_icon("pen", class = "text-muted small")
             ),
@@ -250,8 +257,7 @@ mark_grade_ui = function(id, grade_state, capped = 0, breakdown = NULL) {
             var $el = $(el);
             $el.data('current', msg.current).data('total', msg.total);
             $el.attr('data-current', msg.current).attr('data-total', msg.total);
-            var suffix = msg.total === 1 ? 'pt' : 'pts';
-            $el.html(msg.current + ' / ' + msg.total + ' ' + suffix);
+            $el.text(msg.text);
           }
           // The cap badge is only touched when the message carries it (a
           // total or mode edit leaves it to the next score recompute)
@@ -313,7 +319,7 @@ mark_grade_settings_ui = function(id, grade_state) {
       ),
       shiny::checkboxGroupInput(
         ns("grade_bounds"), shiny::strong("Grade bounds:"),
-        choices = list("Enforce score ≥ 0" = "above_zero", "Enforce score ≤ max" = "below_max"),
+        choices = list("Enforce score \u2265 0" = "above_zero", "Enforce score \u2264 max" = "below_max"),
         selected = c(
           if (grade_state@bound_above_zero) "above_zero",
           if (grade_state@bound_below_max) "below_max"
@@ -365,6 +371,7 @@ mark_grade_server = function(id, initial_grade, ui_ns = NULL, collection_path = 
           id = target_ns("score_display"),
           current = current,
           total = total,
+          text = score_display_text(current, total),
           badge_id = target_ns("cap_badge"),
           capped = if (is.null(capped)) NULL else capped != 0,
           capped_text = if (is.null(capped)) NULL else cap_badge_text(capped)
@@ -506,18 +513,27 @@ mark_grade_server = function(id, initial_grade, ui_ns = NULL, collection_path = 
     return(list(
       id = safe_id,
       grade = shiny::reactive(grade_state()),
-      # Replace the grade state (persisting it) and patch the display; capped
-      # is how much the item group bounds changed the score, for the badge
-      update_grade = function(new_grade, capped = NULL) {
+      # Replace the grade state (persisting it unless persist = FALSE, as
+      # after an import or restore that already wrote it) and patch the
+      # display; capped is how much the item group bounds changed the score,
+      # for the badge
+      update_grade = function(new_grade, capped = NULL, persist = TRUE) {
         grade_state(new_grade)
-        
-        # Save to database if parameters are provided
-        if (!is.null(collection_path) && !is.null(question_name)) {
+
+        if (persist && !is.null(collection_path) && !is.null(question_name)) {
           save_grade_state(collection_path, question_name, new_grade)
         }
-        
-        # Update the display
+
         update_score_display(new_grade@current_score, new_grade@total_score, capped)
+      },
+      # Show a new live score (the repository on screen's) without writing
+      # anything: the score is per repository and recomputed from its
+      # selections, so it is never persisted in the per-question settings
+      set_score = function(score, capped = NULL) {
+        current = grade_state()
+        current@current_score = score
+        grade_state(current)
+        update_score_display(score, current@total_score, capped)
       },
       # Patch the display (score and cap badge) from the current state
       # without changing it: the score is unchanged but the cap badge may be

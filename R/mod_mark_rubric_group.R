@@ -230,9 +230,11 @@ rubric_groups_js = function() {
 # exclusive_conflicts: function() returning the repositories with more than
 #   one of the group's items selected (data frame with assignment_repo and
 #   items), which block turning the exclusive switch on
+# app_action: Function(fn, code, call, summary, parts) recording a change as
+#   an action of the app (see mark-app.R); the default just runs the code
 
 mark_rubric_group_server = function(id, initial_group, collection_path, question_name, group_id,
-                                    label_available, exclusive_conflicts) {
+                                    label_available, exclusive_conflicts, app_action = function(fn, code, ...) code) {
   shiny::moduleServer(id, function(input, output, session) {
 
     group_state = shiny::reactiveVal(initial_group)
@@ -249,7 +251,12 @@ mark_rubric_group_server = function(id, initial_group, collection_path, question
 
     commit = function(new_group) {
       group_state(new_group)
-      save_item_group(collection_path, question_name, group_id, new_group)
+      app_action(
+        "edit item group",
+        call = glue::glue("mark(): edit group \"{new_group@label}\" of {question_name}"),
+        parts = "rubric",
+        save_item_group(collection_path, question_name, group_id, new_group)
+      )
       feedback(NULL)
       changed(changed() + 1)
     }
