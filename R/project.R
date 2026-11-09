@@ -572,10 +572,10 @@ project_set = function(path = ".", repos = NULL, comments = NULL, template = NUL
       save_template_to_db(project@root, template, source_path = source_path, snapshot = spec)
     } else if (is_clear_sentinel(template)) {
       with_database(project@root, function(conn) {
-        DBI::dbBegin(conn)
+        savepoint = db_begin(conn)
         snapshot_before_change(conn, project@root, list(trigger = "project_set(template = NA)"))
         delete_metadata(conn, "template")
-        DBI::dbCommit(conn)
+        db_commit(conn, savepoint)
       })
     } else {
       import_template_yaml_to_db(project@root, as.character(template), snapshot = spec)

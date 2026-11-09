@@ -951,7 +951,7 @@ snapshot_create = function(project = ".", label = NULL, summary = NULL, metadata
   }
 
   result = with_database(proj@root, function(conn) {
-    DBI::dbBegin(conn)
+    savepoint = db_begin(conn)
     out = tryCatch({
       res = snapshot_write(conn, proj@root, kind = "manual", label = label, summary = summary, metadata = metadata)
       info = list(
@@ -959,10 +959,10 @@ snapshot_create = function(project = ".", label = NULL, summary = NULL, metadata
         items = nrow(load_all_items(conn)),
         stats = read_snapshot_stats(conn, res$snapshot_id)
       )
-      DBI::dbCommit(conn)
+      db_commit(conn, savepoint)
       c(res, info)
     }, error = function(e) {
-      DBI::dbRollback(conn)
+      db_rollback(conn, savepoint)
       cli::cli_abort("Failed to take the snapshot: {conditionMessage(e)}")
     })
     out
@@ -1555,7 +1555,7 @@ project_backup = function(project = ".", dir = "backups") {
 
 record_export_note = function(root, what, path) {
   with_database(root, function(conn) {
-    DBI::dbBegin(conn)
+    savepoint = db_begin(conn)
     tryCatch({
       res = snapshot_write(conn, root, kind = "auto", trigger = paste0("export_", what, "()"))
       if (!is.null(res)) {
@@ -1564,9 +1564,9 @@ record_export_note = function(root, what, path) {
           paste0(what, ": ", as.character(fs::path_rel(path, root))), key = "export"
         )
       }
-      DBI::dbCommit(conn)
+      db_commit(conn, savepoint)
     }, error = function(e) {
-      DBI::dbRollback(conn)
+      db_rollback(conn, savepoint)
       cli::cli_abort("Failed to record the export: {conditionMessage(e)}")
     })
   })
@@ -1748,7 +1748,7 @@ restore_snapshot = function(proj, id, part, question = NULL, repo = NULL, summar
       }
     }
 
-    DBI::dbBegin(conn)
+    savepoint = db_begin(conn)
     tryCatch({
       pre = snapshot_write(
         conn, proj@root, kind = "auto",
@@ -1795,12 +1795,12 @@ restore_snapshot = function(proj, id, part, question = NULL, repo = NULL, summar
         }
       }
 
-      DBI::dbCommit(conn)
+      db_commit(conn, savepoint)
       list(snapshot_id = snapshot_id, pre_restore = if (is.null(pre) || !pre$created) NULL else pre$snapshot_id,
            n_questions = length(questions), n_repos = length(repos), skipped = skipped_repos,
            name_changes = name_changes)
     }, error = function(e) {
-      DBI::dbRollback(conn)
+      db_rollback(conn, savepoint)
       cli::cli_abort("Failed to restore snapshot {snapshot_id}: {conditionMessage(e)}", parent = e, call = NULL)
     })
   })

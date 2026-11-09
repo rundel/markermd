@@ -939,28 +939,125 @@ close_database = function(conn) {
 # query_func: Function that takes a connection and executes queries
 
 with_database = function(collection_path, query_func) {
-  conn = initialize_database(collection_path)
-  on.exit(close_database(conn))
+  conn = session_database(collection_path)
+  if (is.null(conn)) {
+    conn = initialize_database(collection_path)
+    on.exit(close_database(conn))
+    return(query_func(conn))
+  }
+  # A shared connection outlives the call, so a transaction the work opened
+  # and never closed (an error between a begin and its commit) must not leak
+  # into the session's next database call
+  was_transacting = RSQLite::sqliteIsTransacting(conn)
+  on.exit(if (!was_transacting && RSQLite::sqliteIsTransacting(conn)) DBI::dbRollback(conn))
   query_func(conn)
+}
+
+# The apps' session-scoped connections, keyed by "<session token>|<database
+# path>". Inside a Shiny session with_database() reuses its session's
+# connection instead of opening one (and setting its PRAGMAs) per operation;
+# outside one (the exported API, later timers, scripts) every call still
+# opens and closes its own. Each session keeps its own connection, so commits
+# by one session still change PRAGMA data_version for the others' watchers.
+.session_dbs = new.env(parent = emptyenv())
+
+# The key of a session's connection to a project database
+#
+# session: A Shiny session (or MockShinySession)
+# collection_path: Project root
+
+session_database_key = function(session, collection_path) {
+  paste0(session$token, "|", get_database_path(collection_path))
+}
+
+# Open the session's connection to a project database, closed when the
+# session ends. Called once from each app's server function.
+#
+# collection_path: Project root
+# session: The Shiny session
+
+open_session_database = function(collection_path, session) {
+  key = session_database_key(session, collection_path)
+  close_database(.session_dbs[[key]])
+  .session_dbs[[key]] = initialize_database(collection_path)
+  session$onSessionEnded(function() {
+    close_database(.session_dbs[[key]])
+    if (exists(key, envir = .session_dbs, inherits = FALSE)) rm(list = key, envir = .session_dbs)
+  })
+  invisible(.session_dbs[[key]])
+}
+
+# The current reactive domain's connection to a project database, or NULL
+# when there is no session or it has none open
+#
+# collection_path: Project root
+
+session_database = function(collection_path) {
+  session = shiny::getDefaultReactiveDomain()
+  if (is.null(session) || length(.session_dbs) == 0) {
+    return(NULL)
+  }
+  conn = .session_dbs[[session_database_key(session, collection_path)]]
+  if (is.null(conn) || !DBI::dbIsValid(conn)) NULL else conn
+}
+
+# Begin a transaction, or a savepoint when the connection is already inside
+# one (a session's shared connection can reach a writer's begin from inside
+# another's transaction). Returns the savepoint name, or NULL for a plain
+# transaction, to hand to db_commit() / db_rollback().
+#
+# conn: DBI connection object
+
+.savepoint_counter = new.env(parent = emptyenv())
+
+db_begin = function(conn) {
+  if (!RSQLite::sqliteIsTransacting(conn)) {
+    DBI::dbBegin(conn)
+    return(NULL)
+  }
+  n = if (is.null(.savepoint_counter$n)) 1L else .savepoint_counter$n + 1L
+  .savepoint_counter$n = n
+  name = paste0("markermd_sp_", n)
+  DBI::dbBegin(conn, name = name)
+  name
+}
+
+# Commit what db_begin() started
+#
+# conn: DBI connection object
+# savepoint: db_begin()'s return value
+
+db_commit = function(conn, savepoint = NULL) {
+  if (is.null(savepoint)) DBI::dbCommit(conn) else DBI::dbCommit(conn, name = savepoint)
+}
+
+# Roll back what db_begin() started
+#
+# conn: DBI connection object
+# savepoint: db_begin()'s return value
+
+db_rollback = function(conn, savepoint = NULL) {
+  if (is.null(savepoint)) DBI::dbRollback(conn) else DBI::dbRollback(conn, name = savepoint)
 }
 
 # Run `code` inside one transaction on an open connection: committed when it
 # returns, rolled back when it errors, the error re-raised as "<what>: <its
 # message>" without the handler's own call (which would read as a meaningless
-# `value[[3L]]()`). Every bulk writer wraps its work in this.
+# `value[[3L]]()`). Every bulk writer wraps its work in this. Inside another
+# transaction on the same connection it becomes a savepoint.
 #
 # conn: DBI connection object
 # what: What failed, e.g. "Failed to import rubric"
 # code: The work (evaluated lazily, inside the transaction)
 
 with_transaction = function(conn, what, code) {
-  DBI::dbBegin(conn)
+  savepoint = db_begin(conn)
   tryCatch({
     result = code
-    DBI::dbCommit(conn)
+    db_commit(conn, savepoint)
     result
   }, error = function(e) {
-    DBI::dbRollback(conn)
+    db_rollback(conn, savepoint)
     cli::cli_abort("{what}: {conditionMessage(e)}", call = NULL)
   })
 }

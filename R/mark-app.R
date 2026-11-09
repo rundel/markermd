@@ -521,6 +521,10 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
     # placeholder makes it a local for static code inspection
     rubric_result = NULL
 
+    # One database connection for the session's reactive work, instead of
+    # one (and its PRAGMAs) per call; see with_database()
+    open_session_database(root, session)
+
     # Export values for testing
     shiny::exportTestValues(
       repo_names = repo_list,

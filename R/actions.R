@@ -240,14 +240,14 @@ last_recorded_action_id = function() {
 record_action = function(root, id, fn, call, summary, before, parts, snapshot_id = NULL, actor = NULL) {
   .action_state$last_recorded = NULL
   with_database(root, function(conn) {
-    DBI::dbBegin(conn)
+    savepoint = db_begin(conn)
     after = if (length(parts) > 0) action_part_lists(conn, parts)
     changed = parts[vapply(parts, function(part) {
       !identical(action_part_key(part, before[[part]]), action_part_key(part, after[[part]]))
     }, logical(1))]
     scope = action_event_scope(conn, id)
     if (scope$n_events == 0 && length(changed) == 0) {
-      DBI::dbCommit(conn)
+      db_commit(conn, savepoint)
       return(invisible(NULL))
     }
     scope$parts = changed
@@ -284,7 +284,7 @@ record_action = function(root, id, fn, call, summary, before, parts, snapshot_id
         ", params = list(id, part, phase, hash))
       }
     }
-    DBI::dbCommit(conn)
+    db_commit(conn, savepoint)
     .action_state$last_recorded = id
     invisible(id)
   })

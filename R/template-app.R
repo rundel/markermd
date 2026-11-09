@@ -254,7 +254,13 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
   
   # Server
   server = function(input, output, session) {
-    
+
+    # A project-backed editor reads and saves through one session-scoped
+    # database connection; see with_database()
+    if (!is.null(project)) {
+      open_session_database(project@root, session)
+    }
+
     # The question registry is keyed by a session slot ("1", "2", ...), which
     # also names each question's module and DOM ids; slots are never reused.
     # A question's own id (question@id) is separate: it is kept through
