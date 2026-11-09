@@ -184,6 +184,41 @@ make_excerpt = function(x, at = 1, width = 240) {
   show_invisible(trimws(gsub("\\s+", " ", x)))
 }
 
+# Character position of the first content match in a text, so a long line's
+# excerpt is taken around the match rather than from its start (a paragraph
+# that ends in an injection would otherwise show only its benign opening).
+#
+# text: Character scalar
+# matched: The content categories the text hit (see match_injection_content())
+# rubric: Rubric item descriptions, for the "rubric-text" category
+
+content_match_position = function(text, matched, rubric = character(0)) {
+  if (length(matched) == 0 || !nzchar(text)) {
+    return(1L)
+  }
+  patterns = injection_content_patterns()
+  regexes = unlist(patterns[intersect(matched, names(patterns))], use.names = FALSE)
+  positions = vapply(regexes, function(re) {
+    regexpr(paste0("(?im)", re), text, perl = TRUE)[1]
+  }, integer(1))
+  if ("rubric-text" %in% matched && length(rubric) > 0) {
+    lower = tolower(text)
+    positions = c(positions, vapply(tolower(rubric), function(r) regexpr(r, lower, fixed = TRUE)[1], integer(1)))
+  }
+  positions = positions[positions > 0]
+  if (length(positions) == 0) 1L else min(positions)
+}
+
+# make_excerpt() centered on the first content match
+#
+# text: Character scalar
+# matched: The content categories the text hit
+# rubric: Rubric item descriptions
+
+match_excerpt = function(text, matched, rubric = character(0)) {
+  make_excerpt(text, at = content_match_position(text, matched, rubric))
+}
+
 empty_findings = function() {
   data.frame(
     line = integer(0), severity = character(0), detector = character(0),
@@ -261,10 +296,16 @@ scan_invisible = function(lines, line_numbers = TRUE, rubric = character(0)) {
           make_excerpt(glue::glue("{n_run} zero-width characters (possibly an encoded payload) in: {visible}"))
         )
       } else if (n_zw > 0) {
-        finding(line, "low", "invisible-unicode", character(0), make_excerpt(intToUtf8(cps)))
+        finding(
+          line, "low", "invisible-unicode", character(0),
+          make_excerpt(intToUtf8(cps), at = which(kind == "zero-width" & cps != 0x200D)[1])
+        )
       },
       if (any(kind == "bidi", na.rm = TRUE)) {
-        finding(line, "medium", "bidi-control", character(0), make_excerpt(intToUtf8(cps)))
+        finding(
+          line, "medium", "bidi-control", character(0),
+          make_excerpt(intToUtf8(cps), at = which(kind == "bidi")[1])
+        )
       }
     ))
   }))
@@ -432,13 +473,13 @@ scan_text_lines = function(lines, structural = FALSE, rubric = character(0), ver
           }
           return(finding(
             first[k], if (length(matched) > 0) "high" else "medium", "markermd-marker", matched,
-            make_excerpt(body)
+            match_excerpt(body, matched, rubric)
           ))
         }
         if (!nzchar(body)) {
           return(NULL)
         }
-        finding(first[k], concealed_severity(matched), "html-comment", matched, make_excerpt(body))
+        finding(first[k], concealed_severity(matched), "html-comment", matched, match_excerpt(body, matched, rubric))
       }))
       for (k in seq_along(comments)) {
         covered[first[k]:last[k]] = TRUE
@@ -453,7 +494,7 @@ scan_text_lines = function(lines, structural = FALSE, rubric = character(0), ver
       region = paste(clean[i:end], collapse = "\n")
       matched = match_injection_content(region, rubric)
       covered[i:end] = TRUE
-      rows[[length(rows) + 1]] = finding(i, concealed_severity(matched), "hidden-style", matched, make_excerpt(region))
+      rows[[length(rows) + 1]] = finding(i, concealed_severity(matched), "hidden-style", matched, match_excerpt(region, matched, rubric))
     }
 
     chunks = hidden_chunks(clean)
@@ -462,13 +503,13 @@ scan_text_lines = function(lines, structural = FALSE, rubric = character(0), ver
       hits = span[lengths(line_matches[span]) > 0 & !covered[span]]
       covered[hits] = TRUE
       rows = c(rows, lapply(hits, function(i) {
-        finding(i, "high", "hidden-chunk", line_matches[[i]], make_excerpt(clean[i]))
+        finding(i, "high", "hidden-chunk", line_matches[[i]], match_excerpt(clean[i], line_matches[[i]], rubric))
       }))
     }
   }
 
   rows = c(rows, lapply(which(!covered & lengths(line_matches) > 0), function(i) {
-    finding(i, visible_severity(line_matches[[i]]), "visible-text", line_matches[[i]], make_excerpt(clean[i]))
+    finding(i, visible_severity(line_matches[[i]]), "visible-text", line_matches[[i]], match_excerpt(clean[i], line_matches[[i]], rubric))
   }))
 
   resolve_weak_findings(bind_findings(rows))
@@ -518,7 +559,7 @@ scan_html_file = function(path, rubric = character(0)) {
     if (length(matched) == 0) {
       return(NULL)
     }
-    finding(NA, "high", "html-attribute", matched, make_excerpt(value))
+    finding(NA, "high", "html-attribute", matched, match_excerpt(value, matched, rubric))
   }))
 
   xml2::xml_remove(xml2::xml_find_all(doc, "//script | //style | //noscript"))
@@ -529,12 +570,12 @@ scan_html_file = function(path, rubric = character(0)) {
     body = strip_invisible(trimws(xml2::xml_text(comments[[k]])))
     matched = match_injection_content(body, rubric)
     if (grepl("^markermd:", body)) {
-      return(finding(NA, if (length(matched) > 0) "high" else "medium", "markermd-marker", matched, make_excerpt(body)))
+      return(finding(NA, if (length(matched) > 0) "high" else "medium", "markermd-marker", matched, match_excerpt(body, matched, rubric)))
     }
     if (length(matched) == 0 && !(in_main[k] && nchar(body) >= 20)) {
       return(NULL)
     }
-    finding(NA, concealed_severity(matched), "html-comment", matched, make_excerpt(body))
+    finding(NA, concealed_severity(matched), "html-comment", matched, match_excerpt(body, matched, rubric))
   }))
 
   candidates = xml2::xml_find_all(main, ".//*[@style or @hidden or @class]")
@@ -553,7 +594,7 @@ scan_html_file = function(path, rubric = character(0)) {
     if (length(matched) == 0 && nchar(gsub("\\s", "", value)) < 12) {
       return(NULL)
     }
-    finding(NA, concealed_severity(matched), "hidden-element", matched, make_excerpt(value))
+    finding(NA, concealed_severity(matched), "hidden-element", matched, match_excerpt(value, matched, rubric))
   }))
   xml2::xml_remove(hidden_nodes)
 
