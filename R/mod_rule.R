@@ -6,12 +6,8 @@
 #
 # rule: markermd_rule S7 object. Rule used to set selected values (optional)
 # input_id: Function. Maps a bare field name (e.g. "verb") to the final
-#   input id used for that control. Allows the same UI to be used both as a
-#   Shiny module (namespaced field names) and as directly managed inputs
-#   (prefixed field names).
-# verb_inputs: Tag. The content rendered in the dynamic verb-inputs region.
-#   For the module variant this is a uiOutput placeholder populated by the
-#   server; for the direct variant it is the statically rendered inputs.
+#   input id the rules row machine reads for that control
+# verb_inputs: Tag. The statically rendered inputs for the rule's verb
 
 rule_item_ui = function(rule = NULL, input_id, verb_inputs) {
   # "Any node" is the catch-all: it is not an explicit picker choice, it is
@@ -131,7 +127,7 @@ create_rule_verb_inputs = function(verb, value, values_id) {
     # Two plain numeric inputs (<values_id>_min, <values_id>_max); the row
     # machine reads them back together as c(min, max)
     "has between" = {
-      bound = function(suffix, bound_value, label) {
+      bound = function(suffix, bound_value) {
         shiny::div(
           style = "flex: 1 1 0; min-width: 0;",
           shiny::numericInput(
@@ -147,9 +143,9 @@ create_rule_verb_inputs = function(verb, value, values_id) {
       input_wrapper(
         shiny::div(
           class = "d-flex align-items-center gap-1 rule-range-inputs",
-          bound("min", value[1], "minimum"),
+          bound("min", value[1]),
           shiny::span(class = "text-muted", "to"),
-          bound("max", value[2], "maximum")
+          bound("max", value[2])
         )
       )
     },

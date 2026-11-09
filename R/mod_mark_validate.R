@@ -11,7 +11,7 @@ question_card_id = function(question_name) {
 }
 
 # Choices for the question shortcut select: the question names as values,
-# labelled with a check or cross for the repository's validation status
+# labeled with a check or cross for the repository's validation status
 # (plain names when the repository has no results, e.g. a parse error)
 #
 # question_names: Character vector of question names in template order
@@ -33,7 +33,7 @@ validation_question_choices = function(question_names, results = NULL) {
 }
 
 # Selectize render functions for the question shortcut select: the leading
-# check or cross of a label is coloured green or red, in the dropdown and in
+# check or cross of a label is colored green or red, in the dropdown and in
 # the selected item alike. A custom render must supply selectize's own
 # option / item classes itself (its default templates do), or the entries
 # lose their padding and hover styling. Evaluated by shiny's selectize

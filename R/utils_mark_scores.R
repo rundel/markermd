@@ -277,7 +277,7 @@ score_stats = function(x) {
 
 # Summary rows for the score table, in the table's own column layout: how
 # many repositories are graded, then the mean, median and standard deviation
-# of their scores, per question. The Total column summarises the
+# of their scores, per question. The Total column summarizes the
 # repositories with every question graded (its Total is NA otherwise, so a
 # partial total cannot drag the statistics down); the Graded column has no
 # summary.
@@ -285,7 +285,7 @@ score_stats = function(x) {
 # table_data: Data frame from build_scores_table_data()
 # question_names: Character vector of question names
 # Returns: Data frame with the same columns as table_data and one row per
-#   statistic, labelled in Repository ("Graded", "Mean", "Median", "SD")
+#   statistic, labeled in Repository ("Graded", "Mean", "Median", "SD")
 
 build_scores_summary_rows = function(table_data, question_names) {
   stat_names = c("Graded", "Mean", "Median", "SD")
@@ -317,7 +317,7 @@ format_score = function(x) {
 # x: Numeric points
 
 format_points = function(x) {
-  # qty() goes last: cli pluralises on the most recent substitution, and the
+  # qty() goes last: cli pluralizes on the most recent substitution, and the
   # formatted text before it would otherwise count as a length-one quantity
   as.character(cli::pluralize("{format_score(x)}{cli::qty(x)} pt{?s}"))
 }

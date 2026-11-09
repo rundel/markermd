@@ -1,13 +1,13 @@
 #' Parse an assignment document into a Pandoc AST
 #'
-#' Reads a qmd document, normalises any knitr-style chunk headers so the
+#' Reads a qmd document, normalizes any knitr-style chunk headers so the
 #' Quarto parser accepts them, and parses it into a q2r `pandoc` AST.
 #'
 #' Parse diagnostics are surfaced rather than stripped: error-kind
 #' diagnostics from q2r are raised as R errors. Warning-kind diagnostics
-#' are not signalled (they would otherwise print to the console from inside
+#' are not signaled (they would otherwise print to the console from inside
 #' the apps); they stay attached to the returned AST's `@diagnostics` slot,
-#' labelled with the document's file name, and [mark()], [template()] and
+#' labeled with the document's file name, and [mark()], [template()] and
 #' [parse_project()] report them. Rewriting a knitr-style chunk header adds
 #' lines, so a diagnostic whose line number moved carries a hint giving the
 #' line of the file as written. If parsing yields an empty AST (no blocks)
@@ -28,7 +28,7 @@ parse_assignment_document = function(file_path) {
   file_name = basename(file_path)
   # The error is re-raised with the file name and the original line numbers
   # on its diagnostics; the warning handler sits outside so warnings
-  # signalled before the error are still muffled
+  # signaled before the error are still muffled
   ast = withCallingHandlers(
     tryCatch(
       q2r::parse_qmd(text, quiet = FALSE),
@@ -279,39 +279,6 @@ split_top_level = function(s, sep) {
   c(result, current)
 }
 
-# Parse every assignment document under a collection directory
-#
-# Finds assignment files recursively and parses each via
-# parse_assignment_document (which normalises knitr-style chunk headers),
-# returning a data frame with one row per file: a `path` (character) column,
-# an `ast` (list of pandoc objects, NULL on failure) column, and an `error`
-# column holding the parse error message verbatim (NA on success). Parse
-# failures are captured per file rather than aborting the whole collection so
-# one malformed student document cannot block grading of the others; the
-# error text itself is surfaced, never stripped.
-#
-# collection_path: Path to the directory of repositories
-# use_qmd: Logical. Match .qmd files (TRUE) or .Rmd files (FALSE)
-
-parse_assignment_collection = function(collection_path, use_qmd = TRUE) {
-  pattern = if (use_qmd) "\\.qmd$" else "\\.Rmd$"
-  files = list.files(
-    collection_path,
-    pattern = pattern,
-    recursive = TRUE,
-    full.names = TRUE,
-    ignore.case = TRUE
-  )
-
-  collection = data.frame(path = files, stringsAsFactors = FALSE)
-  parsed = lapply(files, purrr::safely(parse_assignment_document))
-  collection$ast = lapply(parsed, function(p) p$result)
-  collection$error = vapply(parsed, function(p) {
-    if (is.null(p$error)) NA_character_ else conditionMessage(p$error)
-  }, character(1))
-  collection
-}
-
 # Parse one document per student repository: the file find_repo_assignment()
 # picks for each repository (the template's document by basename, else a
 # root-level document, else the first match), parsed with
@@ -356,8 +323,7 @@ parse_repo_document_rows = function(repos, paths) {
 # The parsed AST for one repo of a collection, or NULL when the repo has no
 # document or its document failed to parse
 #
-# collection: Collection data frame (see parse_assignment_collection(), with
-#   the repo column attributed by the caller)
+# collection: Collection data frame (see parse_repo_documents())
 # repo: Character. Repository name
 
 collection_ast_for = function(collection, repo) {

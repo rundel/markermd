@@ -230,6 +230,22 @@ question_name_reset_script = function() {
   ")))
 }
 
+# The page-head handler behind a question reorder (move_question() in
+# template_app()): moves a question card's wrapper before or after its
+# neighbor in place, since re-inserting the UI would rebuild the inputs and
+# drop in-progress edits
+
+question_move_script = function() {
+  shiny::tags$head(shiny::tags$script(shiny::HTML("
+    Shiny.addCustomMessageHandler('markermd_move_question', function(msg) {
+      var el = document.getElementById(msg.id);
+      var other = document.getElementById(msg.other);
+      if (!el || !other) return;
+      if (msg.before) other.before(el); else other.after(el);
+    });
+  ")))
+}
+
 # Question Server
 #
 # id: Character. Module namespace ID
@@ -238,8 +254,10 @@ question_name_reset_script = function() {
 # name_available: Function(name) telling whether no other question has the
 #   name; a rename to a taken (or blank) name is refused and the input put
 #   back, since the template's questions must be uniquely named
+# tree_items: Reactive. build_ast_tree_structure() of ast(), shared by every
+#   question so the document is structured once
 
-question_server = function(id, ast, initial_question, name_available = function(name) TRUE) {
+question_server = function(id, ast, initial_question, name_available = function(name) TRUE, tree_items = shiny::reactive(build_ast_tree_structure(ast()))) {
   force(name_available)
   shiny::moduleServer(id, function(input, output, session) {
 
@@ -259,11 +277,9 @@ question_server = function(id, ast, initial_question, name_available = function(
       question_filtered_indices(ast(), shiny::isolate(state()))
     })
     
-    # Memoised flattened tree. ast() is write-once, so this is built once and
-    # reused instead of re-flattening the whole document on every selection change.
     question_tree_items = shiny::reactive({
       if (is.null(ast())) return(list())
-      build_ast_tree_structure(ast())
+      tree_items()
     })
 
     # One-line summary shown while the card is collapsed

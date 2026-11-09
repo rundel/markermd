@@ -1053,10 +1053,6 @@ print.markermd_snapshot_list = function(x, ...) {
     cli::cli_text("No snapshots.")
     return(invisible(x))
   }
-  one_line = function(text, width = 60) {
-    text = gsub("\\s+", " ", trimws(text))
-    ifelse(nchar(text) > width, paste0(substr(text, 1, width - 3), "..."), text)
-  }
   totals = ifelse(
     x$n_complete > 0,
     paste0(format_score(x$mean_total), " (", format_score(x$min_total), "-", format_score(x$max_total), ", n=", x$n_complete, ")"),
@@ -1067,7 +1063,7 @@ print.markermd_snapshot_list = function(x, ...) {
     created = format(x$created_at, "%Y-%m-%d %H:%M"),
     kind = ifelse(x$pinned, paste0(x$kind, "*"), x$kind),
     label = ifelse(is.na(x$label), "", x$label),
-    summary = ifelse(is.na(x$summary), ifelse(is.na(x$trigger), "", one_line(x$trigger)), one_line(x$summary)),
+    summary = ifelse(is.na(x$summary), ifelse(is.na(x$trigger), "", one_line_text(x$trigger, 60)), one_line_text(x$summary, 60)),
     total = totals,
     stringsAsFactors = FALSE
   )
@@ -1152,7 +1148,7 @@ snapshot_scores_wide = function(stats, question_names) {
 
 # Choices for a select of the snapshots that hold a template, newest first,
 # keeping only the snapshots whose template differs from the one before
-# (consecutive identical templates collapse to the oldest). Labelled with
+# (consecutive identical templates collapse to the oldest). Labeled with
 # the local time and the label or trigger.
 #
 # root: Project root

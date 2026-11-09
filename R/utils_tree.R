@@ -2,7 +2,7 @@
 # Functions for creating hierarchical tree displays of AST structures.
 #
 # There is a single render core: render_ast_tree() turns the tree_items produced
-# by build_ast_tree_structure() into HTML, parameterised by ast_render_opts().
+# by build_ast_tree_structure() into HTML, parameterized by ast_render_opts().
 # Both the interactive template module (mod_ast) and the non-interactive mark
 # validation display (mod_mark_validate) call it, so the selectable and read-only
 # trees share one renderer, one CSS generator, and one recursive level builder.

@@ -35,6 +35,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     markermd_modal_css(),
     fa_dependency(),
     question_name_reset_script(),
+    question_move_script(),
     ast_tree_script(),
 
       shiny::tags$style(shiny::HTML("
@@ -88,7 +89,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
          and filter conditions. Shiny copies .form-control onto the selectize
          wrapper, so the fixed-height/border/padding rule above lands on it
          and clips its items (causing the box to overflow onto the rule
-         below). Neutralise the wrapper and treat the inner .selectize-input
+         below). Neutralize the wrapper and treat the inner .selectize-input
          as the form-control-like box so the control grows with its items. */
       .rule-item .selectize-control,
       .filter-condition .selectize-control { margin: 0 !important; }
@@ -319,9 +320,8 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     # Reactive value for pending node clicks
     pending_node_click = shiny::reactiveVal(NULL)
 
-    # Memoised flattened document tree. ast() is write-once, so this computes the
-    # structure (q2r_flatten over the whole document) once and is reused by the
-    # node-click handlers instead of re-flattening on every interaction.
+    # The document tree structure, built once (ast() is write-once) and shared
+    # with the AST module and every question server
     tree_items_memo = shiny::reactive(build_ast_tree_structure(ast()))
     tree_children_memo = shiny::reactive(tree_children_index(tree_items_memo()))
 
@@ -435,7 +435,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     })
 
     # Initialize AST selectable module
-    ast_result = ast_module_server("ast_panel", ast, selected_nodes, filtered_nodes)
+    ast_result = ast_module_server("ast_panel", ast, selected_nodes, filtered_nodes, tree_items = tree_items_memo)
 
     # Toggle a node in the current question's selection: a no-op when the node
     # sits under an already-selected ancestor, a removal when itself selected,
@@ -627,7 +627,8 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
           modules_list[[q_id_str]]$module_id,
           ast,
           initial_question = modules_list[[q_id_str]]$initial_question,
-          name_available = name_available
+          name_available = name_available,
+          tree_items = tree_items_memo
         )
       }
       question_modules(modules_list)
@@ -759,10 +760,10 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       new_order[c(pos, new_pos)] = new_order[c(new_pos, pos)]
       question_modules(modules_list[new_order])
 
-      verb = if (direction < 0) "insertBefore" else "insertAfter"
-      shinyjs::runjs(glue::glue(
-        "$('#question_wrapper_<<q_id_str>>').<<verb>>('#question_wrapper_<<other_id>>');",
-        .open = "<<", .close = ">>"
+      session$sendCustomMessage("markermd_move_question", list(
+        id = paste0("question_wrapper_", q_id_str),
+        other = paste0("question_wrapper_", other_id),
+        before = direction < 0
       ))
     }
 

@@ -99,14 +99,15 @@ test_that("parse_assignment_document handles an unbalanced fenced div", {
 })
 
 
-test_that("parse_assignment_collection parses every repo, isolating failures", {
+test_that("parse_repo_documents parses every repo, isolating failures", {
   d = tempfile("cp_coll_")
   dir.create(file.path(d, "repo1"), recursive = TRUE)
   dir.create(file.path(d, "repo2"), recursive = TRUE)
   writeLines(c("# Q1", "", "body text"), file.path(d, "repo1", "assignment.qmd"))
   writeLines(character(0), file.path(d, "repo2", "assignment.qmd"))
 
-  coll = markermd:::parse_assignment_collection(d, use_qmd = TRUE)
+  coll = markermd:::parse_repo_documents(d, c("repo1", "repo2"), "assignment.qmd", use_qmd = TRUE)
+  expect_equal(coll$repo, c("repo1", "repo2"))
   expect_equal(nrow(coll), 2L)
 
   good = which(is.na(coll$error))
@@ -123,12 +124,12 @@ test_that("parse_assignment_collection parses every repo, isolating failures", {
 })
 
 
-test_that("parse_assignment_collection with use_qmd=FALSE ignores .qmd files", {
+test_that("parse_repo_documents with use_qmd=FALSE ignores .qmd files", {
   d = tempfile("cp_coll_rmd_")
   dir.create(file.path(d, "repo1"), recursive = TRUE)
   writeLines(c("# Q1", "", "body"), file.path(d, "repo1", "assignment.qmd"))
 
-  coll = markermd:::parse_assignment_collection(d, use_qmd = FALSE)
+  coll = markermd:::parse_repo_documents(d, "repo1", NULL, use_qmd = FALSE)
   expect_equal(nrow(coll), 0L)
 })
 

@@ -37,7 +37,7 @@ group_consecutive_lines = function(line_numbers) {
 # chain contains one of the question's selected ids (a selected heading
 # covers its whole section, nested subsections included; a selected id'd div
 # covers the lines between its fences). The chains are found on the
-# normalised text the parser saw (knitr chunk headers rewritten, see
+# normalized text the parser saw (knitr chunk headers rewritten, see
 # normalize_knitr_chunks()) and the ranges mapped back to the file's lines.
 #
 # document_lines: Character vector of the document's lines as written

@@ -134,7 +134,7 @@ question_rules_server = function(input, output, session, state, ast) {
 
     # An empty selectize multiselect reports NULL. If it has reported before,
     # an empty box is a deliberate clear meaning the catch-all "Any node";
-    # otherwise it has not initialised yet, so keep the stored value rather than
+    # otherwise it has not initialized yet, so keep the stored value rather than
     # clobbering a loaded rule before its widget reports.
     picked_node_types = input[[node_types_input]]
     final_node_type = if (is.null(picked_node_types)) {

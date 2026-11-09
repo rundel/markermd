@@ -64,18 +64,6 @@ test_that("new_markermd_rule honors explicit node_type and values overrides", {
 })
 
 
-test_that("validate_markermd_rule rejects non-rules and accepts valid rules", {
-  bad = markermd:::validate_markermd_rule(list())
-  expect_false(bad$valid)
-  expect_true(length(bad$errors) > 0)
-  expect_true(nzchar(paste(bad$errors, collapse = "")))
-
-  ok = markermd:::validate_markermd_rule(markermd:::new_markermd_rule())
-  expect_true(ok$valid)
-  expect_length(ok$errors, 0)
-})
-
-
 test_that("filter_value_warnings flags an uncompilable regex value", {
   warns = markermd:::filter_value_warnings(
     list(crf_group(crf_cond("has text", "[unclosed", negate = FALSE)))

@@ -109,7 +109,7 @@ history_table_data = function(rows, notes_text = character(0)) {
   rows
 }
 
-# Choices for a select over snapshots: the ids, labelled with the local time
+# Choices for a select over snapshots: the ids, labeled with the local time
 # and the label, trigger or kind. Empty (not a stray name) when there are no
 # rows, which paste0()'s recycling of a zero-length vector would otherwise
 # produce.
@@ -122,16 +122,6 @@ snapshot_select_choices = function(rows) {
   }
   what = ifelse(!is.na(rows$label), rows$label, ifelse(!is.na(rows$trigger), rows$trigger, rows$kind))
   stats::setNames(rows$snapshot_id, paste0(format(rows$created_at, "%b %d %H:%M"), " \u00b7 ", what))
-}
-
-# One-line text: whitespace collapsed and cut to width with an ellipsis
-#
-# text: Character vector (NA becomes "")
-# width: Maximum number of characters
-
-one_line_text = function(text, width = 80) {
-  text = ifelse(is.na(text), "", gsub("\\s+", " ", trimws(text)))
-  ifelse(nchar(text) > width, paste0(substr(text, 1, width - 3), "\u2026"), text)
 }
 
 # The snapshot table
@@ -253,12 +243,6 @@ activity_scope_text = function(rows) {
 # row: One-row data frame from activity_rows()
 
 activity_overview_ui = function(row) {
-  field = function(name, value) {
-    if (is.null(value) || length(value) == 0 || (length(value) == 1 && (is.na(value) || !nzchar(value)))) {
-      return(NULL)
-    }
-    htmltools::tagList(shiny::tags$dt(class = "col-sm-3 fw-normal text-muted", name), shiny::tags$dd(class = "col-sm-9 mb-1", value))
-  }
   when = if (row$kind == "app") {
     paste0(format(row$started_at, "%Y-%m-%d %H:%M"), " to ", format(row$created_at, "%H:%M"), " (", format_age(row$created_at), ")")
   } else {
@@ -266,13 +250,13 @@ activity_overview_ui = function(row) {
   }
   shiny::tags$dl(
     class = "row mb-2",
-    field("When", when),
-    field("Who", paste0(row$actor, " (", row$username, ")")),
-    field("Call", if (!is.na(row$call)) shiny::tags$code(row$call)),
-    field("Summary", row$summary),
-    field("Repositories", paste(row$repos[[1]], collapse = ", ")),
-    field("Questions", paste(row$questions[[1]], collapse = ", ")),
-    field("Snapshot", if (!is.na(row$snapshot_id)) htmltools::tagList(
+    detail_field("When", when),
+    detail_field("Who", paste0(row$actor, " (", row$username, ")")),
+    detail_field("Call", if (!is.na(row$call)) shiny::tags$code(row$call)),
+    detail_field("Summary", row$summary),
+    detail_field("Repositories", paste(row$repos[[1]], collapse = ", ")),
+    detail_field("Questions", paste(row$questions[[1]], collapse = ", ")),
+    detail_field("Snapshot", if (!is.na(row$snapshot_id)) htmltools::tagList(
       shiny::tags$code(row$snapshot_id),
       shiny::span(class = "text-muted ms-1", "(the state before this change, in the History tab)")
     ))
@@ -318,10 +302,6 @@ history_timeline_rows = function(snapshots, activity) {
 # info: markermd_snapshot object
 
 history_overview_ui = function(info) {
-  field = function(name, value) {
-    if (is.null(value) || (length(value) == 1 && is.na(value))) return(NULL)
-    htmltools::tagList(shiny::tags$dt(class = "col-sm-3 fw-normal text-muted", name), shiny::tags$dd(class = "col-sm-9 mb-1", value))
-  }
   totals = info@stats[info@stats$question_name == "(total)", , drop = FALSE]
   n_complete = sum(!is.na(totals$score))
   scores_text = if (nrow(totals) == 0) {
@@ -337,15 +317,15 @@ history_overview_ui = function(info) {
   }
   shiny::tags$dl(
     class = "row mb-2",
-    field("Created", paste0(format(info@created_at, "%Y-%m-%d %H:%M:%S"), " (", info@created_tz, ", ", format_age(info@created_at), ")")),
-    field("By", info@username),
-    field("Kind", if (info@pinned) paste(info@kind, "(pinned)") else info@kind),
-    field("Trigger", if (is.na(info@trigger)) NULL else shiny::tags$code(info@trigger)),
-    field("Summary", info@summary),
-    field("Parent", if (is.na(info@parent_snapshot_id)) NULL else shiny::tags$code(info@parent_snapshot_id)),
-    field("Scores", scores_text),
-    field("Parts", paste0(info@parts$part, " (", info@parts$format_version, ", ", info@parts$size, " B)", collapse = "; ")),
-    field("Versions", paste0("schema ", info@schema_version, ", markermd ", info@markermd_version))
+    detail_field("Created", paste0(format(info@created_at, "%Y-%m-%d %H:%M:%S"), " (", info@created_tz, ", ", format_age(info@created_at), ")")),
+    detail_field("By", info@username),
+    detail_field("Kind", if (info@pinned) paste(info@kind, "(pinned)") else info@kind),
+    detail_field("Trigger", if (is.na(info@trigger)) NULL else shiny::tags$code(info@trigger)),
+    detail_field("Summary", info@summary),
+    detail_field("Parent", if (is.na(info@parent_snapshot_id)) NULL else shiny::tags$code(info@parent_snapshot_id)),
+    detail_field("Scores", scores_text),
+    detail_field("Parts", paste0(info@parts$part, " (", info@parts$format_version, ", ", info@parts$size, " B)", collapse = "; ")),
+    detail_field("Versions", paste0("schema ", info@schema_version, ", markermd ", info@markermd_version))
   )
 }
 
@@ -813,17 +793,11 @@ mark_history_server = function(id, root, question_names, refresh, reload_rubric,
     # --- Take snapshot ----------------------------------------------------------
 
     open_take_snapshot = function() {
-      shiny::showModal(shiny::modalDialog(
-        title = "Take snapshot",
-        shiny::p(class = "small text-muted", "Records the current template, rubric and marks. The label and summary are yours to search for later."),
-        shiny::textInput(session$ns("snapshot_label"), "Label", placeholder = "e.g. Before feedback review", width = "100%"),
-        shiny::textAreaInput(session$ns("snapshot_summary"), "Summary", placeholder = "What is about to change, or why this state is worth keeping", width = "100%", rows = 3),
-        shiny::textAreaInput(session$ns("snapshot_metadata"), "Metadata (one key: value per line)", placeholder = "review_doc: notes/review.md", width = "100%", rows = 2),
-        easyClose = TRUE,
-        footer = shiny::tagList(
-          shiny::modalButton("Cancel"),
-          shiny::actionButton(session$ns("confirm_snapshot"), "Take snapshot", class = "btn-primary")
-        )
+      shiny::showModal(snapshot_take_modal(
+        "Records the current template, rubric and marks. The label and summary are yours to search for later.",
+        label_placeholder = "e.g. Before feedback review",
+        ns = session$ns,
+        shiny::textAreaInput(session$ns("snapshot_metadata"), "Metadata (one key: value per line)", placeholder = "review_doc: notes/review.md", width = "100%", rows = 2)
       ))
     }
 
@@ -833,8 +807,7 @@ mark_history_server = function(id, root, question_names, refresh, reload_rubric,
 
     shiny::observe({
       shiny::removeModal()
-      blank_to_null = function(x) if (is.null(x) || !nzchar(trimws(x))) NULL else x
-      res = purrr::safely(purrr::quietly(snapshot_create))(
+      res =purrr::safely(purrr::quietly(snapshot_create))(
         root,
         label = blank_to_null(input$snapshot_label),
         summary = blank_to_null(input$snapshot_summary),

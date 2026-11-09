@@ -1,6 +1,6 @@
 # Helpers bridging markermd to the q2r Pandoc AST
 #
-# These centralise the q2r-specific operations markermd relies on: rendering a
+# These centralize the q2r-specific operations markermd relies on: rendering a
 # single node back to qmd, producing a human-readable tree label, and flattening
 # the nested Pandoc AST into an ordered, indexable node list that mirrors the
 # flat-list model the rest of the package is built around.

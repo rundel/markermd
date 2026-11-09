@@ -106,7 +106,7 @@ mark_app = function(path, template = NULL, use_qmd = TRUE, terminal = FALSE, ter
   }
 
   # Parse one document per repository (knitr-style chunk headers are
-  # normalised per file): the document validate_project() and parse_project()
+  # normalized per file): the document validate_project() and parse_project()
   # pick, so the app and the headless checks agree. Parse failures are
   # captured per repository, not raised, so one bad student qmd does not
   # abort the app; failing repos stay visible with their error.

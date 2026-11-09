@@ -63,7 +63,7 @@ show_node_preview = function(node, back_id = NULL) {
 # Binds an observer to each node's preview button (preview_<id_prefix>_<index>,
 # or preview_<index> when id_prefix is NULL) that opens a read-only Monaco
 # editor showing the node rendered back to qmd. Shared by the template app and
-# the mark validation display so the preview behaviour is defined once.
+# the mark validation display so the preview behavior is defined once.
 #
 # When node_at is supplied the clicked node is resolved lazily at click time
 # (used by the mark validation display, where the same button index must show
@@ -255,8 +255,10 @@ ast_module_ui = function(id, title = "Document Structure", header_extra = NULL) 
 # selected_nodes: Reactive. Currently selected node indices
 # filtered_nodes: Reactive. Node indices excluded by the current question's
 #   filters, drawn in red (see question_filtered_indices())
+# tree_items: Reactive. build_ast_tree_structure() of ast(), shared with the
+#   app so the document is structured once
 
-ast_module_server = function(id, ast, selected_nodes = shiny::reactive(integer(0)), filtered_nodes = shiny::reactive(integer(0))) {
+ast_module_server = function(id, ast, selected_nodes = shiny::reactive(integer(0)), filtered_nodes = shiny::reactive(integer(0)), tree_items = shiny::reactive(build_ast_tree_structure(ast()))) {
   shiny::moduleServer(id, function(input, output, session) {
 
     # Flattened AST nodes in tree order (index i aligns with the tree's node i)
@@ -267,7 +269,7 @@ ast_module_server = function(id, ast, selected_nodes = shiny::reactive(integer(0
 
     ast_tree_items = shiny::reactive({
       if (is.null(ast())) return(list())
-      build_ast_tree_structure(ast())
+      tree_items()
     })
 
     children_index = shiny::reactive(tree_children_index(ast_tree_items()))

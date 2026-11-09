@@ -333,27 +333,18 @@ show_node_id_problems = function(problems) {
 template_snapshot_controls = function(input, output, session, project, question_modules, template_dirty,
                                       load_questions_into_editor) {
   shiny::observe({
-    shiny::showModal(shiny::modalDialog(
-      title = "Take snapshot",
-      shiny::p(
-        class = "small text-muted",
+    shiny::showModal(snapshot_take_modal(
+      shiny::tagList(
         "Records the project's current template, rubric and marks as stored in its database.",
         if (template_dirty()) shiny::span(class = "text-warning-emphasis", " The editor has unsaved changes; save first to include them.")
       ),
-      shiny::textInput("snapshot_label", "Label", placeholder = "e.g. Template before adding Q4", width = "100%"),
-      shiny::textAreaInput("snapshot_summary", "Summary", placeholder = "What is about to change, or why this state is worth keeping", width = "100%", rows = 3),
-      easyClose = TRUE,
-      footer = shiny::tagList(
-        shiny::modalButton("Cancel"),
-        shiny::actionButton("confirm_snapshot", "Take snapshot", class = "btn-primary")
-      )
+      label_placeholder = "e.g. Template before adding Q4"
     ))
   }) |> shiny::bindEvent(input$take_snapshot)
 
   shiny::observe({
     shiny::removeModal()
-    blank_to_null = function(x) if (is.null(x) || !nzchar(trimws(x))) NULL else x
-    res = purrr::safely(purrr::quietly(snapshot_create))(
+    res =purrr::safely(purrr::quietly(snapshot_create))(
       project@root,
       label = blank_to_null(input$snapshot_label),
       summary = blank_to_null(input$snapshot_summary)

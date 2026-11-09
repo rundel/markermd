@@ -67,7 +67,7 @@ prefixed_by_repo = function(paths, repo) {
 
 # Every HTML file in one artifacts directory that belongs to repo (see
 # resolve_repo_artifacts()), with the keys its candidates are ranked on. The
-# ranking is modelled on how reports actually arrive:
+# ranking is modeled on how reports actually arrive:
 #
 #   tier 1  "<dir>/<repo>.html", a report named for the repo
 #   tier 2  a file directly inside "<dir>/<repo>/"

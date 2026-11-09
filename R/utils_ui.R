@@ -6,7 +6,9 @@
 # dozens of icons. The name is resolved to its classes (solid or regular,
 # aliases mapped to the canonical name) by shiny::icon() once per name and
 # cached; the tag carries no dependency, so each app's page head includes
-# fa_dependency() once.
+# fa_dependency() once. Icons are decorative (aria-hidden): every control
+# that carries one also has a text label or a title, and a role of
+# "presentation" would make assistive technology ignore an aria-label anyway.
 #
 # name: Font Awesome icon name, as for shiny::icon()
 # class: Extra classes, or NULL
@@ -22,8 +24,7 @@ fa_icon = function(name, class = NULL, ...) {
   }
   htmltools::tags$i(
     class = paste(c(base, class), collapse = " "),
-    role = "presentation",
-    `aria-label` = paste(sub("^fa[a-z]* fa-", "", base), "icon"),
+    `aria-hidden` = "true",
     ...
   )
 }
@@ -124,4 +125,67 @@ question_dom_id = function(question_name) {
   lossy = safe != question_name
   safe[lossy] = paste0(safe[lossy], "_", substr(vapply(question_name[lossy], rlang::hash, character(1)), 1, 6))
   safe
+}
+
+# One-line text: whitespace collapsed and cut to width with an ellipsis. Used
+# by the History tab and the snapshot list's print method.
+#
+# text: Character vector (NA becomes "")
+# width: Maximum number of characters
+
+one_line_text = function(text, width = 80) {
+  text = ifelse(is.na(text), "", gsub("\\s+", " ", trimws(text)))
+  ifelse(nchar(text) > width, paste0(substr(text, 1, width - 3), "…"), text)
+}
+
+# A blank (NULL, empty or whitespace-only) text input as NULL, else the text;
+# the snapshot dialogs pass their optional label and summary through it
+#
+# x: Character scalar or NULL
+
+blank_to_null = function(x) {
+  if (is.null(x) || !nzchar(trimws(x))) NULL else x
+}
+
+# One labeled row of a Bootstrap description list (a dt / dd pair), or NULL
+# when the value is missing (NULL, empty, NA or ""), so detail panes skip the
+# fields an entry does not have
+#
+# name: Character scalar. The label
+# value: The value: text or a tag
+
+detail_field = function(name, value) {
+  missing_text = length(value) == 1 && is.atomic(value) && (is.na(value) || identical(value, ""))
+  if (is.null(value) || length(value) == 0 || missing_text) {
+    return(NULL)
+  }
+  htmltools::tagList(
+    shiny::tags$dt(class = "col-sm-3 fw-normal text-muted", name),
+    shiny::tags$dd(class = "col-sm-9 mb-1", value)
+  )
+}
+
+# The Take snapshot dialog shared by the History tab and the template editor:
+# an intro line, a label and a summary (passed through blank_to_null() on
+# confirm), any extra inputs, and the confirm button. The inputs are
+# "snapshot_label", "snapshot_summary" and "confirm_snapshot" under ns.
+#
+# intro: Tag list shown in the small muted intro paragraph
+# label_placeholder: Placeholder text for the label input
+# ns: Namespace function for the input ids (identity outside a module)
+# ...: Further inputs shown after the summary
+
+snapshot_take_modal = function(intro, label_placeholder, ns = shiny::NS(NULL), ...) {
+  shiny::modalDialog(
+    title = "Take snapshot",
+    shiny::p(class = "small text-muted", intro),
+    shiny::textInput(ns("snapshot_label"), "Label", placeholder = label_placeholder, width = "100%"),
+    shiny::textAreaInput(ns("snapshot_summary"), "Summary", placeholder = "What is about to change, or why this state is worth keeping", width = "100%", rows = 3),
+    ...,
+    easyClose = TRUE,
+    footer = shiny::tagList(
+      shiny::modalButton("Cancel"),
+      shiny::actionButton(ns("confirm_snapshot"), "Take snapshot", class = "btn-primary")
+    )
+  )
 }

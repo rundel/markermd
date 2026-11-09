@@ -13,15 +13,15 @@ parse_assignment_document(file_path)
 A q2r \code{pandoc} AST object for the parsed document.
 }
 \description{
-Reads a qmd document, normalises any knitr-style chunk headers so the
+Reads a qmd document, normalizes any knitr-style chunk headers so the
 Quarto parser accepts them, and parses it into a q2r \code{pandoc} AST.
 }
 \details{
 Parse diagnostics are surfaced rather than stripped: error-kind
 diagnostics from q2r are raised as R errors. Warning-kind diagnostics
-are not signalled (they would otherwise print to the console from inside
+are not signaled (they would otherwise print to the console from inside
 the apps); they stay attached to the returned AST's \verb{@diagnostics} slot,
-labelled with the document's file name, and \code{\link[=mark]{mark()}}, \code{\link[=template]{template()}} and
+labeled with the document's file name, and \code{\link[=mark]{mark()}}, \code{\link[=template]{template()}} and
 \code{\link[=parse_project]{parse_project()}} report them. Rewriting a knitr-style chunk header adds
 lines, so a diagnostic whose line number moved carries a hint giving the
 line of the file as written. If parsing yields an empty AST (no blocks)

@@ -285,7 +285,7 @@ repo_table_click_js = function(input_id, question_names) {
 # the total, sortable (ungraded last) with the summary rows from
 # build_scores_summary_rows() pinned as column footers so they stay put
 # under any sort order. The table fills its container and scrolls inside it
-# with the header and footer sticky; every cell is vertically centred so the
+# with the header and footer sticky; every cell is vertically centered so the
 # icon buttons, progress bars and text line up; the Repository column absorbs
 # the width the fixed-size columns leave, up to a cap that keeps the link
 # icons near the name on a wide window. Score headers carry the points on a
@@ -293,7 +293,7 @@ repo_table_click_js = function(input_id, question_names) {
 # score cells are tinted by their shortfall (score_tint()) and are clickable
 # and keyboard-reachable (class "score-link", styled by the app) when
 # click_input is given; totals are bold, and an incomplete repository's
-# running total shows in grey. Without questions there are no score columns,
+# running total shows in gray. Without questions there are no score columns,
 # footers or click handler.
 #
 # table_data: Data frame from build_repo_table_data()
@@ -399,7 +399,7 @@ repo_table_reactable = function(table_data, summary_rows, totals, click_input = 
     )
   }
 
-  # The Total column: the complete total, or the running sum so far in grey
+  # The Total column: the complete total, or the running sum so far in gray
   # with how many questions it covers, so an incomplete repository is never
   # mistaken for a low one
   total_cell = function(value, index) {

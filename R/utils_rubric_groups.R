@@ -92,7 +92,7 @@ blocks_to_ids = function(blocks) {
 
 # Move element k of x one step in direction, with the mark app's wrap rule:
 # moving up from the top sends it to the end and moving down from the bottom
-# sends it to the front (a rotation), otherwise it swaps with its neighbour.
+# sends it to the front (a rotation), otherwise it swaps with its neighbor.
 #
 # x: Vector or list
 # k: Index of the element to move
