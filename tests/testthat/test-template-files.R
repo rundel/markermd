@@ -219,3 +219,23 @@ test_that("assignment_outline lists the assignment's other files", {
   expect_equal(files$filtered[match(c("get_data.R", "README.md"), files$path)], c(FALSE, TRUE))
   expect_true(all(files$size > 0))
 })
+
+test_that("find_repo_file ignores symlinks that leave the repository and prunes dependency trees", {
+  skip_on_os("windows")
+  outside = withr::local_tempdir()
+  writeLines("secret", file.path(outside, "x.csv"))
+  d = withr::local_tempdir()
+  dir.create(file.path(d, "data"))
+  dir.create(file.path(d, "node_modules", "pkg"), recursive = TRUE)
+  writeLines("dep", file.path(d, "node_modules", "pkg", "dep.csv"))
+  writeLines("own", file.path(d, "data", "own.csv"))
+  file.symlink(file.path(outside, "x.csv"), file.path(d, "data", "x.csv"))
+  file.symlink(file.path(d, "data", "own.csv"), file.path(d, "link.csv"))
+
+  expect_true(is.na(markermd:::find_repo_file(d, "data/x.csv")))
+  expect_true(is.na(markermd:::find_repo_file(d, "x.csv")))
+  expect_true(is.na(markermd:::find_repo_file(d, "dep.csv")))
+  expect_equal(basename(markermd:::find_repo_file(d, "link.csv")), "own.csv")
+  expect_equal(basename(markermd:::find_repo_file(d, "own.csv")), "own.csv")
+  expect_setequal(markermd:::list_repo_files(d), c("data/own.csv", "data/x.csv", "link.csv"))
+})

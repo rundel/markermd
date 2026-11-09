@@ -862,3 +862,14 @@ test_that("format_points_signed and the group chips and subtotal render as desig
   expect_match(breakdown, "Without group bounds: ", fixed = TRUE)
   expect_match(breakdown, "bounded to 0 to 12", fixed = TRUE)
 })
+
+test_that("the move helpers refuse a non-contiguous order and an unknown item", {
+  expect_error(
+    markermd:::move_in_blocks(c("a", "b", "c"), c("g", NA, "g"), "a", 1),
+    "contiguous"
+  )
+  expect_error(
+    markermd:::move_item_to_group(c("a", "b"), c(NA, NA), "zz", "g"),
+    "not one of the item ids"
+  )
+})

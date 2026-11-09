@@ -131,6 +131,9 @@ move_within = function(x, k, direction) {
 move_in_blocks = function(ids, group_of, id, direction) {
   ids = as.character(ids)
   group_of = as.character(group_of)
+  if (!identical(group_contiguous_order(group_of), seq_along(ids))) {
+    cli::cli_abort("move_in_blocks() needs a contiguous order: a group's members must be adjacent.")
+  }
   blocks = rubric_blocks(ids, group_of)
 
   block_index = function(test) {
@@ -172,6 +175,9 @@ move_item_to_group = function(ids, group_of, id, target) {
   ids = as.character(ids)
   group_of = as.character(group_of)
   k = match(id, ids)
+  if (is.na(k)) {
+    cli::cli_abort("move_item_to_group(): {.val {id}} is not one of the item ids.")
+  }
   old = group_of[k]
   target = as.character(target)
 

@@ -11,21 +11,54 @@
 # Returns: The absolute path of the file found, or NA_character_
 
 find_repo_file = function(repo_dir, path) {
+  root = normalizePath(repo_dir, winslash = "/", mustWork = FALSE)
+  # A file is only found when it really lives in the repository: a committed
+  # symlink to a file elsewhere on the grader's machine would otherwise be
+  # shown in the grader's page
+  inside_repo = function(p) {
+    startsWith(normalizePath(p, winslash = "/", mustWork = FALSE), paste0(root, "/"))
+  }
+
   exact = file.path(repo_dir, path)
-  if (file.exists(exact) && !dir.exists(exact)) {
+  if (file.exists(exact) && !dir.exists(exact) && inside_repo(exact)) {
     return(normalizePath(exact, winslash = "/"))
   }
-  # Dependency and render-output trees are skipped: they can hold thousands
-  # of files and never the submission's own
-  candidates = list.files(repo_dir, recursive = TRUE, all.files = TRUE, full.names = FALSE)
-  candidates = candidates[!grepl("(^|/)(\\.git|renv|node_modules|\\.quarto|_freeze|[^/]*_files)(/|$)", candidates)]
+  candidates = list_repo_files(repo_dir)
   candidates = candidates[basename(candidates) == basename(path)]
+  candidates = candidates[vapply(file.path(repo_dir, candidates), inside_repo, logical(1))]
   if (length(candidates) == 0) {
     return(NA_character_)
   }
   depth = lengths(strsplit(candidates, "/", fixed = TRUE))
   best = candidates[order(depth, candidates)][1]
   normalizePath(file.path(repo_dir, best), winslash = "/")
+}
+
+# Directory names never entered when looking for a submission's file:
+# dependency and render-output trees can hold thousands of files and never
+# the submission's own
+
+repo_skip_dirs_regex = "^(\\.git|renv|node_modules|\\.quarto|_freeze|.*_files)$"
+
+# The repository-relative paths of every file in a repository, pruning the
+# skipped trees as the walk reaches them rather than listing them first
+#
+# repo_dir: The repository directory
+
+list_repo_files = function(repo_dir) {
+  walk = function(rel) {
+    full = if (nzchar(rel)) file.path(repo_dir, rel) else repo_dir
+    entries = list.files(full, all.files = TRUE, no.. = TRUE)
+    unlist(lapply(entries, function(entry) {
+      rel_entry = if (nzchar(rel)) paste0(rel, "/", entry) else entry
+      if (dir.exists(file.path(repo_dir, rel_entry))) {
+        if (grepl(repo_skip_dirs_regex, entry)) character(0) else walk(rel_entry)
+      } else {
+        rel_entry
+      }
+    }), use.names = FALSE)
+  }
+  as.character(walk(""))
 }
 
 # How a file is shown: "image" for the image formats a browser displays,
