@@ -273,7 +273,7 @@ mark_rubric_editor_ui = function(id) {
     ),
     bslib::card_body(
       class = "overflow-auto",
-      shiny::tags$style(shiny::HTML(".rubric-editor .rubric-group-subtotal { display: none; } .rubric-editor-settings .shiny-input-container { margin-bottom: 0; width: auto; } .rubric-editor-settings .form-check { margin-bottom: 0; } .rubric-editor-settings input[type=number] { height: 28px; padding: 2px 6px; font-size: 12px; } .rubric-editor-jump .shiny-input-container { margin-bottom: 0; } .rubric-editor .rubric-action-btns { opacity: 1; }")),
+      shiny::tags$style(shiny::HTML(".rubric-editor .rubric-group-subtotal { display: none; } .rubric-editor-settings .total-row .shiny-input-container { margin-bottom: 0; } .rubric-editor-settings input[type=number] { height: 28px; padding: 2px 6px; font-size: 12px; } .rubric-editor-jump .shiny-input-container { margin-bottom: 0; } .rubric-editor .rubric-action-btns { opacity: 1; }")),
       shiny::uiOutput(ns("rubric_editor_ui"))
     )
   )
@@ -993,7 +993,9 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
           bslib::card_header(
             class = "bg-light d-flex flex-wrap align-items-center gap-3",
             shiny::span(class = "fw-semibold", question_name),
-            if (!is.null(grade_server)) mark_grade_settings_ui(session$ns(grade_server$id), grade_server$grade())
+            if (!is.null(grade_server)) {
+              shiny::div(class = "ms-auto", mark_grade_settings_ui(session$ns(grade_server$id), grade_server$grade()))
+            }
           ),
           bslib::card_body(
             class = "small",

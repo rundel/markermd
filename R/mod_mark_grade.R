@@ -270,11 +270,12 @@ mark_grade_ui = function(id, grade_state, capped = 0, breakdown = NULL) {
   )
 }
 
-# A question's scoring settings for the Rubric tab's editor: the total
-# points, the grading mode, the bounds and the optional switch, laid out on
-# one line. The inputs carry the same ids as mark_grade_ui()'s popovers, so
-# the question's grade server saves them; only one of the two is ever on the
-# page (see the rubric module's items_owner).
+# A question's scoring settings for the Rubric tab's editor: a gear button
+# in the question's card header opening a popover with the total points, the
+# grading mode, the bounds and the optional switch. The inputs carry the same
+# ids as mark_grade_ui()'s popovers, so the question's grade server saves
+# them; only one of the two is ever on the page (see the rubric module's
+# items_owner).
 #
 # id: Character. The grade server's id (namespaced), as for mark_grade_ui()
 # grade_state: markermd_grade_state with the question's scoring setup
@@ -282,32 +283,47 @@ mark_grade_ui = function(id, grade_state, capped = 0, breakdown = NULL) {
 mark_grade_settings_ui = function(id, grade_state) {
   safe_id = gsub("[^A-Za-z0-9_-]", "_", id)
   ns = shiny::NS(safe_id)
-  shiny::div(
-    class = "rubric-editor-settings d-flex flex-wrap align-items-center gap-3 small",
+  bslib::popover(
+    shiny::tags$button(
+      id = ns("editor_settings"),
+      type = "button",
+      class = "btn btn-outline-secondary btn-sm py-0 px-2",
+      title = "Scoring settings",
+      fa_icon("gear"),
+      shiny::span(class = "ms-1", "Scoring")
+    ),
+    title = "Scoring settings",
+    placement = "bottom",
     shiny::div(
-      class = "d-flex align-items-center gap-1",
-      shiny::span("Total"),
+      class = "rubric-editor-settings small",
+      style = "min-width: 220px;",
       shiny::div(
-        style = "width: 80px;",
-        shiny::numericInput(ns("total_score_input"), NULL, value = grade_state@total_score, min = 0, step = 0.5, width = "100%")
+        class = "total-row d-flex align-items-center gap-1 mb-2",
+        shiny::span("Total"),
+        shiny::div(
+          style = "width: 80px;",
+          shiny::numericInput(ns("total_score_input"), NULL, value = grade_state@total_score, min = 0, step = 0.5, width = "100%")
+        ),
+        shiny::span("pts")
       ),
-      shiny::span(if (grade_state@total_score == 1) "pt" else "pts")
-    ),
-    shiny::radioButtons(
-      ns("grading_mode"), NULL,
-      choices = list("Positive (from 0)" = "positive", "Negative (from max)" = "negative"),
-      selected = grade_state@grading_mode, inline = TRUE
-    ),
-    shiny::checkboxGroupInput(
-      ns("grade_bounds"), NULL,
-      choices = list("Score \u2265 0" = "above_zero", "Score \u2264 max" = "below_max"),
-      selected = c(
-        if (grade_state@bound_above_zero) "above_zero",
-        if (grade_state@bound_below_max) "below_max"
+      shiny::radioButtons(
+        ns("grading_mode"), shiny::strong("Grading method:"),
+        choices = list("Positive (start from 0)" = "positive", "Negative (start from max)" = "negative"),
+        selected = grade_state@grading_mode
       ),
-      inline = TRUE
-    ),
-    shiny::checkboxInput(ns("grade_optional"), "Optional", value = grade_state@optional)
+      shiny::checkboxGroupInput(
+        ns("grade_bounds"), shiny::strong("Grade bounds:"),
+        choices = list("Enforce score ≥ 0" = "above_zero", "Enforce score ≤ max" = "below_max"),
+        selected = c(
+          if (grade_state@bound_above_zero) "above_zero",
+          if (grade_state@bound_below_max) "below_max"
+        )
+      ),
+      shiny::checkboxInput(
+        ns("grade_optional"), "Optional: nothing selected still counts as graded",
+        value = grade_state@optional
+      )
+    )
   )
 }
 

@@ -319,12 +319,12 @@ test_that("groups can be added, joined through the item menu, moved as blocks an
   expect_true(is.na(groups()["item_2"]))
 
   # An item's chevrons move it within its group, wrapping within it
-  app$click("rubric_module-item_3-move_up_btn")
+  app$click(selector = "#rubric_module-item_3-move_up_btn")
   app$wait_for_idle()
   expect_equal(ids(), c("item_0", "item_4", "item_1", "item_3", "item_2", "item_5", "item_6"))
 
   # An ungrouped item jumps over a whole group
-  app$click("rubric_module-item_0-move_down_btn")
+  app$click(selector = "#rubric_module-item_0-move_down_btn")
   app$wait_for_idle()
   expect_equal(ids(), c("item_4", "item_1", "item_3", "item_0", "item_2", "item_5", "item_6"))
 

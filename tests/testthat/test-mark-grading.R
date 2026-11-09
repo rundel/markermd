@@ -137,7 +137,7 @@ test_that("moving a rubric item reorders it and renumbers hotkeys, including the
   expect_equal(descriptions(), c("A", "B", "C"))
 
   # Move A (item_0) down: order becomes B, A, C and hotkeys renumber 1..3
-  app$click("rubric_module-item_0-move_down_btn")
+  app$click(selector = "#rubric_module-item_0-move_down_btn")
   app$wait_for_idle()
   expect_equal(descriptions(), c("B", "A", "C"))
 
@@ -146,7 +146,7 @@ test_that("moving a rubric item reorders it and renumbers hotkeys, including the
   expect_equal(unname(purrr::map_chr(items, ~ .x@description)), c("B", "A", "C"))
 
   # Move B (item_1, now at the top) up: it wraps to the bottom -> A, C, B
-  app$click("rubric_module-item_1-move_up_btn")
+  app$click(selector = "#rubric_module-item_1-move_up_btn")
   app$wait_for_idle()
   expect_equal(descriptions(), c("A", "C", "B"))
   items2 = markermd:::load_rubric_items(root, "Q2")
@@ -320,7 +320,7 @@ test_that("items past the tenth have no hotkey, toggle by click, and keep their 
   expect_equal(label(ids[12]), "")
 
   # moving the twelfth above the eleventh is persisted in that order
-  app$click(paste0("rubric_module-", ids[12], "-move_up_btn"))
+  app$click(selector = paste0("#rubric_module-", ids[12], "-move_up_btn"))
   app$wait_for_idle()
   items = markermd:::load_rubric_items(root, "Q2")
   expect_equal(names(items)[11:12], c(ids[12], "item_10"))

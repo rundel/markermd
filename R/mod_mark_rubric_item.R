@@ -90,8 +90,7 @@ rubric_group_menu_item = function(ns, group_id, label, active) {
 
 mark_rubric_item_ui = function(id, rubric_item, groups = list(), selected_count = NULL, repo_count = NULL) {
   ns = shiny::NS(id)
-
-  action_style = "border: none; background: transparent; color: #6c757d; font-size: 12px; line-height: 1;"
+  editor = !is.null(selected_count)
 
   shiny::div(
     id = ns("container"),
@@ -102,9 +101,8 @@ mark_rubric_item_ui = function(id, rubric_item, groups = list(), selected_count 
     # move to another group (or out of its group), delete. In the Rubric
     # tab's editor the item's selection count sits just left of them.
     shiny::div(
-      class = "position-absolute d-flex align-items-center gap-2",
-      style = "top: 0; right: 8px;",
-      if (!is.null(selected_count)) {
+      class = "rubric-item-actions position-absolute d-flex align-items-center gap-2",
+      if (editor) {
         shiny::span(
           class = paste(
             "badge rounded-pill rubric-selected-count",
@@ -116,23 +114,8 @@ mark_rubric_item_ui = function(id, rubric_item, groups = list(), selected_count 
       },
       shiny::div(
         class = "rubric-action-btns d-flex",
-        style = "gap: 2px;",
-        shiny::actionButton(
-          ns("move_up_btn"),
-          label = NULL,
-          icon = cached_icon("chevron-up"),
-          class = "btn btn-sm p-1",
-          style = action_style,
-          title = "Move item up"
-        ),
-        shiny::actionButton(
-          ns("move_down_btn"),
-          label = NULL,
-          icon = cached_icon("chevron-down"),
-          class = "btn btn-sm p-1",
-          style = action_style,
-          title = "Move item down"
-        ),
+        rubric_item_event_btn(ns("move_up_btn"), "chevron-up", "Move item up"),
+        rubric_item_event_btn(ns("move_down_btn"), "chevron-down", "Move item down"),
         # Group menu: a Bootstrap dropdown listing "No group" and the
         # question's groups. Groups are created with Add Group; this menu
         # only moves the item between existing ones.
@@ -140,8 +123,7 @@ mark_rubric_item_ui = function(id, rubric_item, groups = list(), selected_count 
           class = "dropdown d-inline-block",
           shiny::tags$button(
             type = "button",
-            class = "btn btn-sm p-1 rubric-group-menu-btn",
-            style = action_style,
+            class = "btn btn-sm p-1 rubric-act-btn rubric-group-menu-btn",
             `data-bs-toggle` = "dropdown",
             `aria-expanded` = "false",
             title = "Move item to a group",
@@ -159,14 +141,7 @@ mark_rubric_item_ui = function(id, rubric_item, groups = list(), selected_count 
             })
           )
         ),
-        shiny::actionButton(
-          ns("delete_btn"),
-          label = NULL,
-          icon = cached_icon("times"),
-          class = "btn btn-sm p-1",
-          style = "border: none; background: transparent; color: #6c757d; font-size: 16px;",
-          title = "Delete rubric item"
-        )
+        rubric_item_event_btn(ns("delete_btn"), "times", "Delete rubric item", class = "rubric-act-del")
       )
     ),
     # Rubric item content: hotkey button beside a tight points/description stack
@@ -176,65 +151,57 @@ mark_rubric_item_ui = function(id, rubric_item, groups = list(), selected_count 
       # The output wrapper is display: contents, so flex-shrink-0 here does
       # nothing; the button carries its own fixed size (see
       # mark_rubric_item_hotkey_btn())
-      if (is.null(selected_count)) {
+      if (!editor) {
         shiny::uiOutput(ns("hotkey_btn_ui"), class = "flex-shrink-0")
       },
       shiny::div(
         class = "flex-grow-1",
         style = "min-width: 0;",
-        # Points
         shiny::div(
           id = ns("points_text"),
           class = "rubric-points-edit",
           contenteditable = "true",
           `data-points` = rubric_item@points,
-          style = glue::glue(
-            "border: 1px solid transparent; ",
-            "background: transparent; ",
-            "padding: 2px 4px; ",
-            "border-radius: 4px; ",
-            "outline: none; ",
-            "transition: all 0.2s ease; ",
-            "font-size: 14px; ",
-            "font-weight: bold; ",
-            "display: inline-block; ",
-            "width: fit-content; ",
-            "color: <<if (rubric_item@points >= 0) POINTS_POSITIVE_COLOR else POINTS_NEGATIVE_COLOR>>;",
-            .open = "<<", .close = ">>"
-          ),
-          cli::pluralize(paste0(
+          style = paste0("color: ", if (rubric_item@points >= 0) POINTS_POSITIVE_COLOR else POINTS_NEGATIVE_COLOR, ";"),
+          paste0(
             if (rubric_item@points >= 0) "+" else "",
-            "{rubric_item@points} pt{?s}"
-          ))
+            rubric_item@points, if (identical(rubric_item@points, 1)) " pt" else " pts"
+          )
         ),
         # Marks an item a markermd call (an agent's import) selected and
-        # nobody has reviewed in the app since
-        shiny::uiOutput(ns("agent_badge"), inline = TRUE),
-        # Description editable div
+        # nobody has reviewed in the app since; it concerns the pair on
+        # screen, so the editor has none
+        if (!editor) shiny::uiOutput(ns("agent_badge"), inline = TRUE),
         shiny::div(
           id = ns("description_text"),
           contenteditable = "true",
           class = "form-control-like rubric-desc-edit",
-          style = paste0(
-            "border: 1px solid transparent; ",
-            "background: transparent; ",
-            "padding: 2px 4px; ",
-            "margin: 0; ",
-            "font-size: 12px; ",
-            "line-height: 1.3; ",
-            "min-height: 20px; ",
-            "border-radius: 4px; ",
-            "white-space: pre-wrap; ",
-            "word-wrap: break-word; ",
-            "overflow-wrap: break-word; ",
-            "outline: none; ",
-            "transition: all 0.2s ease;"
-          ),
           `data-placeholder` = "Enter description...",
           rubric_item@description
         )
       )
     )
+  )
+}
+
+# One of an item's action buttons. A plain button rather than an
+# actionButton: the delegated click handler in rubric_item_editing_head()
+# reports each click to the input named by data-event, so a long rubric does
+# not bind (and report) hundreds of button inputs when it draws.
+#
+# input_id: The (namespaced) input the click is reported to
+# icon: Font Awesome icon name
+# title: Tooltip text
+# class: Extra classes, or NULL
+
+rubric_item_event_btn = function(input_id, icon, title, class = NULL) {
+  shiny::tags$button(
+    id = input_id,
+    type = "button",
+    class = paste(c("btn btn-sm p-1 rubric-act-btn", class), collapse = " "),
+    `data-event` = input_id,
+    title = title,
+    cached_icon(icon)
   )
 }
 
@@ -244,11 +211,29 @@ mark_rubric_item_ui = function(id, rubric_item, groups = list(), selected_count 
 # draw. Points show the bare number while focused, commit on blur or Enter
 # and report to the item's points_text input; descriptions report each edit
 # to description_text. Pastes are reduced to plain text in both. A group
-# menu entry reports its group to the item's group_choice input.
+# menu entry reports its group to the item's group_choice input, and an
+# action button (rubric_item_event_btn()) its click count to its own id.
 
 rubric_item_editing_head = function() {
   shiny::tagList(
     shiny::tags$style(shiny::HTML("
+      .rubric-item-actions { top: 0; right: 8px; }
+      .rubric-action-btns { gap: 2px; }
+      .rubric-act-btn {
+        border: none; background: transparent; color: #6c757d; font-size: 12px; line-height: 1;
+      }
+      .rubric-act-btn.rubric-act-del { font-size: 16px; }
+      .rubric-points-edit, .rubric-desc-edit {
+        border: 1px solid transparent; background: transparent; padding: 2px 4px;
+        border-radius: 4px; outline: none; transition: all 0.2s ease;
+      }
+      .rubric-points-edit {
+        font-size: 14px; font-weight: bold; display: inline-block; width: fit-content;
+      }
+      .rubric-desc-edit {
+        margin: 0; font-size: 12px; line-height: 1.3; min-height: 20px;
+        white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word;
+      }
       .rubric-points-edit:hover, .rubric-desc-edit:hover {
         border: 1px solid #80bdff !important; background: #f8f9fa !important;
       }
@@ -266,6 +251,13 @@ rubric_item_editing_head = function() {
           return isNaN(v) ? 0 : v;
         }
         document.addEventListener('click', function(e) {
+          var btn = e.target.closest && e.target.closest('button[data-event]');
+          if (btn) {
+            var n = (parseInt(btn.dataset.clicks || '0', 10) || 0) + 1;
+            btn.dataset.clicks = n;
+            Shiny.setInputValue(btn.dataset.event, n, {priority: 'event'});
+            return;
+          }
           var el = e.target.closest && e.target.closest('a.rubric-group-menu-item[data-input]');
           if (!el) return;
           e.preventDefault();
@@ -306,7 +298,7 @@ rubric_item_editing_head = function() {
           var value = parseFloat(el.innerText || el.textContent || '0');
           if (isNaN(value)) value = points(el);
           el.setAttribute('data-points', value);
-          // Singular only for exactly 1, matching the cli::pluralize() render
+          // Singular only for exactly 1, matching the R render
           el.innerHTML = (value >= 0 ? '+' : '') + value + ' ' + (value === 1 ? 'pt' : 'pts');
           el.style.color = value >= 0 ? '<<POINTS_POSITIVE_COLOR>>' : '<<POINTS_NEGATIVE_COLOR>>';
           Shiny.setInputValue(el.id, value);

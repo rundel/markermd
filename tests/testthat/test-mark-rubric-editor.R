@@ -24,7 +24,10 @@ test_that("the Rubric tab edits every question's rubric in one place", {
   expect_equal(container_count("item_0"), 1)
   expect_false(app$get_js("!!document.getElementById('rubric_module-item_0-hotkey_btn')"))
 
-  # The scoring settings save through the question's grade server
+  # The scoring settings, in the question's popover, save through the
+  # question's grade server
+  app$click(selector = "#rubric_module-grade_Q3-editor_settings")
+  app$wait_for_js("!!document.querySelector('#rubric_module-grade_Q3-total_score_input.shiny-bound-input')", timeout = 10000)
   app$set_inputs(`rubric_module-grade_Q3-total_score_input` = 15)
   app$wait_for_idle()
   expect_equal(markermd:::load_grade_state(root, "Q3")@total_score, 15)
