@@ -524,17 +524,17 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     }) |>
       shiny::bindEvent(ast_result$node_clicked(), ignoreNULL = TRUE, ignoreInit = TRUE)
     
-    # The document's parser warnings: a badge in the tree's header that
-    # opens them in a modal (q2r keeps them on the AST rather than printing
-    # them to the console)
+    # The document's parser warnings and duplicate ids: a badge in the tree's
+    # header that opens them in a modal (q2r keeps its warnings on the AST
+    # rather than printing them to the console)
     output$parse_warnings_badge = shiny::renderUI({
-      n = length(document_parse_warnings(ast()))
+      n = length(template_document_notes(ast()))
       if (n == 0) {
         return(NULL)
       }
       shiny::actionLink(
         "show_parse_warnings",
-        paste0(n, " parser warning", if (n == 1) "" else "s"),
+        paste0(n, " document warning", if (n == 1) "" else "s"),
         icon = fa_icon("triangle-exclamation"),
         class = "badge text-bg-warning fw-normal text-decoration-none"
       )
@@ -542,12 +542,12 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
 
     shiny::observe({
       shiny::showModal(shiny::modalDialog(
-        title = "Parser warnings",
+        title = "Document warnings",
         size = "l",
         easyClose = TRUE,
         footer = shiny::modalButton("Close"),
-        shiny::p(class = "small text-muted", "The document parsed, but the parser flagged these. Rendering may differ from what was intended."),
-        lapply(format_parse_diagnostics(document_parse_warnings(ast())), function(text) {
+        shiny::p(class = "small text-muted", "The document parsed, but these were flagged. Rendering may differ from what was intended, and an id shared by several nodes cannot be selected."),
+        lapply(template_document_notes(ast()), function(text) {
           shiny::tags$pre(class = "small bg-body-tertiary border rounded p-2", style = "white-space: pre-wrap;", text)
         })
       ))

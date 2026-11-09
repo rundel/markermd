@@ -32,6 +32,14 @@ maps to one q2r predicate: a node-type test (\verb{is(<pandoc class>)}) or one o
 the attribute/content helpers (\code{has_class()}, \code{has_id()}, \code{has_text()},
 \code{has_label()}, \code{has_option()}, \code{has_engine()}).
 }
+\details{
+"has text" matches a node's rendered text (\code{q2r::ast_text()},
+without markup) against a case-sensitive regular expression; "has label"
+matches a heading or div id, or a chunk's label option, against a glob
+pattern (\verb{fig-*}). Rules (\code{\link[=markermd_rule]{markermd_rule()}}) differ: their content verbs
+match the node's qmd source case-insensitively and "has name" matches a
+heading title or chunk label by regular expression.
+}
 \examples{
 # Match divs
 type_condition = markermd_filter_condition(

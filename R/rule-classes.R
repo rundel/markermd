@@ -23,6 +23,18 @@ NULL
 #'   - "has content": character string (pattern)
 #'   - "lacks content": character string (pattern)
 #'   - "has name": character string (pattern)
+#' @details Rule patterns are regular expressions (R's default engine), matched
+#'   case-insensitively and unanchored, and an invalid pattern fails the rule.
+#'   "has content" and "lacks content" match a node's qmd source as written
+#'   back by q2r, so a chunk's fences and `#|` option lines and a heading's
+#'   `#` marks and `{#id}` are part of the text. "has name" matches a
+#'   heading's title or a chunk's label, never an attribute id.
+#'
+#'   Filters ([markermd_filter_condition()]) differ: "has text" matches a
+#'   node's rendered text (`q2r::ast_text()`, no markup) case-sensitively, and
+#'   "has label" matches a node's id or a chunk's label option with a glob
+#'   pattern (`fig-*`). The same words can therefore match in a rule and not in
+#'   a filter, or the reverse.
 #' @return A `markermd_rule` S7 object.
 #' @export
 #' @examples
@@ -37,7 +49,7 @@ NULL
 #' content_rule = markermd_rule(
 #'   node_type = "Chunk",
 #'   verb = "has content",
-#'   values = "*plot*"
+#'   values = "ggplot\\("
 #' )
 markermd_rule = S7::new_class(
   "markermd_rule",

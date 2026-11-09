@@ -33,6 +33,20 @@ S7 class representing a single validation rule for template questions.
 This class provides built-in validation for all rule properties and ensures
 consistency across the application.
 }
+\details{
+Rule patterns are regular expressions (R's default engine), matched
+case-insensitively and unanchored, and an invalid pattern fails the rule.
+"has content" and "lacks content" match a node's qmd source as written
+back by q2r, so a chunk's fences and \verb{#|} option lines and a heading's
+\verb{#} marks and \verb{\{#id\}} are part of the text. "has name" matches a
+heading's title or a chunk's label, never an attribute id.
+
+Filters (\code{\link[=markermd_filter_condition]{markermd_filter_condition()}}) differ: "has text" matches a
+node's rendered text (\code{q2r::ast_text()}, no markup) case-sensitively, and
+"has label" matches a node's id or a chunk's label option with a glob
+pattern (\verb{fig-*}). The same words can therefore match in a rule and not in
+a filter, or the reverse.
+}
 \examples{
 # Create a count rule
 count_rule = markermd_rule(
@@ -45,6 +59,6 @@ count_rule = markermd_rule(
 content_rule = markermd_rule(
   node_type = "Chunk",
   verb = "has content",
-  values = "*plot*"
+  values = "ggplot\\\\("
 )
 }

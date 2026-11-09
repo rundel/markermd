@@ -61,18 +61,19 @@ test_that("node types combine as OR and 'Any node' skips filtering", {
 })
 
 
-test_that("content verbs glob-match node text case-insensitively", {
+test_that("content verbs regex-match node source case-insensitively", {
   ast = rule_eval_fixture_ast
 
-  expect_true(markermd:::evaluate_rule(ast, rule("Markdown", "has content", "*quantile*"))$passed)
-  expect_true(markermd:::evaluate_rule(ast, rule("Markdown", "has content", "*QUANTILE*"))$passed)
-  expect_false(markermd:::evaluate_rule(ast, rule("Markdown", "has content", "*zebra*"))$passed)
+  expect_true(markermd:::evaluate_rule(ast, rule("Markdown", "has content", "quantile"))$passed)
+  expect_true(markermd:::evaluate_rule(ast, rule("Markdown", "has content", "QUANTILE"))$passed)
+  expect_false(markermd:::evaluate_rule(ast, rule("Markdown", "has content", "zebra"))$passed)
 
-  # chunks match on their code
-  expect_true(markermd:::evaluate_rule(ast, rule("Chunk", "has content", "*plot(1)*"))$passed)
+  # chunks match on their code; a literal parenthesis is escaped as in any regex
+  expect_true(markermd:::evaluate_rule(ast, rule("Chunk", "has content", "plot\\(1\\)"))$passed)
+  expect_false(markermd:::evaluate_rule(ast, rule("Chunk", "has content", "plot\\(2\\)"))$passed)
 
-  expect_false(markermd:::evaluate_rule(ast, rule("Markdown", "lacks content", "*quantile*"))$passed)
-  expect_true(markermd:::evaluate_rule(ast, rule("Markdown", "lacks content", "*zebra*"))$passed)
+  expect_false(markermd:::evaluate_rule(ast, rule("Markdown", "lacks content", "quantile"))$passed)
+  expect_true(markermd:::evaluate_rule(ast, rule("Markdown", "lacks content", "zebra"))$passed)
 
   # the empty pattern passes trivially for both polarity verbs
   expect_true(markermd:::evaluate_rule(ast, rule("Markdown", "has content", ""))$passed)
@@ -83,14 +84,14 @@ test_that("content verbs glob-match node text case-insensitively", {
 test_that("'has name' matches heading titles and chunk labels", {
   ast = rule_eval_fixture_ast
 
-  expect_true(markermd:::evaluate_rule(ast, rule("Heading", "has name", "Question*"))$passed)
+  expect_true(markermd:::evaluate_rule(ast, rule("Heading", "has name", "^Question"))$passed)
   expect_true(markermd:::evaluate_rule(ast, rule("Heading", "has name", "Summary"))$passed)
   expect_true(markermd:::evaluate_rule(ast, rule("Chunk", "has name", "q1-plot"))$passed)
-  expect_true(markermd:::evaluate_rule(ast, rule("Chunk", "has name", "*plot*"))$passed)
+  expect_true(markermd:::evaluate_rule(ast, rule("Chunk", "has name", "plot$"))$passed)
   expect_false(markermd:::evaluate_rule(ast, rule("Chunk", "has name", "missing-label"))$passed)
 
   # nodes without names cannot satisfy a non-empty pattern
-  expect_false(markermd:::evaluate_rule(ast, rule("Markdown", "has name", "*anything*"))$passed)
+  expect_false(markermd:::evaluate_rule(ast, rule("Markdown", "has name", "anything"))$passed)
 })
 
 

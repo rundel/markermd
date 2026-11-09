@@ -381,6 +381,13 @@ question_server = function(id, ast, initial_question = NULL, name_available = fu
         if (nchar(id) == 0) {
           return(invisible(NULL))
         }
+        if (id %in% duplicate_node_ids(ast())) {
+          shiny::showNotification(
+            paste0("The id #", id, " is shared by several headings or divs, so it cannot be selected. Give each a unique {#id} in the document."),
+            type = "warning"
+          )
+          return(invisible(NULL))
+        }
         cur_state = state()
         cur_ids = cur_state@selected_nodes@node_ids
         if (!id %in% cur_ids) {

@@ -180,8 +180,10 @@ q2r_node_detail = function(node) {
 
 # Enclosing-node id chain for each line of a markdown document
 #
-# Scans lines tracking ATX headings and fenced divs (ignoring any inside fenced
-# code blocks so R comments are not mistaken for headings or div fences). Each
+# Scans lines tracking ATX headings and fenced divs, ignoring any inside fenced
+# code blocks (closed only by a fence at least as long as the opening one), the
+# YAML front matter and HTML comments, so R comments, YAML comments and
+# commented-out skeleton text are not mistaken for headings or div fences. Each
 # heading line, in document order, is zipped to the next parsed header of
 # repo_ast so it inherits that header's authoritative q2r id (including dedup
 # suffixes and explicit {#id}), avoiding any re-implementation of the Pandoc
@@ -201,8 +203,6 @@ line_node_id_chains = function(lines, repo_ast) {
   )
   header_ids = vapply(header_records, function(record) record$node@attr@id, character(1))
 
-  fence_open = "^\\s*(`{3,}|~{3,})"
-  fence_close = "^\\s*(`{3,}|~{3,})\\s*$"
   heading_re = "^(#{1,6})\\s+(.*?)\\s*#*\\s*$"
   div_close_re = "^\\s*:::+\\s*$"
   div_open_re = "^\\s*:::+\\s*\\S.*$"
@@ -212,7 +212,15 @@ line_node_id_chains = function(lines, repo_ast) {
   div_stack = list()
   next_header = 1L
   in_block = FALSE
+  marker = NA_character_
+  in_comment = FALSE
   chains = vector("list", length(lines))
+
+  front_matter_end = 0L
+  if (length(lines) > 0 && grepl("^---\\s*$", lines[1])) {
+    close = which(grepl("^(---|\\.\\.\\.)\\s*$", lines[-1]))
+    if (length(close) > 0) front_matter_end = close[1] + 1L
+  }
 
   combined_ids = function() {
     c(
@@ -224,16 +232,40 @@ line_node_id_chains = function(lines, repo_ast) {
   for (i in seq_along(lines)) {
     line = lines[i]
 
-    if (in_block) {
-      if (grepl(fence_close, line)) in_block = FALSE
+    if (i <= front_matter_end) {
+      chains[[i]] = character(0)
+      next
+    }
+
+    if (in_comment) {
+      in_comment = !grepl("-->", line, fixed = TRUE)
       chains[[i]] = combined_ids()
       next
     }
 
-    if (grepl(fence_open, line)) {
+    if (in_block) {
+      if (closes_code_fence(line, marker)) in_block = FALSE
+      chains[[i]] = combined_ids()
+      next
+    }
+
+    marker = code_fence_marker(line)
+    if (!is.na(marker)) {
       in_block = TRUE
       chains[[i]] = combined_ids()
       next
+    }
+
+    # A comment opened on this line and not closed on it hides the lines that
+    # follow until its "-->"
+    opens = gregexpr("<!--", line, fixed = TRUE)[[1]]
+    if (opens[1] > 0) {
+      tail = substring(line, opens[length(opens)])
+      if (!grepl("-->", tail, fixed = TRUE)) {
+        in_comment = TRUE
+        chains[[i]] = combined_ids()
+        next
+      }
     }
 
     # Fenced-div close: the line still belongs to the div, then pop it and

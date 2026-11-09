@@ -54,33 +54,120 @@ node_ids_to_indices = function(ast, ids) {
   sort(which(hits))
 }
 
-# Locate a div node anywhere in a block tree by its explicit id, or NULL
+# Selected ids that name no heading or div in the document: a section the
+# student renamed or removed. Validation fails a question's rules when any of
+# its sections is missing (see evaluate_question_rules()), so a rule such as
+# "lacks content" cannot pass merely because nothing was found to check.
 #
-# Recurses into nested divs so a div inside another div is reachable.
-#
-# blocks: List of q2r pandoc block nodes
-# id: Character. The div id to find
+# ast: q2r pandoc AST object
+# ids: Character vector of selected node ids
 
-find_div_by_id = function(blocks, id) {
-  for (block in blocks) {
-    if (S7::S7_inherits(block, q2r::pandoc_div)) {
-      if (nzchar(block@attr@id) && block@attr@id == id) {
-        return(block)
+unresolved_node_ids = function(ast, ids) {
+  if (length(ids) == 0) {
+    return(character(0))
+  }
+  present = vapply(q2r_flatten(ast), function(record) {
+    node = record$node
+    if (S7::S7_inherits(node, q2r::pandoc_header) || S7::S7_inherits(node, q2r::pandoc_div)) node@attr@id else ""
+  }, character(1))
+  setdiff(ids, present)
+}
+
+# Ids carried by more than one heading or div in the document. Selections are
+# matched by id, so such an id would select (and grade) every node that shares
+# it; the template editor reports these and refuses to select them.
+#
+# ast: q2r pandoc AST object
+
+duplicate_node_ids = function(ast) {
+  if (is.null(ast)) {
+    return(character(0))
+  }
+  ids = vapply(q2r_flatten(ast), function(record) {
+    node = record$node
+    if (S7::S7_inherits(node, q2r::pandoc_header) || S7::S7_inherits(node, q2r::pandoc_div)) node@attr@id else ""
+  }, character(1))
+  ids = ids[nzchar(ids)]
+  unique(ids[duplicated(ids)])
+}
+
+# A plain-text note per id that more than one heading or div carries (see
+# duplicate_node_ids()), naming the nodes, for the template editor's document
+# notes
+#
+# ast: q2r pandoc AST object
+
+duplicate_node_id_notes = function(ast) {
+  records = q2r_flatten(ast)
+  vapply(duplicate_node_ids(ast), function(id) {
+    labels = character(0)
+    for (record in records) {
+      node = record$node
+      if ((S7::S7_inherits(node, q2r::pandoc_header) || S7::S7_inherits(node, q2r::pandoc_div)) &&
+          identical(node@attr@id, id)) {
+        labels = c(labels, record$label)
       }
-      hit = find_div_by_id(block@content@content, id)
-      if (!is.null(hit)) {
-        return(hit)
+    }
+    paste0(
+      "The id #", id, " is used by ", length(labels), " nodes: ", paste(labels, collapse = "; "), ". ",
+      "Questions select sections by id, so this id cannot be selected; give each heading or div a unique {#id}."
+    )
+  }, character(1), USE.NAMES = FALSE)
+}
+
+# Record indices of the blocks a sections question counts, in document order:
+# the selected headings' sections (heading_section_indices()) plus each
+# selected div's child blocks. A selected div already counted whole, because
+# it (or a div enclosing it) is one of the section's blocks or a child of an
+# outer selected div, is drilled into in place: the enclosing chain down to
+# the selected div is replaced by its children. A heading plus a div in its
+# section therefore counts the div's content once and keeps it visible to the
+# rules, rather than counting the div whole and its children again.
+#
+# records: q2r_flatten() output for the AST
+# heading_ids: Character vector of selected heading ids
+# div_ids: Character vector of selected div ids
+
+question_block_indices = function(records, heading_ids, div_ids) {
+  selected = heading_section_indices(records, heading_ids)
+  if (length(div_ids) == 0) {
+    return(selected)
+  }
+
+  container_of = vapply(records, function(r) as.integer(r$container), integer(1))
+  children = function(i) which(container_of == i)
+  div_index = vapply(div_ids, function(did) {
+    hit = which(vapply(records, function(r) {
+      S7::S7_inherits(r$node, q2r::pandoc_div) && identical(r$node@attr@id, did)
+    }, logical(1)))
+    if (length(hit) == 0) NA_integer_ else hit[1]
+  }, integer(1))
+
+  for (d in sort(unique(div_index[!is.na(div_index)]))) {
+    path = d
+    parent = container_of[d]
+    while (parent != 0L) {
+      path = c(parent, path)
+      parent = container_of[parent]
+    }
+    hit = which(path %in% selected)
+    if (length(hit) == 0) {
+      selected = c(selected, children(d))
+    } else {
+      for (p in path[hit[1]:length(path)]) {
+        selected = c(setdiff(selected, p), children(p))
       }
     }
   }
-  NULL
+
+  sort(unique(selected))
 }
 
 # Partition selected ids into heading ids and div ids using the AST
 #
 # An id carried by a pandoc_div in the document is a div id; everything else is
-# treated as a heading id (an id that resolves to nothing simply matches no
-# blocks during extraction).
+# treated as a heading id (an id that resolves to nothing matches no blocks
+# during extraction; validation reports it, see unresolved_node_ids()).
 #
 # ast: q2r pandoc AST object
 # ids: Character vector of selected node ids
@@ -107,8 +194,9 @@ classify_selected_ids = function(ast, ids) {
 # section's container: a top-level section yields its top-level block indices (a
 # div block counted whole), while an in-div section yields the in-div sibling
 # block indices. A div that is itself part of a captured section is included
-# whole and not descended into, so an outer-plus-inner selection never
-# double-counts.
+# whole and not descended into here; a separately selected div inside a
+# captured section is drilled into by question_block_indices(), so a heading
+# plus a div in its section counts each block once.
 #
 # records: q2r_flatten() output for the AST
 # heading_ids: Character vector of selected heading ids
@@ -405,7 +493,9 @@ rules_target_nothing = function(question) {
 # sections question whose rules target nothing (rules_target_nothing()) gets a
 # failing "No nodes selected" result for each rule instead of being evaluated
 # against the whole document, which is only meant for a document-scope
-# question.
+# question, and a question with a selected section the document lacks (a
+# renamed or removed heading) fails every rule with a "not found" message, so
+# a negative rule cannot pass on an empty node set.
 #
 # current_ast: q2r pandoc AST object from the document to validate
 # question: markermd_question S7 object containing rules and node selections
@@ -417,6 +507,14 @@ evaluate_question_rules = function(current_ast, question) {
   }
   if (rules_target_nothing(question)) {
     return(lapply(rules, function(rule) list(passed = FALSE, message = "No nodes selected")))
+  }
+  missing = if (is_document_question(question)) character(0) else unresolved_node_ids(current_ast, question@selected_nodes@node_ids)
+  if (length(missing) > 0) {
+    message = paste0(
+      "Selected section", if (length(missing) > 1) "s" else "", " ",
+      paste0("#", missing, collapse = ", "), " not found in this document"
+    )
+    return(lapply(rules, function(rule) list(passed = FALSE, message = message)))
   }
   question_ast = get_question_ast(current_ast, question)
   lapply(rules, function(rule) evaluate_rule(question_ast, rule))
@@ -439,6 +537,11 @@ validate_question_rules = function(repo_ast, question) {
   } else {
     "(none)"
   }
+  missing = if (is_document_question(question)) character(0) else unresolved_node_ids(repo_ast, node_ids)
+  section_line = paste0("Selected section(s): ", paste(formatted_hierarchies, collapse = ", "))
+  if (length(missing) > 0) {
+    section_line = c(section_line, paste0("Not found in this document: ", paste0("#", missing, collapse = ", ")))
+  }
 
   # If no rules, consider it a pass. messages/passed stay length-aligned with
   # each other (length 1) even though question@rules is empty, so the mark-side
@@ -449,7 +552,7 @@ validate_question_rules = function(repo_ast, question) {
       status = "pass",
       messages = "No rules defined - validation passed",
       passed = TRUE,
-      details = paste0("Selected section(s): ", paste(formatted_hierarchies, collapse = ", "))
+      details = paste(section_line, collapse = "\n")
     ))
   }
 
@@ -462,10 +565,7 @@ validate_question_rules = function(repo_ast, question) {
     status = if (all(passed)) "pass" else "fail",
     messages = messages,
     passed = passed,
-    details = paste(c(
-      paste0("Selected section(s): ", paste(formatted_hierarchies, collapse = ", ")),
-      messages
-    ), collapse = "\n")
+    details = paste(c(section_line, messages), collapse = "\n")
   )
 }
 
@@ -563,37 +663,13 @@ question_filtered_indices = function(current_ast, question) {
   records = q2r_flatten(current_ast)
   container_of = vapply(records, function(r) as.integer(r$container), integer(1))
 
-  blocks = current_ast@blocks@content
-  split = if (whole_document) {
-    list(heading_ids = character(0), div_ids = character(0))
+  node_indices = if (whole_document) {
+    which(container_of == 0L)
   } else {
-    classify_selected_ids(current_ast, ids)
+    split = classify_selected_ids(current_ast, ids)
+    question_block_indices(records, split$heading_ids, split$div_ids)
   }
-
-  nodes = list()
-  node_indices = integer(0)
-
-  if (whole_document) {
-    top_level = which(container_of == 0L)
-    nodes = lapply(top_level, function(i) records[[i]]$node)
-    node_indices = top_level
-  }
-
-  if (length(split$heading_ids) > 0) {
-    matched = heading_section_indices(records, split$heading_ids)
-    nodes = c(nodes, lapply(matched, function(i) records[[i]]$node))
-    node_indices = c(node_indices, matched)
-  }
-
-  for (did in split$div_ids) {
-    div_index = which(vapply(records, function(r) {
-      S7::S7_inherits(r$node, q2r::pandoc_div) && identical(r$node@attr@id, did)
-    }, logical(1)))[1]
-    if (is.na(div_index)) next
-    child_indices = which(container_of == div_index)
-    nodes = c(nodes, lapply(child_indices, function(i) records[[i]]$node))
-    node_indices = c(node_indices, child_indices)
-  }
+  nodes = lapply(node_indices, function(i) records[[i]]$node)
 
   if (length(nodes) == 0) {
     return(integer(0))
@@ -652,11 +728,14 @@ apply_question_filters = function(question_ast, question) {
 
 # Extracts the AST subset for a specific question by node-id matching
 #
-# Heading ids match by section: a top-level block is kept when a selected
-# heading id appears in its enclosing-heading id chain (the heading plus every
-# block in its section, nested subsections included). Div ids drill in: the
-# selected div's own child blocks are contributed, making nested content visible
-# to rule evaluation. The two are unioned. An empty selection keeps the whole
+# Heading ids match by section (heading_section_indices()): the heading plus
+# its following sibling blocks up to the next heading of the same or higher
+# level, nested subsections included, resolved in whatever container the
+# heading sits (top level or inside a div). Div ids drill in: the selected
+# div's own child blocks are contributed, making nested content visible to
+# rule evaluation; a div already counted whole by a selected section or an
+# enclosing selected div is drilled into in place (question_block_indices()),
+# so the two are unioned without double counting. An empty selection keeps the whole
 # document. The question's filters (if any) then narrow the resulting node set,
 # so every consumer - live rule badges, headless validation, and the mark-side
 # question content display - sees the filtered set.
@@ -679,23 +758,11 @@ get_question_ast = function(current_ast, question) {
     return(apply_question_filters(current_ast, question))
   }
 
-  blocks = current_ast@blocks@content
   records = q2r_flatten(current_ast)
   split = classify_selected_ids(current_ast, ids)
 
-  result_blocks = list()
-
-  if (length(split$heading_ids) > 0) {
-    matched = heading_section_indices(records, split$heading_ids)
-    result_blocks = c(result_blocks, lapply(matched, function(i) records[[i]]$node))
-  }
-
-  for (did in split$div_ids) {
-    div = find_div_by_id(blocks, did)
-    if (!is.null(div)) {
-      result_blocks = c(result_blocks, div@content@content)
-    }
-  }
+  indices = question_block_indices(records, split$heading_ids, split$div_ids)
+  result_blocks = lapply(indices, function(i) records[[i]]$node)
 
   apply_question_filters(q2r::pandoc(blocks = q2r::pandoc_blocks(result_blocks)), question)
 }

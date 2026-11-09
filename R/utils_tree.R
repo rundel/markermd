@@ -13,6 +13,10 @@
 # a document-root entry at index 0 followed by one entry per flattened node,
 # each with index, type, depth (root = 0), parent_index (0 = root),
 # description, and prefix. Node index i is stored at tree_items[[i + 1]].
+# A heading inside a div also carries `section`: the indices of the in-div
+# blocks its section covers (see in_div_heading_sections()). The display tree
+# nests a div's blocks under the div, not under such a heading, so selection
+# highlighting and node counts follow `section` to match what grading takes.
 #
 # ast: q2r pandoc AST object
 
@@ -36,6 +40,8 @@ build_ast_tree_structure = function(ast) {
     detail = ""
   )
 
+  sections = in_div_heading_sections(records)
+
   for (record in records) {
     node = record$node
     node_id = if (S7::S7_inherits(node, q2r::pandoc_header) || S7::S7_inherits(node, q2r::pandoc_div)) {
@@ -50,11 +56,46 @@ build_ast_tree_structure = function(ast) {
       depth = record$depth,
       parent_index = record$parent,
       description = record$label,
-      detail = record$detail
+      detail = record$detail,
+      section = sections[[as.character(record$index)]]
     )
   }
 
   tree_items
+}
+
+# The section of every heading that sits inside a div: the indices of its
+# following sibling blocks in the same div up to the next heading of the same
+# or higher level, the same resolution heading_section_indices() uses for
+# grading. Keyed by the heading's index as a character string; top-level
+# headings are absent, since the display tree already nests their sections
+# beneath them.
+#
+# records: q2r_flatten() output for the AST
+
+in_div_heading_sections = function(records) {
+  out = list()
+  container_of = vapply(records, function(r) as.integer(r$container), integer(1))
+  for (record in records) {
+    node = record$node
+    if (record$container == 0L || !S7::S7_inherits(node, q2r::pandoc_header)) {
+      next
+    }
+    siblings = which(container_of == record$container)
+    following = siblings[siblings > record$index]
+    covered = integer(0)
+    for (s in following) {
+      sib = records[[s]]$node
+      if (S7::S7_inherits(sib, q2r::pandoc_header) && sib@level <= node@level) {
+        break
+      }
+      covered = c(covered, s)
+    }
+    if (length(covered) > 0) {
+      out[[as.character(record$index)]] = covered
+    }
+  }
+  out
 }
 
 # Options controlling how render_ast_tree() draws a tree
@@ -779,17 +820,28 @@ compute_all_selected_nodes = function(tree_items, directly_selected_nodes, child
     children_index = tree_children_index(tree_items)
   }
 
+  sections = list()
+  for (item in tree_items) {
+    if (length(item$section) > 0) {
+      sections[[as.character(item$index)]] = item$section
+    }
+  }
+
   all_selected = integer(0)
   stack = as.integer(directly_selected_nodes)
   while (length(stack) > 0) {
     node_index = stack[[1]]
     stack = stack[-1]
+    if (node_index %in% all_selected) {
+      next
+    }
     all_selected = c(all_selected, node_index)
 
     kids = children_index[[as.character(node_index)]]
     if (length(kids) > 0) {
       stack = c(stack, vapply(kids, function(k) as.integer(k$index), integer(1)))
     }
+    stack = c(stack, as.integer(sections[[as.character(node_index)]]))
   }
 
   return(unique(sort(all_selected)))

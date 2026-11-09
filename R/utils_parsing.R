@@ -100,21 +100,43 @@ relabel_parse_error = function(e, line_map, file_name) {
 #
 # lines: Character vector of document lines
 
+# The fence marker (the run of backticks or tildes) opening a code block on
+# this line, or NA when the line opens none
+#
+# line: Character scalar
+
+code_fence_marker = function(line) {
+  m = regmatches(line, regexec("^\\s*(`{3,}|~{3,})", line))[[1]]
+  if (length(m) == 2L) m[2] else NA_character_
+}
+
+# Whether a line closes the code block a marker opened: a bare fence of the
+# same character at least as long as the opening one (CommonMark), so a
+# four-backtick block that shows a three-backtick chunk is not closed by the
+# chunk's own fence
+#
+# line: Character scalar
+# marker: The opening marker (see code_fence_marker())
+
+closes_code_fence = function(line, marker) {
+  m = regmatches(line, regexec("^\\s*(`{3,}|~{3,})\\s*$", line))[[1]]
+  length(m) == 2L && substr(m[2], 1, 1) == substr(marker, 1, 1) && nchar(m[2]) >= nchar(marker)
+}
+
 normalize_knitr_chunks = function(lines) {
   fence_open = "^(\\s*)(`{3,}|~{3,})\\{([^}]*)\\}\\s*$"
-  fence_any = "^\\s*(`{3,}|~{3,})"
-  fence_close = "^\\s*(`{3,}|~{3,})\\s*$"
 
   out = character(0)
   line_map = integer(0)
   in_block = FALSE
+  marker = NA_character_
 
   for (i in seq_along(lines)) {
     line = lines[i]
     if (in_block) {
       out = c(out, line)
       line_map = c(line_map, i)
-      if (grepl(fence_close, line)) in_block = FALSE
+      if (closes_code_fence(line, marker)) in_block = FALSE
       next
     }
 
@@ -133,10 +155,12 @@ normalize_knitr_chunks = function(lines) {
         line_map = c(line_map, rep(i, length(added)))
       }
       in_block = TRUE
+      marker = m[3]
       next
     }
 
-    if (grepl(fence_any, line)) in_block = TRUE
+    marker = code_fence_marker(line)
+    if (!is.na(marker)) in_block = TRUE
     out = c(out, line)
     line_map = c(line_map, i)
   }
@@ -356,6 +380,19 @@ document_parse_warnings = function(ast) {
     return(list())
   }
   Filter(function(d) identical(d@kind, "warning"), ast@diagnostics)
+}
+
+# Everything the template editor reports about its document, as plain text:
+# the parser's warnings followed by structural problems the parser accepts but
+# selection cannot work with (ids shared by several headings or divs)
+#
+# ast: q2r pandoc AST object, or NULL
+
+template_document_notes = function(ast) {
+  if (is.null(ast)) {
+    return(character(0))
+  }
+  c(format_parse_diagnostics(document_parse_warnings(ast)), duplicate_node_id_notes(ast))
 }
 
 # Parse diagnostics as plain text, one string each: q2r's rendering of the

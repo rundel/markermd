@@ -78,20 +78,6 @@ test_that("classify_selected_ids splits heading vs div ids", {
   expect_equal(split$div_ids, "q1-answer")
 })
 
-test_that("find_div_by_id finds top-level and nested divs, NULL when missing", {
-  ast = div_fixture_ast()
-  div = find_div_by_id(ast@blocks@content, "q1-answer")
-  expect_true(S7::S7_inherits(div, q2r::pandoc_div))
-  expect_equal(length(div@content@content), 2L)
-  expect_null(find_div_by_id(ast@blocks@content, "does-not-exist"))
-
-  nested = parse_qmd_lines(
-    "::: {.outer}", "::: {#inner}", "inside", ":::", ":::"
-  )
-  hit = find_div_by_id(nested@blocks@content, "inner")
-  expect_true(S7::S7_inherits(hit, q2r::pandoc_div))
-})
-
 test_that("get_question_ast drills into a selected div's contents", {
   ast = div_fixture_ast()
   q = markermd_question(
