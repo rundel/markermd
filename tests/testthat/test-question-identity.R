@@ -54,6 +54,26 @@ test_that("restoring the template undoes a regeneration that shifted the ids", {
   expect_setequal(sn_selected(d, "Q1", "hw01-team01"), c("Issue A", "Minor"))
 })
 
+test_that("a template restore through the app's action reports its renames for the notifications", {
+  d = sn_graded_project()
+  sn_template_file(d, "regen.yaml", list(
+    list(id = 1, name = "Q1"), list(id = 2, name = "Q1b"), list(id = 3, name = "Q2")
+  ))
+  suppressWarnings(suppressMessages(template_import("regen.yaml", project = d)))
+
+  result = suppressMessages(markermd:::snapshot_restore_action(
+    markermd:::project_config(d), "latest", part = "template", summary = "undo", actor = "app"
+  ))
+  messages = markermd:::question_name_change_messages(result$name_changes)
+  expect_true(any(grepl("Carried the grading of \"Q1b\" over to its new name \"Q2\"", messages, fixed = TRUE)))
+
+  expect_identical(markermd:::question_name_change_messages(NULL), character(0))
+  orphan = markermd:::question_name_change_messages(list(
+    renamed = data.frame(from = character(0), to = character(0)), orphaned = c("Q7", "Q8")
+  ))
+  expect_match(orphan, "Removed questions \"Q7\", \"Q8\" still hold grading", fixed = TRUE)
+})
+
 test_that("question_node_id_problems lists unknown and nested selections", {
   path = tempfile(fileext = ".qmd")
   writeLines(c("# A {#a}", "", "text", "", "## B {#b}", "", "more", "", "# C {#c}", "", "end"), path)

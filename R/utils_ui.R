@@ -189,3 +189,44 @@ snapshot_take_modal = function(intro, label_placeholder, ns = shiny::NS(NULL), .
     )
   )
 }
+
+# The app wording of a question rename report (see
+# reconcile_question_names_conn()): one message per renamed question whose
+# grading moved, and one for removed questions still holding grading. The
+# console form is report_question_name_changes().
+#
+# changes: The list reconcile_question_names_conn() returns, or NULL
+
+question_name_change_messages = function(changes) {
+  renamed = changes$renamed
+  moved = if (!is.null(renamed) && nrow(renamed) > 0) {
+    as.character(glue::glue("Carried the grading of \"{renamed$from}\" over to its new name \"{renamed$to}\"."))
+  } else {
+    character(0)
+  }
+  orphaned = changes$orphaned
+  left = if (length(orphaned) > 0) {
+    one = length(orphaned) == 1
+    paste0(
+      "Removed question", if (one) "" else "s", " ", paste0("\"", orphaned, "\"", collapse = ", "),
+      " still hold", if (one) "s" else "", " grading, which mark() and the exports no longer show; ",
+      "add the question back under the same name to see it again."
+    )
+  } else {
+    character(0)
+  }
+  c(moved, left)
+}
+
+# Show question_name_change_messages() as persistent warning notifications:
+# the template editor's save and the History tab's restore both report
+# grading that followed a question id to a new name
+#
+# changes: The list reconcile_question_names_conn() returns, or NULL
+
+notify_question_name_changes = function(changes) {
+  for (message in question_name_change_messages(changes)) {
+    shiny::showNotification(message, type = "warning", duration = NULL)
+  }
+  invisible(NULL)
+}

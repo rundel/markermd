@@ -906,6 +906,7 @@ mark_history_server = function(id, root, question_names, refresh, reload_rubric,
       )
       on_action()
       if (notify_result(res, paste0("Restored snapshot ", id, "."))) {
+        notify_question_name_changes(res$result$result$name_changes)
         reload_rubric()
         bump()
       }

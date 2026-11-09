@@ -192,24 +192,8 @@ template_persistence = function(input, output, session,
     }
     mark_saved()
 
-    changes = saved$result
     shiny::showNotification("Saved template to the project database.", type = "message")
-    for (i in seq_len(nrow(changes$renamed))) {
-      shiny::showNotification(
-        glue::glue("Carried the grading of \"{changes$renamed$from[i]}\" over to its new name \"{changes$renamed$to[i]}\"."),
-        type = "warning", duration = NULL
-      )
-    }
-    if (length(changes$orphaned) > 0) {
-      shiny::showNotification(
-        glue::glue(
-          "Removed question{if (length(changes$orphaned) == 1) '' else 's'} ",
-          "{paste0('\"', changes$orphaned, '\"', collapse = ', ')} still hold{if (length(changes$orphaned) == 1) 's' else ''} grading, ",
-          "which mark() and the exports no longer show; add the question back under the same name to see it again."
-        ),
-        type = "warning", duration = NULL
-      )
-    }
+    notify_question_name_changes(saved$result)
   }) |> shiny::bindEvent(input$save_to_project)
 
   # Snapshots (project sessions): take a named snapshot of the project's
