@@ -9,7 +9,8 @@
   "properties": {
     "format_version": {
       "type": "string",
-      "description": "Template format version (e.g. \"3.0\"; \"3.1\" when a question has scope: document; \"3.2\" when the template lists files)."
+      "pattern": "^[0-9]+\\.[0-9]+$",
+      "description": "Template format version, quoted (e.g. \"3.0\"; \"3.1\" when a question has scope: document; \"3.2\" when the template lists files). Versions before 3.0 must be recreated, and one newer than the installed markermd understands is rejected."
     },
     "source": {
       "type": "object",
@@ -19,7 +20,7 @@
       "properties": {
         "path": {
           "type": "string",
-          "description": "Path to the assignment .qmd/.Rmd, absolute or relative to this template file."
+          "description": "Path to the assignment .qmd/.Rmd, absolute or relative to the project root (the directory holding .markermd/), as template_export() writes it. Its basename is how each student repository's document is matched. read_template_yaml() resolves a relative path against the template file's directory and then the working directory, so pass assignment= when reading a file kept elsewhere."
         }
       }
     },
@@ -94,12 +95,13 @@
         "id": {
           "type": "integer",
           "minimum": 1,
-          "description": "Unique question identifier."
+          "description": "Unique question identifier. The id is what carries a question's rubric, scoring and marks across a rename: storing a template whose question keeps its id under a new name moves its grading to that name. Keep the stored ids when editing or regenerating a template, and give a new question an id above the largest one stored."
         },
         "name": {
           "type": "string",
           "minLength": 1,
-          "description": "Unique question display name."
+          "pattern": "\\S",
+          "description": "Unique question display name (compared after trimming surrounding spaces). The rubric and marks files name questions by it."
         },
         "scope": {
           "type": "string",
@@ -108,13 +110,13 @@
         },
         "file": {
           "$ref": "#/$defs/file_path",
-          "description": "The file this question covers, one of the template's files; omitted for the Quarto document. A question on a file covers the whole file: it has no node_ids, rules or filters and is not document-scope, and it fails validation when a repository lacks the file. Added in format 3.2."
+          "description": "The file this question covers; it must be one of the paths listed in the template's top-level files. Omitted for the Quarto document. A question on a file covers the whole file: it has no node_ids, rules or filters and is not document-scope, and it fails validation when a repository lacks the file. Added in format 3.2."
         },
         "node_ids": {
           "type": "array",
           "uniqueItems": true,
           "items": { "type": "string", "minLength": 1 },
-          "description": "Pandoc heading/div ids of the document sections this question targets."
+          "description": "Pandoc heading/div ids of the document sections this question targets, taken verbatim from assignment_outline(). A sections-scope question needs at least one for its rules to run. An id a submission lacks fails every rule of the question there (\"Selected section #id not found in this document\")."
         },
         "rules": {
           "type": "array",
@@ -173,7 +175,10 @@
         "min": { "type": "number", "minimum": 0 },
         "max": { "type": "number", "minimum": 0 },
         "count": { "type": "integer", "minimum": 0 },
-        "pattern": { "type": "string" }
+        "pattern": {
+          "type": "string",
+          "description": "A case-insensitive regular expression matched against each node's qmd source (for has name, the heading title or chunk label). A pattern that does not compile fails the rule."
+        }
       },
       "oneOf": [
         {

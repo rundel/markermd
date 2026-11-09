@@ -9,7 +9,8 @@
   "properties": {
     "format_version": {
       "type": "string",
-      "description": "Rubric format version: \"1.0\" (items only), \"1.1\" (items and groups), or \"1.2\" (adds optional questions)."
+      "pattern": "^[0-9]+\\.[0-9]+$",
+      "description": "Rubric format version, quoted: \"1.0\" (items only), \"1.1\" (items and groups), or \"1.2\" (adds optional questions). A version newer than the installed markermd understands is rejected."
     },
     "questions": {
       "type": "array",
@@ -84,7 +85,8 @@
         "description": {
           "type": "string",
           "minLength": 1,
-          "description": "Feedback text shown for the item. Used as the cross-format identity key, so it must be non-empty and unique within a question (across all of its groups)."
+          "pattern": "\\S",
+          "description": "Feedback text shown for the item. Used as the cross-format identity key, so it must contain a non-space character and be unique within a question (across all of its groups); the readers reject a duplicate. An append import also refuses a description already stored for the question."
         }
       }
     },

@@ -9,7 +9,8 @@
   "properties": {
     "format_version": {
       "type": "string",
-      "description": "Marks format version (e.g. \"1.0\")."
+      "pattern": "^[0-9]+\\.[0-9]+$",
+      "description": "Marks format version, quoted (e.g. \"1.0\"). A version newer than the installed markermd understands is rejected."
     },
     "repos": {
       "type": "array",
@@ -45,11 +46,13 @@
         },
         "items": {
           "type": "array",
+          "uniqueItems": true,
           "items": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "pattern": "\\S"
           },
-          "description": "Descriptions of the rubric items that apply, copied verbatim from the question's rubric. The entry is declarative: listed items are selected, unlisted items are deselected, and [] means no items apply."
+          "description": "Descriptions of the rubric items that apply, copied verbatim from the question's rubric, each listed once. The entry is declarative: listed items are selected, unlisted items are deselected, and [] means no items apply. Two items of one exclusive group cannot both be listed."
         },
         "comment": {
           "type": "string",
