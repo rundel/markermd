@@ -28,18 +28,20 @@ A \link{markermd_snapshot_diff} object. Its \code{rubric}, \code{marks},
 \description{
 Reports what changed between two snapshots (or between a snapshot and the
 project's current grading state): rubric items added, removed, reworded,
-re-pointed or regrouped, group bound and scoring changes; per-repository
-selection, public comment and private note changes; per-pair score
+re-pointed or regrouped, groups added, removed, renamed or re-bounded,
+scoring changes; per-repository selection, public comment and private
+note changes; per-pair score
 deltas and every repository's total before and after; and template
 questions added, removed, renamed or changed.
 }
 \details{
-Rubric items are matched across the two sides by the database ids a
-snapshot records, so an item reworded in \code{\link[=mark]{mark()}} is reported as a rename.
-A replace import mints new ids; items it re-created are matched as a
-likely rename when they keep their points and are selected by the same
-repositories on both sides. Renamed items are not reported as selection
-changes in the marks.
+Rubric items and groups are matched across the two sides by the database
+ids a snapshot records, so an item reworded or a group relabeled in
+\code{\link[=mark]{mark()}} is reported as a rename. A replace import mints new ids; items it
+re-created are matched as a likely rename when they keep their points and
+are selected by the same repositories on both sides. Selections are
+compared by item id as well, so a reworded item is not a selection change
+while a deleted item whose description another item took over still is.
 
 The comparison is only meaningful when the snapshot's part is present on
 both sides; a \code{part} left out is reported as unchanged.

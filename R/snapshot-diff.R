@@ -5,53 +5,59 @@
 # stores (see snapshots.R), so it needs no S7 round trip and tolerates
 # anything the database allows.
 #
-# Rubric items are matched across the two sides by their database id first
-# (a snapshot carries them), so a reworded item is a rename rather than a
-# delete plus an add. Items that lost their id (a replace import mints new
-# ones) are matched as a likely rename when they carry the same points and
-# were selected by the same repositories on both sides. The rename map feeds
-# the marks diff, so a pure rename does not show up as a selection change.
+# Rubric items and groups are matched across the two sides by their database
+# id first (a snapshot carries them), so a reworded item or a relabeled group
+# is a rename rather than a delete plus an add. Items that lost their id (a
+# replace import mints new ones) are matched as a likely rename when they
+# carry the same points and were selected by the same repositories on both
+# sides. Selections are compared by item id as well when both sides' marks
+# carry them, with descriptions only for display, so a deleted item whose
+# description is reused is still reported; the rename map is the fallback
+# for marks without ids (snapshots written before the ids were recorded).
 
 # --- Rubric ------------------------------------------------------------------
 
 # One plain rubric question's items as a data frame: id (NA when the entry
-# has none), description, points, group (label or NA) and position
+# has none), description, points, group (label or NA) and group_id (NA when
+# ungrouped or the group entry has no id)
 #
 # question: One entry of a plain rubric list's questions
 
 rubric_item_table = function(question) {
   rows = list()
-  add = function(entry, group) {
+  add = function(entry, group, group_id) {
     rows[[length(rows) + 1]] <<- data.frame(
       id = if (is.null(entry$id)) NA_character_ else as.character(entry$id),
       description = as.character(entry$description),
       points = as.numeric(entry$points),
       group = group,
+      group_id = group_id,
       stringsAsFactors = FALSE
     )
   }
   for (entry in question$items) {
     if (is_rubric_group_entry(entry)) {
+      group_id = if (is.null(entry$id)) NA_character_ else as.character(entry$id)
       for (member in entry$items) {
-        add(member, as.character(entry$group))
+        add(member, as.character(entry$group), group_id)
       }
     } else {
-      add(entry, NA_character_)
+      add(entry, NA_character_, NA_character_)
     }
   }
   if (length(rows) == 0) {
     return(data.frame(
       id = character(0), description = character(0), points = numeric(0), group = character(0),
-      position = integer(0), stringsAsFactors = FALSE
+      group_id = character(0), stringsAsFactors = FALSE
     ))
   }
   out = do.call(rbind, rows)
-  out$position = seq_len(nrow(out))
+  rownames(out) = NULL
   out
 }
 
-# One plain rubric question's groups as a data frame: label, floor, ceiling,
-# exclusive
+# One plain rubric question's groups as a data frame: id (NA when the entry
+# has none), label, floor, ceiling, exclusive
 #
 # question: One entry of a plain rubric list's questions
 
@@ -59,12 +65,38 @@ rubric_group_table = function(question) {
   groups = Filter(is_rubric_group_entry, question$items)
   number_or_na = function(value) if (is.null(value)) NA_real_ else as.numeric(value)
   data.frame(
+    id = vapply(groups, function(g) if (is.null(g$id)) NA_character_ else as.character(g$id), character(1)),
     label = vapply(groups, function(g) as.character(g$group), character(1)),
     floor = vapply(groups, function(g) number_or_na(g$floor), numeric(1)),
     ceiling = vapply(groups, function(g) number_or_na(g$ceiling), numeric(1)),
     exclusive = vapply(groups, function(g) isTRUE(g$exclusive), logical(1)),
     stringsAsFactors = FALSE
   )
+}
+
+# Match the rows of two tables by a key column where both sides have one,
+# else by a fallback column (a label or description); each row is matched at
+# most once. Returns an integer vector parallel to a's rows holding the
+# matched row of b, NA when unmatched.
+#
+# a, b: Data frames
+# key: Name of the id column (NA for rows without one)
+# fallback: Name of the column to match rows without ids on
+
+match_rows = function(a, b, key, fallback) {
+  matched = rep(NA_integer_, nrow(a))
+  for (i in seq_len(nrow(a))) {
+    if (!is.na(a[[key]][i])) {
+      j = which(!is.na(b[[key]]) & b[[key]] == a[[key]][i])
+      if (length(j) == 1) matched[i] = j
+    }
+  }
+  for (i in which(is.na(matched))) {
+    free = setdiff(seq_len(nrow(b)), matched)
+    j = free[b[[fallback]][free] == a[[fallback]][i]]
+    if (length(j) >= 1) matched[i] = j[1]
+  }
+  matched
 }
 
 # A plain scoring list as a named character vector of its settings, with
@@ -89,23 +121,66 @@ scoring_fields = function(scoring) {
   )
 }
 
-# Which repositories select an item (by description) in a plain marks list,
-# per question: a named list keyed by "question\x1fdescription" holding the
-# sorted repository names
+# Which repositories select each item in a plain marks list, per question:
+# list(by_id, by_description), each a named list keyed by
+# "question\x1f<id or description>" holding the sorted repository names.
+# by_id is filled only from marks that carry item_ids.
 #
 # marks: Plain marks list
 
 selectors_by_item = function(marks) {
-  out = list()
+  by_id = list()
+  by_description = list()
   for (repo in marks$repos) {
     for (q in repo$questions) {
       for (item in as.character(unlist(q$items))) {
         key = paste(q$name, item, sep = "\x1f")
-        out[[key]] = c(out[[key]], repo$name)
+        by_description[[key]] = c(by_description[[key]], repo$name)
+      }
+      for (id in as.character(unlist(q$item_ids))) {
+        key = paste(q$name, id, sep = "\x1f")
+        by_id[[key]] = c(by_id[[key]], repo$name)
       }
     }
   }
-  lapply(out, sort)
+  list(by_id = lapply(by_id, sort), by_description = lapply(by_description, sort))
+}
+
+# The repositories selecting one item: by its id when the marks carry ids,
+# else by its description
+#
+# selectors: A selectors_by_item() result
+# question: Question name
+# id: The item's id, or NA
+# description: The item's description
+
+item_selectors = function(selectors, question, id, description) {
+  if (!is.na(id) && length(selectors$by_id) > 0) {
+    return(selectors$by_id[[paste(question, id, sep = "\x1f")]])
+  }
+  selectors$by_description[[paste(question, description, sep = "\x1f")]]
+}
+
+# Item descriptions by id, per question, from two plain rubric lists: a
+# named list keyed by question holding a named character vector keyed by
+# item id. The first rubric's descriptions win, so pass the "to" side first
+# and the "from" side supplies the deleted items.
+#
+# ...: Plain rubric lists (NULL entries are skipped)
+
+rubric_item_labels = function(...) {
+  labels = list()
+  for (rubric in list(...)) {
+    for (question in rubric$questions) {
+      name = as.character(question$name)
+      table = rubric_item_table(question)
+      table = table[!is.na(table$id), , drop = FALSE]
+      known = labels[[name]]
+      new = table[!table$id %in% names(known), , drop = FALSE]
+      labels[[name]] = c(known, stats::setNames(new$description, new$id))
+    }
+  }
+  labels
 }
 
 # A one-row change record for the rubric diff
@@ -134,6 +209,7 @@ diff_rubric = function(from, to, from_marks = NULL, to_marks = NULL) {
 
   changes = list()
   renames = list()
+  id_renames = list()
   push = function(...) changes[[length(changes) + 1]] <<- rubric_change(...)
 
   for (name in setdiff(names(from_q), names(to_q))) {
@@ -157,7 +233,7 @@ diff_rubric = function(from, to, from_marks = NULL, to_marks = NULL) {
     }
     for (i in which(is.na(matched_a))) {
       free = setdiff(seq_len(nrow(b)), matched_a)
-      sel_a = from_sel[[paste(name, a$description[i], sep = "\x1f")]]
+      sel_a = item_selectors(from_sel, name, a$id[i], a$description[i])
       candidates = free[b$points[free] == a$points[i]]
       same_desc = candidates[b$description[candidates] == a$description[i]]
       if (length(same_desc) >= 1) {
@@ -166,17 +242,31 @@ diff_rubric = function(from, to, from_marks = NULL, to_marks = NULL) {
       }
       if (length(sel_a) == 0) next
       likely = candidates[vapply(candidates, function(j) {
-        identical(to_sel[[paste(name, b$description[j], sep = "\x1f")]], sel_a)
+        identical(item_selectors(to_sel, name, b$id[j], b$description[j]), sel_a)
       }, logical(1))]
       if (length(likely) == 1) matched_a[i] = likely
     }
 
+    # Groups are matched by id, then by label, so a relabeled group is one
+    # rename rather than a removal, an addition and a move per member
+    ga = rubric_group_table(from_q[[name]])
+    gb = rubric_group_table(to_q[[name]])
+    matched_g = match_rows(ga, gb, "id", "label")
+    group_label_map = stats::setNames(gb$label[matched_g[!is.na(matched_g)]], ga$label[!is.na(matched_g)])
+    mapped_group = function(label) {
+      if (!is.na(label) && label %in% names(group_label_map)) group_label_map[[label]] else label
+    }
+
     map = character(0)
+    id_map = character(0)
     for (i in seq_len(nrow(a))) {
       j = matched_a[i]
       if (is.na(j)) {
         push(name, "item removed", a$description[i], format_points(a$points[i]))
         next
+      }
+      if (!is.na(a$id[i]) && !is.na(b$id[j]) && a$id[i] != b$id[j]) {
+        id_map[a$id[i]] = b$id[j]
       }
       if (a$description[i] != b$description[j]) {
         map[a$description[i]] = b$description[j]
@@ -186,9 +276,9 @@ diff_rubric = function(from, to, from_marks = NULL, to_marks = NULL) {
       if (a$points[i] != b$points[j]) {
         push(name, "item points", b$description[j], paste0(format_points(a$points[i]), " to ", format_points(b$points[j])))
       }
-      if (!identical(a$group[i], b$group[j])) {
+      if (!identical(mapped_group(a$group[i]), b$group[j])) {
         push(name, "item group", b$description[j], paste0(
-          if (is.na(a$group[i])) "ungrouped" else a$group[i], " to ",
+          if (is.na(a$group[i])) "ungrouped" else mapped_group(a$group[i]), " to ",
           if (is.na(b$group[j])) "ungrouped" else b$group[j]
         ))
       }
@@ -199,21 +289,25 @@ diff_rubric = function(from, to, from_marks = NULL, to_marks = NULL) {
     if (length(map) > 0) {
       renames[[name]] = map
     }
+    if (length(id_map) > 0) {
+      id_renames[[name]] = id_map
+    }
 
-    ga = rubric_group_table(from_q[[name]])
-    gb = rubric_group_table(to_q[[name]])
-    for (label in setdiff(ga$label, gb$label)) push(name, "group removed", label)
-    for (label in setdiff(gb$label, ga$label)) push(name, "group added", label)
-    for (label in intersect(ga$label, gb$label)) {
-      ra = ga[ga$label == label, ][1, ]
-      rb = gb[gb$label == label, ][1, ]
+    for (g in which(is.na(matched_g))) push(name, "group removed", ga$label[g])
+    for (g in setdiff(seq_len(nrow(gb)), matched_g)) push(name, "group added", gb$label[g])
+    for (g in which(!is.na(matched_g))) {
+      ra = ga[g, ]
+      rb = gb[matched_g[g], ]
+      if (ra$label != rb$label) {
+        push(name, "group renamed", rb$label, paste0("was: ", ra$label))
+      }
       bound = function(x) if (is.na(x)) "none" else format_score(x)
       parts = c(
         if (!identical(ra$floor, rb$floor)) paste0("floor ", bound(ra$floor), " to ", bound(rb$floor)),
         if (!identical(ra$ceiling, rb$ceiling)) paste0("ceiling ", bound(ra$ceiling), " to ", bound(rb$ceiling)),
         if (ra$exclusive != rb$exclusive) paste0("exclusive ", ra$exclusive, " to ", rb$exclusive)
       )
-      if (length(parts) > 0) push(name, "group bounds", label, paste(parts, collapse = "; "))
+      if (length(parts) > 0) push(name, "group bounds", rb$label, paste(parts, collapse = "; "))
     }
 
     sa = scoring_fields(from_q[[name]]$scoring)
@@ -230,12 +324,14 @@ diff_rubric = function(from, to, from_marks = NULL, to_marks = NULL) {
 
   changes = if (length(changes) == 0) rubric_change(character(0), character(0), character(0), character(0))[0, ] else do.call(rbind, changes)
   rownames(changes) = NULL
-  list(changes = changes, renames = renames)
+  list(changes = changes, renames = renames, id_renames = id_renames)
 }
 
 # --- Marks -------------------------------------------------------------------
 
-# Plain marks list as a lookup keyed by "repo\x1fquestion"
+# Plain marks list as a lookup keyed by "repo\x1fquestion". Each entry
+# carries the selected item descriptions (items) and, when the marks record
+# them, the selected item ids (ids; NULL otherwise).
 #
 # marks: Plain marks list
 
@@ -246,6 +342,7 @@ marks_pairs = function(marks) {
       out[[paste(repo$name, q$name, sep = "\x1f")]] = list(
         repo = as.character(repo$name), question = as.character(q$name),
         items = as.character(unlist(q$items)),
+        ids = if (is.null(q$item_ids)) NULL else as.character(unlist(q$item_ids)),
         comment = if (is.null(q$comment)) "" else as.character(q$comment),
         private_comment = if (is.null(q$private_comment)) "" else as.character(q$private_comment)
       )
@@ -254,18 +351,39 @@ marks_pairs = function(marks) {
   out
 }
 
-# Diff two plain marks lists. Old item descriptions are mapped through the
-# rubric diff's renames first, so a reworded item is not a selection change.
+# Whether a marks list records item ids on every pair it holds (a snapshot
+# written since the ids were recorded); an empty marks list does, since it
+# has nothing to match by description
+#
+# marks: Plain marks list
+
+marks_have_ids = function(marks) {
+  all(vapply(marks$repos, function(repo) {
+    all(vapply(repo$questions, function(q) !is.null(q$item_ids), logical(1)))
+  }, logical(1)))
+}
+
+# Diff two plain marks lists. When both sides record item ids, selections
+# are compared by id and descriptions serve only for display (looked up in
+# labels, else taken from the marks themselves), so a deleted item whose
+# description another item took over is still a removed selection.
+# Otherwise old item descriptions are mapped through the rubric diff's
+# renames first, so a reworded item is not a selection change.
 #
 # from, to: Plain marks lists
 # renames: The renames element of diff_rubric()'s result
+# labels: rubric_item_labels() of the two sides' rubrics, for display
+# id_renames: The id_renames element of diff_rubric()'s result: old item id
+#   to new for items the rubric diff matched across a re-mint (a replace
+#   import), so their selections are compared under the new id
 # Returns: Data frame with repo, question, change ("selection", "comment",
 #   "private_comment"), before and after (for a selection, the removed and
 #   added item descriptions joined with "; ")
 
-diff_marks = function(from, to, renames = list()) {
+diff_marks = function(from, to, renames = list(), labels = list(), id_renames = list()) {
   a = marks_pairs(from)
   b = marks_pairs(to)
+  by_id = marks_have_ids(from) && marks_have_ids(to)
   rows = list()
   push = function(repo, question, change, before, after) {
     rows[[length(rows) + 1]] <<- data.frame(
@@ -273,7 +391,15 @@ diff_marks = function(from, to, renames = list()) {
       stringsAsFactors = FALSE
     )
   }
-  empty = list(items = character(0), comment = "", private_comment = "")
+  empty = list(items = character(0), ids = character(0), comment = "", private_comment = "")
+  describe = function(ids, pair, question) {
+    known = labels[[question]]
+    vapply(ids, function(id) {
+      if (!is.null(known) && id %in% names(known)) return(known[[id]])
+      at = match(id, pair$ids)
+      if (!is.na(at) && at <= length(pair$items)) pair$items[at] else id
+    }, character(1), USE.NAMES = FALSE)
+  }
 
   for (key in union(names(a), names(b))) {
     pa = a[[key]]
@@ -284,14 +410,25 @@ diff_marks = function(from, to, renames = list()) {
     if (is.null(pa)) pa = empty
     if (is.null(pb)) pb = empty
 
-    items_a = pa$items
-    map = renames[[question]]
-    if (!is.null(map)) {
-      hit = items_a %in% names(map)
-      items_a[hit] = map[items_a[hit]]
+    if (by_id) {
+      ids_a = pa$ids
+      id_map = id_renames[[question]]
+      if (!is.null(id_map)) {
+        hit = ids_a %in% names(id_map)
+        ids_a[hit] = id_map[ids_a[hit]]
+      }
+      removed = describe(pa$ids[!ids_a %in% pb$ids], pa, question)
+      added = describe(setdiff(pb$ids, ids_a), pb, question)
+    } else {
+      items_a = pa$items
+      map = renames[[question]]
+      if (!is.null(map)) {
+        hit = items_a %in% names(map)
+        items_a[hit] = map[items_a[hit]]
+      }
+      removed = setdiff(items_a, pb$items)
+      added = setdiff(pb$items, items_a)
     }
-    removed = setdiff(items_a, pb$items)
-    added = setdiff(pb$items, items_a)
     if (length(removed) > 0 || length(added) > 0) {
       push(repo, question, "selection", paste(removed, collapse = "; "), paste(added, collapse = "; "))
     }
@@ -530,18 +667,20 @@ S7::method(print, markermd_snapshot_diff) = function(x, ...) {
 #'
 #' Reports what changed between two snapshots (or between a snapshot and the
 #' project's current grading state): rubric items added, removed, reworded,
-#' re-pointed or regrouped, group bound and scoring changes; per-repository
-#' selection, public comment and private note changes; per-pair score
+#' re-pointed or regrouped, groups added, removed, renamed or re-bounded,
+#' scoring changes; per-repository selection, public comment and private
+#' note changes; per-pair score
 #' deltas and every repository's total before and after; and template
 #' questions added, removed, renamed or changed.
 #'
 #' @details
-#' Rubric items are matched across the two sides by the database ids a
-#' snapshot records, so an item reworded in [mark()] is reported as a rename.
-#' A replace import mints new ids; items it re-created are matched as a
-#' likely rename when they keep their points and are selected by the same
-#' repositories on both sides. Renamed items are not reported as selection
-#' changes in the marks.
+#' Rubric items and groups are matched across the two sides by the database
+#' ids a snapshot records, so an item reworded or a group relabeled in
+#' [mark()] is reported as a rename. A replace import mints new ids; items it
+#' re-created are matched as a likely rename when they keep their points and
+#' are selected by the same repositories on both sides. Selections are
+#' compared by item id as well, so a reworded item is not a selection change
+#' while a deleted item whose description another item took over still is.
 #'
 #' The comparison is only meaningful when the snapshot's part is present on
 #' both sides; a `part` left out is reported as unchanged.
@@ -595,7 +734,14 @@ snapshot_diff = function(from, to = "current", project = ".", part = c("rubric",
     } else {
       list(changes = diff_rubric(list(questions = list()), list(questions = list()))$changes, renames = list())
     }
-    marks = if ("marks" %in% part) diff_marks(a$parts$marks, b$parts$marks, rubric$renames) else diff_marks(list(), list())
+    marks = if ("marks" %in% part) {
+      diff_marks(
+        a$parts$marks, b$parts$marks, rubric$renames,
+        rubric_item_labels(b$parts$rubric, a$parts$rubric), rubric$id_renames
+      )
+    } else {
+      diff_marks(list(), list())
+    }
     template = if ("template" %in% part) diff_template(a$parts$template, b$parts$template) else diff_template(NULL, NULL)
     scores = diff_scores(a$stats, b$stats)
 
