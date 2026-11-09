@@ -2,11 +2,13 @@
 # of the project's snapshots (see snapshots.R) and its activity log (see
 # actions.R: the calls of markermd functions by agents, scripts or a person
 # at an R prompt, and the app's own grading grouped into sessions). The
-# detail pane shows the selected entry: for a snapshot its fields and notes,
+# detail modal shows the chosen entry: for a snapshot its fields and notes,
 # what changed between it and the current state or another snapshot, the
 # scores it recorded, and the actions on it (restoring, exporting, pinning,
 # deleting); for an activity entry what it changed, per repository and
-# question, with a link to the snapshot taken before it. Snapshots are taken
+# question, with a link to the snapshot taken before it. The timeline takes
+# the tab's full width and the detail opens in a modal on a row click.
+# Snapshots are taken
 # from here, and the database file backed up. The tables use the same card
 # and reactable conventions as the Assignments tab.
 
@@ -17,9 +19,7 @@
 mark_history_ui = function(id) {
   ns = shiny::NS(id)
 
-  bslib::layout_columns(
-    col_widths = c(5, 7),
-    class = "h-100",
+  shiny::tagList(
     bslib::card(
       class = "h-100",
       bslib::card_header(
@@ -65,17 +65,6 @@ mark_history_ui = function(id) {
       bslib::card_body(
         class = "p-2",
         reactable::reactableOutput(ns("snapshot_table"), height = "100%")
-      )
-    ),
-    bslib::card(
-      class = "h-100",
-      bslib::card_header(
-        class = "bg-light",
-        shiny::uiOutput(ns("detail_header"))
-      ),
-      bslib::card_body(
-        class = "overflow-auto small",
-        shiny::uiOutput(ns("detail_ui"))
       )
     ),
     history_hotkey_js(ns)
@@ -148,9 +137,9 @@ one_line_text = function(text, width = 80) {
 # The snapshot table
 #
 # data: Data frame from history_table_data()
-# selected: Row index to select initially, or NULL
+# open_input: The input a row click reports its entry id to
 
-history_reactable = function(data, selected = NULL) {
+history_reactable = function(data, open_input) {
   kind_cell = function(value, index) {
     actor = data$username[index]
     icon = switch(
@@ -170,9 +159,10 @@ history_reactable = function(data, selected = NULL) {
   }
   reactable::reactable(
     data[, c("created_at", "kind", "label", "summary", "trigger", "username", "mean_total", "delta_mean", "pinned", "snapshot_id"), drop = FALSE],
-    selection = "single",
-    onClick = "select",
-    defaultSelected = selected,
+    onClick = htmlwidgets::JS(glue::glue(
+      "function(rowInfo) { Shiny.setInputValue('<<open_input>>', rowInfo.original.snapshot_id, {priority: 'event'}); }",
+      .open = "<<", .close = ">>"
+    )),
     highlight = TRUE,
     compact = TRUE,
     pagination = FALSE,
@@ -199,10 +189,10 @@ history_reactable = function(data, selected = NULL) {
         }
       ),
       summary = reactable::colDef(
-        name = "Summary", minWidth = 160,
+        name = "Summary", minWidth = 300,
         cell = function(value) {
           if (is.na(value)) return("")
-          htmltools::span(title = value, one_line_text(value, 60))
+          htmltools::span(title = value, one_line_text(value, 140))
         }
       ),
       trigger = reactable::colDef(
@@ -582,32 +572,58 @@ mark_history_server = function(id, root, question_names, refresh, reload_rubric,
       rows
     })
 
-    # The selected snapshot, or the selected activity entry (at most one of
-    # the two is set)
+    # The entry whose detail modal is (or was last) open: a snapshot, or an
+    # activity entry (at most one of the two is set)
     selected_id = shiny::reactiveVal(NULL)
     selected_activity = shiny::reactiveVal(NULL)
 
     output$snapshot_table = reactable::renderReactable({
-      rows = visible_rows()
-      current = shiny::isolate(if (!is.null(selected_id())) selected_id() else selected_activity())
-      selected = if (!is.null(current) && current %in% rows$snapshot_id) match(current, rows$snapshot_id) else NULL
-      history_reactable(rows, selected = selected)
+      history_reactable(visible_rows(), open_input = session$ns("open_entry"))
     })
 
-    shiny::observe({
-      sel = reactable::getReactableState("snapshot_table", "selected")
-      rows = shiny::isolate(visible_rows())
-      if (is.null(sel) || length(sel) == 0 || sel > nrow(rows)) {
-        selected_id(NULL)
+    # The detail modal: the entry's header (with its actions) above its
+    # detail, both rendered by the outputs below
+    open_detail = function() {
+      shiny::showModal(shiny::modalDialog(
+        size = "xl",
+        easyClose = TRUE,
+        shiny::div(class = "border-bottom pb-2 mb-2", shiny::uiOutput(session$ns("detail_header"))),
+        shiny::div(class = "small", shiny::uiOutput(session$ns("detail_ui"))),
+        footer = shiny::modalButton("Close")
+      ))
+    }
+
+    # Show an entry, by id, in the detail modal
+    show_entry = function(id) {
+      rows = shiny::isolate(timeline())
+      if (!id %in% rows$snapshot_id) {
+        return()
+      }
+      if (rows$entry[match(id, rows$snapshot_id)] == "snapshot") {
         selected_activity(NULL)
-      } else if (rows$entry[sel] == "snapshot") {
-        selected_id(rows$snapshot_id[sel])
-        selected_activity(NULL)
+        selected_id(id)
       } else {
         selected_id(NULL)
-        selected_activity(rows$snapshot_id[sel])
+        selected_activity(id)
       }
-    })
+      open_detail()
+    }
+
+    shiny::observe({
+      show_entry(input$open_entry)
+    }) |> shiny::bindEvent(input$open_entry)
+
+    # The restore, export and delete dialogs replace the detail modal; their
+    # Back button returns to it
+    back_footer = function(confirm) {
+      shiny::tagList(
+        shiny::actionButton(session$ns("back_to_detail"), "Back", class = "btn-outline-secondary"),
+        confirm
+      )
+    }
+    shiny::observe({
+      open_detail()
+    }) |> shiny::bindEvent(input$back_to_detail)
 
     # An activity entry's row from the log
     selected_activity_row = shiny::reactive({
@@ -618,18 +634,16 @@ mark_history_server = function(id, root, question_names, refresh, reload_rubric,
       rows[rows$id == id, , drop = FALSE]
     })
 
-    # The snapshot taken before an activity entry: select it in the timeline
+    # The snapshot taken before an activity entry: show it in the modal
     shiny::observe({
       row = selected_activity_row()
       target = row$snapshot_id
-      rows = visible_rows()
-      if (is.na(target) || !target %in% rows$snapshot_id) {
-        shiny::showNotification("That snapshot is not in the current listing (it may have been pruned, or the filter hides it).", type = "warning")
+      if (is.na(target) || !target %in% timeline()$snapshot_id) {
+        shiny::showNotification("That snapshot is no longer in the project (it may have been pruned).", type = "warning")
         return()
       }
       selected_activity(NULL)
       selected_id(target)
-      reactable::updateReactable("snapshot_table", selected = match(target, rows$snapshot_id))
     }) |> shiny::bindEvent(input$show_snapshot_before)
 
     # The selected snapshot's full record, re-read after every change here
@@ -656,14 +670,12 @@ mark_history_server = function(id, root, question_names, refresh, reload_rubric,
           ),
           if (!is.na(row$snapshot_id)) bslib::tooltip(
             shiny::actionButton(session$ns("show_snapshot_before"), "Snapshot before", icon = fa_icon("camera"), class = "btn-outline-secondary btn-sm"),
-            "Select the snapshot taken just before this change (restore it to undo the change)"
+            "Show the snapshot taken just before this change (restore it to undo the change)"
           )
         ))
       }
       id = selected_id()
-      if (is.null(id)) {
-        return(shiny::span("Details"))
-      }
+      shiny::req(id)
       info = selected_info()
       shiny::req(info)
       shiny::div(
@@ -711,14 +723,7 @@ mark_history_server = function(id, root, question_names, refresh, reload_rubric,
         ))
       }
       id = selected_id()
-      if (is.null(id)) {
-        return(shiny::div(
-          class = "text-muted p-3",
-          "Select an entry: a snapshot shows its details, what changed since, and the scores it recorded; a change made by an agent, a script or in the app shows what it changed. ",
-          "Snapshots are taken automatically before imports, restores and deletions; ",
-          "press ", shiny::tags$kbd("s"), " or use the camera button to take one by hand."
-        ))
-      }
+      shiny::req(id)
       info = selected_info()
       shiny::req(info)
       others = shiny::isolate(snapshots())
@@ -899,8 +904,7 @@ mark_history_server = function(id, root, question_names, refresh, reload_rubric,
         shiny::p(class = "small text-muted", preview),
         shiny::p(class = "text-danger small mb-0", "Every change since the snapshot to the chosen parts is undone. The current state is snapshotted first, so the restore can itself be undone."),
         easyClose = TRUE,
-        footer = shiny::tagList(
-          shiny::modalButton("Cancel"),
+        footer = back_footer(
           shiny::actionButton(session$ns("confirm_restore"), "Restore", class = "btn-danger", disabled = TRUE)
         )
       ))
@@ -939,8 +943,7 @@ mark_history_server = function(id, root, question_names, refresh, reload_rubric,
         shiny::p(class = "small text-muted", "Writes the snapshot's template, rubric and marks as YAML files plus a snapshot.yaml sidecar into a directory under the project root (or an absolute path)."),
         shiny::textInput(session$ns("export_dir"), "Directory", value = file.path("snapshots", id), width = "100%"),
         easyClose = TRUE,
-        footer = shiny::tagList(
-          shiny::modalButton("Cancel"),
+        footer = back_footer(
           shiny::actionButton(session$ns("confirm_export"), "Export", class = "btn-primary")
         )
       ))
@@ -965,8 +968,7 @@ mark_history_server = function(id, root, question_names, refresh, reload_rubric,
         title = "Delete snapshot?",
         shiny::p("Permanently deletes ", shiny::tags$code(id), ", its notes and its recorded scores. This cannot be undone."),
         easyClose = TRUE,
-        footer = shiny::tagList(
-          shiny::modalButton("Cancel"),
+        footer = back_footer(
           shiny::actionButton(session$ns("confirm_delete"), "Delete", class = "btn-danger")
         )
       ))

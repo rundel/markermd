@@ -46,10 +46,11 @@ test_that("changes made outside the app show up live, badged and in Activity", {
   expect_match(filtered, "marks_set")
   expect_false(grepl("Grading in the app", filtered))
 
-  # Selecting the call shows what it changed
-  index = app$get_js("Array.from(document.querySelectorAll('#history_module-snapshot_table .rt-tbody .rt-tr')).findIndex(r => r.innerText.includes('marks_set')) + 1")
-  app$run_js(paste0("Shiny.setInputValue('history_module-snapshot_table__reactable__selected', [", index, "]);"))
-  app$wait_for_js("document.getElementById('history_module-detail_ui').innerText.includes('Looks good')", timeout = 10000)
+  # Clicking the call's row opens a modal showing what it changed
+  app$run_js("Array.from(document.querySelectorAll('#history_module-snapshot_table .rt-tbody .rt-tr')).find(r => r.innerText.includes('marks_set')).querySelector('.rt-td').click();")
+  app$wait_for_js("!!document.getElementById('history_module-detail_ui') && document.getElementById('history_module-detail_ui').innerText.includes('Looks good')", timeout = 10000)
+  app$run_js("bootstrap.Modal.getInstance(document.getElementById('shiny-modal')).hide();")
+  app$wait_for_idle()
   app$set_inputs(`history_module-kind_filter` = "all")
 
   # A rubric change cannot be swapped in place, so it raises a banner

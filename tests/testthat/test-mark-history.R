@@ -45,6 +45,13 @@ mh_make_fixture = function() {
 }
 
 
+# Open a History timeline entry's detail modal, as a click on its row does
+open_history_entry = function(app, id) {
+  app$run_js(paste0("Shiny.setInputValue('history_module-open_entry', '", id, "', {priority: 'event'});"))
+  app$wait_for_idle()
+}
+
+
 test_that("the History tab lists snapshots, takes one from the modal and shows the status", {
   testthat::skip_if_not_installed("shinytest2")
   testthat::skip_on_cran()
@@ -65,9 +72,9 @@ test_that("the History tab lists snapshots, takes one from the modal and shows t
   expect_match(app$get_html("#snapshot_status"), "Last snapshot")
   expect_match(app$get_html("#snapshot_status"), "change")
 
-  # Selecting the only snapshot renders its detail pane (the compare-with
+  # Clicking the only snapshot's row opens its detail modal (the compare-with
   # select then offers just the current state)
-  app$run_js("Shiny.setInputValue('history_module-snapshot_table__reactable__selected', [1]);")
+  app$run_js("document.querySelector('#history_module-snapshot_table .rt-tbody .rt-tr .rt-td').click();")
   app$wait_for_idle()
   expect_equal(app$get_value(export = "history_module-selected_snapshot"), app$get_value(export = "history_module-snapshot_ids"))
   expect_match(app$get_html("#history_module-detail_ui"), "Initial rubric")
@@ -92,9 +99,10 @@ test_that("the History tab lists snapshots, takes one from the modal and shows t
   info = markermd::snapshot_info(rows$snapshot_id[1], project = root)
   expect_equal(info@notes$key, "ticket")
 
-  # The new snapshot is selected and the detail pane shows it
+  # The new snapshot is selected, and its detail modal shows it
   expect_equal(app$get_value(export = "history_module-selected_snapshot"), rows$snapshot_id[1])
   expect_false(app$get_value(export = "history_module-state_changed"))
+  open_history_entry(app, rows$snapshot_id[1])
   detail = app$get_html("#history_module-detail_ui")
   expect_match(detail, "Before the review")
   expect_match(detail, "ticket")
@@ -137,12 +145,8 @@ test_that("restoring a snapshot from the History tab rebuilds the rubric pane", 
   # The timeline also lists the activity log; these checks are about snapshots
   app$set_inputs(`history_module-kind_filter` = "snapshots")
   app$wait_for_idle()
-  # Select the snapshot by clicking its row, then restore it with a summary
-  app$run_js(sprintf(
-    "Shiny.setInputValue('history_module-snapshot_table__reactable__selected', [%d]);",
-    match(id, app$get_value(export = "history_module-snapshot_ids"))
-  ))
-  app$wait_for_idle()
+  # Open the snapshot's detail, then restore it with a summary
+  open_history_entry(app, id)
   expect_equal(app$get_value(export = "history_module-selected_snapshot"), id)
 
   app$click("history_module-restore")
