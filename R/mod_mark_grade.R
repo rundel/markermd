@@ -278,10 +278,10 @@ mark_grade_ui = function(id, grade_state, capped = 0, breakdown = NULL) {
 
 # A question's scoring settings for the Rubric tab's editor: a gear button
 # in the question's card header opening a popover with the total points, the
-# grading mode, the bounds and the optional switch. The inputs carry the same
-# ids as mark_grade_ui()'s popovers, so the question's grade server saves
-# them; only one of the two is ever on the page (see the rubric module's
-# items_owner).
+# grading mode, the bounds and the optional switch. The inputs are the
+# grade widget's (mark_grade_ui()) with an "editor_" prefix, so both tabs'
+# controls can be on the page at once; the question's grade server saves
+# either set (see the handlers in mark_grade_server()).
 #
 # id: Character. The grade server's id (namespaced), as for mark_grade_ui()
 # grade_state: markermd_grade_state with the question's scoring setup
@@ -308,17 +308,17 @@ mark_grade_settings_ui = function(id, grade_state) {
         shiny::span("Total"),
         shiny::div(
           style = "width: 80px;",
-          shiny::numericInput(ns("total_score_input"), NULL, value = grade_state@total_score, min = 0, step = 0.5, width = "100%")
+          shiny::numericInput(ns("editor_total_score_input"), NULL, value = grade_state@total_score, min = 0, step = 0.5, width = "100%")
         ),
         shiny::span("pts")
       ),
       shiny::radioButtons(
-        ns("grading_mode"), shiny::strong("Grading method:"),
+        ns("editor_grading_mode"), shiny::strong("Grading method:"),
         choices = list("Positive (start from 0)" = "positive", "Negative (start from max)" = "negative"),
         selected = grade_state@grading_mode
       ),
       shiny::checkboxGroupInput(
-        ns("grade_bounds"), shiny::strong("Grade bounds:"),
+        ns("editor_grade_bounds"), shiny::strong("Grade bounds:"),
         choices = list("Enforce score \u2265 0" = "above_zero", "Enforce score \u2264 max" = "below_max"),
         selected = c(
           if (grade_state@bound_above_zero) "above_zero",
@@ -326,7 +326,7 @@ mark_grade_settings_ui = function(id, grade_state) {
         )
       ),
       shiny::checkboxInput(
-        ns("grade_optional"), "Optional: nothing selected still counts as graded",
+        ns("editor_grade_optional"), "Optional: nothing selected still counts as graded",
         value = grade_state@optional
       )
     )
@@ -380,12 +380,17 @@ mark_grade_server = function(id, initial_grade, ui_ns = NULL, collection_path = 
     }
 
 
-    # Handle total score changes. numericInput reports NA while cleared, so
-    # ignore that rather than crash.
-    shiny::observe({
-      current_grade = grade_state()
+    save = function(new_grade) {
+      grade_state(new_grade)
+      if (!is.null(collection_path) && !is.null(question_name)) {
+        save_grade_state(collection_path, question_name, new_grade)
+      }
+    }
 
-      new_total = input$total_score_input
+    # A total score edit. numericInput reports NA while cleared, so ignore
+    # that rather than crash.
+    set_total = function(new_total) {
+      current_grade = grade_state()
       if (is.null(new_total) || is.na(new_total)) {
         return()
       }
@@ -418,25 +423,20 @@ mark_grade_server = function(id, initial_grade, ui_ns = NULL, collection_path = 
           optional = current_grade@optional
         )
         
-        grade_state(new_grade)
-        
-        # Save to database if parameters are provided
-        if (!is.null(collection_path) && !is.null(question_name)) {
-          save_grade_state(collection_path, question_name, new_grade)
-        }
-        
+        save(new_grade)
+
         # Update display with new total and potentially adjusted current score
         update_score_display(new_current, new_total)
       }
-    }) |> shiny::bindEvent(input$total_score_input, ignoreInit = TRUE)
+    }
 
-    # Handle grading mode changes
-    shiny::observe({
+    # A grading mode change
+    set_mode = function(mode) {
       current_grade = grade_state()
-      
-      if (input$grading_mode != current_grade@grading_mode) {
+
+      if (mode != current_grade@grading_mode) {
         # Set appropriate starting score based on grading mode
-        new_current_score = if (input$grading_mode == "positive") {
+        new_current_score = if (mode == "positive") {
           0
         } else {
           current_grade@total_score
@@ -445,31 +445,26 @@ mark_grade_server = function(id, initial_grade, ui_ns = NULL, collection_path = 
         new_grade = markermd_grade_state(
           current_score = new_current_score,
           total_score = current_grade@total_score,
-          grading_mode = input$grading_mode,
+          grading_mode = mode,
           bound_above_zero = current_grade@bound_above_zero,
           bound_below_max = current_grade@bound_below_max,
           optional = current_grade@optional
         )
-        
-        grade_state(new_grade)
-        
-        # Save to database if parameters are provided
-        if (!is.null(collection_path) && !is.null(question_name)) {
-          save_grade_state(collection_path, question_name, new_grade)
-        }
-        
+
+        save(new_grade)
+
         # Update the display
         update_score_display(new_current_score, current_grade@total_score)
 
       }
-    }) |> shiny::bindEvent(input$grading_mode, ignoreInit = TRUE)
+    }
 
-    # Handle bounds changes
-    shiny::observe({
+    # A bounds change
+    set_bounds = function(bounds) {
       current_grade = grade_state()
-      
-      new_bound_above_zero = "above_zero" %in% input$grade_bounds
-      new_bound_below_max = "below_max" %in% input$grade_bounds
+
+      new_bound_above_zero = "above_zero" %in% bounds
+      new_bound_below_max = "below_max" %in% bounds
       
       if (new_bound_above_zero != current_grade@bound_above_zero || 
           new_bound_below_max != current_grade@bound_below_max) {
@@ -481,32 +476,44 @@ mark_grade_server = function(id, initial_grade, ui_ns = NULL, collection_path = 
           bound_below_max = new_bound_below_max,
           optional = current_grade@optional
         )
-        
-        grade_state(new_grade)
-        
-        # Save to database if parameters are provided
-        if (!is.null(collection_path) && !is.null(question_name)) {
-          save_grade_state(collection_path, question_name, new_grade)
-        }
-      }
-    }) |> shiny::bindEvent(input$grade_bounds, ignoreInit = TRUE)
 
-    # Handle the optional toggle
-    shiny::observe({
+        save(new_grade)
+      }
+    }
+
+    # The optional toggle
+    set_optional = function(value) {
       current_grade = grade_state()
-      new_optional = isTRUE(input$grade_optional)
+      new_optional = isTRUE(value)
 
       if (new_optional != current_grade@optional) {
         new_grade = current_grade
         new_grade@optional = new_optional
-
-        grade_state(new_grade)
-
-        if (!is.null(collection_path) && !is.null(question_name)) {
-          save_grade_state(collection_path, question_name, new_grade)
-        }
+        save(new_grade)
       }
-    }) |> shiny::bindEvent(input$grade_optional, ignoreInit = TRUE)
+    }
+
+    # Each setting has two controls: the Grade tab widget's and the Rubric
+    # tab's (mark_grade_settings_ui(), the same id with an "editor_"
+    # prefix). Either saves; the handlers compare with the state first, so
+    # a re-rendered control reporting the stored value changes nothing.
+    handlers = list(
+      total_score_input = set_total,
+      grading_mode = set_mode,
+      grade_bounds = set_bounds,
+      grade_optional = set_optional
+    )
+    for (field in names(handlers)) {
+      for (input_id in paste0(c("", "editor_"), field)) {
+        local({
+          handler = handlers[[field]]
+          id = input_id
+          shiny::observe({
+            handler(input[[id]])
+          }) |> shiny::bindEvent(input[[id]], ignoreInit = TRUE)
+        })
+      }
+    }
 
 
     # Return reactive grade state and update methods for external use
