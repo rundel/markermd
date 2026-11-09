@@ -21,14 +21,16 @@ and file-level findings), \code{severity}, \code{detector}, \code{matched} and
 
 \code{detector} says where the text sits: \code{visible-text}, \code{html-comment},
 \code{hidden-style}, \code{hidden-chunk}, \code{hidden-element}, \code{html-attribute},
-\code{invisible-unicode}, \code{bidi-control}, \code{encoded-text}, \code{markermd-marker},
-\code{agent-file} or \code{file-name}. \code{matched} lists the content patterns it
+\code{invisible-unicode}, \code{bidi-control}, \code{look-alike-text}, \code{encoded-text},
+\code{active-content}, \code{markermd-marker}, \code{agent-file} or \code{file-name}. \code{matched} lists the content patterns it
 hit (\code{instruction-override}, \code{grader-addressed}, \code{grade-demand},
 \code{role-marker}, \code{grading-output}, \code{score-line}, \code{rubric-text}), or \code{NA}. \code{severity} is
 \code{"high"} for a content match in a concealed place (and for smuggled
-Unicode), \code{"medium"} for a content match in visible text, an agent file
-or an unverified repair marker, and \code{"low"} for concealment with no
-content match. \code{excerpt} is a single line, truncated, with invisible
+Unicode, look-alike spelling and scripts that reach out of the report),
+\code{"medium"} for visible text matching two different content categories,
+an agent file, an event handler, a script from an unusual host or an
+unverified repair marker, and \code{"low"} for visible text matching one
+category, concealment with no content match, or an outside frame. \code{excerpt} is a single line, truncated, with invisible
 characters shown as \verb{<U+XXXX>}.
 }
 \description{
@@ -38,7 +40,11 @@ ignore the rubric or award full marks, text addressed to an AI model, chat
 role markers, fabricated grading output, and above all text a human reader
 would not see (HTML comments, elements hidden by style or class, invisible
 Unicode characters, code in chunks that are not shown, base64, attribute
-and meta text in the rendered HTML). It also reports agent instruction
+and meta text in the rendered HTML, look-alike letters from other
+scripts). In rendered HTML it also reports active content: scripts that
+reach out of the report's frame or carry injection text, scripts loaded
+from an unusual host, event-handler attributes and outside frames. It also
+reports agent instruction
 files (\code{CLAUDE.md}, \code{AGENTS.md}, \code{.cursorrules}, ...) shipped in a
 repository and \verb{<!-- markermd: ... -->} repair markers that were not added
 by the bundled \code{markermd-fix-parsing} skill.

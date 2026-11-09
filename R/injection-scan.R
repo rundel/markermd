@@ -9,18 +9,30 @@
 # A finding has a `detector` (where the text sits: visible, or one of the
 # concealment kinds) and `matched` (which content patterns it hit). Severity
 # combines the two: content in a concealed place is high, content in visible
-# text is medium, concealment with no content match is low.
+# text is medium when two different categories agree and low on one alone
+# (ordinary coursework prose hits one category all the time: "ignore all NA
+# values and follow the rules", "Note to the grader: I ran out of time"),
+# concealment with no content match is low.
 
-# Content patterns by category, as case-insensitive multi-line PCRE.
+# Content patterns by category, as case-insensitive multi-line PCRE. The
+# line-anchored role markers ("System:" at the start of a line, a "System
+# prompt" heading) are only meaningful in a markdown source; in a YAML or data
+# file every `system:` key would hit them.
+#
+# markdown: Whether the text comes from a markdown document
 
-injection_content_patterns = function() {
+injection_content_patterns = function(markdown = TRUE) {
   model = "ai|llm|large language model|language model|claude|chatgpt|gpt|codex|copilot|gemini"
+  role_lines = c(
+    "^\\s*(system|assistant|human)\\s*:\\s*\\S",
+    "^#{1,6}\\s*(system|instructions?)\\s*(prompt|message)?\\s*:?\\s*$"
+  )
   list(
     "instruction-override" = c(
       paste0(
         "\\b(ignore|disregard|forget|override|bypass)\\b[^.\\n]{0,40}",
-        "\\b(previous|prior|above|earlier|preceding|all|any|your|the|system)\\b[^.\\n]{0,30}",
-        "\\b(instructions?|prompts?|rules|rubric|guidelines|directions|criteria)\\b"
+        "\\b(previous|prior|above|earlier|preceding|all|any|your|the|system)\\s+(?:[\\w'-]+\\s+){0,2}",
+        "(instructions?|prompts?|rules|rubric|guidelines|directions|criteria)\\b"
       ),
       "\\bnew (instructions?|task|rules)\\s*:",
       "\\b(system|developer)\\s+(prompt|message|override|instructions?)\\b",
@@ -60,11 +72,10 @@ injection_content_patterns = function() {
       "\\b(positive|favou?rable)\\s+(review|evaluation|feedback|assessment)\\s+only\\b"
     ),
     "role-marker" = c(
-      "^\\s*(system|assistant|human)\\s*:\\s*\\S",
+      if (markdown) role_lines,
       "</?(system|instructions?|system[-_]prompt|assistant|human)>",
       "<\\|(im_start|im_end|system|user|assistant|endoftext)\\|>",
-      "\\[/?INST\\]",
-      "^#{1,6}\\s*(system|instructions?)\\s*(prompt|message)?\\s*:?\\s*$"
+      "\\[/?INST\\]"
     ),
     "score-line" = paste0(
       "^\\s*[-*>]?\\s*(final\\s+|total\\s+)?(score|grade|marks?|points)\\s*(awarded|given|earned)?",
@@ -92,19 +103,28 @@ injection_weak_categories = function() {
 #
 # text: Character scalar (may span lines)
 # rubric: Character vector of rubric item descriptions to look for
+# markdown: Whether the text comes from a markdown document (see
+#   injection_content_patterns())
 
-match_injection_content = function(text, rubric = character(0)) {
-  match_injection_lines(text, rubric)[[1]]
+match_injection_content = function(text, rubric = character(0), markdown = TRUE, fold = TRUE) {
+  match_injection_lines(text, rubric, markdown, fold)[[1]]
 }
 
 # match_injection_content() for each of a set of strings, as a list of
-# category vectors. Each pattern runs once over the whole vector.
+# category vectors. Each pattern runs once over the whole vector. The patterns
+# run against fold_for_matching() of the text, so a phrase split by invisible
+# characters or spelled with look-alike letters still matches.
 #
 # lines: Character vector
 # rubric: Character vector of rubric item descriptions to look for
+# markdown: Whether the text comes from a markdown document
+# fold: Whether to fold the text first (FALSE matches the text as written)
 
-match_injection_lines = function(lines, rubric = character(0)) {
-  patterns = injection_content_patterns()
+match_injection_lines = function(lines, rubric = character(0), markdown = TRUE, fold = TRUE) {
+  if (fold) {
+    lines = fold_for_matching(lines)
+  }
+  patterns = injection_content_patterns(markdown)
   hit = vapply(patterns, function(p) {
     Reduce(`|`, lapply(p, function(re) grepl(paste0("(?im)", re), lines, perl = TRUE)))
   }, logical(length(lines)))
@@ -118,27 +138,108 @@ match_injection_lines = function(lines, rubric = character(0)) {
   lapply(seq_along(lines), function(i) colnames(hit)[hit[i, ]])
 }
 
-# Code points that render as nothing: the Unicode tag block and variation
-# selector supplement (both used to smuggle ASCII), zero-width characters, and
-# the bidirectional controls. ZWJ is listed so runs are counted, but a lone
-# one is ordinary in emoji sequences and is not reported by itself.
+# Code points that render as nothing, by kind:
+#   zero-width: the zero-width space, non-joiner and joiner, the word joiner,
+#     the byte order mark used mid-text and the Mongolian vowel separator
+#   ignorable: the other Default_Ignorable characters, which are legitimate in
+#     some scripts (soft hyphen, the left-to-right and right-to-left marks, the
+#     invisible math operators, the Hangul fillers) but also split a phrase
+#   bidi: the bidirectional embedding, override and isolate controls
+#   tag: the Unicode tag block, which spells ASCII text that displays as
+#     nothing
+#   vs: the variation selectors and their supplement, which carry bytes in
+#     one smuggling scheme and are otherwise ordinary in emoji
+# ZWJ is listed so runs are counted, but a lone one is ordinary in emoji
+# sequences and is not reported by itself.
 #
 # cps: Integer vector of code points
 
 invisible_kind = function(cps) {
   kind = rep(NA_character_, length(cps))
   kind[cps %in% c(0x200B, 0x200C, 0x200D, 0x2060, 0xFEFF, 0x180E)] = "zero-width"
+  kind[cps %in% c(0x00AD, 0x034F, 0x061C, 0x115F, 0x1160, 0x17B4, 0x17B5, 0x200E, 0x200F, 0x3164, 0xFFA0) |
+    (cps >= 0x180B & cps <= 0x180D) | (cps >= 0x2061 & cps <= 0x2064)] = "ignorable"
   kind[(cps >= 0x202A & cps <= 0x202E) | (cps >= 0x2066 & cps <= 0x2069)] = "bidi"
-  kind[(cps >= 0xE0000 & cps <= 0xE007F) | (cps >= 0xE0100 & cps <= 0xE01EF)] = "tag"
+  kind[cps >= 0xE0000 & cps <= 0xE007F] = "tag"
+  kind[(cps >= 0xFE00 & cps <= 0xFE0F) | (cps >= 0xE0100 & cps <= 0xE01EF)] = "vs"
   kind
+}
+
+# Positions of tag characters that are part of a well-formed emoji tag
+# sequence (a black flag, tag letters, the cancel tag): the subdivision flags
+# of England, Scotland and Wales, which are ordinary text.
+#
+# cps: Integer vector of code points
+
+emoji_tag_positions = function(cps) {
+  out = integer(0)
+  for (start in which(cps == 0x1F3F4)) {
+    i = start + 1
+    while (i <= length(cps) && cps[i] >= 0xE0020 && cps[i] <= 0xE007E) {
+      i = i + 1
+    }
+    if (i > start + 1 && i <= length(cps) && cps[i] == 0xE007F) {
+      out = c(out, (start + 1):i)
+    }
+  }
+  out
+}
+
+# Runs of variation selectors long enough to be a smuggled payload rather than
+# an emoji presentation selector: four or more when any comes from the
+# supplement block, eight or more otherwise. Returns a list of index vectors.
+#
+# cps: Integer vector of code points
+# kind: invisible_kind(cps)
+
+vs_payload_runs = function(cps, kind) {
+  is_vs = !is.na(kind) & kind == "vs"
+  if (!any(is_vs)) {
+    return(list())
+  }
+  r = rle(is_vs)
+  ends = cumsum(r$lengths)
+  starts = ends - r$lengths + 1
+  runs = lapply(which(r$values), function(k) starts[k]:ends[k])
+  Filter(function(run) {
+    length(run) >= 8 || (length(run) >= 4 && any(cps[run] >= 0xE0100))
+  }, runs)
+}
+
+# The bytes a run of variation selectors encodes (U+FE00 to U+FE0F are 0 to
+# 15, U+E0100 to U+E01EF are 16 to 255), as readable text.
+#
+# cps: Integer vector of code points, all variation selectors
+
+decode_vs_payload = function(cps) {
+  bytes = ifelse(cps >= 0xE0100, cps - 0xE0100 + 16, cps - 0xFE00)
+  printable = bytes %in% c(9, 10, 13, 32:126)
+  if (!any(printable)) {
+    return("")
+  }
+  rawToChar(as.raw(bytes[printable]))
 }
 
 has_non_ascii = function(x) {
   grepl("[^\\x01-\\x7F]", x, perl = TRUE, useBytes = TRUE)
 }
 
+# Code points of a string, with invalid UTF-8 read byte by byte (utf8ToInt()
+# would return NA for the whole string).
+#
+# x: Character scalar
+
+safe_code_points = function(x) {
+  if (!validUTF8(x)) {
+    x = iconv(x, "UTF-8", "UTF-8", sub = "byte")
+  }
+  cps = utf8ToInt(x)
+  if (anyNA(cps)) integer(0) else cps
+}
+
 # Replace invisible code points with a visible <U+XXXX> form so an excerpt
-# can be read safely.
+# can be read safely. Variation selectors are left alone unless they form a
+# payload run, so emoji keep their presentation selector.
 #
 # x: Character scalar
 
@@ -146,23 +247,92 @@ show_invisible = function(x) {
   if (!has_non_ascii(x)) {
     return(x)
   }
-  cps = utf8ToInt(x)
-  chars = strsplit(x, "")[[1]]
-  flagged = !is.na(invisible_kind(cps))
+  cps = safe_code_points(x)
+  kind = invisible_kind(cps)
+  flagged = !is.na(kind) & kind != "vs"
+  flagged[unlist(vs_payload_runs(cps, kind))] = TRUE
+  flagged[emoji_tag_positions(cps)] = FALSE
+  if (!any(flagged)) {
+    return(x)
+  }
+  chars = vapply(cps, intToUtf8, character(1))
   chars[flagged] = paste0("<U+", toupper(format(as.hexmode(cps[flagged]), width = 4)), ">")
   paste(chars, collapse = "")
 }
 
 # Drop invisible code points, so a phrase split by them still matches.
 #
-# x: Character scalar
+# x: Character vector
 
 strip_invisible = function(x) {
-  if (!has_non_ascii(x)) {
+  x = valid_utf8(x)
+  gsub(invisible_class_regex(), "", x, perl = TRUE)
+}
+
+# A PCRE character class of every code point invisible_kind() classifies, so
+# whole vectors can be tested and stripped in one call. The (*UTF) prefix puts
+# PCRE in UTF mode even for an all-ASCII vector, where R would otherwise
+# compile the pattern bytewise and reject the wide code points.
+
+invisible_class_regex = function() {
+  paste0(
+    "(*UTF)[\\x{200B}-\\x{200F}\\x{2060}-\\x{2064}\\x{FEFF}\\x{180B}-\\x{180E}\\x{00AD}\\x{034F}\\x{061C}",
+    "\\x{115F}\\x{1160}\\x{17B4}\\x{17B5}\\x{3164}\\x{FFA0}\\x{202A}-\\x{202E}\\x{2066}-\\x{2069}",
+    "\\x{E0000}-\\x{E007F}\\x{FE00}-\\x{FE0F}\\x{E0100}-\\x{E01EF}]"
+  )
+}
+
+# Strings with invalid UTF-8 read byte by byte, so the PCRE calls below never
+# error on them.
+#
+# x: Character vector
+
+valid_utf8 = function(x) {
+  bad = !validUTF8(x)
+  if (any(bad)) {
+    x[bad] = iconv(x[bad], "UTF-8", "UTF-8", sub = "byte")
+  }
+  x
+}
+
+# Letters from other scripts that look like Latin ones, folded to the Latin
+# letter so "Ignоre" with a Cyrillic o still matches. Fullwidth ASCII is folded
+# arithmetically.
+
+confusable_map = function() {
+  from = c(
+    "а", "е", "о", "р", "с", "у", "х", "і", "ј", "ѕ",
+    "һ", "ԁ", "ԛ", "ԝ", "А", "В", "Е", "К", "М", "Н",
+    "О", "Р", "С", "Т", "Х", "ο", "ν", "α", "ε", "ρ",
+    "τ", "υ", "ι", "κ", "Α", "Β", "Ε", "Ζ", "Η", "Ι",
+    "Κ", "Μ", "Ν", "Ο", "Ρ", "Τ", "Υ", "Χ"
+  )
+  to = c(
+    "a", "e", "o", "p", "c", "y", "x", "i", "j", "s",
+    "h", "d", "q", "w", "A", "B", "E", "K", "M", "H",
+    "O", "P", "C", "T", "X", "o", "v", "a", "e", "p",
+    "t", "u", "i", "k", "A", "B", "E", "Z", "H", "I",
+    "K", "M", "N", "O", "P", "T", "Y", "X"
+  )
+  list(from = paste(from, collapse = ""), to = paste(to, collapse = ""))
+}
+
+# The copy of a text the content patterns run against: invisible characters
+# dropped, fullwidth ASCII and look-alike letters folded to Latin.
+#
+# x: Character vector
+
+fold_for_matching = function(x) {
+  x = strip_invisible(x)
+  idx = which(has_non_ascii(x))
+  if (length(idx) == 0) {
     return(x)
   }
-  cps = utf8ToInt(x)
-  intToUtf8(cps[is.na(invisible_kind(cps))])
+  map = confusable_map()
+  x[idx] = chartr(
+    paste0(map$from, intToUtf8(0xFF01:0xFF5E)), paste0(map$to, intToUtf8(0x21:0x7E)), x[idx]
+  )
+  x
 }
 
 # A single-line, length-capped excerpt with invisible characters made
@@ -196,6 +366,7 @@ content_match_position = function(text, matched, rubric = character(0)) {
   if (length(matched) == 0 || !nzchar(text)) {
     return(1L)
   }
+  text = fold_for_matching(text)
   patterns = injection_content_patterns()
   regexes = unlist(patterns[intersect(matched, names(patterns))], use.names = FALSE)
   positions = vapply(regexes, function(re) {
@@ -226,10 +397,20 @@ empty_findings = function() {
   )
 }
 
+# One finding, or several when the arguments are vectors of the same length
+# (`matched` is then a list of category vectors).
+#
+# line: Integer line numbers (NA for rendered text)
+# severity, detector, excerpt: Character vectors
+# matched: Character vector of categories for one finding, or a list of them
+
 finding = function(line, severity, detector, matched, excerpt) {
+  if (!is.list(matched)) {
+    matched = list(matched)
+  }
   data.frame(
     line = as.integer(line), severity = severity, detector = detector,
-    matched = if (length(matched) == 0) NA_character_ else paste(matched, collapse = ", "),
+    matched = vapply(matched, function(m) if (length(m) == 0) NA_character_ else paste(m, collapse = ", "), character(1)),
     excerpt = excerpt, stringsAsFactors = FALSE
   )
 }
@@ -252,63 +433,108 @@ concealed_severity = function(matched) {
   if (length(matched) > 0) "high" else "low"
 }
 
-# Severity of a content match in visible text.
+# Severity of a content match in visible text: medium when two different
+# categories agree (an override beside a grade demand, text addressed to a
+# model that also tells it what to do), low on one category alone.
 #
 # matched: Character vector of content categories
 
 visible_severity = function(matched) {
-  if (all(matched %in% injection_weak_categories())) "low" else "medium"
+  strong = setdiff(matched, injection_weak_categories())
+  if (length(strong) >= 2) "medium" else "low"
 }
 
-# Invisible-character findings for a set of lines.
+# Invisible-character findings for a set of lines, built from per-line
+# counts rather than one data frame per line (a data file of accented names
+# has tens of thousands of non-ASCII lines).
 #
 # lines: Character vector
 # line_numbers: Whether findings carry line numbers (FALSE for rendered text)
 # rubric: Rubric item descriptions
+# line_matches: match_injection_lines() of the raw lines, when the caller has
+#   them, so a phrase the invisible characters split can be told apart from
+#   one that matched anyway
 
-scan_invisible = function(lines, line_numbers = TRUE, rubric = character(0)) {
-  idx = which(has_non_ascii(lines))
-  bind_findings(lapply(idx, function(i) {
-    cps = utf8ToInt(lines[i])
+scan_invisible = function(lines, line_numbers = TRUE, rubric = character(0), line_matches = NULL) {
+  lines = valid_utf8(lines)
+  idx = which(grepl(invisible_class_regex(), lines, perl = TRUE))
+  if (length(idx) == 0) {
+    return(empty_findings())
+  }
+  line_of = function(i) if (line_numbers) i else NA_integer_
+
+  per_line = lapply(idx, function(i) {
+    cps = safe_code_points(lines[i])
     if (i == 1 && length(cps) > 0 && cps[1] == 0xFEFF) {
       cps = cps[-1]
     }
     kind = invisible_kind(cps)
-    line = if (line_numbers) i else NA_integer_
-    visible = intToUtf8(cps[is.na(kind)])
+    kind[emoji_tag_positions(cps)] = NA_character_
+    is_kind = function(k) !is.na(kind) & kind == k
+    list(
+      cps = cps, kind = kind,
+      tag = cps[is_kind("tag")],
+      vs_runs = vs_payload_runs(cps, kind),
+      n_run = sum(is_kind("zero-width") | is_kind("ignorable")),
+      zw_at = which(is_kind("zero-width") & cps != 0x200D & !(cps == 0x200C & any(cps >= 0x0590 & cps <= 0x08FF)))[1],
+      ignorable_at = which(is_kind("ignorable"))[1],
+      bidi_at = which(is_kind("bidi"))[1],
+      rtl = any(cps >= 0x0590 & cps <= 0x08FF),
+      visible = intToUtf8(cps[is.na(kind) | is_kind("vs")])
+    )
+  })
 
-    tag = cps[!is.na(kind) & kind == "tag" & cps <= 0xE007F]
-    n_tag = sum(kind == "tag", na.rm = TRUE)
-    n_zw = sum(kind == "zero-width" & cps != 0x200D, na.rm = TRUE)
-    n_run = sum(kind == "zero-width", na.rm = TRUE)
+  rows = list()
+  for (k in seq_along(idx)) {
+    i = idx[k]
+    p = per_line[[k]]
+    line = line_of(i)
+    whole = intToUtf8(p$cps)
 
-    bind_findings(list(
-      if (n_tag > 0) {
-        payload = intToUtf8(tag[tag >= 0xE0020 & tag <= 0xE007E] - 0xE0000)
-        finding(
-          line, "high", "invisible-unicode", match_injection_content(payload, rubric),
-          make_excerpt(glue::glue("{n_tag} tag characters decoding to: {payload} | in: {visible}"))
-        )
-      },
-      if (n_run >= 8) {
-        finding(
-          line, "high", "invisible-unicode", character(0),
-          make_excerpt(glue::glue("{n_run} zero-width characters (possibly an encoded payload) in: {visible}"))
-        )
-      } else if (n_zw > 0) {
-        finding(
-          line, "low", "invisible-unicode", character(0),
-          make_excerpt(intToUtf8(cps), at = which(kind == "zero-width" & cps != 0x200D)[1])
-        )
-      },
-      if (any(kind == "bidi", na.rm = TRUE)) {
-        finding(
-          line, "medium", "bidi-control", character(0),
-          make_excerpt(intToUtf8(cps), at = which(kind == "bidi")[1])
-        )
-      }
-    ))
-  }))
+    if (length(p$tag) > 0) {
+      payload = intToUtf8(p$tag[p$tag >= 0xE0020 & p$tag <= 0xE007E] - 0xE0000)
+      rows[[length(rows) + 1]] = finding(
+        line, "high", "invisible-unicode", match_injection_content(payload, rubric),
+        make_excerpt(glue::glue("{length(p$tag)} tag characters decoding to: {payload} | in: {p$visible}"))
+      )
+    }
+    for (run in p$vs_runs) {
+      payload = decode_vs_payload(p$cps[run])
+      rows[[length(rows) + 1]] = finding(
+        line, "high", "invisible-unicode", match_injection_content(payload, rubric),
+        make_excerpt(glue::glue("{length(run)} variation selectors decoding to: {payload} | in: {p$visible}"))
+      )
+    }
+
+    split_match = character(0)
+    if (p$n_run > 0) {
+      raw_matched = if (is.null(line_matches)) match_injection_content(lines[i], rubric, fold = FALSE) else line_matches[[i]]
+      stripped = match_injection_content(strip_invisible(lines[i]), rubric)
+      split_match = setdiff(stripped, raw_matched)
+    }
+    if (length(split_match) > 0) {
+      rows[[length(rows) + 1]] = finding(
+        line, "high", "invisible-unicode", stripped,
+        make_excerpt(whole, at = min(p$zw_at, p$ignorable_at, na.rm = TRUE))
+      )
+    } else if (p$n_run >= 8) {
+      rows[[length(rows) + 1]] = finding(
+        line, "high", "invisible-unicode", character(0),
+        make_excerpt(glue::glue("{p$n_run} invisible characters (possibly an encoded payload) in: {p$visible}"))
+      )
+    } else if (!is.na(p$zw_at)) {
+      rows[[length(rows) + 1]] = finding(
+        line, "low", "invisible-unicode", character(0), make_excerpt(whole, at = p$zw_at)
+      )
+    }
+
+    if (!is.na(p$bidi_at)) {
+      rows[[length(rows) + 1]] = finding(
+        line, if (p$rtl) "low" else "medium", "bidi-control", character(0), make_excerpt(whole, at = p$bidi_at)
+      )
+    }
+  }
+  bind_findings(rows)
 }
 
 # CSS declarations that hide text from a reader of the rendered page.
@@ -323,8 +549,109 @@ hidden_style_regex = function() {
       "(?<![-\\w])color\\s*:\\s*(?:white\\b|#fff\\b|#ffffff\\b|transparent\\b|",
       "rgba?\\(\\s*255\\s*,\\s*255\\s*,\\s*255|rgba\\([^)]*,\\s*0*(?:\\.0+)?\\s*\\))"
     ),
-    "(?:left|top|text-indent|margin-left)\\s*:\\s*-\\d{3,}"
+    "(?:left|top|text-indent|margin-left)\\s*:\\s*-\\d{3,}",
+    "clip-path\\s*:\\s*inset\\(\\s*(?:[5-9]\\d|100)\\s*%",
+    "(?<![-\\w])clip\\s*:\\s*rect\\(\\s*0",
+    "(?<![-\\w])(?:max-)?(?:height|width)\\s*:\\s*0(?:px)?\\s*(?:;|!important)[^\"'{}]*overflow\\s*:\\s*hidden",
+    "overflow\\s*:\\s*hidden[^\"'{}]*(?<![-\\w])(?:max-)?(?:height|width)\\s*:\\s*0(?:px)?(?![\\d.])"
   ), collapse = "|"), ")")
+}
+
+# Class names a document's own style sheets hide (a rule whose selectors are
+# plain class selectors and whose declarations match hidden_style_regex()),
+# so `.q { display: none }` hides `<p class="q">` as surely as an inline
+# style would.
+#
+# css: Character scalar, the text of the document's style elements
+
+css_hidden_classes = function(css) {
+  css = gsub("(?s)/\\*.*?\\*/", "", css, perl = TRUE)
+  rules = regmatches(css, gregexpr("[^{}]+\\{[^{}]*\\}", css, perl = TRUE))[[1]]
+  if (length(rules) == 0) {
+    return(character(0))
+  }
+  selector = trimws(sub("\\{.*$", "", rules))
+  body = sub("^[^{]*\\{", "", rules)
+  hiding = grepl(hidden_style_regex(), body, perl = TRUE) &
+    grepl("^\\s*\\.[-\\w]+\\s*(,\\s*\\.[-\\w]+\\s*)*$", selector, perl = TRUE)
+  classes = unlist(regmatches(selector[hiding], gregexpr("(?<=\\.)[-\\w]+", selector[hiding], perl = TRUE)))
+  setdiff(unique(classes), c("hidden", "d-none", "visually-hidden", "sr-only", "invisible", "content-hidden"))
+}
+
+# Script elements, event-handler attributes and embedded frames that are not
+# a rendered report's own machinery. A self-contained Quarto report inlines
+# its libraries (Bootstrap, Popper, clipboard.js, its own page script), which
+# use fetch() and walk DOM parents, so a script is reported only when it
+# reaches out of its frame (the grading app's window, its Shiny session, the
+# cookies) or its text matches a content pattern, or when it loads code from a
+# host other than the usual CDNs. Event-handler attributes never appear in
+# Quarto output; an outside iframe, object or embed is noted at low.
+#
+# doc: xml2 document, before scripts are removed
+# rubric: Rubric item descriptions
+
+scan_active_content = function(doc, rubric = character(0)) {
+  reach = paste0(
+    "(?<![.\\w$])(?:window\\.)?(?:parent|top|opener)\\.(?:Shiny|postMessage|document|location|frames)\\b|",
+    "\\bShiny\\.(?:setInputValue|onInputChange)\\b|document\\.cookie|navigator\\.sendBeacon"
+  )
+  cdn = "^(https?:)?//(cdn\\.jsdelivr\\.net|cdnjs\\.cloudflare\\.com|unpkg\\.com|code\\.jquery\\.com|cdn\\.plot\\.ly|cdn\\.datatables\\.net|polyfill\\.io)/"
+  external = "^(https?:)?//"
+  rows = list()
+
+  scripts = xml2::xml_find_all(doc, "//script")
+  src = xml2::xml_attr(scripts, "src")
+  for (k in seq_along(scripts)) {
+    if (!is.na(src[k])) {
+      if (grepl(external, src[k], perl = TRUE) && !grepl(cdn, src[k], perl = TRUE)) {
+        rows[[length(rows) + 1]] = finding(NA, "medium", "active-content", character(0), make_excerpt(paste("script loaded from", src[k])))
+      }
+      next
+    }
+    code = xml2::xml_text(scripts[[k]])
+    matched = match_injection_content(code, rubric, markdown = FALSE)
+    reaches = grepl(reach, code, perl = TRUE)
+    if (length(matched) == 0 && !reaches) {
+      next
+    }
+    at = if (reaches) regexpr(reach, code, perl = TRUE)[1] else content_match_position(strip_invisible(code), matched, rubric)
+    label = if (reaches) "script reaching out of the report: " else "script: "
+    rows[[length(rows) + 1]] = finding(
+      NA, "high", "active-content", matched, paste0(label, make_excerpt(strip_invisible(code), at = at))
+    )
+  }
+
+  handlers = xml2::xml_find_all(doc, "//@*[starts-with(name(), 'on')]")
+  for (h in handlers) {
+    value = xml2::xml_text(h)
+    matched = match_injection_content(value, rubric, markdown = FALSE)
+    rows[[length(rows) + 1]] = finding(
+      NA, if (length(matched) > 0 || grepl(reach, value, perl = TRUE)) "high" else "medium", "active-content", matched,
+      make_excerpt(paste0(xml2::xml_name(h), "=\"", value, "\""))
+    )
+  }
+
+  frames = xml2::xml_find_all(doc, "//iframe[@src] | //object[@data] | //embed[@src]")
+  for (fr in frames) {
+    target = xml2::xml_attr(fr, if (xml2::xml_name(fr) == "object") "data" else "src")
+    if (grepl(external, target, perl = TRUE)) {
+      rows[[length(rows) + 1]] = finding(
+        NA, "low", "active-content", character(0), make_excerpt(paste0("<", xml2::xml_name(fr), "> loading ", target))
+      )
+    }
+  }
+
+  css = paste(xml2::xml_text(xml2::xml_find_all(doc, "//style")), collapse = "\n")
+  generated = regmatches(css, gregexpr("content\\s*:\\s*([\"'])(?:(?!\\1).){12,}\\1", css, perl = TRUE))[[1]]
+  for (g in unique(generated)) {
+    text = sub("^content\\s*:\\s*[\"']", "", sub("[\"']$", "", g))
+    matched = match_injection_content(text, rubric, markdown = FALSE)
+    if (length(matched) > 0) {
+      rows[[length(rows) + 1]] = finding(NA, "high", "hidden-style", matched, make_excerpt(paste("CSS generated text:", text)))
+    }
+  }
+
+  bind_findings(rows)
 }
 
 hidden_class_names = function() {
@@ -443,15 +770,35 @@ scan_encoded = function(lines, rubric = character(0)) {
 # rubric: Rubric item descriptions
 # verified_markers: Text of `markermd:` comments known to come from the
 #   fix-parsing skill (see verified_repair_markers())
+# markdown: Whether the line-anchored role markers apply (see
+#   injection_content_patterns()); the visible text of a rendered report
+#   counts as markdown though it is not structural
 
-scan_text_lines = function(lines, structural = FALSE, rubric = character(0), verified_markers = character(0)) {
+scan_text_lines = function(lines, structural = FALSE, rubric = character(0), verified_markers = character(0),
+                           markdown = structural) {
   if (length(lines) == 0) {
     return(empty_findings())
   }
-  clean = vapply(lines, strip_invisible, character(1), USE.NAMES = FALSE)
-  line_matches = match_injection_lines(clean, rubric)
+  clean = strip_invisible(lines)
+  line_matches = match_injection_lines(clean, rubric, markdown)
   covered = rep(FALSE, length(lines))
   rows = list(scan_invisible(lines, rubric = rubric), scan_encoded(clean, rubric))
+
+  # A phrase that matches only once look-alike letters are folded to Latin is
+  # spelled to slip past a reader or a filter, which is concealment.
+  folded = which(has_non_ascii(clean) & lengths(line_matches) > 0)
+  if (length(folded) > 0) {
+    as_written = match_injection_lines(clean[folded], rubric, markdown, fold = FALSE)
+    for (k in seq_along(folded)) {
+      i = folded[k]
+      if (length(setdiff(line_matches[[i]], as_written[[k]])) > 0) {
+        covered[i] = TRUE
+        rows[[length(rows) + 1]] = finding(
+          i, "high", "look-alike-text", line_matches[[i]], match_excerpt(clean[i], line_matches[[i]], rubric)
+        )
+      }
+    }
+  }
 
   if (structural) {
     text = paste(clean, collapse = "\n")
@@ -463,27 +810,22 @@ scan_text_lines = function(lines, structural = FALSE, rubric = character(0), ver
       first = findInterval(as.integer(m), line_starts)
       last = findInterval(as.integer(m) + attr(m, "match.length") - 1, line_starts)
 
-      rows = c(rows, lapply(seq_along(comments), function(k) {
-        body = trimws(gsub("^<!--|-->$", "", comments[k]))
-        matched = match_injection_content(body, rubric)
-
-        if (grepl("^markermd:", body)) {
-          if (gsub("\\s+", " ", body) %in% verified_markers) {
-            return(NULL)
-          }
-          return(finding(
-            first[k], if (length(matched) > 0) "high" else "medium", "markermd-marker", matched,
-            match_excerpt(body, matched, rubric)
-          ))
-        }
-        if (!nzchar(body)) {
-          return(NULL)
-        }
-        finding(first[k], concealed_severity(matched), "html-comment", matched, match_excerpt(body, matched, rubric))
-      }))
-      for (k in seq_along(comments)) {
-        covered[first[k]:last[k]] = TRUE
+      bodies = trimws(gsub("^<!--|-->$", "", comments))
+      body_matches = match_injection_lines(bodies, rubric, markdown)
+      marker = grepl("^markermd:", bodies)
+      keep = nzchar(bodies) & !(marker & gsub("\\s+", " ", bodies) %in% verified_markers)
+      any_match = lengths(body_matches) > 0
+      severity = ifelse(marker, ifelse(any_match, "high", "medium"), ifelse(any_match, "high", "low"))
+      excerpts = vapply(which(keep), function(k) {
+        if (any_match[k]) match_excerpt(bodies[k], body_matches[[k]], rubric) else make_excerpt(bodies[k])
+      }, character(1))
+      if (any(keep)) {
+        rows[[length(rows) + 1]] = finding(
+          first[keep], severity[keep], ifelse(marker[keep], "markermd-marker", "html-comment"),
+          body_matches[keep], excerpts
+        )
       }
+      covered[unlist(Map(seq, first, last))] = TRUE
     }
 
     for (i in which(is_hidden_markup(clean) & !covered)) {
@@ -492,7 +834,7 @@ scan_text_lines = function(lines, structural = FALSE, rubric = character(0), ver
       }
       end = hidden_region_end(clean, i)
       region = paste(clean[i:end], collapse = "\n")
-      matched = match_injection_content(region, rubric)
+      matched = match_injection_content(region, rubric, markdown)
       covered[i:end] = TRUE
       rows[[length(rows) + 1]] = finding(i, concealed_severity(matched), "hidden-style", matched, match_excerpt(region, matched, rubric))
     }
@@ -518,14 +860,20 @@ scan_text_lines = function(lines, structural = FALSE, rubric = character(0), ver
 # Score lines in visible text mean something only beside a grader-style
 # record ("Grader notes:", "Selected items:") in the same file, where
 # together they read as a fabricated grading demonstration: they are then
-# raised to medium, and otherwise dropped as program output.
+# raised to medium, and otherwise dropped as program output. A visible line
+# with one other category stays low (see visible_severity()).
 #
 # findings: Findings data frame for one file
 
 resolve_weak_findings = function(findings) {
-  weak = findings$detector == "visible-text" & findings$severity == "low"
-  if (any(grepl("grading-output", findings$matched, fixed = TRUE))) {
-    findings$severity[weak] = "medium"
+  matched = findings$matched
+  matched[is.na(matched)] = ""
+  categories = strsplit(matched, ", ", fixed = TRUE)
+  weak_only = vapply(categories, function(m) length(m) > 0 && all(m %in% injection_weak_categories()), logical(1))
+  weak = findings$detector == "visible-text" & weak_only
+  record = findings$detector == "visible-text" & grepl("grading-output", findings$matched, fixed = TRUE)
+  if (any(record)) {
+    findings$severity[weak | record] = "medium"
     return(findings)
   }
   findings[!weak, , drop = FALSE]
@@ -562,7 +910,20 @@ scan_html_file = function(path, rubric = character(0)) {
     finding(NA, "high", "html-attribute", matched, match_excerpt(value, matched, rubric))
   }))
 
-  xml2::xml_remove(xml2::xml_find_all(doc, "//script | //style | //noscript"))
+  rows[[length(rows) + 1]] = scan_active_content(doc, rubric)
+  page_classes = css_hidden_classes(paste(xml2::xml_text(xml2::xml_find_all(doc, "//style")), collapse = "\n"))
+
+  # Text the page never shows while scripts run (the report frame runs them).
+  unshown = xml2::xml_find_all(main, ".//noscript | .//template")
+  rows = c(rows, lapply(unique(xml2::xml_text(unshown)), function(value) {
+    value = strip_invisible(trimws(value))
+    matched = match_injection_content(value, rubric)
+    if (length(matched) == 0) {
+      return(NULL)
+    }
+    finding(NA, "high", "hidden-element", matched, match_excerpt(value, matched, rubric))
+  }))
+  xml2::xml_remove(xml2::xml_find_all(doc, "//script | //style | //noscript | //template"))
 
   comments = xml2::xml_find_all(doc, "//comment()")
   in_main = xml2::xml_path(comments) %in% xml2::xml_path(xml2::xml_find_all(main, ".//comment()"))
@@ -584,7 +945,8 @@ scan_html_file = function(path, rubric = character(0)) {
   id = xml2::xml_attr(candidates, "id")
   hidden = (!is.na(style) & grepl(hidden_style_regex(), style, perl = TRUE)) |
     !is.na(xml2::xml_attr(candidates, "hidden")) |
-    (!is.na(class) & grepl(paste0("(^|\\s)(", hidden_class_names(), ")(\\s|$)"), class, perl = TRUE))
+    (!is.na(class) & grepl(paste0("(^|\\s)(", hidden_class_names(), ")(\\s|$)"), class, perl = TRUE)) |
+    (!is.na(class) & vapply(strsplit(ifelse(is.na(class), "", class), "\\s+"), function(cl) any(cl %in% page_classes), logical(1)))
   chrome = grepl("quarto-|anchorjs|glightbox", paste(class, id))
   hidden_nodes = candidates[hidden & !chrome]
 
@@ -600,7 +962,7 @@ scan_html_file = function(path, rubric = character(0)) {
 
   visible = strsplit(xml2::xml_text(main), "\n", fixed = TRUE)[[1]]
   visible = visible[nzchar(trimws(visible))]
-  text = scan_text_lines(visible, structural = FALSE, rubric = rubric)
+  text = scan_text_lines(visible, structural = FALSE, rubric = rubric, markdown = TRUE)
   text$line = rep(NA_integer_, nrow(text))
 
   out = bind_findings(c(rows, list(text)))
@@ -609,9 +971,13 @@ scan_html_file = function(path, rubric = character(0)) {
 
 # Text of the `<!-- markermd: ... -->` comments the fix-parsing skill added
 # to a repository: lines added by commits that are on the grading-fixes
-# branch and on no other local branch. A marker anywhere else was not put
-# there by markermd. Empty for a directory that is not a git repository or
-# has no grading-fixes branch.
+# branch and on no other local branch, and whose author is the git identity
+# configured on this machine (the grader, who ran the skill). The branch alone
+# is not enough: a student can push a grading-fixes branch of their own, and
+# checking it out creates the local branch from theirs. A marker anywhere
+# else was not put there by markermd. Empty for a directory that is not a git
+# repository, has no grading-fixes branch, or when no git identity is
+# configured.
 #
 # repo_dir: Repository directory
 
@@ -621,7 +987,9 @@ verified_repair_markers = function(repo_dir) {
     if (!"grading-fixes" %in% branches) {
       return(character(0))
     }
-    fixes = gert::git_log(ref = "grading-fixes", max = 1000, repo = repo_dir)$commit
+    grader = email_of(gert::git_signature_default(repo = repo_dir))
+    log = gert::git_log(ref = "grading-fixes", max = 1000, repo = repo_dir)
+    fixes = log$commit[email_of(log$author) == grader]
     others = unlist(lapply(setdiff(branches, "grading-fixes"), function(b) {
       gert::git_log(ref = b, max = 1000, repo = repo_dir)$commit
     }))
@@ -633,6 +1001,14 @@ verified_repair_markers = function(repo_dir) {
   }, otherwise = character(0))
 
   if (!is_git_repo(repo_dir)) character(0) else lookup()
+}
+
+# The email address of git signatures ("Name <email>"), lower-cased.
+#
+# signature: Character vector
+
+email_of = function(signature) {
+  tolower(sub("^.*<([^>]*)>.*$", "\\1", signature))
 }
 
 # Files in a directory worth scanning, skipping version-control metadata,
@@ -779,7 +1155,11 @@ drop_baseline_findings = function(findings, key_findings, n_repos) {
 #' role markers, fabricated grading output, and above all text a human reader
 #' would not see (HTML comments, elements hidden by style or class, invisible
 #' Unicode characters, code in chunks that are not shown, base64, attribute
-#' and meta text in the rendered HTML). It also reports agent instruction
+#' and meta text in the rendered HTML, look-alike letters from other
+#' scripts). In rendered HTML it also reports active content: scripts that
+#' reach out of the report's frame or carry injection text, scripts loaded
+#' from an unusual host, event-handler attributes and outside frames. It also
+#' reports agent instruction
 #' files (`CLAUDE.md`, `AGENTS.md`, `.cursorrules`, ...) shipped in a
 #' repository and `<!-- markermd: ... -->` repair markers that were not added
 #' by the bundled `markermd-fix-parsing` skill.
@@ -807,14 +1187,16 @@ drop_baseline_findings = function(findings, key_findings, n_repos) {
 #'
 #'   `detector` says where the text sits: `visible-text`, `html-comment`,
 #'   `hidden-style`, `hidden-chunk`, `hidden-element`, `html-attribute`,
-#'   `invisible-unicode`, `bidi-control`, `encoded-text`, `markermd-marker`,
-#'   `agent-file` or `file-name`. `matched` lists the content patterns it
+#'   `invisible-unicode`, `bidi-control`, `look-alike-text`, `encoded-text`,
+#'   `active-content`, `markermd-marker`, `agent-file` or `file-name`. `matched` lists the content patterns it
 #'   hit (`instruction-override`, `grader-addressed`, `grade-demand`,
 #'   `role-marker`, `grading-output`, `score-line`, `rubric-text`), or `NA`. `severity` is
 #'   `"high"` for a content match in a concealed place (and for smuggled
-#'   Unicode), `"medium"` for a content match in visible text, an agent file
-#'   or an unverified repair marker, and `"low"` for concealment with no
-#'   content match. `excerpt` is a single line, truncated, with invisible
+#'   Unicode, look-alike spelling and scripts that reach out of the report),
+#'   `"medium"` for visible text matching two different content categories,
+#'   an agent file, an event handler, a script from an unusual host or an
+#'   unverified repair marker, and `"low"` for visible text matching one
+#'   category, concealment with no content match, or an outside frame. `excerpt` is a single line, truncated, with invisible
 #'   characters shown as `<U+XXXX>`.
 #' @examples
 #' \dontrun{
