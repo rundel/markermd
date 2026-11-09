@@ -1,5 +1,5 @@
 # Coverage tests for the parsing subsystem:
-#   R/utils_parsing.R, R/utils_q2r.R, R/utils_monaco.R
+#   R/utils_parsing.R, R/utils_q2r.R (the code view has test-code-view.R)
 # All top-level helpers are prefixed cp_ to stay unique across the shared
 # testthat environment.
 
@@ -171,23 +171,15 @@ test_that("line_node_id_chains carries enclosing heading and div ids", {
 })
 
 
-test_that("monaco_language_for_engine maps known engines, falling back to markdown", {
-  expect_equal(markermd:::monaco_language_for_engine("r"), "r")
-  expect_equal(markermd:::monaco_language_for_engine("python"), "python")
-  expect_equal(markermd:::monaco_language_for_engine("sql"), "sql")
-  expect_equal(markermd:::monaco_language_for_engine("not-a-real-engine"), "markdown")
-})
-
-
-test_that("monaco_language_for_node uses the cell engine, else markdown", {
+test_that("code_language_for_node uses the cell engine, else qmd", {
   ast = cp_parse(cp_mixed_doc())
   rcell = cp_first_node(ast, "Chunk", 1L)
   pycell = cp_first_node(ast, "Chunk", 2L)
   para = cp_first_node(ast, "Markdown", 1L)
 
-  expect_equal(markermd:::monaco_language_for_node(rcell), "r")
-  expect_equal(markermd:::monaco_language_for_node(pycell), "python")
-  expect_equal(markermd:::monaco_language_for_node(para), "markdown")
+  expect_equal(markermd:::code_language_for_node(rcell), "r")
+  expect_equal(markermd:::code_language_for_node(pycell), "python")
+  expect_equal(markermd:::code_language_for_node(para), "qmd")
 })
 
 
@@ -208,40 +200,4 @@ test_that("node_to_qmd round-trips a single node and a whole document", {
   expect_true(grepl("Title", full, fixed = TRUE))
   expect_true(grepl("1 + 1", full, fixed = TRUE))
   expect_true(grepl("python", full, fixed = TRUE))
-})
-
-
-test_that("monaco_line_decorations converts ranges to Monaco decorations", {
-  expect_length(markermd:::monaco_line_decorations(NULL), 0L)
-  expect_length(markermd:::monaco_line_decorations(list()), 0L)
-
-  dec = markermd:::monaco_line_decorations(list(list(start = 3, end = 5)))
-  expect_length(dec, 1L)
-  expect_equal(dec[[1]]$range$startLineNumber, 3)
-  expect_equal(dec[[1]]$range$endLineNumber, 5)
-  expect_true(dec[[1]]$options$isWholeLine)
-  expect_equal(dec[[1]]$options$overviewRuler$color, "#ffc107")
-})
-
-test_that("Monaco loads from the vendored copy, never a CDN", {
-  dep = markermd:::monaco_dependency()
-  root = system.file(dep$src$file, package = dep$package)
-  expect_true(file.exists(file.path(root, "vs", "loader.js")))
-  expect_true(file.exists(file.path(root, "vs", "editor", "editor.main.js")))
-  expect_true(file.exists(file.path(root, "LICENSE")))
-
-  langs = c(
-    vapply(
-      c("a.r", "a.py", "a.qmd", "a.sh", "a.sql", "a.yml", "a.toml", "a.js", "a.ts", "a.css",
-        "a.html", "a.xml", "a.cpp", "a.java", "a.jl", "a.rs", "a.go", "Dockerfile"),
-      markermd:::file_monaco_language, character(1)
-    ),
-    vapply(c("bash", "javascript", "css", "html", "yaml"), markermd:::monaco_language_for_engine, character(1))
-  )
-  shipped = c(list.files(file.path(root, "vs", "basic-languages")), "json", "plaintext")
-  expect_true(all(langs %in% shipped))
-
-  js = markermd:::monaco_editor_config("ed", "x", "r")
-  expect_match(js, paste0("markermd-monaco-", dep$version, "/vs/loader.js"), fixed = TRUE)
-  expect_false(grepl("jsdelivr", js))
 })

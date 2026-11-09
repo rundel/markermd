@@ -170,10 +170,10 @@ test_that("the file viewer shows text, images and misses", {
   file.copy(system.file("help", "figures", "logo.png", package = "fs"), file.path(d, "p.png"))
   text = as.character(markermd:::file_view_ui(file.path(d, "Makefile"), "Makefile", "ed"))
   expect_match(text, "id=\"ed\"", fixed = TRUE)
-  expect_match(text, "'plaintext'", fixed = TRUE)
+  expect_match(text, "data-language=\"makefile\"", fixed = TRUE)
   expect_match(as.character(markermd:::file_view_ui(file.path(d, "p.png"), "p.png", "ed")), "data:image/png;base64,", fixed = TRUE)
   expect_match(as.character(markermd:::file_view_ui(NA_character_, "gone.R", "ed")), "was not found")
-  expect_equal(markermd:::file_monaco_language("x/get_lq.py"), "python")
+  expect_equal(markermd:::file_code_language("x/get_lq.py"), "python")
 })
 
 test_that("mark shows a file question's file and its validation", {

@@ -185,14 +185,17 @@ test_that("the Source view highlights the question's lines as written in the fil
   app$set_inputs(`content_module-html_toggle` = FALSE)
   app$wait_for_idle()
 
-  # The editor's configuration script carries the decorations it applies
-  html = app$get_html("#content_module-content_display")
-  starts = as.integer(regmatches(html, gregexpr('(?<="startLineNumber":)[0-9]+', html, perl = TRUE))[[1]])
-  ends = as.integer(regmatches(html, gregexpr('(?<="endLineNumber":)[0-9]+', html, perl = TRUE))[[1]])
-  expect_gt(length(starts), 0)
-  expect_equal(min(starts), q2_line)
-  expect_lt(max(ends), q3_line)
-  expect_gte(max(ends), q3_line - 5)
+  # The rendered code view marks the question's lines as numbered in the file
+  app$wait_for_js("document.querySelector('#markermd-source-editor[data-rendered]') !== null")
+  highlighted = unlist(app$get_js(
+    "Array.from(document.querySelectorAll('#markermd-source-editor .mm-hl')).map(e => Number(e.dataset.n))"
+  ))
+  expect_gt(length(highlighted), 0)
+  expect_equal(min(highlighted), q2_line)
+  expect_lt(max(highlighted), q3_line)
+  expect_gte(max(highlighted), q3_line - 5)
+  # The document is highlighted with the qmd grammar
+  expect_true(app$get_js("!!document.querySelector('#markermd-source-editor .token.chunk-header')"))
 })
 
 

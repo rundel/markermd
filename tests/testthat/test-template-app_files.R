@@ -48,6 +48,10 @@ test_that("template() adds files and questions that cover them", {
   add_entry(app, file = "get_data.R")
   app$wait_for_js("!!document.getElementById('markermd-template-file-editor')")
   expect_equal(app$get_value(output = "template_shown_file"), "get_data.R")
+  # The file is shown in the code view, numbered and highlighted as R
+  app$wait_for_js("document.querySelector('#markermd-template-file-editor[data-rendered]') !== null")
+  expect_equal(app$get_js("document.querySelector('#markermd-template-file-editor').dataset.language"), "r")
+  expect_gt(app$get_js("document.querySelectorAll('#markermd-template-file-editor .mm-line').length"), 0)
   expect_equal(unname(unlist(app$get_values(export = "question_names")$export$question_names)), "get_data.R")
 
   # A document entry shows the tree again
