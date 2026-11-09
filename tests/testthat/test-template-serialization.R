@@ -507,7 +507,7 @@ test_that("a relative source.path resolves against the enclosing project root", 
   dir.create(file.path(d, "hw3-key"))
   dir.create(file.path(d, "repos"))
   file.copy(
-    test_path("..", "..", "inst", "examples", "test_assignment", "hw3-key", "assignment.qmd"),
+    system.file("examples", "test_assignment", "hw3-key", "assignment.qmd", package = "markermd", mustWork = TRUE),
     file.path(d, "hw3-key")
   )
   suppressMessages(init_project(d, instructions = FALSE))
