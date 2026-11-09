@@ -237,17 +237,18 @@ Rules and constraints:
   need to check the exact structure.
 
 Before importing, confirm the file parses and the key document can be located.
-Pass absolute paths: `source.path` is relative to the project root, while
-`read_template_yaml()` resolves it against the YAML file's directory and then
-the working directory, so name the key document explicitly with `assignment =`
-(the absolute `source_file` from step 3). `require_ast = TRUE` only re-parses
+Pass the YAML file's absolute path: `source.path` is relative to the project
+root, and `read_template_yaml()` resolves it against the root of the project
+the YAML file lies in (then the file's directory, then the working
+directory), so a file under `<root>/scratch/` finds the key from any working
+directory. `require_ast = TRUE` only re-parses
 the key to confirm the document resolves; it does NOT check that each
 `node_id` exists in the document, so a mistyped anchor passes here and only
 surfaces in step 7, where `validate_project()` fails every repository on that
 question with "Selected section #id not found in this document":
 
 ```
-Rscript -e 'invisible(markermd::read_template_yaml("<root>/scratch/markermd-template.yaml", assignment = "<source_file>", require_ast = TRUE)); cat("OK\n")'
+Rscript -e 'invisible(markermd::read_template_yaml("<root>/scratch/markermd-template.yaml", require_ast = TRUE)); cat("OK\n")'
 ```
 
 If `jsonvalidate` is installed, also check it against the schema:

@@ -232,12 +232,35 @@ template_to_list = function(template, source_path = NULL) {
   out
 }
 
+# The root of the initialized markermd project containing a directory (the
+# directory itself or its nearest ancestor holding .markermd/config.yml), or
+# NULL when it lies in none
+#
+# dir: Directory path
+
+enclosing_project_root = function(dir) {
+  dir = normalizePath(dir, winslash = "/", mustWork = FALSE)
+  repeat {
+    if (is_markermd_project(dir)) {
+      return(dir)
+    }
+    parent = dirname(dir)
+    if (identical(parent, dir)) {
+      return(NULL)
+    }
+    dir = parent
+  }
+}
+
 # Resolve the assignment document referenced by a template file.
 #
 # Tries, in order: an explicit assignment override, the stored path relative
-# to the template file's directory, then the stored path as-is (absolute or
-# relative to the working directory). Returns a normalized path or NULL when
-# none resolve.
+# to the root of the markermd project the template file lies in (every stored
+# and exported template records it that way, so a file written to the
+# project's scratch/ directory resolves too), the stored path relative to the
+# template file's directory, then the stored path as-is (absolute or relative
+# to the working directory). Returns a normalized path or NULL when none
+# resolve.
 #
 # path: The source.path string from the file (may be NULL)
 # base_dir: Directory of the template file, for resolving relative paths
@@ -246,10 +269,12 @@ template_to_list = function(template, source_path = NULL) {
 resolve_template_source = function(path, base_dir = ".", assignment = NULL) {
   candidates = character(0)
   if (!is.null(assignment)) candidates = c(candidates, assignment)
-  # The template's own directory first: a stored path is relative to the
-  # project, and the working directory may hold a sibling project with the
-  # same layout
-  if (!is.null(path)) candidates = c(candidates, file.path(base_dir, path), path)
+  # Project root and the template's own directory before the working
+  # directory, which may hold a sibling project with the same layout
+  if (!is.null(path)) {
+    root = enclosing_project_root(base_dir)
+    candidates = c(candidates, if (!is.null(root)) file.path(root, path), file.path(base_dir, path), path)
+  }
 
   for (cand in candidates) {
     if (nzchar(cand) && file.exists(cand)) {

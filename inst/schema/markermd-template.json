@@ -20,7 +20,7 @@
       "properties": {
         "path": {
           "type": "string",
-          "description": "Path to the assignment .qmd/.Rmd, absolute or relative to the project root (the directory holding .markermd/), as template_export() writes it. Its basename is how each student repository's document is matched. read_template_yaml() resolves a relative path against the template file's directory and then the working directory, so pass assignment= when reading a file kept elsewhere."
+          "description": "Path to the assignment .qmd/.Rmd, absolute or relative to the project root (the directory holding .markermd/), as template_export() writes it. Its basename is how each student repository's document is matched. read_template_yaml() resolves a relative path against the root of the project the template file lies in, then the file's directory, then the working directory; pass assignment= when reading a file kept outside any project."
         }
       }
     },

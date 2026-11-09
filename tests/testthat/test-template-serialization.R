@@ -501,3 +501,34 @@ test_that("an unquoted numeric format_version reads as the matching text version
   expect_equal(markermd:::normalize_format_version(3.2), "3.2")
   expect_equal(markermd:::normalize_format_version("3.1"), "3.1")
 })
+
+test_that("a relative source.path resolves against the enclosing project root", {
+  d = normalizePath(withr::local_tempdir("srcproj_"), winslash = "/")
+  dir.create(file.path(d, "hw3-key"))
+  dir.create(file.path(d, "repos"))
+  file.copy(
+    test_path("..", "..", "inst", "examples", "test_assignment", "hw3-key", "assignment.qmd"),
+    file.path(d, "hw3-key")
+  )
+  suppressMessages(init_project(d, instructions = FALSE))
+  dir.create(file.path(d, "scratch"))
+  yaml_path = file.path(d, "scratch", "markermd-template.yaml")
+  writeLines(c(
+    paste0("format_version: '", markermd:::markermd_template_version(), "'"),
+    "source:", "  path: hw3-key/assignment.qmd", "questions: []"
+  ), yaml_path)
+
+  # From a working directory outside the project, the scratch file's
+  # project-root path still finds the key
+  elsewhere = normalizePath(withr::local_tempdir("elsewhere_"), winslash = "/")
+  withr::with_dir(elsewhere, {
+    tmpl = markermd:::read_template_yaml(yaml_path, require_ast = TRUE)
+    expect_equal(
+      attr(tmpl, "markermd_source_path"),
+      normalizePath(file.path(d, "hw3-key", "assignment.qmd"), winslash = "/")
+    )
+  })
+
+  expect_equal(markermd:::enclosing_project_root(file.path(d, "scratch")), d)
+  expect_null(markermd:::enclosing_project_root(elsewhere))
+})
