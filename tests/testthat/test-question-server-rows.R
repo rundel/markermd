@@ -56,9 +56,10 @@ test_that("pending rule edits are captured into state before an add", {
 
       rules = session$returned$question()@rules
       expect_length(rules, 2)
-      expect_equal(rules[["1"]]@verb, "has content")
-      expect_equal(rules[["1"]]@values, "quantile")
-      expect_equal(rules[["2"]]@verb, "has at least")
+      expect_null(names(rules))
+      expect_equal(rules[[1]]@verb, "has content")
+      expect_equal(rules[[1]]@values, "quantile")
+      expect_equal(rules[[2]]@verb, "has at least")
     }
   )
 })
@@ -78,8 +79,8 @@ test_that("deleting a rule re-indexes the survivor with its values preserved", {
 
       rules = session$returned$question()@rules
       expect_length(rules, 1)
-      expect_equal(names(rules), "1")
-      expect_equal(rules[["1"]]@values, "bbb")
+      expect_null(names(rules))
+      expect_equal(rules[[1]]@values, "bbb")
     }
   )
 })
@@ -99,7 +100,7 @@ test_that("a rule whose multiselect never reported keeps its stored node type", 
       session$flushReact()
       session$setInputs(`rule_1-verb` = "has at least")
 
-      r = session$returned$question()@rules[["1"]]
+      r = session$returned$question()@rules[[1]]
       expect_equal(r@node_type, "Chunk")
       expect_equal(r@verb, "has at least")
     }

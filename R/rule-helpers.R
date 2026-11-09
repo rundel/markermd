@@ -224,6 +224,31 @@ validate_rule_values = function(verb, values) {
   )
 }
 
+# Coerce a rule's values to the one representation each verb stores: doubles
+# for a "has between" range, an integer for a count, a character scalar for a
+# pattern. The editor's numeric inputs report integers while the defaults and
+# YAML readers produce doubles (or the reverse), and identical() would call
+# that a change; normalizing on every write keeps the stored rule, the
+# serialized template and the editor's dirty flag stable across a no-op
+# report. Values of the wrong type are returned as is for the class
+# validator to reject.
+#
+# verb: Character. The rule verb
+# values: The values to normalize
+
+normalize_rule_values = function(verb, values) {
+  if (verb == "has between" && is.numeric(values)) {
+    as.numeric(values)
+  } else if (verb %in% c("has at least", "has at most") && is.numeric(values) &&
+             all(is.finite(values)) && all(values == floor(values))) {
+    as.integer(values)
+  } else if (verb %in% c("has content", "lacks content", "has name") && is.character(values)) {
+    as.character(values)
+  } else {
+    values
+  }
+}
+
 # Returns appropriate default values for each rule verb type. Used when
 # creating new rules or resetting rule values.
 #

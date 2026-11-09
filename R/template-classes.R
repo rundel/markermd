@@ -92,7 +92,7 @@ markermd_question = S7::new_class(
         if (length(value) != 1) {
           return("@name must be a single character string")
         }
-        if (nchar(value) == 0) {
+        if (is.na(value) || nchar(trimws(value)) == 0) {
           return("@name cannot be empty")
         }
         return(NULL)
@@ -310,9 +310,11 @@ markermd_template = S7::new_class(
           }
         }
         
-        # Check question names are unique
+        # Check question names are unique once trimmed, since the editor
+        # trims names and two questions differing only in surrounding
+        # whitespace could never both be edited
         if (length(value) > 0) {
-          names = sapply(value, function(q) q@name)
+          names = trimws(sapply(value, function(q) q@name))
           if (any(duplicated(names))) {
             return("Question names must be unique")
           }

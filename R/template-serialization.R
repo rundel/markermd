@@ -117,7 +117,7 @@ question_to_list = function(question) {
   } else {
     out$node_ids = as.list(question@selected_nodes@node_ids)
   }
-  out$rules = lapply(question@rules, rule_to_list)
+  out$rules = lapply(unname(question@rules), rule_to_list)
 
   groups = Filter(function(g) length(g@conditions) > 0, question@filters)
   if (length(groups) > 0) {

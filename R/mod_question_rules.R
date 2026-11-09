@@ -53,38 +53,39 @@ question_rules_server = function(input, output, session, state, ast) {
   # make_render_trigger in mod_question_rows.R)
   rules_render = make_render_trigger()
 
-  # Live evaluation of every rule against the template's own document. Keyed by
-  # rule_id ("1".."k", matching the rules_list ordering) so per-rule status
-  # outputs can look up their result. Empty when no document/rules yet. When no
-  # section is selected, get_question_ast() evaluates against the whole document.
+  # Live evaluation of every rule against the template's own document, through
+  # the same evaluate_question_rules() grading uses (so a document-scope
+  # question's rules evaluate against the whole document here as there, and a
+  # sections question without nodes fails here as there). Keyed by rule_id
+  # ("1".."k", matching the rules_list ordering) so per-rule status outputs can
+  # look up their result. Empty when no document/rules yet.
   rule_status = shiny::reactive({
     q = state()
     rules = q@rules
     if (is.null(ast()) || length(rules) == 0) {
       return(list())
     }
-    # A question with rules but no selected nodes targets nothing, so its rules
-    # cannot pass. Report them as failing rather than evaluating against the
-    # whole document (get_question_ast()'s empty-selection fallback).
-    if (length(q@selected_nodes@node_ids) == 0) {
-      return(stats::setNames(
-        lapply(rules, function(rule) list(passed = FALSE, message = "No nodes selected")),
-        as.character(seq_along(rules))
-      ))
-    }
-    question_ast = get_question_ast(ast(), q)
+    results = evaluate_question_rules(ast(), q)
     stats::setNames(
-      lapply(rules, function(rule) {
-        res = evaluate_rule(question_ast, rule)
-        # An empty pattern passes trivially (see evaluate_rule_has_content
-        # and friends); surface that as a warning rather than a green check
-        # so the author notices the rule is not testing anything yet
-        if (rule@verb %in% c("has content", "lacks content", "has name") &&
-            (is.na(rule@values[1]) || nchar(rule@values[1]) == 0)) {
-          res = list(
-            passed = NA,
-            message = "Empty pattern: this rule passes trivially. Enter a pattern."
-          )
+      lapply(seq_along(rules), function(i) {
+        rule = rules[[i]]
+        res = results[[i]]
+        # Grading treats these as plain results (a trivial pass, a failure);
+        # the author should instead see a warning that the rule is not
+        # testing what they think yet
+        if (rule@verb %in% c("has content", "lacks content", "has name")) {
+          pattern = rule@values[1]
+          if (is.na(pattern) || nchar(pattern) == 0) {
+            res = list(
+              passed = NA,
+              message = "Empty pattern: this rule passes trivially. Enter a pattern."
+            )
+          } else if (!is_valid_regex(pattern)) {
+            res = list(
+              passed = NA,
+              message = "Invalid regular expression: this rule fails until the pattern is fixed."
+            )
+          }
         }
         res
       }),
@@ -157,13 +158,15 @@ question_rules_server = function(input, output, session, state, ast) {
     )
   }
 
-  # Write a keyed rules structure into both rules_list and the question state
-  # so consumers (per-rule status, serialization) update together (the
-  # rules-side twin of set_filters_state)
+  # Write a keyed rules structure into rules_list and, unnamed, into the
+  # question state so consumers (per-rule status, serialization) update
+  # together (the rules-side twin of set_filters_state). The row keys are the
+  # editor's own; a named list would serialize as a mapping instead of the
+  # array the template schema requires.
   set_rules_state = function(rules) {
     rules_list(rules)
     cur_state = state()
-    cur_state@rules = rules
+    cur_state@rules = unname(rules)
     state(cur_state)
   }
 
@@ -321,10 +324,13 @@ question_rules_server = function(input, output, session, state, ast) {
 
       if (!is.null(input[[node_types_input]])) node_types_seen$note(rule_id)
 
+      # An invalid or half-typed value keeps the stored values (the warning
+      # below tells the author why); only a verb change, whose old values
+      # cannot fit the new control, falls back to the verb's defaults
       rule = current_rules[[rule_id]]
       new_rule = capture_rule_inputs(
         rule_id, rule,
-        function(verb, rule) get_default_rule_values(verb),
+        function(verb, rule) if (identical(verb, rule@verb)) rule@values else get_default_rule_values(verb),
         node_type_seen = node_types_seen$has(rule_id)
       )
 
@@ -375,6 +381,53 @@ question_rules_server = function(input, output, session, state, ast) {
     } else {
       NULL
     }
+  })
+
+  # The values each rule's inputs currently hold that the rule cannot take
+  # (a minimum above the maximum, a negative or fractional count, a cleared
+  # bound). The stored rule keeps its last valid values while this shows the
+  # author why the input and the badge disagree. Read from the inputs, not
+  # the state, since the state never holds an invalid value.
+  rule_input_problems = shiny::reactive({
+    msgs = character(0)
+    rules = rules_list()
+    for (k in seq_along(rules)) {
+      rule_id = names(rules)[k]
+      verb = input[[paste0("rule_", rule_id, "-verb")]]
+      if (is.null(verb) || !identical(verb, rules[[rule_id]]@verb)) next
+      values_input = paste0("rule_", rule_id, "-values")
+      problem = if (identical(verb, "has between")) {
+        lo = input[[paste0(values_input, "_min")]]
+        hi = input[[paste0(values_input, "_max")]]
+        if (is.null(lo) || is.null(hi)) {
+          NULL
+        } else if (is.na(lo) || is.na(hi)) {
+          "Count range needs both a minimum and a maximum"
+        } else {
+          validate_rule_values(verb, c(lo, hi))
+        }
+      } else {
+        value = input[[values_input]]
+        if (is.null(value)) NULL else validate_rule_values(verb, value)
+      }
+      if (!is.null(problem)) {
+        msgs = c(msgs, paste0("Rule ", k, ": ", problem, ". The rule keeps its previous value."))
+      }
+    }
+    msgs
+  })
+
+  output$rule_warnings = shiny::renderUI({
+    msgs = rule_input_problems()
+    if (length(msgs) == 0) {
+      return(NULL)
+    }
+    shiny::div(
+      class = "small text-danger mt-1",
+      lapply(msgs, function(msg) {
+        shiny::div(fa_icon("triangle-exclamation"), " ", msg)
+      })
+    )
   })
 
   # Verb changes are handled by the "Handle rule input updates" observer above

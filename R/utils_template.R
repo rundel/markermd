@@ -222,18 +222,14 @@ evaluate_rule_has_at_most = function(nodes, rule) {
 # Shared node-loop used by the content and name rule evaluators (the rule UI
 # labels these fields "regex pattern" / "name (regex)"). Each node's text is
 # obtained via extract_fn and tested against pattern as a case-insensitive
-# regular expression. An uncompilable pattern matches nothing rather than
-# erroring mid-grading, mirroring how the filter layer treats a bad regex.
+# regular expression. Callers check the pattern compiles first (see
+# invalid_pattern_result()), so an uncompilable pattern never reaches grepl().
 #
 # nodes: List of AST nodes
 # pattern: Regular expression to match against each node's extracted text
 # extract_fn: Function taking a single node and returning its text to match
 
 evaluate_pattern_in_nodes = function(nodes, pattern, extract_fn) {
-  if (!is_valid_regex(pattern)) {
-    return(FALSE)
-  }
-
   for (node in nodes) {
     node_text = extract_fn(node)
 
@@ -266,6 +262,16 @@ extract_node_name = function(node) {
   }
 }
 
+# The failing result for a pattern that does not compile as a regular
+# expression. Every pattern verb reports it the same way, and as a failure, so
+# that "lacks content" cannot pass because its pattern could not be tried.
+#
+# pattern: Character scalar
+
+invalid_pattern_result = function(pattern) {
+  list(passed = FALSE, message = paste0("invalid regular expression: '", pattern, "'"))
+}
+
 # Evaluate "has content" rule
 #
 # nodes: List of AST nodes
@@ -275,6 +281,9 @@ evaluate_rule_has_content = function(nodes, rule) {
   pattern = rule@values[1]
   if (is.na(pattern) || nchar(pattern) == 0) {
     return(list(passed = TRUE, message = "empty pattern always matches"))
+  }
+  if (!is_valid_regex(pattern)) {
+    return(invalid_pattern_result(pattern))
   }
 
   content_found = evaluate_pattern_in_nodes(nodes, pattern, extract_node_content)
@@ -298,6 +307,9 @@ evaluate_rule_lacks_content = function(nodes, rule) {
   if (is.na(pattern) || nchar(pattern) == 0) {
     return(list(passed = TRUE, message = "empty pattern never matches"))
   }
+  if (!is_valid_regex(pattern)) {
+    return(invalid_pattern_result(pattern))
+  }
 
   content_found = evaluate_pattern_in_nodes(nodes, pattern, extract_node_content)
 
@@ -320,6 +332,9 @@ evaluate_rule_has_name = function(nodes, rule) {
   pattern = rule@values[1]
   if (is.na(pattern) || nchar(pattern) == 0) {
     return(list(passed = TRUE, message = "empty pattern always matches"))
+  }
+  if (!is_valid_regex(pattern)) {
+    return(invalid_pattern_result(pattern))
   }
 
   name_found = evaluate_pattern_in_nodes(nodes, pattern, extract_node_name)
@@ -370,15 +385,49 @@ evaluate_rule = function(ast, rule) {
   )
 }
 
+# Whether a sections question has rules that target nothing: it selects no
+# nodes, so its rules cannot pass. A document-scope question never does (it
+# covers the whole document) and a question without rules has nothing to
+# target.
+#
+# question: markermd_question S7 object
+
+rules_target_nothing = function(question) {
+  length(question@rules) > 0 &&
+    length(question@selected_nodes@node_ids) == 0 &&
+    !is_document_question(question)
+}
+
+# Evaluate a question's rules against a document: the one implementation
+# behind the template editor's live badges and validate_question_rules(), so
+# the two can never disagree on what a rule targets. Returns one
+# evaluate_rule() result (passed / message) per rule, in rule order; a
+# sections question whose rules target nothing (rules_target_nothing()) gets a
+# failing "No nodes selected" result for each rule instead of being evaluated
+# against the whole document, which is only meant for a document-scope
+# question.
+#
+# current_ast: q2r pandoc AST object from the document to validate
+# question: markermd_question S7 object containing rules and node selections
+
+evaluate_question_rules = function(current_ast, question) {
+  rules = question@rules
+  if (length(rules) == 0) {
+    return(list())
+  }
+  if (rules_target_nothing(question)) {
+    return(lapply(rules, function(rule) list(passed = FALSE, message = "No nodes selected")))
+  }
+  question_ast = get_question_ast(current_ast, question)
+  lapply(rules, function(rule) evaluate_rule(question_ast, rule))
+}
+
 # Validate all rules for a single question against a new AST using section-based matching
 #
 # repo_ast: q2r pandoc AST object from the document to validate
 # question: markermd_question S7 object containing rules and node selections
 
 validate_question_rules = function(repo_ast, question) {
-
-  # Get question AST subset using the shared helper function
-  question_ast = get_question_ast(repo_ast, question)
 
   # Selected nodes (by id) for details display; a document-scope question
   # covers the whole document
@@ -388,7 +437,7 @@ validate_question_rules = function(repo_ast, question) {
   } else if (length(node_ids) > 0) {
     paste0("#", node_ids)
   } else {
-    character(0)
+    "(none)"
   }
 
   # If no rules, consider it a pass. messages/passed stay length-aligned with
@@ -404,44 +453,18 @@ validate_question_rules = function(repo_ast, question) {
     ))
   }
 
-  # A sections question with rules but no selected nodes targets nothing; its
-  # rules cannot pass. Fail them rather than letting get_question_ast()'s
-  # empty-selection fallback evaluate the rules against the whole document,
-  # which is only intended for a document-scope question.
-  if (length(node_ids) == 0 && !is_document_question(question)) {
-    messages = rep("No nodes selected", length(question@rules))
-    return(list(
-      question_name = question@name,
-      status = "fail",
-      messages = messages,
-      passed = rep(FALSE, length(question@rules)),
-      details = paste(c("Selected section(s): (none)", messages), collapse = "\n")
-    ))
-  }
+  rule_results = evaluate_question_rules(repo_ast, question)
+  passed = vapply(rule_results, function(r) isTRUE(r$passed), logical(1))
+  messages = vapply(rule_results, function(r) r$message, character(1))
 
-  # Evaluate each rule - any errors will propagate up
-  rule_results = list()
-  all_passed = TRUE
-  
-  for (i in seq_along(question@rules)) {
-    rule = question@rules[[i]]
-    rule_result = evaluate_rule(question_ast, rule)
-
-    rule_results[[i]] = rule_result
-    if (!rule_result$passed) {
-      all_passed = FALSE
-    }
-  }
-  
-  # Return results - only pass or fail status
   list(
     question_name = question@name,
-    status = if (all_passed) "pass" else "fail",
-    messages = sapply(rule_results, function(r) r$message),
-    passed = sapply(rule_results, function(r) r$passed),
+    status = if (all(passed)) "pass" else "fail",
+    messages = messages,
+    passed = passed,
     details = paste(c(
       paste0("Selected section(s): ", paste(formatted_hierarchies, collapse = ", ")),
-      sapply(rule_results, function(r) r$message)
+      messages
     ), collapse = "\n")
   )
 }
@@ -520,8 +543,10 @@ record_descendant_indices = function(container_of, index) {
 # select_children, and returns the indices of the dropped blocks. A dropped
 # block also drops its real nested children (they leave the question AST with
 # it); a dropped heading does not color its section's content, which is
-# tested independently (containment never crosses sections). Returns
-# integer(0) when the question has no effective filters or no selection.
+# tested independently (containment never crosses sections). A document-scope
+# question selects every top-level block, matching get_question_ast(), which
+# applies its filters to the whole document. Returns integer(0) when the
+# question has no effective filters or no selection.
 #
 # current_ast: q2r pandoc AST object from the document to analyze
 # question: markermd_question S7 object containing selected nodes and filters
@@ -530,7 +555,8 @@ question_filtered_indices = function(current_ast, question) {
 
   expr = filters_expr(question@filters)
   ids = question@selected_nodes@node_ids
-  if (is.null(current_ast) || is.null(expr) || length(ids) == 0) {
+  whole_document = is_document_question(question)
+  if (is.null(current_ast) || is.null(expr) || (length(ids) == 0 && !whole_document)) {
     return(integer(0))
   }
 
@@ -538,10 +564,20 @@ question_filtered_indices = function(current_ast, question) {
   container_of = vapply(records, function(r) as.integer(r$container), integer(1))
 
   blocks = current_ast@blocks@content
-  split = classify_selected_ids(current_ast, ids)
+  split = if (whole_document) {
+    list(heading_ids = character(0), div_ids = character(0))
+  } else {
+    classify_selected_ids(current_ast, ids)
+  }
 
   nodes = list()
   node_indices = integer(0)
+
+  if (whole_document) {
+    top_level = which(container_of == 0L)
+    nodes = lapply(top_level, function(i) records[[i]]$node)
+    node_indices = top_level
+  }
 
   if (length(split$heading_ids) > 0) {
     matched = heading_section_indices(records, split$heading_ids)

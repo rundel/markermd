@@ -88,7 +88,7 @@ new_markermd_rule = function(node_type = "Any node", verb = "has at least", valu
   markermd_rule(
     node_type = node_type,
     verb = verb,
-    values = values
+    values = normalize_rule_values(verb, values)
   )
 }
 

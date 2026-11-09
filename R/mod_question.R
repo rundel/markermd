@@ -175,7 +175,11 @@ question_ui = function(id, name_id, name = paste("Question", name_id), file_labe
           id = ns("rules_container"),
           style = "position: relative; z-index: 1; margin-bottom: 0;",
           shiny::uiOutput(ns("rules_ui"))
-        )
+        ),
+
+        # Warnings for rule values the inputs hold but the rule cannot take
+        # (an invalid count or range), which keep the stored values
+        shiny::uiOutput(ns("rule_warnings"))
       )
       )
     )

@@ -1168,9 +1168,12 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", as
 
   } else if (is.null(app)) {
     # Assignment mode: a single assignment file, a directory containing one, or
-    # a GitHub "<owner>/<repo>" to clone.
+    # a GitHub "<owner>/<repo>" to clone. A name with a document or template
+    # extension is a mistyped local path, never a repository, even though it
+    # matches the owner/repo shape.
+    looks_like_file = tolower(fs::path_ext(assignment_path)) %in% c("qmd", "rmd", "yaml", "yml")
     is_github_repo = grepl("^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$", assignment_path) &&
-      !file.exists(assignment_path)
+      !file.exists(assignment_path) && !looks_like_file
 
     if (is_github_repo) {
       if (is.null(local_dir)) {
@@ -1189,7 +1192,7 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", as
       file_path = normalizePath(assignment_path)
 
     } else {
-      cli::cli_abort("assignment_path not found: '{assignment_path}'.\nPass a path to an assignment file (.qmd/.Rmd), a directory containing one, a saved template (.yaml), a markermd project directory, or a GitHub repository as '<owner>/<repo>'.")
+      cli::cli_abort("assignment_path not found locally: '{assignment_path}'.\nPass a path to an assignment file (.qmd/.Rmd), a directory containing one, a saved template (.yaml), a markermd project directory, or a GitHub repository as '<owner>/<repo>'.")
     }
 
     ast = parse_assignment_document(file_path)
