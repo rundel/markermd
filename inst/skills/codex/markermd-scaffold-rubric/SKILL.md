@@ -1,6 +1,7 @@
 ---
 name: markermd-scaffold-rubric
-description: Scaffold a markermd grading rubric (per-question items and scoring) for a project with a stored template: derives concrete items from the key, optionally samples student repositories for common mistakes, places items that stack in capped item groups and severity tiers in exclusive groups, confirms points and grading mode with the user, and imports the rubric with rubric_import(). Use when asked to create, draft, or scaffold a markermd rubric or grading rubric items.
+description: >-
+  Scaffold a markermd grading rubric (per-question items and scoring) for a project with a stored template: derives concrete items from the key, optionally samples student repositories for common mistakes, places items that stack in capped item groups and severity tiers in exclusive groups, confirms points and grading mode with the user, and imports the rubric with rubric_import(). Use when asked to create, draft, or scaffold a markermd rubric or grading rubric items.
 ---
 
 # Scaffold a markermd grading rubric

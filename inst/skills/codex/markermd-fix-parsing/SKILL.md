@@ -1,6 +1,7 @@
 ---
 name: markermd-fix-parsing
-description: Repair student repositories whose assignment documents fail markermd's strict q2r (Quarto) parse: finds them with parse_project(), makes the smallest edit that makes each document parseable, commits on a grading-fixes branch so the original submission stays intact, and asks before any substantive change. Use when asked to fix or resolve parse errors or unparseable submissions in a markermd project.
+description: >-
+  Repair student repositories whose assignment documents fail markermd's strict q2r (Quarto) parse: finds them with parse_project(), makes the smallest edit that makes each document parseable, commits on a grading-fixes branch so the original submission stays intact, and asks before any substantive change. Use when asked to fix or resolve parse errors or unparseable submissions in a markermd project.
 ---
 
 # Repair parse errors in student repositories

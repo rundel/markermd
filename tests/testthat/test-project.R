@@ -137,9 +137,17 @@ bundled_skill_names = c(
   "markermd-apply-rubric", "markermd-fix-parsing", "markermd-check-injection"
 )
 
-skill_frontmatter_field = function(skill_md, field) {
-  line = grep(paste0("^", field, ":"), readLines(skill_md), value = TRUE)[1]
-  trimws(sub(paste0("^", field, ":"), "", line))
+skill_frontmatter = function(skill_md) {
+  lines = readLines(skill_md)
+  fences = which(lines == "---")
+  expect_true(length(fences) >= 2 && fences[1] == 1)
+  yaml::yaml.load(paste(lines[seq(2, fences[2] - 1)], collapse = "\n"))
+}
+
+skill_frontmatter_field = function(frontmatter, field) {
+  value = frontmatter[[field]]
+  expect_true(is.character(value) && length(value) == 1)
+  value
 }
 
 
@@ -234,13 +242,14 @@ test_that("each bundled skill set follows the Agent Skills frontmatter rules", {
       skill_md = fs::path(skill_dir, "SKILL.md")
       expect_true(fs::file_exists(skill_md))
 
-      name = skill_frontmatter_field(skill_md, "name")
+      frontmatter = skill_frontmatter(skill_md)
+      name = skill_frontmatter_field(frontmatter, "name")
       expect_equal(name, fs::path_file(skill_dir))
       expect_match(name, "^[a-z0-9]+(-[a-z0-9]+)*$")
       expect_lte(nchar(name), 64)
 
-      description = skill_frontmatter_field(skill_md, "description")
-      expect_gt(nchar(description), 0)
+      description = skill_frontmatter_field(frontmatter, "description")
+      expect_gt(nchar(trimws(description)), 0)
       expect_lte(nchar(description), 1024)
     }
     names_by_agent[[agent]] = fs::path_file(skill_dirs)

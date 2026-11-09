@@ -1,6 +1,7 @@
 ---
 name: markermd-apply-rubric
-description: Apply a markermd project's stored grading rubric to the student repositories headlessly, as a first-pass machine grading for human review. Reads each repository's per-question sections, decides which rubric items apply (matching item descriptions verbatim; every applicable item of a capped group, at most one tier of an exclusive group), records the reasoning as private notes, writes a marks YAML, validates it against the bundled JSON Schema, and imports it into the project's grading database with marks_import() for review in mark(). Use when a user wants to grade, mark, pre-grade, or apply the rubric to student repos in a markermd project created with markermd::init_project() / ghclass::org_grade_assignment().
+description: >-
+  Apply a markermd project's stored grading rubric to the student repositories headlessly, as a first-pass machine grading for human review. Reads each repository's per-question sections, decides which rubric items apply (matching item descriptions verbatim; every applicable item of a capped group, at most one tier of an exclusive group), records the reasoning as private notes, writes a marks YAML, validates it against the bundled JSON Schema, and imports it into the project's grading database with marks_import() for review in mark(). Use when a user wants to grade, mark, pre-grade, or apply the rubric to student repos in a markermd project created with markermd::init_project() / ghclass::org_grade_assignment().
 ---
 
 # Apply a markermd rubric to the student repositories

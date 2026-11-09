@@ -1,6 +1,7 @@
 ---
 name: markermd-apply-rubric
-description: Apply a markermd project's stored rubric to the student repositories as a first-pass machine grading: reads each repository question by question, selects the rubric items that apply (every applicable item of a capped group, at most one tier of an exclusive group), records the reasoning as private notes, and imports the marks with marks_import() for human review in mark(). Use when asked to grade, mark, pre-grade, or apply the rubric to student repos in a markermd project.
+description: >-
+  Apply a markermd project's stored rubric to the student repositories as a first-pass machine grading: reads each repository question by question, selects the rubric items that apply (every applicable item of a capped group, at most one tier of an exclusive group), records the reasoning as private notes, and imports the marks with marks_import() for human review in mark(). Use when asked to grade, mark, pre-grade, or apply the rubric to student repos in a markermd project.
 ---
 
 # Apply a markermd rubric to the student repositories

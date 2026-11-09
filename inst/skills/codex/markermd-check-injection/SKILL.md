@@ -1,6 +1,7 @@
 ---
 name: markermd-check-injection
-description: Check a markermd project's student submissions for prompt injection attempts (text aimed at an automated grader rather than the instructor): runs scan_project() over every repository and rendered report for instructions to ignore the rubric or award full marks, hidden comments and hidden-styled text, invisible Unicode, agent instruction files, and forged repair markers, triages each candidate, and reports the evidence per repository. Report only: never edits a repository or changes marks. Use when asked to check, scan, or screen submissions for prompt injection or hidden instructions in a markermd project.
+description: >-
+  Check a markermd project's student submissions for prompt injection attempts (text aimed at an automated grader rather than the instructor): runs scan_project() over every repository and rendered report for instructions to ignore the rubric or award full marks, hidden comments and hidden-styled text, invisible Unicode, agent instruction files, and forged repair markers, triages each candidate, and reports the evidence per repository. Report only: never edits a repository or changes marks. Use when asked to check, scan, or screen submissions for prompt injection or hidden instructions in a markermd project.
 ---
 
 # Check submissions for prompt injection attempts
