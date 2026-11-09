@@ -371,8 +371,11 @@ repos:
   Importing a template that renames a question prints a warning naming the
   moves; a renamed question whose old name another question now carries
   means the ids shifted, and `snapshot_restore("latest", part = "template")`
-  undoes it, grading included. A rubric or marks file exported before a
-  rename still names the old question, so export again after the rename.
+  undoes it, grading included. A question removed from the template keeps
+  its grading under its id, hidden; a new question with the same name starts
+  empty, and restoring the old template brings the old one back. A rubric or
+  marks file exported before a rename still names the old question, so
+  export again after the rename.
 - Names match verbatim on import: question names against the stored template,
   rubric item descriptions against the stored rubric, repository names against
   the directories under `paths.repos`. Fix the file being imported; never edit
