@@ -6,11 +6,7 @@
 \usage{
 markermd_snapshot(
   snapshot_id = character(0),
-  created_at = (function (.data = double(), tz = "") 
- {
-     .POSIXct(.data, tz = tz)
-
-    })(),
+  created_at = .POSIXct(numeric(0)),
   created_tz = character(0),
   username = character(0),
   kind = character(0),
@@ -22,48 +18,9 @@ markermd_snapshot(
   markermd_version = character(0),
   content_hash = character(0),
   pinned = logical(0),
-  notes = (function (.data = list(), row.names = NULL) 
- {
-     if (is.null(row.names))
-    {
-         list2DF(.data)
-     }
-     else {
-         out <- list2DF(.data,
-    length(row.names))
-         attr(out, "row.names") <- row.names
-         out
-     }
-
-    })(),
-  parts = (function (.data = list(), row.names = NULL) 
- {
-     if (is.null(row.names))
-    {
-         list2DF(.data)
-     }
-     else {
-         out <- list2DF(.data,
-    length(row.names))
-         attr(out, "row.names") <- row.names
-         out
-     }
-
-    })(),
-  stats = (function (.data = list(), row.names = NULL) 
- {
-     if (is.null(row.names))
-    {
-         list2DF(.data)
-     }
-     else {
-         out <- list2DF(.data,
-    length(row.names))
-         attr(out, "row.names") <- row.names
-         out
-     }
-
-    })()
+  notes = data.frame(),
+  parts = data.frame(),
+  stats = data.frame()
 )
 }
 \arguments{

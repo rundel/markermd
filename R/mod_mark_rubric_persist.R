@@ -362,7 +362,7 @@ rubric_persistence_wiring = function(rx) {
   shiny::observe({
     shiny::req(input$question_select)
     status = graded_questions()
-    labels = ifelse(status[question_names], paste0("✓ ", question_names), question_names)
+    labels = ifelse(status[question_names], paste0("\u2713 ", question_names), question_names)
     if (identical(labels, last_question_labels())) return()
     last_question_labels(labels)
     shiny::updateSelectInput(
@@ -380,7 +380,7 @@ rubric_persistence_wiring = function(rx) {
     shiny::req(rx$selected_repo())
     counts = calculate_grading_progress(root, question_names, repos, graded_pairs = graded_pairs_r())
     done = length(question_names) > 0 & counts[repos] >= length(question_names)
-    labels = ifelse(done, paste0("✓ ", repos), repos)
+    labels = ifelse(done, paste0("\u2713 ", repos), repos)
     if (identical(labels, last_repo_labels())) return()
     last_repo_labels(labels)
     rx$set_repo_labels(

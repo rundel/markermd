@@ -836,7 +836,7 @@ markermd_snapshot = S7::new_class(
   "markermd_snapshot",
   properties = list(
     snapshot_id = S7::class_character,
-    created_at = S7::class_POSIXct,
+    created_at = S7::new_property(S7::class_POSIXct, default = quote(.POSIXct(numeric(0)))),
     created_tz = S7::class_character,
     username = S7::class_character,
     kind = S7::class_character,
@@ -848,9 +848,9 @@ markermd_snapshot = S7::new_class(
     markermd_version = S7::class_character,
     content_hash = S7::class_character,
     pinned = S7::class_logical,
-    notes = S7::class_data.frame,
-    parts = S7::class_data.frame,
-    stats = S7::class_data.frame
+    notes = S7::new_property(S7::class_data.frame, default = quote(data.frame())),
+    parts = S7::new_property(S7::class_data.frame, default = quote(data.frame())),
+    stats = S7::new_property(S7::class_data.frame, default = quote(data.frame()))
   ),
   package = "markermd"
 )

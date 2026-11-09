@@ -560,11 +560,11 @@ markermd_snapshot_diff = S7::new_class(
     to = S7::class_character,
     from_label = S7::class_character,
     to_label = S7::class_character,
-    rubric = S7::class_data.frame,
-    marks = S7::class_data.frame,
-    scores = S7::class_data.frame,
-    totals = S7::class_data.frame,
-    template = S7::class_data.frame
+    rubric = S7::new_property(S7::class_data.frame, default = quote(data.frame())),
+    marks = S7::new_property(S7::class_data.frame, default = quote(data.frame())),
+    scores = S7::new_property(S7::class_data.frame, default = quote(data.frame())),
+    totals = S7::new_property(S7::class_data.frame, default = quote(data.frame())),
+    template = S7::new_property(S7::class_data.frame, default = quote(data.frame()))
   ),
   package = "markermd"
 )

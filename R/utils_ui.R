@@ -135,7 +135,7 @@ question_dom_id = function(question_name) {
 
 one_line_text = function(text, width = 80) {
   text = ifelse(is.na(text), "", gsub("\\s+", " ", trimws(text)))
-  ifelse(nchar(text) > width, paste0(substr(text, 1, width - 3), "…"), text)
+  ifelse(nchar(text) > width, paste0(substr(text, 1, width - 3), "\u2026"), text)
 }
 
 # A blank (NULL, empty or whitespace-only) text input as NULL, else the text;

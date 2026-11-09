@@ -182,7 +182,7 @@ mark_rubric_group_ui = function(id, group, item_uis, subtotal = NULL, group_id =
             shiny::div(
               class = "text-muted mb-2",
               style = "font-size: 11px;",
-              "Bounds the sum of this group's selected items. Floor ≤ 0 ≤ ceiling; blank means no bound."
+              "Bounds the sum of this group's selected items. Floor \u2264 0 \u2264 ceiling; blank means no bound."
             ),
             shiny::div(id = ns("settings_feedback"), class = "rubric-group-feedback text-danger mb-2", style = "font-size: 11px;"),
             shiny::div(

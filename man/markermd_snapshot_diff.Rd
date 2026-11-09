@@ -9,76 +9,11 @@ markermd_snapshot_diff(
   to = character(0),
   from_label = character(0),
   to_label = character(0),
-  rubric = (function (.data = list(), row.names = NULL) 
- {
-     if (is.null(row.names))
-    {
-         list2DF(.data)
-     }
-     else {
-         out <- list2DF(.data,
-    length(row.names))
-         attr(out, "row.names") <- row.names
-         out
-     }
-
-    })(),
-  marks = (function (.data = list(), row.names = NULL) 
- {
-     if (is.null(row.names))
-    {
-         list2DF(.data)
-     }
-     else {
-         out <- list2DF(.data,
-    length(row.names))
-         attr(out, "row.names") <- row.names
-         out
-     }
-
-    })(),
-  scores = (function (.data = list(), row.names = NULL) 
- {
-     if (is.null(row.names))
-    {
-         list2DF(.data)
-     }
-     else {
-         out <- list2DF(.data,
-    length(row.names))
-         attr(out, "row.names") <- row.names
-         out
-     }
-
-    })(),
-  totals = (function (.data = list(), row.names = NULL) 
- {
-     if (is.null(row.names))
-    {
-         list2DF(.data)
-     }
-     else {
-         out <- list2DF(.data,
-    length(row.names))
-         attr(out, "row.names") <- row.names
-         out
-     }
-
-    })(),
-  template = (function (.data = list(), row.names = NULL) 
- {
-     if
-    (is.null(row.names)) {
-         list2DF(.data)
-     }
-     else {
-         out <-
-    list2DF(.data, length(row.names))
-         attr(out, "row.names") <- row.names
-      
-      out
-     }
- })()
+  rubric = data.frame(),
+  marks = data.frame(),
+  scores = data.frame(),
+  totals = data.frame(),
+  template = data.frame()
 )
 }
 \arguments{
