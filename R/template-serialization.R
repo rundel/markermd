@@ -234,10 +234,10 @@ template_to_list = function(template, source_path = NULL) {
 
 # Resolve the assignment document referenced by a template file.
 #
-# Tries, in order: an explicit assignment override, the stored path as-is
-# (absolute or relative to the working directory), then the stored path
-# relative to the template file's directory. Returns a normalized path or NULL
-# when none resolve.
+# Tries, in order: an explicit assignment override, the stored path relative
+# to the template file's directory, then the stored path as-is (absolute or
+# relative to the working directory). Returns a normalized path or NULL when
+# none resolve.
 #
 # path: The source.path string from the file (may be NULL)
 # base_dir: Directory of the template file, for resolving relative paths
@@ -257,6 +257,19 @@ resolve_template_source = function(path, base_dir = ".", assignment = NULL) {
     }
   }
   NULL
+}
+
+# A file's format_version as "major.minor" text. An unquoted `format_version:
+# 3.0` is read as the number 3, which as.character() would turn into "3", one
+# step below "3.0" for compareVersion() and so reported as an older format.
+#
+# version: The format_version value read from a file (character or numeric)
+
+normalize_format_version = function(version) {
+  if (is.numeric(version)) {
+    return(format(version, nsmall = 1))
+  }
+  as.character(version)
 }
 
 # An empty q2r pandoc AST, used as a placeholder when a template is loaded for
@@ -283,6 +296,7 @@ template_from_list = function(x, base_dir = ".", assignment = NULL, require_ast 
   if (is.null(version)) {
     cli::cli_abort("Template file is missing the required 'format_version' field.")
   }
+  version = normalize_format_version(version)
 
   questions = if (is.null(x$questions)) list() else lapply(x$questions, question_from_list)
 
@@ -299,7 +313,7 @@ template_from_list = function(x, base_dir = ".", assignment = NULL, require_ast 
 
   metadata = metadata_from_list(
     if (is.null(x$metadata)) list() else x$metadata,
-    version = as.character(version),
+    version = version,
     total_nodes = length(q2r_flatten(ast))
   )
 

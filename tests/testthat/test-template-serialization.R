@@ -486,3 +486,18 @@ test_that("load_template_from_db errors on missing format_version and honours re
     "assignment document"
   )
 })
+
+test_that("an unquoted numeric format_version reads as the matching text version", {
+  fix = build_serialization_fixture()
+  path = write_yaml_lines(c(
+    "format_version: 3.0",
+    sprintf('source: {path: "%s"}', fix$qmd),
+    "questions:",
+    "- {id: 1, name: Q2, node_ids: [question-2-basic-programming], rules: []}"
+  ))
+  back = markermd::read_template_yaml(path, require_ast = TRUE)
+  expect_equal(back@metadata@version, "3.0")
+  expect_no_error(markermd:::assert_template_compatible(back))
+  expect_equal(markermd:::normalize_format_version(3.2), "3.2")
+  expect_equal(markermd:::normalize_format_version("3.1"), "3.1")
+})
