@@ -5,7 +5,7 @@
 \title{Initialize a markermd grading project}
 \usage{
 init_project(
-  path,
+  project,
   agents = c("claude", "codex"),
   instructions = TRUE,
   overwrite_instructions = FALSE,
@@ -13,10 +13,10 @@ init_project(
 )
 }
 \arguments{
-\item{path}{Path to the project directory.}
+\item{project}{Path to the project directory.}
 
 \item{agents}{Which agents' skill sets to install: \code{"claude"} (into
-\verb{<path>/.claude/skills/}), \code{"codex"} (into \verb{<path>/.agents/skills/}), or
+\verb{<project>/.claude/skills/}), \code{"codex"} (into \verb{<project>/.agents/skills/}), or
 both, the default. The same selection decides which instructions files
 are written.}
 
@@ -44,7 +44,7 @@ and a directory per downloaded artifact). It creates a \verb{.markermd/} directo
 at the project root holding the SQLite grading database and a \code{config.yml}
 recording the project's file locations, and installs the bundled agent
 skills so they are discoverable from the project: the Claude Code set into
-\verb{<path>/.claude/skills/} and the Codex set into \verb{<path>/.agents/skills/}
+\verb{<project>/.claude/skills/} and the Codex set into \verb{<project>/.agents/skills/}
 (see \code{agents}). It also writes each selected agent's project instructions
 file at the project root (\code{CLAUDE.md} for Claude Code, \code{AGENTS.md} for
 Codex) describing the project layout, the grading workflow and skills, and

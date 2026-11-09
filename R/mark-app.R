@@ -5,7 +5,7 @@
 #' configuration determines where the student repositories, grading template,
 #' grading database, and rendered HTML reports ("artifacts") are located.
 #'
-#' @param path Character string. Path to a markermd project directory.
+#' @param project Character string. Path to a markermd project directory.
 #' @param template Optional template override for validation, taking precedence
 #'   over the project's configured template. Can be:
 #'   - Character path to a saved template (`.yaml`/`.yml`)
@@ -21,7 +21,7 @@
 #'     (see [shinyterm::default_commands()])
 #'   - A named list of commands, as accepted by
 #'     [shinyterm::terminal_tabs_server()], e.g.
-#'     `list(Claude = shinyterm::claude_command(wd = path, permission_mode = "acceptEdits"))`
+#'     `list(Claude = shinyterm::claude_command(wd = project, permission_mode = "acceptEdits"))`
 #'
 #'   A terminal runs as you, with your files and credentials, so only use it
 #'   on your own machine; shinyterm refuses to run on a hosted server. With
@@ -48,8 +48,8 @@
 #' # Add a Terminal tab for a shell, Claude Code or Codex
 #' mark("/path/to/project/", terminal = TRUE)
 #' }
-mark = function(path, template = NULL, use_qmd = TRUE, terminal = FALSE, ...) {
-  app = mark_app(path, template = template, use_qmd = use_qmd, terminal = terminal)
+mark = function(project, template = NULL, use_qmd = TRUE, terminal = FALSE, ...) {
+  app = mark_app(project, template = template, use_qmd = use_qmd, terminal = terminal)
   shiny::runApp(app, ...)
 }
 
@@ -67,20 +67,20 @@ mark = function(path, template = NULL, use_qmd = TRUE, terminal = FALSE, ...) {
 #   shinyterm::terminal_token(); FALSE turns it off (the browser tests do,
 #   since AppDriver cannot add the token's query string)
 
-mark_app = function(path, template = NULL, use_qmd = TRUE, terminal = FALSE, terminal_token = TRUE) {
+mark_app = function(project, template = NULL, use_qmd = TRUE, terminal = FALSE, terminal_token = TRUE) {
 
-  if (missing(path)) {
-    cli::cli_abort("path is required")
+  if (missing(project)) {
+    cli::cli_abort("project is required")
   }
 
   # Load and resolve the project configuration (errors if not a project)
-  project = project_config(path)
-  root = project@root
+  config = project_config(project)
+  root = config@root
   terminal_commands = resolve_mark_terminal(terminal, root)
 
-  repos_dir = project_repos_dir(project)
+  repos_dir = project_repos_dir(config)
 
-  template_obj = resolve_mark_template(project, template)
+  template_obj = resolve_mark_template(config, template)
 
   # Initialize database for persistent storage (lives at <root>/.markermd/). A
   # failure is downgraded to a warning so the app still opens in a read-only-ish
@@ -146,7 +146,7 @@ mark_app = function(path, template = NULL, use_qmd = TRUE, terminal = FALSE, ter
   }
 
   # Resolve each repo's rendered HTML report from the project's artifacts dirs
-  artifact_paths = resolve_repo_artifacts(project, repo_list)
+  artifact_paths = resolve_repo_artifacts(config, repo_list)
 
   # The initially selected repository: the first that parsed. When every repo
   # failed, the app still launches with the first repo selected.

@@ -10,9 +10,9 @@
 #' section-selection logic used during grading), so they can drive starter-rule
 #' heuristics when scaffolding a template.
 #'
-#' @param assignment_path Path to an assignment file (`.qmd`/`.Rmd`) or a
+#' @param source Path to an assignment file (`.qmd`/`.Rmd`) or a
 #'   directory containing one.
-#' @param filename Glob used to find the assignment when `assignment_path` is a
+#' @param filename Glob used to find the assignment when `source` is a
 #'   directory. Defaults to any `.Rmd`/`.qmd` file.
 #' @param template Optional `markermd_template`. When given, a heading's counts
 #'   stop at the first heading one of the template's questions selects (other
@@ -29,7 +29,7 @@
 #'   resolved source file is attached as the `"source_file"` attribute, and
 #'   the assignment's other files (everything else in the repository, which a
 #'   template question can cover with `file:`) as the `"files"` attribute: a
-#'   data frame with `path` (relative to the repository root: `assignment_path`
+#'   data frame with `path` (relative to the repository root: `source`
 #'   when it is a directory, else the enclosing git repository when the
 #'   document sits at most two directories below it, else the document's
 #'   directory), `size` (bytes), `filtered` (`TRUE` for hidden files, render
@@ -40,7 +40,7 @@
 #' @examples
 #' key = system.file("examples/test_assignment/hw3-key", package = "markermd")
 #' assignment_outline(key)
-assignment_outline = function(assignment_path, filename = "*.[Rq]md", template = NULL) {
+assignment_outline = function(source, filename = "*.[Rq]md", template = NULL) {
   if (!is.null(template) && !S7::S7_inherits(template, markermd_template)) {
     cli::cli_abort("{.arg template} must be a {.cls markermd_template} or {.code NULL}.")
   }
@@ -52,12 +52,12 @@ assignment_outline = function(assignment_path, filename = "*.[Rq]md", template =
     })))
   }
 
-  file = if (dir.exists(assignment_path)) {
-    resolve_assignment_file(assignment_path, filename)
-  } else if (file.exists(assignment_path)) {
-    normalizePath(assignment_path)
+  file = if (dir.exists(source)) {
+    resolve_assignment_file(source, filename)
+  } else if (file.exists(source)) {
+    normalizePath(source)
   } else {
-    cli::cli_abort("Assignment path not found: {assignment_path}")
+    cli::cli_abort("Assignment path not found: {source}")
   }
 
   ast = parse_assignment_document(file)
@@ -113,7 +113,7 @@ assignment_outline = function(assignment_path, filename = "*.[Rq]md", template =
   }
 
   attr(out, "source_file") = file
-  root = assignment_files_root(file, key_dir = if (dir.exists(assignment_path)) assignment_path)
+  root = assignment_files_root(file, key_dir = if (dir.exists(source)) source)
   doc_rel = as.character(fs::path_rel(normalizePath(file, winslash = "/"), root))
   files = assignment_file_candidates(root, exclude = doc_rel)
   files$size = file.size(file.path(root, files$path))

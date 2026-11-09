@@ -5,7 +5,7 @@
 \title{Launch the markermd Template Creation Application}
 \usage{
 template(
-  assignment_path,
+  source,
   local_dir = NULL,
   filename = "*.[Rq]md",
   assignment = NULL,
@@ -13,14 +13,15 @@ template(
 )
 }
 \arguments{
-\item{assignment_path}{Assignment source or existing template. Can be:
+\item{source}{Assignment source or existing template. Can be:
 \itemize{
 \item Character path to an initialized markermd project directory (one
 containing \code{.markermd/config.yml}; see \code{\link[=init_project]{init_project()}}). The template is
 authored against the project's key (solution) repository, any configured
 template is preloaded for editing, and saving writes the template into the
 project and records it in the config.
-\item Character path to local directory containing assignment
+\item Character path to an assignment file (\code{.qmd}/\code{.Rmd}) or a local
+directory containing one
 \item Character GitHub repo in format "owner/repo"
 \item Character path to a saved template (\code{.yaml}/\code{.yml})
 \item markermd_template S7 object
@@ -33,11 +34,11 @@ project and records it in the config.
 \item{assignment}{Character string. Optional path to the assignment document,
 used when loading a template whose stored \code{source.path} cannot be located.}
 
-\item{...}{Additional arguments passed to shiny::shinyApp()}
+\item{...}{Additional arguments passed to \code{\link[shiny:runApp]{shiny::runApp()}}}
 }
 \value{
-A Shiny app object (from \code{\link[shiny:shinyApp]{shiny::shinyApp()}}); printing it at an
-interactive console runs the template editor.
+The value returned by \code{\link[shiny:runApp]{shiny::runApp()}} when the app exits; called
+for its side effect of running the template editor.
 }
 \description{
 Launch the markermd Template Creation Application

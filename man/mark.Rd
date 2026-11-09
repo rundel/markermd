@@ -4,10 +4,10 @@
 \alias{mark}
 \title{Launch the markermd Marking Application}
 \usage{
-mark(path, template = NULL, use_qmd = TRUE, terminal = FALSE, ...)
+mark(project, template = NULL, use_qmd = TRUE, terminal = FALSE, ...)
 }
 \arguments{
-\item{path}{Character string. Path to a markermd project directory.}
+\item{project}{Character string. Path to a markermd project directory.}
 
 \item{template}{Optional template override for validation, taking precedence
 over the project's configured template. Can be:
@@ -29,7 +29,7 @@ on the \code{PATH}, each agent with its own sandbox confined to the project
 (see \code{\link[shinyterm:default_commands]{shinyterm::default_commands()}})
 \item A named list of commands, as accepted by
 \code{\link[shinyterm:terminal_tabs_server]{shinyterm::terminal_tabs_server()}}, e.g.
-\code{list(Claude = shinyterm::claude_command(wd = path, permission_mode = "acceptEdits"))}
+\code{list(Claude = shinyterm::claude_command(wd = project, permission_mode = "acceptEdits"))}
 }
 
 A terminal runs as you, with your files and credentials, so only use it

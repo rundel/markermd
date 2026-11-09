@@ -44,7 +44,7 @@ truncate_text = function(x, n) {
 # Canonical friendly category for a Pandoc node
 #
 # Single source of truth shared by the tree labels (q2r_node_label) and the
-# validation-rule node-type vocabulary (get_allowed_node_types), so the two
+# validation-rule node-type vocabulary (rule_node_types), so the two
 # always use the same words. Returns one short category string.
 #
 # node: A q2r pandoc node

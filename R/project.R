@@ -292,7 +292,7 @@ write_project_config = function(project) {
 #' at the project root holding the SQLite grading database and a `config.yml`
 #' recording the project's file locations, and installs the bundled agent
 #' skills so they are discoverable from the project: the Claude Code set into
-#' `<path>/.claude/skills/` and the Codex set into `<path>/.agents/skills/`
+#' `<project>/.claude/skills/` and the Codex set into `<project>/.agents/skills/`
 #' (see `agents`). It also writes each selected agent's project instructions
 #' file at the project root (`CLAUDE.md` for Claude Code, `AGENTS.md` for
 #' Codex) describing the project layout, the grading workflow and skills, and
@@ -321,9 +321,9 @@ write_project_config = function(project) {
 #' `project_set(artifacts = )`, or pass `rescan_artifacts = TRUE` to rebuild
 #' the list from every non-repository top-level directory as on the first run.
 #'
-#' @param path Path to the project directory.
+#' @param project Path to the project directory.
 #' @param agents Which agents' skill sets to install: `"claude"` (into
-#'   `<path>/.claude/skills/`), `"codex"` (into `<path>/.agents/skills/`), or
+#'   `<project>/.claude/skills/`), `"codex"` (into `<project>/.agents/skills/`), or
 #'   both, the default. The same selection decides which instructions files
 #'   are written.
 #' @param instructions Whether to write the selected agents' project
@@ -345,7 +345,7 @@ write_project_config = function(project) {
 #' ghclass::org_grade_assignment("hw01", org = "my-course", repo_filter = "hw01-")
 #' init_project("hw01")
 #' }
-init_project = function(path, agents = c("claude", "codex"), instructions = TRUE,
+init_project = function(project, agents = c("claude", "codex"), instructions = TRUE,
                         overwrite_instructions = FALSE, rescan_artifacts = FALSE) {
   agents = match.arg(agents, several.ok = TRUE)
   for (arg in c("instructions", "overwrite_instructions", "rescan_artifacts")) {
@@ -353,10 +353,10 @@ init_project = function(path, agents = c("claude", "codex"), instructions = TRUE
       cli::cli_abort("{.arg {arg}} must be {.code TRUE} or {.code FALSE}.")
     }
   }
-  if (!fs::dir_exists(path)) {
-    cli::cli_abort("{.arg path} does not exist or is not a directory: {.path {path}}")
+  if (!fs::dir_exists(project)) {
+    cli::cli_abort("{.arg project} does not exist or is not a directory: {.path {project}}")
   }
-  root = normalizePath(path, winslash = "/", mustWork = TRUE)
+  root = normalizePath(project, winslash = "/", mustWork = TRUE)
 
   has_repos = fs::dir_exists(fs::path(root, "repos"))
   has_comments = fs::dir_exists(fs::path(root, "comments"))
@@ -424,7 +424,7 @@ init_project = function(path, agents = c("claude", "codex"), instructions = TRUE
     "skipped"
   }
 
-  project = markermd_project(
+  config = markermd_project(
     root = root,
     repos = if (has_repos) "repos" else NA_character_,
     comments = if (has_comments) "comments" else NA_character_,
@@ -434,7 +434,7 @@ init_project = function(path, agents = c("claude", "codex"), instructions = TRUE
     created_at = created_at,
     version = markermd_project_version()
   )
-  project = write_project_config(project)
+  config = write_project_config(config)
 
   if (is.null(prior)) {
     cli::cli_alert_success("Initialized markermd project at {.path {root}}")
@@ -442,7 +442,7 @@ init_project = function(path, agents = c("claude", "codex"), instructions = TRUE
     cli::cli_alert_success("Updated markermd project at {.path {root}}")
   }
   cli::cli_bullets(c(
-    "*" = "database: {.path {project@database}} ({if (is.null(prior)) 'created' else 'preserved'})",
+    "*" = "database: {.path {config@database}} ({if (is.null(prior)) 'created' else 'preserved'})",
     skills_lines,
     "*" = "instructions: {instructions_txt}",
     "*" = "repos: {if (has_repos) 'repos/' else 'not found'}",
@@ -456,7 +456,7 @@ init_project = function(path, agents = c("claude", "codex"), instructions = TRUE
     ))
   }
 
-  invisible(project)
+  invisible(config)
 }
 
 #' Read a markermd project's configuration
@@ -464,7 +464,7 @@ init_project = function(path, agents = c("claude", "codex"), instructions = TRUE
 #' Loads the `config.yml` written by [init_project()] and returns it as a
 #' `markermd_project` object. Errors if the directory has not been initialized.
 #'
-#' @param path Path to the project directory. Defaults to the working directory.
+#' @param project Path to the project directory. Defaults to the working directory.
 #'
 #' @return A `markermd_project` object.
 #' @export
@@ -475,14 +475,14 @@ init_project = function(path, agents = c("claude", "codex"), instructions = TRUE
 #' init_project(project)
 #'
 #' project_config(project)
-project_config = function(path = ".") {
-  root = normalizePath(path, winslash = "/", mustWork = FALSE)
+project_config = function(project = ".") {
+  root = normalizePath(project, winslash = "/", mustWork = FALSE)
   cfg_path = project_config_path(root)
   if (!fs::file_exists(cfg_path)) {
     cli::cli_abort(c(
-      "{.path {path}} is not a markermd project.",
+      "{.path {project}} is not a markermd project.",
       "x" = "No config found at {.path {cfg_path}}.",
-      "i" = "Run {.code markermd::init_project(\"{path}\")} to initialize it."
+      "i" = "Run {.code markermd::init_project(\"{project}\")} to initialize it."
     ))
   }
   project_from_list(yaml::read_yaml(cfg_path), root)
@@ -497,7 +497,7 @@ project_config = function(path = ".") {
 #' whether the grading state changed since it, and when the scores and
 #' comments were last exported relative to the last change).
 #'
-#' @param path Path to the project directory. Defaults to the working directory.
+#' @param project Path to the project directory. Defaults to the working directory.
 #'
 #' @return The project's `markermd_project` object, invisibly.
 #' @export
@@ -508,10 +508,10 @@ project_config = function(path = ".") {
 #' init_project(project)
 #'
 #' project_sitrep(project)
-project_sitrep = function(path = ".") {
-  project = project_config(path)
-  print(project)
-  invisible(project)
+project_sitrep = function(project = ".") {
+  config = project_config(project)
+  print(config)
+  invisible(config)
 }
 
 #' Change a markermd project's configuration
@@ -520,7 +520,7 @@ project_sitrep = function(path = ".") {
 #' changed; an omitted (`NULL`) argument is left untouched. Paths are interpreted
 #' relative to the project root.
 #'
-#' @param path Path to the project directory. Defaults to the working directory.
+#' @param project Path to the project directory. Defaults to the working directory.
 #' @param repos Root-relative repos directory to record. Warns if it does not exist.
 #' @param comments Root-relative comments directory to record. Warns if it does not exist.
 #' @param template A grading template to store in the project database: a
@@ -545,51 +545,51 @@ project_sitrep = function(path = ".") {
 #' # Record the directories of rendered reports
 #' project_set("hw01", artifacts = c("html", "md"))
 #' }
-project_set = function(path = ".", repos = NULL, comments = NULL, template = NULL, key = NULL,
+project_set = function(project = ".", repos = NULL, comments = NULL, template = NULL, key = NULL,
                        artifacts = NULL) {
-  project = project_config(path)
+  config = project_config(project)
 
   if (!is.null(repos)) {
     rel = as.character(repos)
-    if (!isTRUE(fs::dir_exists(fs::path(project@root, rel)))) {
+    if (!isTRUE(fs::dir_exists(fs::path(config@root, rel)))) {
       cli::cli_warn("repos directory {.path {rel}} does not exist under the project root; recording it anyway.")
     }
-    project@repos = rel
+    config@repos = rel
   }
   if (!is.null(comments)) {
     rel = as.character(comments)
-    if (!isTRUE(fs::dir_exists(fs::path(project@root, rel)))) {
+    if (!isTRUE(fs::dir_exists(fs::path(config@root, rel)))) {
       cli::cli_warn("comments directory {.path {rel}} does not exist under the project root; recording it anyway.")
     }
-    project@comments = rel
+    config@comments = rel
   }
-  if (!is.null(template)) with_action(project@root, "project_set", call = "project_set(template = ...)", parts = "template", {
+  if (!is.null(template)) with_action(config@root, "project_set", call = "project_set(template = ...)", parts = "template", {
     spec = list(trigger = "project_set(template = ...)")
     if (S7::S7_inherits(template, markermd_template)) {
       assert_template_compatible(template)
       source_path = attr(template, "markermd_source_raw")
       if (is.null(source_path)) source_path = attr(template, "markermd_source_path")
-      save_template_to_db(project@root, template, source_path = source_path, snapshot = spec)
+      save_template_to_db(config@root, template, source_path = source_path, snapshot = spec)
     } else if (is_clear_sentinel(template)) {
-      with_database(project@root, function(conn) {
+      with_database(config@root, function(conn) {
         savepoint = db_begin(conn)
-        snapshot_before_change(conn, project@root, list(trigger = "project_set(template = NA)"))
+        snapshot_before_change(conn, config@root, list(trigger = "project_set(template = NA)"))
         delete_metadata(conn, "template")
         db_commit(conn, savepoint)
       })
     } else {
-      import_template_yaml_to_db(project@root, as.character(template), snapshot = spec)
+      import_template_yaml_to_db(config@root, as.character(template), snapshot = spec)
     }
   })
   if (!is.null(key)) {
     if (is_clear_sentinel(key)) {
-      project@key = NA_character_
+      config@key = NA_character_
     } else {
       rel = as.character(key)
-      if (!isTRUE(fs::dir_exists(fs::path(project@root, rel)))) {
+      if (!isTRUE(fs::dir_exists(fs::path(config@root, rel)))) {
         cli::cli_warn("key directory {.path {rel}} does not exist under the project root; recording it anyway.")
       }
-      project@key = rel
+      config@key = rel
     }
   }
   if (!is.null(artifacts)) {
@@ -598,15 +598,15 @@ project_set = function(path = ".", repos = NULL, comments = NULL, template = NUL
       cli::cli_abort("{.arg artifacts} must be directory names, or {.code NA} to record none.")
     }
     rel = unique(sub("/+$", "", rel))
-    missing = rel[!fs::dir_exists(fs::path(project@root, rel))]
+    missing = rel[!fs::dir_exists(fs::path(config@root, rel))]
     if (length(missing) > 0) {
       cli::cli_warn("Artifact director{?y/ies} {.path {missing}} do{?es/} not exist under the project root; recording anyway.")
     }
-    project@artifacts = rel
+    config@artifacts = rel
   }
 
-  project = write_project_config(project)
-  invisible(project)
+  config = write_project_config(config)
+  invisible(config)
 }
 
 # Read a template YAML file and store it in the project database. The path is
@@ -1652,7 +1652,7 @@ marks_set = function(repo, question, items = NULL, comment = NULL, private_comme
 #' @param project Path to the project directory. Defaults to the working directory.
 #'
 #' @return The path of the written CSV file, invisibly.
-#' @seealso [export_comments()], [export_marks()], [marks_export()]
+#' @seealso [export_comments()], [export_feedback()], [marks_export()]
 #' @export
 #'
 #' @examples
@@ -1741,7 +1741,7 @@ export_scores = function(project = ".") {
 #'   under a subheading carrying the group's label. Defaults to `FALSE`.
 #'
 #' @return The paths of the written markdown files, invisibly.
-#' @seealso [export_scores()], [export_marks()], [marks_export()]
+#' @seealso [export_scores()], [export_feedback()], [marks_export()]
 #' @export
 #'
 #' @examples
@@ -1902,9 +1902,9 @@ export_comments = function(project = ".", group_headings = FALSE) {
 #'
 #' @examples
 #' \dontrun{
-#' export_marks("hw01")
+#' export_feedback("hw01")
 #' }
-export_marks = function(project = ".", group_headings = FALSE) {
+export_feedback = function(project = ".", group_headings = FALSE) {
   scores = export_scores(project)
   comments = export_comments(project, group_headings = group_headings)
   invisible(list(scores = scores, comments = comments))
@@ -1958,7 +1958,7 @@ find_repo_assignment = function(repo_dir, assignment_file, ext) {
 #' template's `source.path` (falling back to the first matching document), so the
 #' template's heading/div anchors line up with the student documents.
 #'
-#' @param path Path to the project directory. Defaults to the working directory.
+#' @param project Path to the project directory. Defaults to the working directory.
 #' @param template Optional override for the template stored in the project
 #'   database: a path to a template `.yaml` file or a `markermd_template` object.
 #'   When omitted, the database-stored template is used (and an error is raised
@@ -1978,8 +1978,8 @@ find_repo_assignment = function(repo_dir, assignment_file, ext) {
 #' # Validate against a template YAML instead of the stored one
 #' validate_project("hw01", template = "hw01-template.yaml")
 #' }
-validate_project = function(path = ".", template = NULL, use_qmd = TRUE) {
-  project = project_config(path)
+validate_project = function(project = ".", template = NULL, use_qmd = TRUE) {
+  config = project_config(project)
 
   template_obj = if (S7::S7_inherits(template, markermd_template)) {
     template
@@ -1991,17 +1991,17 @@ validate_project = function(path = ".", template = NULL, use_qmd = TRUE) {
   } else if (!is.null(template)) {
     cli::cli_abort("{.arg template} must be a template file path or a markermd_template object.")
   } else {
-    load_template_from_db(project@root, base_dir = project@root)
+    load_template_from_db(config@root, base_dir = config@root)
   }
   if (is.null(template_obj)) {
     cli::cli_abort(c(
       "No template is configured for this project.",
-      "i" = "Author one with {.code template(\"{project@root}\")}, import one with {.code template_import()}, or pass {.arg template}."
+      "i" = "Author one with {.code template(\"{config@root}\")}, import one with {.code template_import()}, or pass {.arg template}."
     ))
   }
   assert_template_compatible(template_obj)
 
-  repos_dir = project_repos_dir(project)
+  repos_dir = project_repos_dir(config)
 
   assignment_file = basename_or_null(attr(template_obj, "markermd_source_raw"))
   ext = if (use_qmd) "\\.qmd$" else "\\.Rmd$"
@@ -2063,7 +2063,7 @@ validate_project = function(path = ".", template = NULL, use_qmd = TRUE) {
 #' verbatim, which is what the bundled `markermd-fix-parsing` skill works
 #' from; unlike [validate_project()] it needs no stored template.
 #'
-#' @param path Path to an initialized markermd project directory.
+#' @param project Path to an initialized markermd project directory.
 #' @param use_qmd Logical. Match `.qmd` files (`TRUE`, the default) or `.Rmd`
 #'   files (`FALSE`).
 #' @return A data frame with one row per repository and columns `repo`, `file`
@@ -2077,11 +2077,11 @@ validate_project = function(path = ".", template = NULL, use_qmd = TRUE) {
 #' res[res$status != "ok", ]
 #' }
 #' @export
-parse_project = function(path = ".", use_qmd = TRUE) {
-  project = project_config(path)
-  repos_dir = project_repos_dir(project)
+parse_project = function(project = ".", use_qmd = TRUE) {
+  config = project_config(project)
+  repos_dir = project_repos_dir(config)
 
-  stored = with_database(project@root, db_template_list)
+  stored = with_database(config@root, db_template_list)
   assignment_file = basename_or_null(stored$source$path)
   ext = if (use_qmd) "\\.qmd$" else "\\.Rmd$"
 

@@ -4,10 +4,10 @@
 \alias{project_config}
 \title{Read a markermd project's configuration}
 \usage{
-project_config(path = ".")
+project_config(project = ".")
 }
 \arguments{
-\item{path}{Path to the project directory. Defaults to the working directory.}
+\item{project}{Path to the project directory. Defaults to the working directory.}
 }
 \value{
 A \code{markermd_project} object.

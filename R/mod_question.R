@@ -231,7 +231,7 @@ question_name_reset_script = function() {
 }
 
 # The page-head handler behind a question reorder (move_question() in
-# template_app()): moves a question card's wrapper before or after its
+# template_editor_app()): moves a question card's wrapper before or after its
 # neighbor in place, since re-inserting the UI would rebuild the inputs and
 # drop in-progress edits
 

@@ -8,7 +8,7 @@
 #   template into the project and records it in the config (via project_set())
 #   rather than offering a browser download
 
-template_app = function(ast, template_obj = NULL, source_path = NULL, project = NULL) {
+template_editor_app = function(ast, template_obj = NULL, source_path = NULL, project = NULL) {
 
   # Where the assignment's other files are listed from (see
   # assignment_files_root(), shared with assignment_outline()); the
@@ -1018,7 +1018,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
 template_app_standalone = function(ast, template_obj = NULL, assignment_path = NULL, source_path = NULL, project = NULL) {
 
   # Get the base template app components
-  app_components = template_app(ast, template_obj, source_path = source_path, project = project)
+  app_components = template_editor_app(ast, template_obj, source_path = source_path, project = project)
 
   # A simple fillable page with a plain header bar: the app has a single view,
   # so a navbar whose only tab duplicates the page title earns nothing
@@ -1065,13 +1065,14 @@ question_names_except = function(modules, except = NULL) {
 
 #' Launch the markermd Template Creation Application
 #'
-#' @param assignment_path Assignment source or existing template. Can be:
+#' @param source Assignment source or existing template. Can be:
 #'   - Character path to an initialized markermd project directory (one
 #'     containing `.markermd/config.yml`; see [init_project()]). The template is
 #'     authored against the project's key (solution) repository, any configured
 #'     template is preloaded for editing, and saving writes the template into the
 #'     project and records it in the config.
-#'   - Character path to local directory containing assignment
+#'   - Character path to an assignment file (`.qmd`/`.Rmd`) or a local
+#'     directory containing one
 #'   - Character GitHub repo in format "owner/repo"
 #'   - Character path to a saved template (`.yaml`/`.yml`)
 #'   - markermd_template S7 object
@@ -1079,10 +1080,10 @@ question_names_except = function(modules, except = NULL) {
 #' @param filename Character string. Glob pattern to match Rmd/qmd file to grade (ignored for templates). Default glob matches any .Rmd or .qmd file.
 #' @param assignment Character string. Optional path to the assignment document,
 #'   used when loading a template whose stored `source.path` cannot be located.
-#' @param ... Additional arguments passed to shiny::shinyApp()
+#' @param ... Additional arguments passed to [shiny::runApp()]
 #'
-#' @return A Shiny app object (from [shiny::shinyApp()]); printing it at an
-#'   interactive console runs the template editor.
+#' @return The value returned by [shiny::runApp()] when the app exits; called
+#'   for its side effect of running the template editor.
 #' @export
 #'
 #' @examples
@@ -1095,10 +1096,10 @@ question_names_except = function(modules, except = NULL) {
 #'
 #' # Local assignment with specific filename
 #' template("/path/to/assignment", filename = "homework.Rmd")
-#' 
+#'
 #' # Remote GitHub repo
 #' template("username/repo-name", local_dir = "/tmp/grading", filename = "assignment.qmd")
-#' 
+#'
 #' # Load existing template from file
 #' template("/path/to/saved_template.yaml")
 #'
@@ -1106,11 +1107,26 @@ question_names_except = function(modules, except = NULL) {
 #' my_template = read_template_yaml("/path/to/template.yaml")
 #' template(my_template)
 #' }
-template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", assignment = NULL, ...) {
+template = function(source, local_dir = NULL, filename = "*.[Rq]md", assignment = NULL, ...) {
+  app = template_app(source, local_dir = local_dir, filename = filename, assignment = assignment)
+  shiny::runApp(app, ...)
+}
+
+# Build the Shiny application object for the template editor without running
+# it (template() runs it; the tests pass it to AppDriver)
+#
+# source: project directory, assignment file or directory, saved template
+#   YAML, markermd_template object or GitHub "<owner>/<repo>" (see template())
+# local_dir: clone directory for a GitHub source
+# filename: glob matching the assignment document in a directory source
+# assignment: optional assignment document for a template whose source.path
+#   cannot be located
+
+template_app = function(source, local_dir = NULL, filename = "*.[Rq]md", assignment = NULL) {
   
   # Validate inputs
-  if (missing(assignment_path)) {
-    cli::cli_abort("assignment_path is required")
+  if (missing(source)) {
+    cli::cli_abort("{.arg source} is required.")
   }
   
   # Determine what type of input we have
@@ -1119,25 +1135,25 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", as
   project = NULL
   app = NULL
 
-  if (S7::S7_inherits(assignment_path, markermd_template)) {
+  if (S7::S7_inherits(source, markermd_template)) {
     # Input is an S7 template object
-    template_obj = assignment_path
+    template_obj = source
     is_template_mode = TRUE
 
-  } else if (is_markermd_project(assignment_path)) {
+  } else if (is_markermd_project(source)) {
     # Input is an initialized markermd project: author the template against the
     # project's key (solution) repo and preload any configured template.
-    app = template_app_from_project(assignment_path, filename, assignment)
+    app = template_app_from_project(source, filename, assignment)
 
-  } else if (is.character(assignment_path) && length(assignment_path) == 1) {
+  } else if (is.character(source) && length(source) == 1) {
     # Input is a character string - could be assignment path or template file
 
-    if (grepl("\\.ya?ml$", assignment_path, ignore.case = TRUE)) {
+    if (grepl("\\.ya?ml$", source, ignore.case = TRUE)) {
       # Input is a saved template YAML file
-      if (!file.exists(assignment_path)) {
-        cli::cli_abort("Template file does not exist: {assignment_path}")
+      if (!file.exists(source)) {
+        cli::cli_abort("Template file does not exist: {source}")
       }
-      template_obj = read_template_yaml(assignment_path, assignment = assignment, require_ast = TRUE)
+      template_obj = read_template_yaml(source, assignment = assignment, require_ast = TRUE)
       is_template_mode = TRUE
 
     } else {
@@ -1146,8 +1162,8 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", as
     }
 
   } else {
-    input_desc = if (is.character(assignment_path)) paste0("a length-", length(assignment_path), " character vector") else paste0("an object of class ", class(assignment_path)[1])
-    cli::cli_abort("assignment_path must be a single character string (an assignment file, a directory containing one, a saved template .yaml, or a GitHub '<owner>/<repo>') or a markermd_template object, not {input_desc}.")
+    input_desc = if (is.character(source)) paste0("a length-", length(source), " character vector") else paste0("an object of class ", class(source)[1])
+    cli::cli_abort("{.arg source} must be a single character string (an assignment file, a directory containing one, a saved template .yaml, or a GitHub '<owner>/<repo>') or a markermd_template object, not {input_desc}.")
   }
   
   # Handle template mode vs assignment mode (project mode already built `app`)
@@ -1161,10 +1177,10 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", as
     source_path = attr(template_obj, "markermd_source_path")
 
     # Create footer path - show original input for template objects, full path for files
-    footer_path = if (S7::S7_inherits(assignment_path, markermd_template)) {
+    footer_path = if (S7::S7_inherits(source, markermd_template)) {
       "Template Object"
     } else {
-      as.character(assignment_path)  # Show full path for template files
+      as.character(source)  # Show full path for template files
     }
 
     # Create app with template data
@@ -1175,42 +1191,42 @@ template = function(assignment_path, local_dir = NULL, filename = "*.[Rq]md", as
     # a GitHub "<owner>/<repo>" to clone. A name with a document or template
     # extension is a mistyped local path, never a repository, even though it
     # matches the owner/repo shape.
-    looks_like_file = tolower(fs::path_ext(assignment_path)) %in% c("qmd", "rmd", "yaml", "yml")
-    is_github_repo = grepl("^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$", assignment_path) &&
-      !file.exists(assignment_path) && !looks_like_file
+    looks_like_file = tolower(fs::path_ext(source)) %in% c("qmd", "rmd", "yaml", "yml")
+    is_github_repo = grepl("^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$", source) &&
+      !file.exists(source) && !looks_like_file
 
     if (is_github_repo) {
       if (is.null(local_dir)) {
-        cli::cli_abort("local_dir is required when cloning the GitHub repository '{assignment_path}'.")
+        cli::cli_abort("local_dir is required when cloning the GitHub repository '{source}'.")
       }
-      repo_path = setup_assignment_repo(assignment_path, local_dir, is_github_repo = TRUE)
+      repo_path = setup_assignment_repo(source, local_dir, is_github_repo = TRUE)
       file_path = resolve_assignment_file(repo_path, filename)
 
-    } else if (dir.exists(assignment_path)) {
-      file_path = resolve_assignment_file(assignment_path, filename)
+    } else if (dir.exists(source)) {
+      file_path = resolve_assignment_file(source, filename)
 
-    } else if (file.exists(assignment_path)) {
-      if (!tolower(fs::path_ext(assignment_path)) %in% c("qmd", "rmd")) {
-        cli::cli_abort("Assignment file must be a .qmd or .Rmd document: {assignment_path}")
+    } else if (file.exists(source)) {
+      if (!tolower(fs::path_ext(source)) %in% c("qmd", "rmd")) {
+        cli::cli_abort("Assignment file must be a .qmd or .Rmd document: {source}")
       }
-      file_path = normalizePath(assignment_path)
+      file_path = normalizePath(source)
 
     } else {
-      cli::cli_abort("assignment_path not found locally: '{assignment_path}'.\nPass a path to an assignment file (.qmd/.Rmd), a directory containing one, a saved template (.yaml), a markermd project directory, or a GitHub repository as '<owner>/<repo>'.")
+      cli::cli_abort("{.arg source} not found locally: '{source}'.\nPass a path to an assignment file (.qmd/.Rmd), a directory containing one, a saved template (.yaml), a markermd project directory, or a GitHub repository as '<owner>/<repo>'.")
     }
 
     ast = parse_assignment_document(file_path)
-    app = template_app_standalone(shiny::reactiveVal(ast), NULL, assignment_path, source_path = file_path)
+    app = template_app_standalone(shiny::reactiveVal(ast), NULL, source, source_path = file_path)
   }
 
-  shiny::shinyApp(ui=app$ui, server=app$server, ...)
+  shiny::shinyApp(ui = app$ui, server = app$server)
 }
 
 # Build the standalone template app for an initialized markermd project.
 #
 # Authors the template against the project's key (solution) repository and
 # preloads the template stored in the project database (if any) for editing. The
-# app saves directly back into the project database (see template_app()).
+# app saves directly back into the project database (see template_editor_app()).
 #
 # path: project root directory
 # filename: glob used to locate the assignment document within the key repo

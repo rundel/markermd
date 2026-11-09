@@ -15,9 +15,9 @@ NULL
 #' the attribute/content helpers (`has_class()`, `has_id()`, `has_text()`,
 #' `has_label()`, `has_option()`, `has_engine()`).
 #' @param type Character. The condition type. Must be one of the values
-#'   returned by get_allowed_filter_condition_types().
+#'   returned by filter_condition_types().
 #' @param value Character. The condition value. For "node type" this must be a
-#'   node kind from get_allowed_node_types() (excluding "Any node"); for
+#'   node kind from rule_node_types() (excluding "Any node"); for
 #'   "has option" it is a Quarto cell option as written on a `#|` line
 #'   ("eval" for key presence, "eval: false" for a key/value test); for
 #'   "has engine" it is a cell engine name (e.g. "r"); for the other types it

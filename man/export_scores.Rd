@@ -30,5 +30,5 @@ export_scores("hw01")
 }
 }
 \seealso{
-\code{\link[=export_comments]{export_comments()}}, \code{\link[=export_marks]{export_marks()}}, \code{\link[=marks_export]{marks_export()}}
+\code{\link[=export_comments]{export_comments()}}, \code{\link[=export_feedback]{export_feedback()}}, \code{\link[=marks_export]{marks_export()}}
 }

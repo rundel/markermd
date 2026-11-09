@@ -11,7 +11,7 @@ template_question_names = function(template) {
 # template: markermd_template S7 object
 # name: Character. Question name
 
-template_question = function(template, name) {
+template_question_by_name = function(template, name) {
   for (q in template@questions) {
     if (q@name == name) {
       return(q)

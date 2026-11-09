@@ -4,10 +4,10 @@
 \alias{parse_assignment_document}
 \title{Parse an assignment document into a Pandoc AST}
 \usage{
-parse_assignment_document(file_path)
+parse_assignment_document(path)
 }
 \arguments{
-\item{file_path}{Character. Path to the assignment file}
+\item{path}{Character. Path to the assignment file}
 }
 \value{
 A q2r \code{pandoc} AST object for the parsed document.

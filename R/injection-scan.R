@@ -1196,7 +1196,7 @@ drop_baseline_findings = function(findings, key_findings, n_repos) {
 #' are at least four), since both are starter text rather than a student's
 #' doing.
 #'
-#' @param path Path to an initialized markermd project directory.
+#' @param project Path to an initialized markermd project directory.
 #' @param artifacts Logical. Also scan the rendered HTML reports found under
 #'   the project's configured artifacts directories (`TRUE`, the default).
 #' @return A data frame with one row per finding, ordered by repository and
@@ -1224,15 +1224,15 @@ drop_baseline_findings = function(findings, key_findings, n_repos) {
 #' res[res$severity == "high", ]
 #' }
 #' @export
-scan_project = function(path = ".", artifacts = TRUE) {
+scan_project = function(project = ".", artifacts = TRUE) {
   if (!rlang::is_bool(artifacts)) {
     cli::cli_abort("{.arg artifacts} must be {.code TRUE} or {.code FALSE}.")
   }
-  project = project_config(path)
-  repos_dir = project_repos_dir(project)
-  repos = project_repo_names(project)
-  rubric = project_rubric_descriptions(project@root)
-  root = fs::path_real(project@root)
+  config = project_config(project)
+  repos_dir = project_repos_dir(config)
+  repos = project_repo_names(config)
+  rubric = project_rubric_descriptions(config@root)
+  root = fs::path_real(config@root)
 
   label_findings = function(found, repo, source, prefix) {
     if (nrow(found) == 0) {
@@ -1250,7 +1250,7 @@ scan_project = function(path = ".", artifacts = TRUE) {
   })
 
   if (artifacts && length(repos) > 0) {
-    reports = attr(suppressWarnings(resolve_repo_artifacts(project, repos)), "candidates")
+    reports = attr(suppressWarnings(resolve_repo_artifacts(config, repos)), "candidates")
     rows = c(rows, lapply(repos, function(repo) {
       do.call(rbind, lapply(reports[[repo]], function(report) {
         found = scan_html_file(report, rubric)
@@ -1270,8 +1270,8 @@ scan_project = function(path = ".", artifacts = TRUE) {
   }
   out = do.call(rbind, rows)
 
-  key_findings = if (!is.na(project@key) && fs::dir_exists(fs::path(project@root, project@key))) {
-    scan_directory(fs::path(project@root, project@key), rubric)
+  key_findings = if (!is.na(config@key) && fs::dir_exists(fs::path(config@root, config@key))) {
+    scan_directory(fs::path(config@root, config@key), rubric)
   } else {
     empty_findings()
   }

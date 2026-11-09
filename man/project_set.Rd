@@ -5,7 +5,7 @@
 \title{Change a markermd project's configuration}
 \usage{
 project_set(
-  path = ".",
+  project = ".",
   repos = NULL,
   comments = NULL,
   template = NULL,
@@ -14,7 +14,7 @@ project_set(
 )
 }
 \arguments{
-\item{path}{Path to the project directory. Defaults to the working directory.}
+\item{project}{Path to the project directory. Defaults to the working directory.}
 
 \item{repos}{Root-relative repos directory to record. Warns if it does not exist.}
 

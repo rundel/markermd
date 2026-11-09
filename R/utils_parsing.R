@@ -13,19 +13,19 @@
 #' line of the file as written. If parsing yields an empty AST (no blocks)
 #' an error is reported.
 #'
-#' @param file_path Character. Path to the assignment file
+#' @param path Character. Path to the assignment file
 #' @return A q2r `pandoc` AST object for the parsed document.
 #' @export
-parse_assignment_document = function(file_path) {
-  if (!file.exists(file_path)) {
-    cli::cli_abort("Assignment file does not exist: {file_path}")
+parse_assignment_document = function(path) {
+  if (!file.exists(path)) {
+    cli::cli_abort("Assignment file does not exist: {path}")
   }
 
-  lines = readLines(file_path, warn = FALSE)
+  lines = readLines(path, warn = FALSE)
   normalized = normalize_knitr_chunks(lines)
   line_map = attr(normalized, "line_map")
   text = paste(normalized, collapse = "\n")
-  file_name = basename(file_path)
+  file_name = basename(path)
   # The error is re-raised with the file name and the original line numbers
   # on its diagnostics; the warning handler sits outside so warnings
   # signaled before the error are still muffled
@@ -39,7 +39,7 @@ parse_assignment_document = function(file_path) {
   ast@diagnostics = lapply(ast@diagnostics, function(d) relabel_diagnostic(d, line_map, file_name))
 
   if (length(ast@blocks@content) == 0) {
-    cli::cli_abort("Failed to parse assignment file (empty AST): {file_path}")
+    cli::cli_abort("Failed to parse assignment file (empty AST): {path}")
   }
 
   ast

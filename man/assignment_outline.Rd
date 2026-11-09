@@ -4,13 +4,13 @@
 \alias{assignment_outline}
 \title{Outline the gradable sections of an assignment}
 \usage{
-assignment_outline(assignment_path, filename = "*.[Rq]md", template = NULL)
+assignment_outline(source, filename = "*.[Rq]md", template = NULL)
 }
 \arguments{
-\item{assignment_path}{Path to an assignment file (\code{.qmd}/\code{.Rmd}) or a
+\item{source}{Path to an assignment file (\code{.qmd}/\code{.Rmd}) or a
 directory containing one.}
 
-\item{filename}{Glob used to find the assignment when \code{assignment_path} is a
+\item{filename}{Glob used to find the assignment when \code{source} is a
 directory. Defaults to any \code{.Rmd}/\code{.qmd} file.}
 
 \item{template}{Optional \code{markermd_template}. When given, a heading's counts
@@ -29,7 +29,7 @@ HTML comments, which never render, are not counted anywhere). The
 resolved source file is attached as the \code{"source_file"} attribute, and
 the assignment's other files (everything else in the repository, which a
 template question can cover with \verb{file:}) as the \code{"files"} attribute: a
-data frame with \code{path} (relative to the repository root: \code{assignment_path}
+data frame with \code{path} (relative to the repository root: \code{source}
 when it is a directory, else the enclosing git repository when the
 document sits at most two directories below it, else the document's
 directory), \code{size} (bytes), \code{filtered} (\code{TRUE} for hidden files, render

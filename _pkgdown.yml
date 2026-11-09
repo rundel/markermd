@@ -25,9 +25,9 @@ reference:
   - assignment_outline
   - template_import
   - template_export
-  - add_question
-  - remove_question
-  - get_question
+  - template_add_question
+  - template_remove_question
+  - template_question
   - template_methods
   - parse_assignment_document
 - title: Rubrics
@@ -44,7 +44,7 @@ reference:
   - marks_set
   - export_scores
   - export_comments
-  - export_marks
+  - export_feedback
 - title: Snapshots
   desc: Named, annotated copies of the grading state kept in the project database, and how to compare and restore them.
   contents:
@@ -93,9 +93,9 @@ reference:
   - markermd_rubric_group
   - markermd_grade_state
   - markermd_project
-  - get_allowed_rule_verbs
-  - get_allowed_node_types
-  - get_allowed_filter_condition_types
+  - rule_verbs
+  - rule_node_types
+  - filter_condition_types
   - template_classes
   - project_classes
   - rule_classes

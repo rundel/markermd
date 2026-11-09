@@ -4,10 +4,10 @@
 \alias{project_sitrep}
 \title{Report a markermd project's status}
 \usage{
-project_sitrep(path = ".")
+project_sitrep(project = ".")
 }
 \arguments{
-\item{path}{Path to the project directory. Defaults to the working directory.}
+\item{project}{Path to the project directory. Defaults to the working directory.}
 }
 \value{
 The project's \code{markermd_project} object, invisibly.

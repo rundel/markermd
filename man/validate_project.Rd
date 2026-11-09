@@ -4,10 +4,10 @@
 \alias{validate_project}
 \title{Validate a project's student repositories against its template}
 \usage{
-validate_project(path = ".", template = NULL, use_qmd = TRUE)
+validate_project(project = ".", template = NULL, use_qmd = TRUE)
 }
 \arguments{
-\item{path}{Path to the project directory. Defaults to the working directory.}
+\item{project}{Path to the project directory. Defaults to the working directory.}
 
 \item{template}{Optional override for the template stored in the project
 database: a path to a template \code{.yaml} file or a \code{markermd_template} object.

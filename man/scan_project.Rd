@@ -4,10 +4,10 @@
 \alias{scan_project}
 \title{Scan a project's submissions for prompt injection attempts}
 \usage{
-scan_project(path = ".", artifacts = TRUE)
+scan_project(project = ".", artifacts = TRUE)
 }
 \arguments{
-\item{path}{Path to an initialized markermd project directory.}
+\item{project}{Path to an initialized markermd project directory.}
 
 \item{artifacts}{Logical. Also scan the rendered HTML reports found under
 the project's configured artifacts directories (\code{TRUE}, the default).}

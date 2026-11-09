@@ -18,7 +18,7 @@ rule_item_ui = function(rule = NULL, input_id, verb_inputs) {
     selected_verb = rule@verb
   } else {
     selected_node_type = character(0)
-    selected_verb = get_allowed_rule_verbs()[1]
+    selected_verb = rule_verbs()[1]
   }
 
   shiny::div(
@@ -41,7 +41,7 @@ rule_item_ui = function(rule = NULL, input_id, verb_inputs) {
         shiny::selectizeInput(
           input_id("node_types"),
           NULL,
-          choices = setdiff(get_allowed_node_types(), "Any node"),
+          choices = setdiff(rule_node_types(), "Any node"),
           selected = selected_node_type,
           multiple = TRUE,
           width = "100%",
@@ -62,7 +62,7 @@ rule_item_ui = function(rule = NULL, input_id, verb_inputs) {
         shiny::selectInput(
           input_id("verb"),
           NULL,
-          choices = get_allowed_rule_verbs(),
+          choices = rule_verbs(),
           selected = selected_verb,
           width = "100%",
           selectize = FALSE

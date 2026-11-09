@@ -46,5 +46,5 @@ export_comments("hw01", group_headings = TRUE)
 }
 }
 \seealso{
-\code{\link[=export_scores]{export_scores()}}, \code{\link[=export_marks]{export_marks()}}, \code{\link[=marks_export]{marks_export()}}
+\code{\link[=export_scores]{export_scores()}}, \code{\link[=export_feedback]{export_feedback()}}, \code{\link[=marks_export]{marks_export()}}
 }

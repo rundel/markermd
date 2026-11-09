@@ -9,10 +9,10 @@ markermd_rule(node_type = character(0), verb = character(0), values = NULL)
 \arguments{
 \item{node_type}{Character vector. One or more AST node types this rule
 applies to, combined as a logical OR. Each must be one of the values
-returned by get_allowed_node_types().}
+returned by rule_node_types().}
 
 \item{verb}{Character. The validation verb/action to perform.
-Must be one of the values returned by get_allowed_rule_verbs().}
+Must be one of the values returned by rule_verbs().}
 
 \item{values}{Vector. The values/parameters for the validation.
 Type and format depend on the verb:

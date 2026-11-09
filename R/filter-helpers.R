@@ -16,7 +16,7 @@ NULL
 #'
 #' @return Character vector of allowed filter condition types
 #' @export
-get_allowed_filter_condition_types = function() {
+filter_condition_types = function() {
   c(
     "node type",
     "has class",
@@ -46,7 +46,7 @@ validate_filter_condition_type = function(type) {
     return("Filter condition type cannot be empty or NA")
   }
 
-  allowed_types = get_allowed_filter_condition_types()
+  allowed_types = filter_condition_types()
   if (!type %in% allowed_types) {
     return(paste0("Filter condition type must be one of: ", paste(allowed_types, collapse = ", ")))
   }
@@ -56,7 +56,7 @@ validate_filter_condition_type = function(type) {
 
 # Validates a filter condition value according to the requirements of its
 # condition type. "node type" values are one or more node kinds from
-# get_allowed_node_types() (excluding "Any node"), combined as a logical OR;
+# rule_node_types() (excluding "Any node"), combined as a logical OR;
 # the other types take a single character string (empty allowed). Returns a
 # character error message if invalid, NULL if valid.
 #
@@ -83,7 +83,7 @@ validate_filter_condition_value = function(type, value) {
     if (any(is.na(value))) {
       return("Filter condition value cannot be NA")
     }
-    allowed_kinds = setdiff(get_allowed_node_types(), "Any node")
+    allowed_kinds = setdiff(rule_node_types(), "Any node")
     if (!all(value %in% allowed_kinds)) {
       return(paste0("Node type value must be one of: ", paste(allowed_kinds, collapse = ", ")))
     }
@@ -102,7 +102,7 @@ validate_filter_condition_value = function(type, value) {
 }
 
 # Display choices for the filter condition-type select: the
-# get_allowed_filter_condition_types() values with display labels annotating
+# filter_condition_types() values with display labels annotating
 # each type's matching semantics (exact, regex, glob, or the option
 # mini-syntax), so the semantics stay visible after a value has been typed.
 # Returns a named character vector suitable for shiny select choices.
@@ -206,7 +206,7 @@ filter_node_kind_exprs = function() {
 # Quoted q2r predicate expression for a friendly node kind, errors on unknown
 # kinds so vocabulary drift from q2r_node_kind() is caught loudly
 #
-# kind: Single node kind string (a get_allowed_node_types() value, not "Any node")
+# kind: Single node kind string (a rule_node_types() value, not "Any node")
 
 filter_node_kind_expr = function(kind) {
   expr = filter_node_kind_exprs()[[kind]]

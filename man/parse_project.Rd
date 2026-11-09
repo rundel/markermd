@@ -4,10 +4,10 @@
 \alias{parse_project}
 \title{Check that every student repository's assignment document parses}
 \usage{
-parse_project(path = ".", use_qmd = TRUE)
+parse_project(project = ".", use_qmd = TRUE)
 }
 \arguments{
-\item{path}{Path to an initialized markermd project directory.}
+\item{project}{Path to an initialized markermd project directory.}
 
 \item{use_qmd}{Logical. Match \code{.qmd} files (\code{TRUE}, the default) or \code{.Rmd}
 files (\code{FALSE}).}

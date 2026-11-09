@@ -14,7 +14,7 @@ NULL
 #'
 #' @return Character vector of allowed node types
 #' @export
-get_allowed_node_types = function() {
+rule_node_types = function() {
   c(
     "Any node",
     "Heading",
@@ -42,7 +42,7 @@ get_allowed_node_types = function() {
 #'
 #' @return Character vector of allowed rule verbs
 #' @export
-get_allowed_rule_verbs = function() {
+rule_verbs = function() {
   c(
     "has at least",
     "has at most",
@@ -77,7 +77,7 @@ validate_node_type = function(node_type) {
     return("Node type values must be unique")
   }
 
-  allowed_types = get_allowed_node_types()
+  allowed_types = rule_node_types()
   if (!all(node_type %in% allowed_types)) {
     return(paste0("Node type must be one of: ", paste(allowed_types, collapse = ", ")))
   }
@@ -103,7 +103,7 @@ validate_rule_verb = function(verb) {
     return("Rule verb cannot be empty or NA")
   }
   
-  allowed_verbs = get_allowed_rule_verbs()
+  allowed_verbs = rule_verbs()
   if (!verb %in% allowed_verbs) {
     return(paste0("Rule verb must be one of: ", paste(allowed_verbs, collapse = ", ")))
   }

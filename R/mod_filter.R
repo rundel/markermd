@@ -102,7 +102,7 @@ create_filter_value_input = function(type, value, value_id) {
       shiny::selectizeInput(
         value_id,
         NULL,
-        choices = setdiff(get_allowed_node_types(), "Any node"),
+        choices = setdiff(rule_node_types(), "Any node"),
         selected = value,
         multiple = TRUE,
         width = "100%",

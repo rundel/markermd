@@ -370,7 +370,7 @@ mark_content_server = function(id, template, collection, artifact_paths, artifac
       highlight_ranges = NULL
 
       if (!is.null(current_question) && !is.null(template)) {
-        question_obj = template_question(template, current_question)
+        question_obj = template_question_by_name(template, current_question)
 
 
         if (!is.null(question_obj) && length(question_obj@selected_nodes@node_ids) > 0) {
@@ -417,7 +417,7 @@ mark_content_server = function(id, template, collection, artifact_paths, artifac
     # between two questions on the document.
     file_question = shiny::reactiveVal(NULL)
     shiny::observe({
-      question = if (is.null(template) || is.null(selected_question())) NULL else template_question(template, selected_question())
+      question = if (is.null(template) || is.null(selected_question())) NULL else template_question_by_name(template, selected_question())
       question = if (!is.null(question) && is_file_question(question)) question else NULL
       if (!identical(question, shiny::isolate(file_question()))) {
         file_question(question)
@@ -455,7 +455,7 @@ mark_content_server = function(id, template, collection, artifact_paths, artifac
         return()
       }
 
-      question_obj = template_question(template, question_name)
+      question_obj = template_question_by_name(template, question_name)
       if (is.null(question_obj)) {
         return()
       }

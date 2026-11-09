@@ -90,74 +90,74 @@ S7::method(length, markermd_template) = function(x) {
 
 # Utility functions
 
-#' Add Question to Template
-#' @param tmpl template object
-#' @param q question object
-#' @return The `markermd_template` object with `q` appended to its questions.
+#' Add a question to a template
+#' @param template A `markermd_template` object.
+#' @param question A `markermd_question` object.
+#' @return The `markermd_template` object with `question` appended to its
+#'   questions.
 #' @export
-add_question = function(tmpl, q) {
-  if (!S7::S7_inherits(tmpl, markermd_template)) {
-    cli::cli_abort("tmpl must be a markermd_template object")
+template_add_question = function(template, question) {
+  if (!S7::S7_inherits(template, markermd_template)) {
+    cli::cli_abort("{.arg template} must be a markermd_template object.")
   }
-  if (!S7::S7_inherits(q, markermd_question)) {
-    cli::cli_abort("q must be a markermd_question object")
+  if (!S7::S7_inherits(question, markermd_question)) {
+    cli::cli_abort("{.arg question} must be a markermd_question object.")
   }
-  
-  # Check for duplicate ID
-  existing_ids = sapply(tmpl@questions, function(x) x@id)
-  if (q@id %in% existing_ids) {
-    cli::cli_abort("Question ID {q@id} already exists in template")
+
+  existing_ids = vapply(template@questions, function(x) x@id, integer(1))
+  if (question@id %in% existing_ids) {
+    cli::cli_abort("Question ID {question@id} already exists in the template.")
   }
-  
-  # Check for duplicate name
-  existing_names = sapply(tmpl@questions, function(x) x@name)
-  if (q@name %in% existing_names) {
-    cli::cli_abort("Question name '{q@name}' already exists in template")
+
+  existing_names = vapply(template@questions, function(x) x@name, character(1))
+  if (question@name %in% existing_names) {
+    cli::cli_abort("Question name {.val {question@name}} already exists in the template.")
   }
-  
-  tmpl@questions = c(tmpl@questions, list(q))
-  tmpl
+
+  template@questions = c(template@questions, list(question))
+  template
 }
 
-#' Remove Question from Template
-#' @param tmpl template object
-#' @param id Integer question ID to remove
+#' Remove a question from a template
+#' @param template A `markermd_template` object.
+#' @param id Integer question ID to remove.
 #' @return The `markermd_template` object without the matching question
 #'   (returned unchanged, with a warning, when `id` is not found).
 #' @export
-remove_question = function(tmpl, id) {
-  if (!S7::S7_inherits(tmpl, markermd_template)) {
-    cli::cli_abort("tmpl must be a markermd_template object")
+template_remove_question = function(template, id) {
+  if (!S7::S7_inherits(template, markermd_template)) {
+    cli::cli_abort("{.arg template} must be a markermd_template object.")
   }
-  
-  question_ids = sapply(tmpl@questions, function(x) x@id)
+
+  question_ids = vapply(template@questions, function(x) x@id, integer(1))
   idx = which(question_ids == id)
-  
+
   if (length(idx) == 0) {
-    warning("Question with ID ", id, " not found")
-    return(tmpl)
+    cli::cli_warn("Question with ID {id} not found.")
+    return(template)
   }
-  
-  tmpl@questions = tmpl@questions[-idx]
-  tmpl
+
+  template@questions = template@questions[-idx]
+  template
 }
 
-#' Get Question by ID
-#' @param tmpl template object
-#' @param id Integer question ID
-#' @return The matching `markermd_question` object, or `NULL` when `id` is not found.
+#' Get a template's question by ID
+#' @param template A `markermd_template` object.
+#' @param id Integer question ID.
+#' @return The matching `markermd_question` object, or `NULL` when `id` is not
+#'   found.
 #' @export
-get_question = function(tmpl, id) {
-  if (!S7::S7_inherits(tmpl, markermd_template)) {
-    cli::cli_abort("tmpl must be a markermd_template object")
+template_question = function(template, id) {
+  if (!S7::S7_inherits(template, markermd_template)) {
+    cli::cli_abort("{.arg template} must be a markermd_template object.")
   }
-  
-  question_ids = sapply(tmpl@questions, function(x) x@id)
+
+  question_ids = vapply(template@questions, function(x) x@id, integer(1))
   idx = which(question_ids == id)
-  
+
   if (length(idx) == 0) {
     return(NULL)
   }
-  
-  tmpl@questions[[idx]]
+
+  template@questions[[idx]]
 }
