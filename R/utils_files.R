@@ -214,6 +214,36 @@ file_view_ui = function(path, label, editor_id, note = NULL) {
   htmltools::div(header, body)
 }
 
+# The directory an assignment's other files are listed from, and that template
+# file paths are relative to: the repository root. That is the given key
+# directory when there is one (a project's paths.key, or the directory handed
+# to assignment_outline()); otherwise the nearest enclosing git repository
+# when the document sits at most max_depth directories below it; otherwise the
+# document's own directory. The depth limit keeps a loose document inside some
+# unrelated outer repository (an example shipped in a package's source tree)
+# from listing that whole repository.
+#
+# file: Path to the assignment document
+# key_dir: The key directory, or NULL
+# max_depth: How many directories above the document's to look for .git
+
+assignment_files_root = function(file, key_dir = NULL, max_depth = 2) {
+  if (!is.null(key_dir)) {
+    return(normalizePath(key_dir, winslash = "/"))
+  }
+  dir = normalizePath(dirname(file), winslash = "/")
+  candidate = dir
+  for (i in 0:max_depth) {
+    if (file.exists(file.path(candidate, ".git"))) {
+      return(candidate)
+    }
+    parent = dirname(candidate)
+    if (identical(parent, candidate)) break
+    candidate = parent
+  }
+  dir
+}
+
 # The files an assignment could add to its template: everything under the key
 # (solution) directory except .git and the Quarto document itself, each
 # marked as filtered (hidden by default in template()'s Add files list) when

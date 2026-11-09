@@ -56,3 +56,32 @@ test_that("the anchors from assignment_outline resolve in a written template", {
   back = markermd::read_template_yaml(path, require_ast = TRUE)
   expect_equal(back@questions[[1]]@selected_nodes@node_ids, anchor)
 })
+
+test_that("a document in a key subdirectory lists repository-relative files everywhere", {
+  repo = normalizePath(withr::local_tempdir("outline_root_"), winslash = "/")
+  gert::git_init(repo)
+  dir.create(file.path(repo, "hw"))
+  dir.create(file.path(repo, "data"))
+  doc = file.path(repo, "hw", "hw1.qmd")
+  writeLines(c("# Q1", "", "Answer."), doc)
+  writeLines("x,y", file.path(repo, "data", "x.csv"))
+
+  # assignment_outline() on the document finds the git repository root
+  by_file = attr(markermd::assignment_outline(doc), "files")$path
+  expect_true("data/x.csv" %in% by_file)
+  expect_false("hw/hw1.qmd" %in% by_file)
+
+  # ... the same root template() uses, with or without the project's key
+  expect_equal(markermd:::assignment_files_root(doc), repo)
+  expect_equal(markermd:::assignment_files_root(doc, key_dir = repo), repo)
+})
+
+test_that("a loose document deep inside an unrelated repository lists its own directory", {
+  outer = normalizePath(withr::local_tempdir("outline_outer_"), winslash = "/")
+  gert::git_init(outer)
+  deep = file.path(outer, "a", "b", "c")
+  dir.create(deep, recursive = TRUE)
+  doc = file.path(deep, "hw1.qmd")
+  writeLines(c("# Q1", "", "Answer."), doc)
+  expect_equal(markermd:::assignment_files_root(doc), deep)
+})

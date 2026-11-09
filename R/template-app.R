@@ -10,13 +10,14 @@
 
 template_app = function(ast, template_obj = NULL, source_path = NULL, project = NULL) {
 
-  # Where the assignment's other files are listed from: the project's key
-  # directory, else the Quarto document's directory; the document's path
-  # relative to it is never offered as a file
-  files_root = if (!is.null(project) && !is.na(project@key)) {
-    as.character(fs::path(project@root, project@key))
-  } else if (!is.null(source_path)) {
-    dirname(source_path)
+  # Where the assignment's other files are listed from (see
+  # assignment_files_root(), shared with assignment_outline()); the
+  # document's path relative to it is never offered as a file
+  key_dir = if (!is.null(project) && !is.na(project@key)) as.character(fs::path(project@root, project@key))
+  files_root = if (!is.null(source_path)) {
+    assignment_files_root(source_path, key_dir = key_dir)
+  } else {
+    key_dir
   }
   doc_rel = if (!is.null(files_root) && !is.null(source_path)) {
     as.character(fs::path_rel(normalizePath(source_path, winslash = "/", mustWork = FALSE), normalizePath(files_root, winslash = "/")))
