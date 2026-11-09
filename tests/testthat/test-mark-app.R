@@ -83,12 +83,12 @@ test_that("grading interactions patch the score display in place", {
   item_event(app, "item_0", "points", 4)
   app$wait_for_idle()
 
-  app$click(selector = "#rubric_module-item_0-hotkey_btn")
+  app$click(selector = "#rubric_module-grade-item_0-hotkey_btn")
   app$wait_for_idle()
   expect_equal(score_display(), "4 / 30 pts")
 
   # Deselecting returns the score to zero
-  app$click(selector = "#rubric_module-item_0-hotkey_btn")
+  app$click(selector = "#rubric_module-grade-item_0-hotkey_btn")
   app$wait_for_idle()
   expect_equal(score_display(), "0 / 30 pts")
 })

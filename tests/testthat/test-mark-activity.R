@@ -21,8 +21,8 @@ test_that("changes made outside the app show up live, badged and in Activity", {
 
   # The watcher notices the commit, the pair on screen is re-read and the
   # agent's selection is badged
-  app$wait_for_js("!!document.querySelector('#rubric_module-item_1-agent_badge .agent-badge')", timeout = 10000)
-  expect_true(app$get_js("document.getElementById('rubric_module-item_1-hotkey_btn').classList.contains('btn-success')"))
+  app$wait_for_js("!!document.querySelector('#rubric_module-grade-item_1-agent_badge .agent-badge')", timeout = 10000)
+  expect_true(app$get_js("document.getElementById('rubric_module-grade-item_1-hotkey_btn').classList.contains('btn-success')"))
   expect_true(app$get_js("!!document.getElementById('shiny-notification-external_change_notice')"))
   expect_equal(
     app$get_js("document.getElementById('rubric_module-question_private_comment').value"),
@@ -30,8 +30,8 @@ test_that("changes made outside the app show up live, badged and in Activity", {
   )
 
   # Any change to the pair in the app clears the badge
-  app$click(selector = "#rubric_module-item_0-hotkey_btn")
-  app$wait_for_js("!document.querySelector('#rubric_module-item_1-agent_badge .agent-badge')", timeout = 10000)
+  app$click(selector = "#rubric_module-grade-item_0-hotkey_btn")
+  app$wait_for_js("!document.querySelector('#rubric_module-grade-item_1-agent_badge .agent-badge')", timeout = 10000)
 
   # The History timeline lists the call and the app's own grading next to
   # the snapshots, and the filter narrows it to the agents' calls

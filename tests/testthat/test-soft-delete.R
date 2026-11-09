@@ -50,8 +50,8 @@ test_that("a deleted item's description can be used again and its id is never re
   # The old item's selections do not carry over to the new one
   expect_equal(sn_selected(d, "Q1", "hw01-team01"), "Minor")
 
-  state = markermd:::initialize_database_state(d, markermd:::load_template_from_db(d))
-  expect_true(issue_a %in% state$used_ids)
+  used = markermd:::with_database(d, markermd:::used_item_ids)
+  expect_true(issue_a %in% used)
 })
 
 test_that("a replace import soft-deletes the old items and keeps their events in History", {

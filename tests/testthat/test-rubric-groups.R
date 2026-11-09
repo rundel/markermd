@@ -846,12 +846,12 @@ test_that("format_points_signed and the group chips and subtotal render as desig
   expect_no_match(within, "raw")
 
   ui = as.character(markermd:::mark_rubric_group_ui(
-    "rubric_module-group_0", markermd_rubric_group(label = "Sample game", floor = -2),
+    "rubric_module-grade-group_0", markermd_rubric_group(label = "Sample game", floor = -2),
     list(), subtotal = data.frame(sum = -2.5, applied = -2)
   ))
   expect_match(ui, "rubric-group-capped")
   expect_match(ui, "Sample game")
-  expect_match(ui, "rubric_module-group_0-settings_popover")
+  expect_match(ui, "rubric_module-grade-group_0-settings_popover")
 
   breakdown = as.character(markermd:::score_breakdown_ui(
     markermd:::score_question(rg_items(), c("rank", "sg_a", "sg_b", "sg_c", "wu_b"), rg_groups(), rg_state()),

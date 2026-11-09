@@ -80,17 +80,19 @@ mark_rubric_item_hotkey_btn = function(id, rubric_item, exclusive = FALSE) {
 
 # The attributes of an item container (the Grade tab's item list, or a
 # question's card in the Rubric tab) that route its rows' events: the
-# rubric module's item_event input, the namespace prefix stripped from a
+# rubric module's item_event input, the view's id prefix stripped from a
 # row's id to get the item id, and the question's groups for the rows'
 # group menus (built when a menu opens, from this one list)
 #
 # ns: The rubric module's namespace function
+# view: The view the rows belong to ("grade" or "editor"); it prefixes their
+#   ids, so both tabs' rows can be on the page at once
 # groups: Named list of the question's markermd_rubric_group objects
 
-rubric_item_container_attrs = function(ns, groups) {
+rubric_item_container_attrs = function(ns, view, groups) {
   list(
     `data-item-events` = ns("item_event"),
-    `data-item-prefix` = ns(""),
+    `data-item-prefix` = ns(paste0(view, "-")),
     `data-groups` = as.character(jsonlite::toJSON(
       lapply(names(groups), function(group_id) list(id = group_id, label = groups[[group_id]]@label)),
       auto_unbox = TRUE
@@ -100,7 +102,8 @@ rubric_item_container_attrs = function(ns, groups) {
 
 # Creates UI for a single rubric item row
 #
-# id: Character. The item's namespaced id (the rubric module's ns(item_id))
+# id: Character. The item's namespaced id for its view (the rubric module's
+#   ns("<view>-<item id>"))
 # rubric_item: markermd_rubric_item S7 object containing item properties
 # exclusive: Whether the item's group is exclusive (the toggle's look)
 # selected_count: NULL in the Grade tab (the item shows its toggle button);
@@ -404,8 +407,10 @@ rubric_item_editing_head = function() {
             });
           });
           Shiny.addCustomMessageHandler('markermd_item_text', function(msg) {
-            var el = document.getElementById(msg.id);
-            if (el) el.textContent = msg.text;
+            msg.ids.forEach(function(id) {
+              var el = document.getElementById(id);
+              if (el) el.textContent = msg.text;
+            });
           });
           Shiny.addCustomMessageHandler('markermd_agent_badges', function(msg) {
             var box = document.getElementById(msg.container);

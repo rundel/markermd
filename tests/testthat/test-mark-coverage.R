@@ -12,7 +12,7 @@ press_key = function(app, key, modifiers = "") {
 }
 
 item_selected = function(app, item) {
-  app$get_js(paste0("document.getElementById('rubric_module-", item, "-hotkey_btn').classList.contains('btn-success')"))
+  app$get_js(paste0("document.getElementById('rubric_module-grade-", item, "-hotkey_btn').classList.contains('btn-success')"))
 }
 
 
@@ -207,12 +207,12 @@ test_that("typing into an item's description saves it through the delegated hand
 
   app$click("rubric_module-add_item")
   app$wait_for_idle()
-  app$wait_for_js("!!document.getElementById('rubric_module-item_0-description_text')")
+  app$wait_for_js("!!document.getElementById('rubric_module-grade-item_0-description_text')")
 
   # Focus, type and blur as a user does: the page head's script reports the
   # text on focusout as one item_event, no test-side payload involved
   app$run_js("
-    var el = document.getElementById('rubric_module-item_0-description_text');
+    var el = document.getElementById('rubric_module-grade-item_0-description_text');
     el.focus();
     el.innerText = 'Missing axis labels';
     el.dispatchEvent(new InputEvent('input', {bubbles: true}));
@@ -227,13 +227,13 @@ test_that("typing into an item's description saves it through the delegated hand
 
   # A blank edit is refused and the row put back
   app$run_js("
-    var el = document.getElementById('rubric_module-item_0-description_text');
+    var el = document.getElementById('rubric_module-grade-item_0-description_text');
     el.focus();
     el.innerText = '   ';
     el.dispatchEvent(new InputEvent('input', {bubbles: true}));
     el.blur();
   ")
   app$wait_for_idle()
-  app$wait_for_js("document.getElementById('rubric_module-item_0-description_text').innerText.trim() === 'Missing axis labels'")
+  app$wait_for_js("document.getElementById('rubric_module-grade-item_0-description_text').innerText.trim() === 'Missing axis labels'")
   expect_equal(markermd:::load_rubric_items(root, "Q2")[[1]]@description, "Missing axis labels")
 })

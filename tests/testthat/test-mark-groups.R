@@ -49,17 +49,17 @@ mgr_score = function(app) {
 
 mgr_selected = function(app, item) {
   app$get_js(sprintf(
-    "document.getElementById('rubric_module-%s-hotkey_btn').classList.contains('btn-success')", item
+    "document.getElementById('rubric_module-grade-%s-hotkey_btn').classList.contains('btn-success')", item
   ))
 }
 
 # Toggle an item row's group menu (open, or closed again)
 open_group_menu = function(app, item) {
-  app$run_js(paste0("document.querySelector('#rubric_module-", item, "-container .rubric-group-menu-btn').click();"))
+  app$run_js(paste0("document.querySelector('#rubric_module-grade-", item, "-container .rubric-group-menu-btn').click();"))
 }
 
 mgr_click = function(app, item) {
-  app$click(selector = sprintf("#rubric_module-%s-hotkey_btn", item))
+  app$click(selector = sprintf("#rubric_module-grade-%s-hotkey_btn", item))
   app$wait_for_idle()
 }
 
@@ -79,13 +79,13 @@ test_that("groups render as sections, cap their subtotal live and flag the score
 
   # Each group wraps its member rows under a header with its label and chip;
   # hotkeys follow the flat order across the group boundaries
-  header = app$get_html("#rubric_module-group_0-container .rubric-group-head")
+  header = app$get_html("#rubric_module-grade-group_0-container .rubric-group-head")
   expect_match(header, "Sample game", fixed = TRUE)
   expect_match(header, "floor -2", fixed = TRUE)
-  expect_match(app$get_html("#rubric_module-group_1-container .rubric-group-head"), "pick one", fixed = TRUE)
-  expect_true(app$get_js("document.querySelector('#rubric_module-group_0-container #rubric_module-item_3-container') !== null"))
+  expect_match(app$get_html("#rubric_module-grade-group_1-container .rubric-group-head"), "pick one", fixed = TRUE)
+  expect_true(app$get_js("document.querySelector('#rubric_module-grade-group_0-container #rubric_module-grade-item_3-container') !== null"))
   expect_equal(
-    trimws(app$get_js("document.getElementById('rubric_module-item_4-hotkey_btn').textContent")),
+    trimws(app$get_js("document.getElementById('rubric_module-grade-item_4-hotkey_btn').textContent")),
     "5"
   )
   expect_equal(mgr_score(app), "12 / 12 pts")
@@ -98,10 +98,10 @@ test_that("groups render as sections, cap their subtotal live and flag the score
   mgr_click(app, "item_2")
   mgr_click(app, "item_3")
   expect_equal(mgr_score(app), "10 / 12 pts")
-  subtotal = function() app$get_html("#rubric_module-group_0-container .rubric-group-subtotal")
+  subtotal = function() app$get_html("#rubric_module-grade-group_0-container .rubric-group-subtotal")
   expect_match(subtotal(), "-2 pts", fixed = TRUE)
   expect_no_match(subtotal(), "raw")
-  expect_false(app$get_js("document.getElementById('rubric_module-group_0-container').classList.contains('rubric-group-capped')"))
+  expect_false(app$get_js("document.getElementById('rubric_module-grade-group_0-container').classList.contains('rubric-group-capped')"))
   expect_true(badge_hidden())
 
   # The third takes the raw sum past the floor: the subtotal shows the sum
@@ -111,7 +111,7 @@ test_that("groups render as sections, cap their subtotal live and flag the score
   expect_equal(mgr_score(app), "10 / 12 pts")
   expect_match(subtotal(), 'class="raw">-2.5 pts', fixed = TRUE)
   expect_match(subtotal(), 'class="eff">-2 pts', fixed = TRUE)
-  expect_true(app$get_js("document.getElementById('rubric_module-group_0-container').classList.contains('rubric-group-capped')"))
+  expect_true(app$get_js("document.getElementById('rubric_module-grade-group_0-container').classList.contains('rubric-group-capped')"))
   expect_false(badge_hidden())
   expect_equal(
     trimws(app$get_js("document.getElementById('rubric_module-grade_Q2-cap_badge_text').textContent")),
@@ -154,7 +154,7 @@ test_that("a capped selection loaded from the database survives the question swi
   app$wait_for_idle()
 
   expect_equal(mgr_score(app), "10 / 12 pts")
-  expect_match(app$get_html("#rubric_module-group_0-container .rubric-group-subtotal"), 'class="raw">-2.5 pts', fixed = TRUE)
+  expect_match(app$get_html("#rubric_module-grade-group_0-container .rubric-group-subtotal"), 'class="raw">-2.5 pts', fixed = TRUE)
   expect_false(app$get_js("document.getElementById('rubric_module-grade_Q2-cap_badge').classList.contains('d-none')"))
 })
 
@@ -169,9 +169,9 @@ test_that("an exclusive group behaves like radio buttons and logs both grade eve
   app$wait_for_idle()
 
   # Round buttons announced as radios
-  expect_true(app$get_js("document.getElementById('rubric_module-item_5-hotkey_btn').classList.contains('rubric-hk-radio')"))
-  expect_equal(app$get_js("document.getElementById('rubric_module-item_5-hotkey_btn').getAttribute('role')"), "radio")
-  expect_false(app$get_js("document.getElementById('rubric_module-item_2-hotkey_btn').classList.contains('rubric-hk-radio')"))
+  expect_true(app$get_js("document.getElementById('rubric_module-grade-item_5-hotkey_btn').classList.contains('rubric-hk-radio')"))
+  expect_equal(app$get_js("document.getElementById('rubric_module-grade-item_5-hotkey_btn').getAttribute('role')"), "radio")
+  expect_false(app$get_js("document.getElementById('rubric_module-grade-item_2-hotkey_btn').classList.contains('rubric-hk-radio')"))
 
   mgr_click(app, "item_5")
   expect_true(mgr_selected(app, "item_5"))
@@ -214,23 +214,22 @@ test_that("the exclusive switch is refused while a repository has two of the gro
   app$set_inputs(main_navbar = "grade")
   app$wait_for_idle()
 
-  # The switch lives in the settings popover, bound once it opens
-  app$run_js("document.getElementById('rubric_module-group_0-settings_btn').click();")
+  # The switch lives in the settings popover; a refusal puts it back off
+  app$run_js("document.getElementById('rubric_module-grade-group_0-settings_btn').click();")
   app$wait_for_idle()
-  app$set_inputs(`rubric_module-group_0-exclusive` = TRUE, wait_ = FALSE)
-  app$wait_for_idle()
+  group_setting(app, "group_0", "exclusive", TRUE)
 
   expect_match(app$get_html(".modal-content"), "Cannot make \"Sample game\" exclusive", fixed = TRUE)
   expect_match(app$get_html(".modal-content"), "student3-poor", fixed = TRUE)
   expect_false(markermd:::load_item_groups(root, "Q2")$group_0@exclusive)
+  expect_false(app$get_js("document.querySelector('[data-settings-for=\"rubric_module-grade-group_0-container\"] [data-field=exclusive]').checked"))
 
   # A bound edit in the same popover saves and patches the chip in place
   app$run_js("document.querySelector('.modal .btn-secondary, .modal button[data-bs-dismiss]').click();")
   app$wait_for_idle()
-  app$set_inputs(`rubric_module-group_0-floor` = -1, wait_ = FALSE)
-  app$wait_for_idle()
+  group_setting(app, "group_0", "floor", -1)
   expect_equal(markermd:::load_item_groups(root, "Q2")$group_0@floor, -1)
-  expect_match(app$get_html("#rubric_module-group_0-container .rubric-group-chips"), "floor -1", fixed = TRUE)
+  expect_match(app$get_html("#rubric_module-grade-group_0-container .rubric-group-chips"), "floor -1", fixed = TRUE)
 })
 
 
@@ -253,36 +252,43 @@ test_that("groups can be added, joined through the item menu, moved as blocks an
   app$wait_for_idle()
   app$wait_for_js("document.querySelector('.popover .rubric-group-settings') !== null")
   expect_equal(unname(unlist(mgr_export(app, "rubric_group_labels"))), c("Sample game", "Write-up", "New group"))
-  expect_true(app$get_js("document.querySelector('#rubric_module-rubric_empty_groups #rubric_module-group_2-container') !== null"))
+  expect_true(app$get_js("document.querySelector('#rubric_module-rubric_empty_groups #rubric_module-grade-group_2-container') !== null"))
   expect_equal(markermd:::load_item_groups(root, "Q2")$group_2@label, "New group")
   expect_true(app$get_js("document.querySelector('.popover .rubric-group-settings') !== null"))
 
   # Renaming it in the popover patches the header and every item's menu in
   # place, and a positive floor is refused inline without being saved
-  app$set_inputs(`rubric_module-group_2-label` = "Style", wait_ = FALSE)
-  app$wait_for_idle()
+  group_setting(app, "group_2", "label", "Style")
   expect_equal(markermd:::load_item_groups(root, "Q2")$group_2@label, "Style")
   expect_equal(
-    app$get_js("document.querySelector('#rubric_module-group_2-container .rubric-group-name').textContent"),
+    app$get_js("document.querySelector('#rubric_module-grade-group_2-container .rubric-group-name').textContent"),
     "Style"
   )
   open_group_menu(app, "item_0")
   expect_equal(
-    app$get_js("document.querySelector('#rubric_module-item_0-container a[data-group=group_2] .rubric-group-menu-label').textContent"),
+    app$get_js("document.querySelector('#rubric_module-grade-item_0-container a[data-group=group_2] .rubric-group-menu-label').textContent"),
     "Style"
   )
   open_group_menu(app, "item_0")
-  app$set_inputs(`rubric_module-group_2-floor` = 2, wait_ = FALSE)
-  app$wait_for_idle()
-  expect_match(app$get_html("#rubric_module-group_2-settings_feedback"), "must be 0 or negative")
+  group_setting(app, "group_2", "floor", 2)
+  expect_match(app$get_html("#rubric_module-grade-group_2-settings_feedback"), "must be 0 or negative")
   expect_true(is.na(markermd:::load_item_groups(root, "Q2")$group_2@floor))
-  app$run_js("document.getElementById('rubric_module-group_2-settings_btn').click();")
+
+  # A label another group uses is refused and the field put back
+  group_setting(app, "group_2", "label", "Write-up")
+  expect_match(app$get_html("#rubric_module-grade-group_2-settings_feedback"), "already named")
+  expect_equal(markermd:::load_item_groups(root, "Q2")$group_2@label, "Style")
+  expect_equal(
+    app$get_js("document.querySelector('[data-settings-for=\"rubric_module-grade-group_2-container\"] [data-field=label]').value"),
+    "Style"
+  )
+  app$run_js("document.getElementById('rubric_module-grade-group_2-settings_btn').click();")
   app$wait_for_idle()
 
   # Every item row carries the group menu, listing the question's groups
   # (filled in when it opens)
   open_group_menu(app, "item_3")
-  menu = app$get_html("#rubric_module-item_3-container .rubric-group-menu")
+  menu = app$get_html("#rubric_module-grade-item_3-container .rubric-group-menu")
   open_group_menu(app, "item_3")
   expect_match(menu, "No group", fixed = TRUE)
   expect_match(menu, "Style", fixed = TRUE)
@@ -304,27 +310,27 @@ test_that("groups can be added, joined through the item menu, moved as blocks an
   expect_true(is.na(groups()["item_2"]))
 
   # An item's chevrons move it within its group, wrapping within it
-  app$click(selector = "#rubric_module-item_3-move_up_btn")
+  app$click(selector = "#rubric_module-grade-item_3-move_up_btn")
   app$wait_for_idle()
   expect_equal(ids(), c("item_0", "item_4", "item_1", "item_3", "item_2", "item_5", "item_6"))
 
   # An ungrouped item jumps over a whole group
-  app$click(selector = "#rubric_module-item_0-move_down_btn")
+  app$click(selector = "#rubric_module-grade-item_0-move_down_btn")
   app$wait_for_idle()
   expect_equal(ids(), c("item_4", "item_1", "item_3", "item_0", "item_2", "item_5", "item_6"))
 
   # The group header's chevrons move the whole block
-  app$click("rubric_module-group_1-move_up_btn")
+  app$click(selector = "#rubric_module-grade-group_1-move_up_btn")
   app$wait_for_idle()
   expect_equal(ids(), c("item_4", "item_1", "item_3", "item_0", "item_5", "item_6", "item_2"))
   expect_equal(names(markermd:::load_rubric_items(root, "Q2")), ids())
 
   # Ungrouping (confirmed) leaves the members in place as ungrouped items
-  app$run_js("document.getElementById('rubric_module-group_0-settings_btn').click();")
+  app$run_js("document.getElementById('rubric_module-grade-group_0-settings_btn').click();")
   app$wait_for_idle()
-  app$click("rubric_module-group_0-ungroup_btn")
+  app$click(selector = "#rubric_module-grade-group_0-ungroup_btn")
   app$wait_for_idle()
-  app$click("rubric_module-group_0-confirm_ungroup")
+  app$click("rubric_module-confirm_ungroup")
   app$wait_for_idle()
   expect_equal(ids(), c("item_4", "item_1", "item_3", "item_0", "item_5", "item_6", "item_2"))
   expect_true(all(is.na(groups()[c("item_4", "item_1", "item_3")])))
@@ -381,6 +387,6 @@ test_that("a rubric import with groups appends into existing groups in the runni
   groups = unlist(mgr_export(app, "rubric_item_groups"))
   expect_equal(unname(groups[c("item_7", "item_8")]), c("group_0", "group_2"))
   expect_equal(unname(unlist(mgr_export(app, "rubric_group_labels"))), c("Sample game", "Write-up", "Style"))
-  expect_match(app$get_html("#rubric_module-group_0-container .rubric-group-chips"), "floor -3", fixed = TRUE)
-  expect_true(app$get_js("document.querySelector('#rubric_module-group_2-container #rubric_module-item_8-container') !== null"))
+  expect_match(app$get_html("#rubric_module-grade-group_0-container .rubric-group-chips"), "floor -3", fixed = TRUE)
+  expect_true(app$get_js("document.querySelector('#rubric_module-grade-group_2-container #rubric_module-grade-item_8-container') !== null"))
 })

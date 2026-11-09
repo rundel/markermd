@@ -487,18 +487,14 @@ initialize_database_state = function(collection_path, template_obj) {
     list(
       settings = load_all_settings(conn),
       items = load_all_items(conn),
-      groups = load_all_item_groups(conn),
-      used_ids = used_item_ids(conn)
+      groups = load_all_item_groups(conn)
     )
   })
 
-  # used_ids: every item and group id ever stored (deleted ones included),
-  # which the marking app reserves so it never reissues one
   state = list(
     grade_states = list(),
     rubric_items = list(),
-    rubric_groups = list(),
-    used_ids = data$used_ids
+    rubric_groups = list()
   )
 
   for (question_name in question_names) {
@@ -645,9 +641,8 @@ exclusive_import_conflicts = function(conn, rubric) {
 # end of that group and a new group lands at the end of the question) and the
 # hotkeys those positions imply (1-10, NA beyond). Fresh item and group ids
 # are minted avoiding every id the database has ever stored, deleted ones
-# included (across all questions, since the mark app's module-id namespace is
-# shared; see used_item_ids()) plus any reserved_ids the caller has ever
-# bound. Making an existing group exclusive while some
+# included, across all questions (see used_item_ids()), so an id is never
+# reissued. Making an existing group exclusive while some
 # repository has more than one of its items selected aborts before anything
 # is written (exclusive_import_conflicts()).
 #
@@ -658,7 +653,6 @@ exclusive_import_conflicts = function(conn, rubric) {
 # collection_path: Project root containing the grading database
 # rubric: Exchange-list rubric (format_version + questions)
 # mode: "append" or "replace"
-# reserved_ids: Additional item / group ids that must not be reused
 # snapshot: NULL, or a list with trigger and summary for the automatic
 #   snapshot taken before the import
 # Returns: Named list (by question name) of summaries with mode, n_existing,
@@ -669,12 +663,12 @@ exclusive_import_conflicts = function(conn, rubric) {
 #   (the question's group ids after the import) and scoring
 #   (markermd_grade_state or NULL)
 
-apply_rubric_import = function(collection_path, rubric, mode, reserved_ids = character(0), snapshot = NULL) {
+apply_rubric_import = function(collection_path, rubric, mode, snapshot = NULL) {
   with_database(collection_path, function(conn) {
     check_exclusive_import_conflicts(conn, rubric, mode)
     with_transaction(conn, "Failed to import rubric", {
       snapshot_before_change(conn, collection_path, snapshot)
-      apply_rubric_import_conn(conn, rubric, mode, reserved_ids)
+      apply_rubric_import_conn(conn, rubric, mode)
     })
   })
 }
@@ -713,10 +707,9 @@ check_exclusive_import_conflicts = function(conn, rubric, mode) {
 # conn: DBI connection object
 # rubric: Exchange-list rubric (format_version + questions)
 # mode: "append" or "replace"
-# reserved_ids: Additional item / group ids that must not be reused
 
-apply_rubric_import_conn = function(conn, rubric, mode, reserved_ids = character(0)) {
-  taken = union(used_item_ids(conn), reserved_ids)
+apply_rubric_import_conn = function(conn, rubric, mode) {
+  taken = used_item_ids(conn)
   taken_groups = taken
   summaries = list()
 

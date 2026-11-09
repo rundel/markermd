@@ -41,7 +41,7 @@ test_that("negative-mode score recomputes live and clamps at zero", {
   app$click("rubric_module-add_item")
   app$wait_for_idle()
   mg_set_points(app, "item_0", -3)
-  app$click(selector = "#rubric_module-item_0-hotkey_btn")
+  app$click(selector = "#rubric_module-grade-item_0-hotkey_btn")
   app$wait_for_idle()
   expect_equal(mg_score(app, "Q2"), "7 / 10 pts")
 
@@ -49,7 +49,7 @@ test_that("negative-mode score recomputes live and clamps at zero", {
   app$click("rubric_module-add_item")
   app$wait_for_idle()
   mg_set_points(app, "item_1", -8)
-  app$click(selector = "#rubric_module-item_1-hotkey_btn")
+  app$click(selector = "#rubric_module-grade-item_1-hotkey_btn")
   app$wait_for_idle()
   expect_equal(mg_score(app, "Q2"), "0 / 10 pts")
 })
@@ -70,12 +70,12 @@ test_that("positive-mode score clamps at the question total", {
   app$click("rubric_module-add_item")
   app$wait_for_idle()
   mg_set_points(app, "item_0", 15)
-  app$click(selector = "#rubric_module-item_0-hotkey_btn")
+  app$click(selector = "#rubric_module-grade-item_0-hotkey_btn")
   app$wait_for_idle()
   expect_equal(mg_score(app, "Q2"), "10 / 10 pts")
 
   # Deselecting returns to zero
-  app$click(selector = "#rubric_module-item_0-hotkey_btn")
+  app$click(selector = "#rubric_module-grade-item_0-hotkey_btn")
   app$wait_for_idle()
   expect_equal(mg_score(app, "Q2"), "0 / 10 pts")
 })
@@ -104,7 +104,7 @@ test_that("moving a rubric item reorders it and renumbers hotkeys, including the
   expect_equal(descriptions(), c("A", "B", "C"))
 
   # Move A (item_0) down: order becomes B, A, C and hotkeys renumber 1..3
-  app$click(selector = "#rubric_module-item_0-move_down_btn")
+  app$click(selector = "#rubric_module-grade-item_0-move_down_btn")
   app$wait_for_idle()
   expect_equal(descriptions(), c("B", "A", "C"))
 
@@ -113,7 +113,7 @@ test_that("moving a rubric item reorders it and renumbers hotkeys, including the
   expect_equal(unname(purrr::map_chr(items, ~ .x@description)), c("B", "A", "C"))
 
   # Move B (item_1, now at the top) up: it wraps to the bottom -> A, C, B
-  app$click(selector = "#rubric_module-item_1-move_up_btn")
+  app$click(selector = "#rubric_module-grade-item_1-move_up_btn")
   app$wait_for_idle()
   expect_equal(descriptions(), c("A", "C", "B"))
   items2 = markermd:::load_rubric_items(root, "Q2")
@@ -247,12 +247,12 @@ test_that("items past the tenth have no hotkey, toggle by click, and keep their 
 
   label = function(item) {
     trimws(app$get_js(sprintf(
-      "document.getElementById('rubric_module-%s-hotkey_btn').textContent", item
+      "document.getElementById('rubric_module-grade-%s-hotkey_btn').textContent", item
     )))
   }
   selected = function(item) {
     app$get_js(sprintf(
-      "document.getElementById('rubric_module-%s-hotkey_btn').classList.contains('btn-success')", item
+      "document.getElementById('rubric_module-grade-%s-hotkey_btn').classList.contains('btn-success')", item
     ))
   }
   press = function(key) {
@@ -268,7 +268,7 @@ test_that("items past the tenth have no hotkey, toggle by click, and keep their 
   expect_equal(label("item_10"), "")
 
   # the eleventh item is reachable by clicking ...
-  app$click(selector = "#rubric_module-item_10-hotkey_btn")
+  app$click(selector = "#rubric_module-grade-item_10-hotkey_btn")
   app$wait_for_idle()
   expect_true(selected("item_10"))
 
@@ -287,7 +287,7 @@ test_that("items past the tenth have no hotkey, toggle by click, and keep their 
   expect_equal(label(ids[12]), "")
 
   # moving the twelfth above the eleventh is persisted in that order
-  app$click(selector = paste0("#rubric_module-", ids[12], "-move_up_btn"))
+  app$click(selector = paste0("#rubric_module-grade-", ids[12], "-move_up_btn"))
   app$wait_for_idle()
   items = markermd:::load_rubric_items(root, "Q2")
   expect_equal(names(items)[11:12], c(ids[12], "item_10"))
@@ -309,7 +309,7 @@ test_that("the Assignments table tabulates rubric scores per repository and per 
   app$wait_for_idle()
   item_event(app, "item_0", "points", 4)
   app$wait_for_idle()
-  app$click(selector = "#rubric_module-item_0-hotkey_btn")
+  app$click(selector = "#rubric_module-grade-item_0-hotkey_btn")
   app$wait_for_idle()
 
   app$set_inputs(main_navbar = "assignments")
@@ -474,7 +474,7 @@ test_that("a rubric item's toggle button keeps its size under a long description
   # The uiOutput wrapper is display: contents, so the button is the flex
   # item; a description far wider than the pane used to squeeze it
   app$run_js(glue::glue(
-    "var d = document.getElementById('rubric_module-item_1-description_text');
+    "var d = document.getElementById('rubric_module-grade-item_1-description_text');
      d.innerText = '<<strrep('long description ', 20)>>';
      d.dispatchEvent(new Event('input'));",
     .open = "<<", .close = ">>"
@@ -484,7 +484,7 @@ test_that("a rubric item's toggle button keeps its size under a long description
   size = function(item) {
     app$get_js(glue::glue(
       "(function() {
-        var r = document.getElementById('rubric_module-<<item>>-hotkey_btn').getBoundingClientRect();
+        var r = document.getElementById('rubric_module-grade-<<item>>-hotkey_btn').getBoundingClientRect();
         return [r.width, r.height];
       })()",
       .open = "<<", .close = ">>"
@@ -519,14 +519,14 @@ test_that("grading A, visiting B and returning to A writes only the user's own g
   app$wait_for_idle()
 
   selected = function(item) {
-    app$get_js(paste0("document.getElementById('rubric_module-", item, "-hotkey_btn').classList.contains('btn-success')"))
+    app$get_js(paste0("document.getElementById('rubric_module-grade-", item, "-hotkey_btn').classList.contains('btn-success')"))
   }
   press = function(key) {
     app$run_js(paste0("document.dispatchEvent(new KeyboardEvent('keydown', {key: '", key, "'}));"))
     app$wait_for_idle()
   }
   click = function(item) {
-    app$click(selector = paste0("#rubric_module-", item, "-hotkey_btn"))
+    app$click(selector = paste0("#rubric_module-grade-", item, "-hotkey_btn"))
     app$wait_for_idle()
   }
   repo = function() app$get_value(input = "content_module-content_repo_select")
