@@ -1,5 +1,18 @@
 # markermd 0.1.0
 
+## Breaking changes
+
+The exported API was made consistent before the first release. There are no deprecated aliases.
+
+* The project argument is always `project`. `init_project()`, `project_config()`, `project_set()`, `project_sitrep()`, `validate_project()`, `parse_project()`, `scan_project()` and `mark()` took `path`.
+* `export_marks()` is now `export_feedback()`. It writes `scores.csv` and the per-repository feedback files; `marks_export()` still writes the marks YAML.
+* `template()` now runs the editor like `mark()`, with `...` passed to `shiny::runApp()`, instead of returning an app object. Its first argument is `source` (was `assignment_path`).
+* `assignment_outline()` takes `source` (was `assignment_path`), and `parse_assignment_document()` takes `path` (was `file_path`).
+* `get_question()`, `add_question()` and `remove_question()` are now `template_question()`, `template_add_question()` and `template_remove_question()`, with arguments `template` and `question` (were `tmpl` and `q`).
+* `get_allowed_rule_verbs()`, `get_allowed_node_types()` and `get_allowed_filter_condition_types()` are now `rule_verbs()`, `rule_node_types()` and `filter_condition_types()`.
+
+## Changes
+
 * Initial version.
 * Added `parse_project()`, a headless per-repository parse check, and the bundled `markermd-fix-parsing` skill that repairs submissions the strict q2r parser rejects on a `grading-fixes` branch.
 * The bundled skills now ship in two sets, for Claude Code (`inst/skills/claude/`, installed to `.claude/skills/`) and Codex (`inst/skills/codex/`, installed to `.agents/skills/`); `init_project()` gained an `agents` argument (default: both) and `markermd_skills_path()` an `agent` argument.

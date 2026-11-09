@@ -14,7 +14,7 @@ The package is built around two apps:
 - `template()` authors a grading template: which document sections are the questions, and what structural rules each answer must satisfy.
 - `mark()` grades a collection of student repositories against that template with per-question rubrics.
 
-Around the apps, a set of helper functions (`validate_project()`, `parse_project()`, `scan_project()`, `template_import()` / `template_export()`, `rubric_import()` / `rubric_export()` / `rubric_item_set()`, `marks_import()` / `marks_export()` / `marks_set()`, `export_marks()`) makes the entire workflow scriptable, and bundled agent skills (for Claude Code and Codex) can scaffold the template and rubric, repair submissions the strict parser rejects, or apply the rubric across all submissions as a first pass for human review.
+Around the apps, a set of helper functions (`validate_project()`, `parse_project()`, `scan_project()`, `template_import()` / `template_export()`, `rubric_import()` / `rubric_export()` / `rubric_item_set()`, `marks_import()` / `marks_export()` / `marks_set()`, `export_feedback()`) makes the entire workflow scriptable, and bundled agent skills (for Claude Code and Codex) can scaffold the template and rubric, repair submissions the strict parser rejects, or apply the rubric across all submissions as a first pass for human review.
 
 ## Experimental status
 
@@ -119,7 +119,7 @@ While `mark()` runs, it notices changes made from outside (an agent in a termina
 
 ### Terminal
 
-`mark(path, terminal = TRUE)` adds a Terminal tab, using the optional [shinyterm](https://github.com/rundel/shinyterm) package, whose "+" menu opens a shell, Claude Code or Codex in the project root (each agent with its own sandbox confined to the project). The app is then protected by an access token in its URL. A terminal runs as you, so this is for your own machine only.
+`mark(project, terminal = TRUE)` adds a Terminal tab, using the optional [shinyterm](https://github.com/rundel/shinyterm) package, whose "+" menu opens a shell, Claude Code or Codex in the project root (each agent with its own sandbox confined to the project). The app is then protected by an access token in its URL. A terminal runs as you, so this is for your own machine only.
 
 ### History
 
@@ -179,10 +179,10 @@ Snapshots live in the project database (added in schema version 5, now 9; an exi
 
 ## Exporting results
 
-When grading is complete, `export_marks()` writes the final hand-off artifacts from the project database (or run `export_scores()` and `export_comments()` individually):
+When grading is complete, `export_feedback()` writes the final hand-off artifacts from the project database (or run `export_scores()` and `export_comments()` individually):
 
 ```r
-export_marks("hw01")
+export_feedback("hw01")
 ```
 
 - `export_scores()` writes `scores.csv` to the project root: one row per repository, one column per question, plus a `total` column. Scores are recomputed exactly as `mark()` displays them, passing each question's selected rubric item points (each item group's combined points first clamped to its floor and ceiling) through its grading mode and bounds. Ungraded repository/question pairs export as `NA`, and a repository's total stays `NA` until all of its questions are graded. A question whose scoring is marked optional (the gear popover's "Optional: nothing selected still counts as graded", or `optional: true` in the rubric YAML) counts as graded for every repository, scoring as if no item were selected until something is recorded; its column in the Assignments table has a small red dot beside the name.

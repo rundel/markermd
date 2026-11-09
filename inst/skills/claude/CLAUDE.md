@@ -76,7 +76,7 @@ Headless entry points, all taking the project root:
 - `rubric_item_set()`: reword one rubric item or change its points in place
   (identified by its current description). The item keeps its id, so every
   recorded selection carries over; this is how to fix an item's wording.
-- `export_scores()`, `export_comments()`, `export_marks()`: final outputs.
+- `export_scores()`, `export_comments()`, `export_feedback()`: final outputs.
   Each records which snapshot of the grading it came from.
 - `assignment_outline()`: a document's sections with their exact Pandoc
   anchors and content counts. Anchors in a template always come from here,
