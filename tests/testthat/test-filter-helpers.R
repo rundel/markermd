@@ -1,6 +1,6 @@
-test_that("get_allowed_filter_condition_types returns the expected types", {
+test_that("filter_condition_types returns the expected types", {
   expect_equal(
-    markermd::get_allowed_filter_condition_types(),
+    markermd::filter_condition_types(),
     c("node type", "has class", "has id", "has text", "has label", "has option", "has engine")
   )
 })
@@ -46,7 +46,7 @@ test_that("filter_value_warnings phrases empty-value warnings by match direction
 
 
 test_that("validate_filter_condition_type accepts allowed types and rejects others", {
-  for (type in markermd::get_allowed_filter_condition_types()) {
+  for (type in markermd::filter_condition_types()) {
     expect_null(markermd:::validate_filter_condition_type(type))
   }
 
@@ -75,7 +75,7 @@ test_that("validate_filter_condition_value enforces type-specific requirements",
 
 test_that("get_default_filter_condition_value returns sensible defaults", {
   expect_equal(markermd:::get_default_filter_condition_value("node type"), "Div")
-  for (type in setdiff(markermd::get_allowed_filter_condition_types(), "node type")) {
+  for (type in setdiff(markermd::filter_condition_types(), "node type")) {
     expect_equal(markermd:::get_default_filter_condition_value(type), "")
   }
   expect_null(markermd:::get_default_filter_condition_value("bogus"))
@@ -83,7 +83,7 @@ test_that("get_default_filter_condition_value returns sensible defaults", {
 
 
 test_that("filter_node_kind_expr covers every node kind except 'Any node'", {
-  kinds = setdiff(markermd::get_allowed_node_types(), "Any node")
+  kinds = setdiff(markermd::rule_node_types(), "Any node")
   for (kind in kinds) {
     expect_true(is.language(markermd:::filter_node_kind_expr(kind)), label = kind)
   }

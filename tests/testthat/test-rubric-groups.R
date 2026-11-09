@@ -820,7 +820,7 @@ test_that("export_comments lists items as before by default and under group head
   ))
 
   expect_error(export_comments(d, group_headings = "yes"), "TRUE")
-  result = suppressMessages(export_marks(d, group_headings = TRUE))
+  result = suppressMessages(export_feedback(d, group_headings = TRUE))
   expect_named(result, c("scores", "comments"))
 })
 

@@ -48,7 +48,7 @@ test_that("template() preloads a project's stored template", {
   proj = make_template_project(with_template = TRUE)
 
   app = new_app_driver(
-    template(proj$root),
+    template_app(proj$root),
     name = "template_project_preload"
   )
 
@@ -68,7 +68,7 @@ test_that("template() saves into the project database", {
   expect_null(markermd:::load_template_from_db(proj$root))
 
   app = new_app_driver(
-    template(proj$root),
+    template_app(proj$root),
     name = "template_project_save"
   )
 
@@ -97,7 +97,7 @@ test_that("template() imports a YAML file into the editor", {
   ), import_yaml)
 
   app = new_app_driver(
-    template(proj$root),
+    template_app(proj$root),
     name = "template_project_import"
   )
 
@@ -133,7 +133,7 @@ test_that("template() confirms before an import replaces existing questions", {
   ), import_yaml)
 
   app = new_app_driver(
-    template(proj$root),
+    template_app(proj$root),
     name = "template_project_import_confirm"
   )
 
@@ -163,7 +163,7 @@ test_that("template() exports the current template to YAML", {
   proj = make_template_project(with_template = TRUE)
 
   app = new_app_driver(
-    template(proj$root),
+    template_app(proj$root),
     name = "template_project_export"
   )
 
@@ -184,7 +184,7 @@ test_that("template() tracks unsaved changes and clears the flag on save", {
   proj = make_template_project(with_template = TRUE)
 
   app = new_app_driver(
-    template(proj$root),
+    template_app(proj$root),
     name = "template_project_dirty"
   )
 
@@ -209,7 +209,7 @@ test_that("template() takes a snapshot and loads a snapshot's template into the 
 
   proj = make_template_project(with_template = TRUE)
   app = new_app_driver(
-    template(proj$root),
+    template_app(proj$root),
     name = "template_project_snapshot"
   )
   expect_equal(unlist(app$get_values(export = "n_questions"), use.names = FALSE), 2)
@@ -271,7 +271,7 @@ test_that("renaming a question in template() carries its grading, refuses a take
     unname(vapply(markermd:::load_rubric_items(root, question), function(item) item@description, character(1)))
   }
 
-  app = new_app_driver(template(root), name = "template_project_rename")
+  app = new_app_driver(template_app(root), name = "template_project_rename")
   app$wait_for_idle(duration = 1000)
 
   # A new name: the rubric, selections and comment follow the question

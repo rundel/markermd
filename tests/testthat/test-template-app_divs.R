@@ -6,7 +6,7 @@ test_that("Select an id'd div", {
   testthat::skip_on_cran()
 
   app = new_app_driver(
-    template(file),
+    template_app(file),
     name = "select_div_3"
   )
 

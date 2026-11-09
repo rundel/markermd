@@ -5,7 +5,7 @@ test_that("Filters build a q2r expression and narrow the rule evaluation set", {
   testthat::skip_on_cran()
 
   app = new_app_driver(
-    template(file),
+    template_app(file),
     name = "filter_groups"
   )
 

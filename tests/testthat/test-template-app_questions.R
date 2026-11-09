@@ -11,7 +11,7 @@ test_that("Add 1 question", {
   testthat::skip_on_cran()
 
   app = new_app_driver(
-    template(file),
+    template_app(file),
     name  = "add_1"
   )
 
@@ -31,7 +31,7 @@ test_that("Add 2 questions", {
   testthat::skip_on_cran()
 
   app = new_app_driver(
-    template(file),
+    template_app(file),
     name  = "add_2"
   )
   
@@ -51,7 +51,7 @@ test_that("Add 2 questions, delete 1", {
   testthat::skip_on_cran()
 
   app = new_app_driver(
-    template(file),
+    template_app(file),
     name  = "add_2-delete_1"
   )
   
@@ -81,7 +81,7 @@ test_that("Add 2 questions, delete 1, add 1", {
   testthat::skip_on_cran()
 
   app = new_app_driver(
-    template(file),
+    template_app(file),
     name  = "add_2-delete_1-add_1"
   )
 
@@ -116,7 +116,7 @@ test_that("Save Template downloads a readable YAML template", {
   testthat::skip_on_cran()
 
   app = new_app_driver(
-    template(file),
+    template_app(file),
     name = "save_yaml"
   )
 
@@ -137,7 +137,7 @@ test_that("Add a document question", {
   testthat::skip_on_cran()
 
   app = new_app_driver(
-    template(file),
+    template_app(file),
     name  = "add_document"
   )
 
@@ -153,7 +153,7 @@ test_that("an active document entry highlights the entire tree", {
   testthat::skip_on_cran()
 
   app = new_app_driver(
-    template(file),
+    template_app(file),
     name  = "document_tree"
   )
   n_selected = function() {

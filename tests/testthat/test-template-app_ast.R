@@ -11,7 +11,7 @@ test_that("Select Question 1 heading", {
   testthat::skip_on_cran()
 
   app = new_app_driver(
-    template(file),
+    template_app(file),
     name  = "select_3"
   )
 
@@ -25,7 +25,7 @@ test_that("Select Question 2 heading", {
   testthat::skip_on_cran()
 
   app = new_app_driver(
-    template(file),
+    template_app(file),
     name  = "select_8"
   )
 
@@ -39,7 +39,7 @@ test_that("Select Question 1 & 2 headings", {
   testthat::skip_on_cran()
 
   app = new_app_driver(
-    template(file),
+    template_app(file),
     name  = "select_3_8"
   )
 

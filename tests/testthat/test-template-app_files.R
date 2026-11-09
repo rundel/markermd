@@ -22,7 +22,7 @@ test_that("template() adds files and questions that cover them", {
   testthat::skip_on_cran()
 
   root = make_files_project()
-  app = new_app_driver(template(root), name = "template_files")
+  app = new_app_driver(template_app(root), name = "template_files")
 
   list_text = function() app$get_js("document.getElementById('add_files_list').innerText")
 
@@ -82,7 +82,7 @@ test_that("the Add modal adds sections and entire-document entries", {
   testthat::skip_on_cran()
 
   root = make_files_project()
-  app = new_app_driver(template(root), name = "template_files_coverage")
+  app = new_app_driver(template_app(root), name = "template_files_coverage")
 
   add_entry(app, coverage = "document")
   add_entry(app)

@@ -64,7 +64,7 @@ test_that("mark and template show parser warnings in the UI", {
 
   d = withr::local_tempdir()
   pw_doc(d, "assignment.qmd")
-  tapp = new_app_driver(template(d), name = "template_parse_warnings")
+  tapp = new_app_driver(template_app(d), name = "template_parse_warnings")
   tapp$wait_for_js("!!document.getElementById('show_parse_warnings')", timeout = 10000)
   tapp$click("show_parse_warnings")
   tapp$wait_for_js("document.getElementById('shiny-modal').innerText.includes('Q-2-9')", timeout = 10000)

@@ -2,7 +2,7 @@ test_that("validate_node_type accepts allowed types and rejects everything else"
   expect_null(markermd:::validate_node_type("Heading"))
   expect_null(markermd:::validate_node_type("Any node"))
   expect_null(markermd:::validate_node_type(c("Markdown", "Raw Block")))
-  expect_null(markermd:::validate_node_type(markermd::get_allowed_node_types()))
+  expect_null(markermd:::validate_node_type(markermd::rule_node_types()))
 
   expect_match(markermd:::validate_node_type(1), "character")
   expect_match(markermd:::validate_node_type(character(0)), "at least one")
@@ -15,7 +15,7 @@ test_that("validate_node_type accepts allowed types and rejects everything else"
 
 
 test_that("validate_rule_verb accepts the verb vocabulary and rejects everything else", {
-  for (verb in markermd::get_allowed_rule_verbs()) {
+  for (verb in markermd::rule_verbs()) {
     expect_null(markermd:::validate_rule_verb(verb))
   }
 
@@ -85,7 +85,7 @@ test_that("get_default_rule_values returns defaults that validate for every verb
   expect_equal(markermd:::get_default_rule_values("has name"), "")
   expect_null(markermd:::get_default_rule_values("not a verb"))
 
-  for (verb in markermd::get_allowed_rule_verbs()) {
+  for (verb in markermd::rule_verbs()) {
     expect_null(markermd:::validate_rule_values(verb, markermd:::get_default_rule_values(verb)))
   }
 })

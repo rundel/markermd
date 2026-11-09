@@ -38,7 +38,7 @@ test_that("markermd_rule validator cross-checks verb against values at construct
 
 
 test_that("new_markermd_rule fills defaults for every allowed verb", {
-  for (verb in markermd::get_allowed_rule_verbs()) {
+  for (verb in markermd::rule_verbs()) {
     rule = markermd:::new_markermd_rule(verb = verb)
     expect_s7_class(rule, markermd::markermd_rule)
     expect_equal(rule@node_type, "Any node", label = verb)

@@ -6,7 +6,7 @@ test_that("A rule shows a live pass/fail status against the document", {
   testthat::skip_on_cran()
 
   app = new_app_driver(
-    template(file),
+    template_app(file),
     name = "rule_status"
   )
 
@@ -27,7 +27,7 @@ test_that("Rule edits are captured into state before an add re-renders the rows"
   testthat::skip_on_cran()
 
   app = new_app_driver(
-    template(file),
+    template_app(file),
     name = "rule_crud"
   )
 
@@ -62,7 +62,7 @@ test_that("Deleting a rule keeps the survivor under its own id with its values",
   testthat::skip_on_cran()
 
   app = new_app_driver(
-    template(file),
+    template_app(file),
     name = "rule_delete"
   )
 
@@ -114,7 +114,7 @@ test_that("A double-click on Add Rule keeps every rule's node types", {
   testthat::skip_on_cran()
 
   app = new_app_driver(
-    template(file),
+    template_app(file),
     name = "rule_double_add"
   )
 

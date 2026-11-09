@@ -39,7 +39,7 @@ test_that("q2r_node_label appends (#id) to any node with a standard attr id", {
 })
 
 test_that("rule node types are the friendly kinds, not raw q2r classes", {
-  types = get_allowed_node_types()
+  types = rule_node_types()
 
   expect_true("Any node" %in% types)
   expect_true(all(c("Heading", "Markdown", "Chunk", "Code block") %in% types))

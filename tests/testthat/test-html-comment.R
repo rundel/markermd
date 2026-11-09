@@ -108,7 +108,7 @@ test_that("node type filters split Raw Block from HTML comment", {
 
 
 test_that("HTML comment is in the rule vocabulary and the schema", {
-  expect_true("HTML comment" %in% markermd::get_allowed_node_types())
+  expect_true("HTML comment" %in% markermd::rule_node_types())
   expect_null(markermd:::validate_node_type("HTML comment"))
   expect_null(markermd:::validate_filter_condition_value("node type", "HTML comment"))
 

@@ -136,11 +136,11 @@ test_that("export_comments aborts when no repository has public feedback", {
 })
 
 
-test_that("export_marks runs both exports and returns their paths", {
+test_that("export_feedback runs both exports and returns their paths", {
   d = make_export_project()
   markermd:::save_grade_selection(d, "Q1", "hw01-team01", "item_1", TRUE)
 
-  result = suppressMessages(export_marks(d))
+  result = suppressMessages(export_feedback(d))
 
   expect_named(result, c("scores", "comments"))
   expect_identical(as.character(result$scores), file.path(d, "scores.csv"))

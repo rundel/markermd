@@ -6,7 +6,7 @@ test_that("rule edits and renames neither redraw nor patch the tree", {
   qmd = withr::local_tempfile(fileext = ".qmd")
   writeLines(c("# Q1", "", "Some text.", "", "```{r}", "1 + 1", "```", "", "# Q2", "", "More."), qmd)
   doc_ast = parse_assignment_document(qmd)
-  app = template_app(shiny::reactiveVal(doc_ast), NULL, source_path = qmd)
+  app = template_editor_app(shiny::reactiveVal(doc_ast), NULL, source_path = qmd)
 
   counts = new.env()
   counts$renders = 0
