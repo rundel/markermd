@@ -20,7 +20,7 @@ test_that("the Rubric tab edits every question's rubric in one place", {
   editor = app$get_text("#rubric_module-rubric_editor_ui")
   expect_match(editor, "Q2")
   expect_match(editor, "Q3")
-  expect_match(app$get_text("#rubric_module-item_0-container"), "2×")
+  expect_match(app$get_text("#rubric_module-item_0-container"), "2/[0-9]+")
   expect_equal(container_count("item_0"), 1)
   expect_false(app$get_js("!!document.getElementById('rubric_module-item_0-hotkey_btn')"))
 

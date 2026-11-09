@@ -84,9 +84,11 @@ rubric_group_menu_item = function(ns, group_id, label, active) {
 #   group id, in display order, for the item's group menu
 # selected_count: NULL in the Grade tab (the item shows its toggle button);
 #   in the Rubric tab's editor, how many repositories have the item
-#   selected, shown in place of the toggle
+#   selected, shown as "<count>/<repo_count>" beside the action buttons
+#   instead of the toggle
+# repo_count: With selected_count, the number of repositories
 
-mark_rubric_item_ui = function(id, rubric_item, groups = list(), selected_count = NULL) {
+mark_rubric_item_ui = function(id, rubric_item, groups = list(), selected_count = NULL, repo_count = NULL) {
   ns = shiny::NS(id)
 
   action_style = "border: none; background: transparent; color: #6c757d; font-size: 12px; line-height: 1;"
@@ -104,9 +106,12 @@ mark_rubric_item_ui = function(id, rubric_item, groups = list(), selected_count 
       style = "top: 0; right: 8px;",
       if (!is.null(selected_count)) {
         shiny::span(
-          class = "badge rounded-pill text-bg-secondary rubric-selected-count",
-          title = paste0("Selected for ", selected_count, " repositor", if (selected_count == 1) "y" else "ies"),
-          paste0(selected_count, "\u00d7")
+          class = paste(
+            "badge rounded-pill rubric-selected-count",
+            if (selected_count > 0) "text-bg-primary" else "text-bg-light border text-muted"
+          ),
+          title = paste0("Selected for ", selected_count, " of ", repo_count, " repositor", if (repo_count == 1) "y" else "ies"),
+          paste0(selected_count, "/", repo_count)
         )
       },
       shiny::div(

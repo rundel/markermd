@@ -273,7 +273,7 @@ mark_rubric_editor_ui = function(id) {
     ),
     bslib::card_body(
       class = "overflow-auto",
-      shiny::tags$style(shiny::HTML(".rubric-editor .rubric-group-subtotal { display: none; } .rubric-editor-settings .shiny-input-container { margin-bottom: 0; width: auto; } .rubric-editor-settings .form-check { margin-bottom: 0; } .rubric-editor-settings input[type=number] { height: 28px; padding: 2px 6px; font-size: 12px; } .rubric-editor-jump .shiny-input-container { margin-bottom: 0; }")),
+      shiny::tags$style(shiny::HTML(".rubric-editor .rubric-group-subtotal { display: none; } .rubric-editor-settings .shiny-input-container { margin-bottom: 0; width: auto; } .rubric-editor-settings .form-check { margin-bottom: 0; } .rubric-editor-settings input[type=number] { height: 28px; padding: 2px 6px; font-size: 12px; } .rubric-editor-jump .shiny-input-container { margin-bottom: 0; } .rubric-editor .rubric-action-btns { opacity: 1; }")),
       shiny::uiOutput(ns("rubric_editor_ui"))
     )
   )
@@ -975,7 +975,8 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
           n = counts[paste(question_name, item_id, sep = "\x1f")]
           mark_rubric_item_ui(
             session$ns(item_id), servers[[item_id]]$item(), groups = groups,
-            selected_count = if (is.na(n)) 0L else unname(n)
+            selected_count = if (is.na(n)) 0L else unname(n),
+            repo_count = length(repos)
           )
         }
         block_ui = function(block) {
