@@ -7,13 +7,18 @@
 # project: markermd_project S7 object. When set, "Save Template" writes the
 #   template into the project and records it in the config (via project_set())
 #   rather than offering a browser download
+# key_dir: Directory the assignment's other files are listed from (the
+#   project's key, a directory source or a cloned repository; NULL lets
+#   assignment_files_root() find the enclosing repository)
 
-template_editor_app = function(ast, template_obj = NULL, source_path = NULL, project = NULL) {
+template_editor_app = function(ast, template_obj = NULL, source_path = NULL, project = NULL, key_dir = NULL) {
 
   # Where the assignment's other files are listed from (see
   # assignment_files_root(), shared with assignment_outline()); the
   # document's path relative to it is never offered as a file
-  key_dir = if (!is.null(project) && !is.na(project@key)) as.character(fs::path(project@root, project@key))
+  if (is.null(key_dir) && !is.null(project) && !is.na(project@key)) {
+    key_dir = as.character(fs::path(project@root, project@key))
+  }
   files_root = if (!is.null(source_path)) {
     assignment_files_root(source_path, key_dir = key_dir)
   } else {
@@ -1014,11 +1019,13 @@ template_editor_app = function(ast, template_obj = NULL, source_path = NULL, pro
 # source_path: Character. Path to the assignment document, recorded in saved templates
 # project: markermd_project S7 object. When set, the app saves into the project
 #   and records the template in its config instead of offering a file download
+# key_dir: Directory the assignment's other files are listed from (see
+#   template_editor_app())
 
-template_app_standalone = function(ast, template_obj = NULL, assignment_path = NULL, source_path = NULL, project = NULL) {
+template_app_standalone = function(ast, template_obj = NULL, assignment_path = NULL, source_path = NULL, project = NULL, key_dir = NULL) {
 
   # Get the base template app components
-  app_components = template_editor_app(ast, template_obj, source_path = source_path, project = project)
+  app_components = template_editor_app(ast, template_obj, source_path = source_path, project = project, key_dir = key_dir)
 
   # A simple fillable page with a plain header bar: the app has a single view,
   # so a navbar whose only tab duplicates the page title earns nothing
@@ -1123,117 +1130,110 @@ template = function(source, local_dir = NULL, filename = "*.[Rq]md", assignment 
 #   cannot be located
 
 template_app = function(source, local_dir = NULL, filename = "*.[Rq]md", assignment = NULL) {
-  
-  # Validate inputs
-  if (missing(source)) {
-    cli::cli_abort("{.arg source} is required.")
-  }
-  
-  # Determine what type of input we have
-  template_obj = NULL
-  is_template_mode = FALSE
-  project = NULL
-  app = NULL
-
-  if (S7::S7_inherits(source, markermd_template)) {
-    # Input is an S7 template object
-    template_obj = source
-    is_template_mode = TRUE
-
-  } else if (is_markermd_project(source)) {
-    # Input is an initialized markermd project: author the template against the
-    # project's key (solution) repo and preload any configured template.
-    app = template_app_from_project(source, filename, assignment)
-
-  } else if (is.character(source) && length(source) == 1) {
-    # Input is a character string - could be assignment path or template file
-
-    if (grepl("\\.ya?ml$", source, ignore.case = TRUE)) {
-      # Input is a saved template YAML file
-      if (!file.exists(source)) {
-        cli::cli_abort("Template file does not exist: {source}")
-      }
-      template_obj = read_template_yaml(source, assignment = assignment, require_ast = TRUE)
-      is_template_mode = TRUE
-
-    } else {
-      # Input is an assignment path (local directory or GitHub repo)
-      is_template_mode = FALSE
-    }
-
-  } else {
-    input_desc = if (is.character(source)) paste0("a length-", length(source), " character vector") else paste0("an object of class ", class(source)[1])
-    cli::cli_abort("{.arg source} must be a single character string (an assignment file, a directory containing one, a saved template .yaml, or a GitHub '<owner>/<repo>') or a markermd_template object, not {input_desc}.")
-  }
-  
-  # Handle template mode vs assignment mode (project mode already built `app`)
-  if (is.null(app) && is_template_mode) {
-    assert_template_compatible(template_obj)
-
-    # Template mode: use AST from template, ignore filename/local_dir
-    ast = template_obj@original_ast
-
-    # Source path resolved when loading a YAML template, preserved on re-save
-    source_path = attr(template_obj, "markermd_source_path")
-
-    # Create footer path - show original input for template objects, full path for files
-    footer_path = if (S7::S7_inherits(source, markermd_template)) {
-      "Template Object"
-    } else {
-      as.character(source)  # Show full path for template files
-    }
-
-    # Create app with template data
-    app = template_app_standalone(shiny::reactiveVal(ast), template_obj, footer_path, source_path = source_path)
-
-  } else if (is.null(app)) {
-    # Assignment mode: a single assignment file, a directory containing one, or
-    # a GitHub "<owner>/<repo>" to clone. A name with a document or template
-    # extension is a mistyped local path, never a repository, even though it
-    # matches the owner/repo shape.
-    looks_like_file = tolower(fs::path_ext(source)) %in% c("qmd", "rmd", "yaml", "yml")
-    is_github_repo = grepl("^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$", source) &&
-      !file.exists(source) && !looks_like_file
-
-    if (is_github_repo) {
-      if (is.null(local_dir)) {
-        cli::cli_abort("local_dir is required when cloning the GitHub repository '{source}'.")
-      }
-      repo_path = setup_assignment_repo(source, local_dir, is_github_repo = TRUE)
-      file_path = resolve_assignment_file(repo_path, filename)
-
-    } else if (dir.exists(source)) {
-      file_path = resolve_assignment_file(source, filename)
-
-    } else if (file.exists(source)) {
-      if (!tolower(fs::path_ext(source)) %in% c("qmd", "rmd")) {
-        cli::cli_abort("Assignment file must be a .qmd or .Rmd document: {source}")
-      }
-      file_path = normalizePath(source)
-
-    } else {
-      cli::cli_abort("{.arg source} not found locally: '{source}'.\nPass a path to an assignment file (.qmd/.Rmd), a directory containing one, a saved template (.yaml), a markermd project directory, or a GitHub repository as '<owner>/<repo>'.")
-    }
-
-    ast = parse_assignment_document(file_path)
-    app = template_app_standalone(shiny::reactiveVal(ast), NULL, source, source_path = file_path)
-  }
-
+  resolved = resolve_assignment_source(source, local_dir = local_dir, filename = filename, assignment = assignment)
+  app = template_app_standalone(
+    shiny::reactiveVal(resolved$ast), resolved$template, resolved$label,
+    source_path = resolved$source_path, project = resolved$project, key_dir = resolved$key_dir
+  )
   shiny::shinyApp(ui = app$ui, server = app$server)
 }
 
-# Build the standalone template app for an initialized markermd project.
+# Resolve any source template() and assignment_outline() accept to the
+# assignment document it stands for, so the editor and the outline always
+# agree on what a source means. A template (object, YAML file, or the one
+# stored in a project) brings its own AST; anything else is parsed from the
+# resolved document.
 #
-# Authors the template against the project's key (solution) repository and
-# preloads the template stored in the project database (if any) for editing. The
-# app saves directly back into the project database (see template_editor_app()).
+# source: project directory, assignment file or directory, saved template
+#   YAML, markermd_template object or GitHub "<owner>/<repo>" (see template())
+# local_dir: clone directory for a GitHub source
+# filename: glob matching the assignment document in a directory source
+# assignment: optional assignment document for a template whose source.path
+#   cannot be located
+# Returns: list with ast (the document's AST), template (markermd_template or
+#   NULL), source_path (the document file, NULL for a template object whose
+#   document is unknown), key_dir (the directory the assignment's files are
+#   listed from, or NULL), project (markermd_project or NULL) and label (what
+#   the editor's footer shows)
+
+resolve_assignment_source = function(source, local_dir = NULL, filename = "*.[Rq]md", assignment = NULL) {
+  if (missing(source)) {
+    cli::cli_abort("{.arg source} is required.")
+  }
+
+  if (S7::S7_inherits(source, markermd_template)) {
+    assert_template_compatible(source)
+    return(list(
+      ast = source@original_ast, template = source,
+      source_path = attr(source, "markermd_source_path"),
+      key_dir = NULL, project = NULL, label = "Template Object"
+    ))
+  }
+
+  if (!is.character(source) || length(source) != 1) {
+    input_desc = if (is.character(source)) paste0("a length-", length(source), " character vector") else paste0("an object of class ", class(source)[1])
+    cli::cli_abort("{.arg source} must be a single character string (an assignment file, a directory containing one, a saved template .yaml, a markermd project directory, or a GitHub '<owner>/<repo>') or a markermd_template object, not {input_desc}.")
+  }
+
+  if (is_markermd_project(source)) {
+    return(resolve_project_source(source, filename))
+  }
+
+  if (grepl("\\.ya?ml$", source, ignore.case = TRUE)) {
+    if (!file.exists(source)) {
+      cli::cli_abort("Template file does not exist: {source}")
+    }
+    template_obj = read_template_yaml(source, assignment = assignment, require_ast = TRUE)
+    assert_template_compatible(template_obj)
+    return(list(
+      ast = template_obj@original_ast, template = template_obj,
+      source_path = attr(template_obj, "markermd_source_path"),
+      key_dir = NULL, project = NULL, label = as.character(source)
+    ))
+  }
+
+  # An assignment file, a directory containing one, or a GitHub
+  # "<owner>/<repo>" to clone. A name with a document or template extension is
+  # a mistyped local path, never a repository, even though it matches the
+  # owner/repo shape.
+  looks_like_file = tolower(fs::path_ext(source)) %in% c("qmd", "rmd", "yaml", "yml")
+  is_github_repo = grepl("^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$", source) &&
+    !file.exists(source) && !looks_like_file
+
+  key_dir = NULL
+  if (is_github_repo) {
+    if (is.null(local_dir)) {
+      cli::cli_abort("local_dir is required when cloning the GitHub repository '{source}'.")
+    }
+    key_dir = setup_assignment_repo(source, local_dir, is_github_repo = TRUE)
+    file_path = resolve_assignment_file(key_dir, filename)
+  } else if (dir.exists(source)) {
+    key_dir = normalizePath(source, winslash = "/")
+    file_path = resolve_assignment_file(source, filename)
+  } else if (file.exists(source)) {
+    if (!tolower(fs::path_ext(source)) %in% c("qmd", "rmd")) {
+      cli::cli_abort("Assignment file must be a .qmd or .Rmd document: {source}")
+    }
+    file_path = normalizePath(source)
+  } else {
+    cli::cli_abort("{.arg source} not found locally: '{source}'.\nPass a path to an assignment file (.qmd/.Rmd), a directory containing one, a saved template (.yaml), a markermd project directory, or a GitHub repository as '<owner>/<repo>'.")
+  }
+
+  list(
+    ast = parse_assignment_document(file_path), template = NULL,
+    source_path = file_path, key_dir = key_dir, project = NULL, label = source
+  )
+}
+
+# Resolve an initialized markermd project to its key (solution) repository's
+# assignment document and the template stored in the project database (if
+# any). template() then saves straight back into the database (see
+# template_editor_app()).
 #
 # path: project root directory
 # filename: glob used to locate the assignment document within the key repo
-# assignment: optional assignment-document override (unused for the DB preload,
-#   which resolves the source against the key repo)
 
-template_app_from_project = function(path, filename, assignment) {
+resolve_project_source = function(path, filename) {
   project = project_config(path)
   root = project@root
 
@@ -1254,17 +1254,13 @@ template_app_from_project = function(path, filename, assignment) {
     assert_template_compatible(template_obj)
   }
 
-  if (!is.null(template_obj)) {
-    ast = template_obj@original_ast
-    source_path = attr(template_obj, "markermd_source_path")
-    if (is.null(source_path)) source_path = key_doc
-  } else {
-    ast = parse_assignment_document(key_doc)
-    source_path = key_doc
-  }
+  source_path = if (is.null(template_obj)) NULL else attr(template_obj, "markermd_source_path")
+  if (is.null(source_path)) source_path = key_doc
 
-  template_app_standalone(
-    shiny::reactiveVal(ast), template_obj, key_doc,
-    source_path = source_path, project = project
+  list(
+    ast = if (is.null(template_obj)) parse_assignment_document(key_doc) else template_obj@original_ast,
+    template = template_obj,
+    source_path = source_path,
+    key_dir = as.character(key_dir), project = project, label = key_doc
   )
 }

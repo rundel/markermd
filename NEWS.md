@@ -7,7 +7,7 @@ The exported API was made consistent before the first release. There are no depr
 * The project argument is always `project`. `init_project()`, `project_config()`, `project_set()`, `project_sitrep()`, `validate_project()`, `parse_project()`, `scan_project()` and `mark()` took `path`.
 * `export_marks()` is now `export_feedback()`. It writes `scores.csv` and the per-repository feedback files; `marks_export()` still writes the marks YAML.
 * `template()` now runs the editor like `mark()`, with `...` passed to `shiny::runApp()`, instead of returning an app object. Its first argument is `source` (was `assignment_path`).
-* `assignment_outline()` takes `source` (was `assignment_path`), and `parse_assignment_document()` takes `path` (was `file_path`).
+* `assignment_outline()` takes `source` (was `assignment_path`) and now accepts every source `template()` does: a project (it outlines the key document with the stored template's section stops), a file, a directory, a saved template YAML or object, or a GitHub repository (new `local_dir` and `assignment` arguments). `parse_assignment_document()` takes `path` (was `file_path`).
 * `get_question()`, `add_question()` and `remove_question()` are now `template_question()`, `template_add_question()` and `template_remove_question()`, with arguments `template` and `question` (were `tmpl` and `q`).
 * `get_allowed_rule_verbs()`, `get_allowed_node_types()` and `get_allowed_filter_condition_types()` are now `rule_verbs()`, `rule_node_types()` and `filter_condition_types()`.
 

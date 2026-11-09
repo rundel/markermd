@@ -4,21 +4,37 @@
 \alias{assignment_outline}
 \title{Outline the gradable sections of an assignment}
 \usage{
-assignment_outline(source, filename = "*.[Rq]md", template = NULL)
+assignment_outline(
+  source,
+  filename = "*.[Rq]md",
+  template = NULL,
+  local_dir = NULL,
+  assignment = NULL
+)
 }
 \arguments{
-\item{source}{Path to an assignment file (\code{.qmd}/\code{.Rmd}) or a
-directory containing one.}
+\item{source}{Anything \code{\link[=template]{template()}} accepts: an initialized markermd
+project directory (outlines the key repository's document), a path to an
+assignment file (\code{.qmd}/\code{.Rmd}), a directory containing one, a saved
+template (\code{.yaml}/\code{.yml}), a \code{markermd_template} object, or a GitHub
+\verb{<owner>/<repo>} (cloned into \code{local_dir}).}
 
 \item{filename}{Glob used to find the assignment when \code{source} is a
-directory. Defaults to any \code{.Rmd}/\code{.qmd} file.}
+directory, a project or a repository. Defaults to any \code{.Rmd}/\code{.qmd} file.}
 
 \item{template}{Optional \code{markermd_template}. When given, a heading's counts
 stop at the first heading one of the template's questions selects (other
 than the row's own), exactly as grading ends that question's section, so
-an outline taken against a stored template shows what each question
-would be graded on. When \code{NULL} (the default) a section runs to the next
-heading of the same or higher level.}
+an outline taken against a template shows what each question would be
+graded on. When \code{NULL} (the default) the source's own template is used if
+it has one (a template object or file, or a project's stored template);
+otherwise a section runs to the next heading of the same or higher level.}
+
+\item{local_dir}{Directory to clone into when \code{source} is a GitHub
+repository.}
+
+\item{assignment}{Optional assignment document for a template \code{source}
+whose \code{source.path} cannot be located.}
 }
 \value{
 A data frame with one row per anchorable section and columns \code{type}
@@ -26,13 +42,15 @@ A data frame with one row per anchorable section and columns \code{type}
 content counts \code{n_chunk}, \code{n_code_block}, \code{n_markdown}, \code{n_list},
 \code{n_table}, \code{n_div}, \code{n_other} and \code{n_content} (all non-heading blocks;
 HTML comments, which never render, are not counted anywhere). The
-resolved source file is attached as the \code{"source_file"} attribute, and
+resolved source file is attached as the \code{"source_file"} attribute (\code{NULL}
+for a template object whose document is unknown), and
 the assignment's other files (everything else in the repository, which a
 template question can cover with \verb{file:}) as the \code{"files"} attribute: a
-data frame with \code{path} (relative to the repository root: \code{source}
-when it is a directory, else the enclosing git repository when the
-document sits at most two directories below it, else the document's
-directory), \code{size} (bytes), \code{filtered} (\code{TRUE} for hidden files, render
+data frame with \code{path} (relative to the repository root: the project's
+key repository, \code{source} when it is a directory, the cloned repository,
+else the enclosing git repository when the document sits at most two
+directories below it, else the document's directory; empty when the
+document is unknown), \code{size} (bytes), \code{filtered} (\code{TRUE} for hidden files, render
 output, lock files, project files and the README, which are seldom
 graded) and \code{reason}.
 }

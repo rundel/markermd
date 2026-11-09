@@ -85,3 +85,61 @@ test_that("a loose document deep inside an unrelated repository lists its own di
   writeLines(c("# Q1", "", "Answer."), doc)
   expect_equal(markermd:::assignment_files_root(doc), deep)
 })
+
+# A copy of the bundled example project, initialized, with its template
+# stored in the project database
+outline_project = function() {
+  d = tempfile("outlineproj_")
+  dir.create(d)
+  file.copy(system.file("examples/test_assignment", package = "markermd"), d, recursive = TRUE)
+  root = normalizePath(file.path(d, "test_assignment"), winslash = "/")
+  suppressMessages(markermd::init_project(root))
+  suppressMessages(markermd::template_import(file.path(root, "markermd-template.yaml"), project = root))
+  root
+}
+
+test_that("assignment_outline outlines a project's key document with its stored template", {
+  root = outline_project()
+  out = markermd::assignment_outline(root)
+  key_doc = file.path(root, "hw3-key", "assignment.qmd")
+
+  expect_equal(normalizePath(attr(out, "source_file")), normalizePath(key_doc))
+  # The stored template's stops apply, matching an explicit template
+  stored = markermd:::load_template_from_db(root, base_dir = root, require_ast = TRUE)
+  expect_equal(out, markermd::assignment_outline(key_doc, template = stored), ignore_attr = TRUE)
+  # Files are listed relative to the key repository
+  files = attr(out, "files")$path
+  expect_false("assignment.qmd" %in% files)
+  expect_false(any(startsWith(files, "hw3-key/")))
+})
+
+test_that("assignment_outline accepts a saved template file and a template object", {
+  root = outline_project()
+  yaml = file.path(root, "markermd-template.yaml")
+  tmpl = markermd::read_template_yaml(yaml, require_ast = TRUE)
+
+  by_yaml = markermd::assignment_outline(yaml)
+  by_object = markermd::assignment_outline(tmpl)
+  by_doc = markermd::assignment_outline(file.path(root, "hw3-key", "assignment.qmd"), template = tmpl)
+
+  expect_equal(by_yaml, by_doc, ignore_attr = TRUE)
+  expect_equal(by_object, by_doc, ignore_attr = TRUE)
+  expect_equal(normalizePath(attr(by_yaml, "source_file")), normalizePath(attr(by_doc, "source_file")))
+})
+
+test_that("assignment_outline outlines a template object without a known document from its AST", {
+  root = outline_project()
+  tmpl = markermd::read_template_yaml(file.path(root, "markermd-template.yaml"), require_ast = TRUE)
+  attr(tmpl, "markermd_source_path") = NULL
+
+  out = markermd::assignment_outline(tmpl)
+  expect_gt(nrow(out), 0)
+  expect_null(attr(out, "source_file"))
+  expect_equal(nrow(attr(out, "files")), 0)
+})
+
+test_that("assignment_outline gives template()'s errors for bad sources", {
+  expect_error(markermd::assignment_outline(file.path(tempdir(), "nope", "hw1.qmd")), "not found locally")
+  expect_error(markermd::assignment_outline("someone/some-repo"), "local_dir is required")
+  expect_error(markermd::assignment_outline(1), "single character string")
+})
