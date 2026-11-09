@@ -70,7 +70,7 @@ filter_condition_ui = function(condition, input_id, show_and = FALSE) {
         style = "flex: 0 0 auto;",
         shiny::actionButton(
           input_id("delete"),
-          shiny::icon("trash-alt"),
+          fa_icon("trash-alt"),
           class = "btn-outline-danger btn-sm",
           style = "font-size: 10px; padding: 0; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;",
           title = "Delete Condition"
@@ -180,7 +180,7 @@ filter_group_ui = function(group_id, group, ns) {
       # per-condition trash buttons and the question's filled delete button
       shiny::actionButton(
         ns(paste0("filter_group_", group_id, "-delete")),
-        shiny::icon("times"),
+        fa_icon("times"),
         class = "btn-outline-danger btn-sm",
         style = "font-size: 12px; padding: 2px 6px; border-radius: 20%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; line-height: 1;",
         title = "Delete Filter Group"
@@ -194,7 +194,7 @@ filter_group_ui = function(group_id, group, ns) {
       shiny::actionButton(
         ns(paste0("filter_group_", group_id, "-add_condition")),
         "and",
-        icon = shiny::icon("plus"),
+        icon = fa_icon("plus"),
         class = "btn-outline-primary btn-sm",
         style = "font-size: 11px; padding: 2px 8px;",
         title = "Add a condition that must also match (AND)"

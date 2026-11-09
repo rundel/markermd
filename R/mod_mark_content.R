@@ -135,7 +135,7 @@ mark_content_ui = function(id) {
           class = "d-flex align-items-center gap-2",
           shiny::span("Content"),
           bslib::popover(
-            shiny::icon("keyboard", class = "text-muted"),
+            fa_icon("keyboard", class = "text-muted"),
             title = "Keyboard shortcuts",
             shiny::tags$ul(
               class = "small mb-0 ps-3",
@@ -164,7 +164,7 @@ mark_content_ui = function(id) {
             bslib::tooltip(
               shiny::actionButton(
                 ns("repo_prev_btn"),
-                shiny::icon("chevron-left"),
+                fa_icon("chevron-left"),
                 class = "btn-sm",
                 style = "padding: 1px 4px; border: none; background: transparent; color: #6c757d; font-size: 12px;"
               ),
@@ -183,7 +183,7 @@ mark_content_ui = function(id) {
             bslib::tooltip(
               shiny::actionButton(
                 ns("repo_next_btn"),
-                shiny::icon("chevron-right"),
+                fa_icon("chevron-right"),
                 class = "btn-sm",
                 style = "padding: 1px 4px; border: none; background: transparent; color: #6c757d; font-size: 12px;"
               ),
@@ -278,7 +278,7 @@ mark_content_server = function(id, template, collection, artifact_paths, artifac
           class = "text-center p-4",
           shiny::div(
             class = "d-flex align-items-center justify-content-center mb-3",
-            shiny::icon("exclamation-triangle", class = "fa-2x text-warning me-2"),
+            fa_icon("exclamation-triangle", class = "fa-2x text-warning me-2"),
             shiny::h5("No Artifact Available", class = "text-muted mb-0")
           ),
           shiny::p(glue::glue("Repository '{selected_repo}' does not have an associated artifact."), class = "text-muted"),

@@ -386,7 +386,7 @@ mark_rubric_item_server = function(id, initial_item, collection_path = NULL, que
       shiny::span(
         class = "agent-badge text-info ms-1",
         title = paste0("Selected by ", who, " and not yet reviewed; any change to this question clears it"),
-        shiny::icon("robot")
+        fa_icon("robot")
       )
     })
 

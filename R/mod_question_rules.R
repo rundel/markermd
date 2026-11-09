@@ -16,11 +16,11 @@ rule_status_badge = function(status) {
     return(NULL)
   }
   icon_tag = if (is.na(status$passed)) {
-    shiny::icon("triangle-exclamation", style = "color: #ffc107; font-size: 14px;")
+    fa_icon("triangle-exclamation", style = "color: #ffc107; font-size: 14px;")
   } else if (isTRUE(status$passed)) {
-    shiny::icon("check", style = "color: #28a745; font-size: 16px;")
+    fa_icon("check", style = "color: #28a745; font-size: 16px;")
   } else {
-    shiny::icon("times", style = "color: #dc3545; font-size: 16px;")
+    fa_icon("times", style = "color: #dc3545; font-size: 16px;")
   }
   bslib::tooltip(shiny::span(icon_tag, tabindex = "0"), status$message)
 }

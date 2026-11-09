@@ -372,7 +372,7 @@ question_filters_server = function(input, output, session, state, ast) {
     shiny::div(
       class = "small text-danger mb-2",
       lapply(msgs, function(msg) {
-        shiny::div(shiny::icon("triangle-exclamation"), " ", msg)
+        shiny::div(fa_icon("triangle-exclamation"), " ", msg)
       })
     )
   })

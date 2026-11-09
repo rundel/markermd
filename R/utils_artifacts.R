@@ -174,7 +174,7 @@ artifact_ambiguity_note = function(artifact_paths, repo) {
   shiny::div(
     class = "alert alert-warning py-1 px-2 mb-1 small",
     role = "alert",
-    shiny::icon("triangle-exclamation", class = "me-1"),
+    fa_icon("triangle-exclamation", class = "me-1"),
     glue::glue(
       "Several HTML files were found for this repository; showing \"{shown[[1]]}\". ",
       "Also found: {paste0('\"', shown[-1], '\"', collapse = ', ')}. ",

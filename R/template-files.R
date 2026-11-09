@@ -9,7 +9,7 @@
 template_files_button_ui = function() {
   shiny::actionButton(
     "add_files", "Files",
-    icon = shiny::icon("folder-plus"),
+    icon = fa_icon("folder-plus"),
     class = "btn-outline-secondary btn-sm",
     title = "Choose which of the assignment's other files (scripts, data, images) entries can cover"
   )
@@ -122,7 +122,7 @@ template_files_server = function(input, output, session, files_root, doc_rel,
       path = paths[i]
       reason = if (path %in% missing) "not in the assignment directory" else visible$reason[i]
       shiny::span(
-        shiny::icon(file_icon_name(path), class = "fa-fw text-muted me-1"),
+        fa_icon(file_icon_name(path), class = "fa-fw text-muted me-1"),
         shiny::tags$code(path),
         if (!is.na(reason)) shiny::span(class = "text-muted small ms-1", paste0("(", reason, ")"))
       )

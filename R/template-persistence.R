@@ -93,7 +93,7 @@ template_persistence = function(input, output, session,
       if (template_dirty()) {
         shiny::span(
           class = "text-warning-emphasis ms-2",
-          shiny::icon("circle-exclamation"),
+          fa_icon("circle-exclamation"),
           " unsaved changes"
         )
       }

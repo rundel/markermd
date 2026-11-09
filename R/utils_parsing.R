@@ -265,7 +265,7 @@ parse_warnings_ui = function(diagnostics, what = "the document") {
     class = "alert alert-warning small py-2 mb-2",
     htmltools::tags$details(
       htmltools::tags$summary(
-        shiny::icon("triangle-exclamation", class = "me-1"),
+        fa_icon("triangle-exclamation", class = "me-1"),
         paste0(n, " parser warning", if (n == 1) "" else "s", " in ", what),
         htmltools::span(class = "text-muted ms-1", "(the document still parsed; click for details)")
       ),

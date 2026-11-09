@@ -84,7 +84,7 @@ rule_item_ui = function(rule = NULL, input_id, verb_inputs) {
         style = "flex: 0 0 auto;",
         shiny::actionButton(
           input_id("delete"),
-          shiny::icon("trash-alt"),
+          fa_icon("trash-alt"),
           class = "btn-outline-danger btn-sm",
           style = "font-size: 10px; padding: 0; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;",
           title = "Delete Rule"

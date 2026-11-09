@@ -44,7 +44,7 @@ question_ui = function(id, name_id, name = paste("Question", name_id), file_labe
         shiny::div(
           class = "question-file-label d-flex align-items-center gap-1 text-muted",
           style = "min-width: 0;",
-          shiny::icon("file-lines", class = "fs-5", title = "File the question covers"),
+          fa_icon("file-lines", class = "fs-5", title = "File the question covers"),
           shiny::span(class = "text-truncate", file_label)
         )
       ),
@@ -55,21 +55,21 @@ question_ui = function(id, name_id, name = paste("Question", name_id), file_labe
         class = "d-flex align-items-center gap-1",
         shiny::actionButton(
           ns("move_question_up"),
-          shiny::icon("chevron-up"),
+          fa_icon("chevron-up"),
           class = "btn btn-sm p-1 border-0 text-secondary",
           style = "line-height: 1;",
           title = "Move question up"
         ),
         shiny::actionButton(
           ns("move_question_down"),
-          shiny::icon("chevron-down"),
+          fa_icon("chevron-down"),
           class = "btn btn-sm p-1 border-0 text-secondary",
           style = "line-height: 1;",
           title = "Move question down"
         ),
         shiny::actionButton(
           ns("delete_question"),
-          shiny::icon("times"),
+          fa_icon("times"),
           class = "btn-danger btn-sm",
           style = "font-size: 12px; padding: 2px 6px; border-radius: 20%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; line-height: 1;",
           title = "Delete Question"
@@ -117,7 +117,7 @@ question_ui = function(id, name_id, name = paste("Question", name_id), file_labe
             shiny::strong("Filters: "),
             shiny::uiOutput(ns("filters_status"), inline = TRUE),
             bslib::popover(
-              shiny::icon("circle-question", class = "text-muted"),
+              fa_icon("circle-question", class = "text-muted"),
               title = "Filter matching",
               shiny::tags$ul(
                 class = "small mb-0 ps-3",
@@ -132,7 +132,7 @@ question_ui = function(id, name_id, name = paste("Question", name_id), file_labe
           shiny::actionButton(
             ns("add_filter_group"),
             "Add Filter",
-            icon = shiny::icon("plus"),
+            icon = fa_icon("plus"),
             class = "btn-outline-primary btn-sm",
             style = "font-size: 11px; padding: 2px 8px;"
           )
@@ -163,7 +163,7 @@ question_ui = function(id, name_id, name = paste("Question", name_id), file_labe
           shiny::actionButton(
             ns("add_rule"),
             "Add Rule",
-            icon = shiny::icon("plus"),
+            icon = fa_icon("plus"),
             class = "btn-outline-primary btn-sm",
             style = "font-size: 11px; padding: 2px 8px;"
           )

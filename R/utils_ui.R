@@ -1,5 +1,39 @@
 # UI helpers shared by the template and marking apps
 
+# Font Awesome icon tag, the same markup as shiny::icon() but much cheaper:
+# shiny::icon() looks the name up in fontawesome's 2000-row icon table and
+# attaches the dependency to every tag, which adds up when a render needs
+# dozens of icons. The name is resolved to its classes (solid or regular,
+# aliases mapped to the canonical name) by shiny::icon() once per name and
+# cached; the tag carries no dependency, so each app's page head includes
+# fa_dependency() once.
+#
+# name: Font Awesome icon name, as for shiny::icon()
+# class: Extra classes, or NULL
+# ...: Further attributes for the <i> tag (style, title, ...)
+
+.fa_class_cache = new.env(parent = emptyenv())
+
+fa_icon = function(name, class = NULL, ...) {
+  base = .fa_class_cache[[name]]
+  if (is.null(base)) {
+    base = shiny::icon(name)$attribs$class
+    .fa_class_cache[[name]] = base
+  }
+  htmltools::tags$i(
+    class = paste(c(base, class), collapse = " "),
+    role = "presentation",
+    `aria-label` = paste(sub("^fa[a-z]* fa-", "", base), "icon"),
+    ...
+  )
+}
+
+# The Font Awesome stylesheet dependency that fa_icon() tags rely on
+
+fa_dependency = function() {
+  htmltools::htmlDependencies(shiny::icon("check"))
+}
+
 # Compact modal-header styling shared by both apps (shiny::modalDialog()'s
 # default header is taller than either app's dialogs want)
 
@@ -27,7 +61,7 @@ markermd_modal_css = function() {
 io_menu_ui = function(id, title, export_buttons, import_input_id, button_title = "Import / Export") {
   bslib::popover(
     shiny::tags$button(
-      shiny::icon("right-left"),
+      fa_icon("right-left"),
       id = id,
       type = "button",
       class = "btn btn-outline-secondary btn-sm",

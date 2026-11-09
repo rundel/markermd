@@ -10,23 +10,22 @@
 # rather than gt because gt's interactive mode cannot pin summary rows under
 # a sortable table.
 
-# Icon tags built once per name and class: shiny::icon() validates the name
-# and builds the tag afresh on every call, which adds up to a noticeable part
-# of the first render when the table needs a few per row
+# Icon tags built once per name and class, for renders that need many (the
+# table needs a few per row, the rubric a few per item); see fa_icon()
 .icon_cache = new.env(parent = emptyenv())
 
 cached_icon = function(name, class = NULL) {
   key = paste(name, if (is.null(class)) "" else class, sep = "|")
   icon = .icon_cache[[key]]
   if (is.null(icon)) {
-    icon = shiny::icon(name, class = class)
+    icon = fa_icon(name, class = class)
     .icon_cache[[key]] = icon
   }
   icon
 }
 
-# Icon tag for the table cells; the Font Awesome dependency is already on the
-# page via the static shiny::icon() uses in the rubric tab
+# Icon tag for the table cells; the Font Awesome dependency is on the page
+# via fa_dependency()
 cell_icon = function(name) {
   cached_icon(name, class = "fa-fw fs-6")
 }

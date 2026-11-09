@@ -127,7 +127,7 @@ mark_rubric_ui = function(id) {
           bslib::tooltip(
             shiny::actionButton(
               ns("take_snapshot"),
-              shiny::icon("camera"),
+              fa_icon("camera"),
               class = "btn-outline-secondary btn-sm"
             ),
             "Take a snapshot: record the current template, rubric and marks with a label and a summary, for comparing or restoring later from the History tab (shortcut: s)"
@@ -140,7 +140,7 @@ mark_rubric_ui = function(id) {
           bslib::tooltip(
             shiny::actionButton(
               ns("question_prev_btn"),
-              shiny::icon("chevron-left"),
+              fa_icon("chevron-left"),
               class = "btn-sm",
               style = "padding: 1px 4px; border: none; background: transparent; color: #6c757d; font-size: 12px;"
             ),
@@ -159,7 +159,7 @@ mark_rubric_ui = function(id) {
           bslib::tooltip(
             shiny::actionButton(
               ns("question_next_btn"),
-              shiny::icon("chevron-right"),
+              fa_icon("chevron-right"),
               class = "btn-sm",
               style = "padding: 1px 4px; border: none; background: transparent; color: #6c757d; font-size: 12px;"
             ),
@@ -183,7 +183,7 @@ mark_rubric_ui = function(id) {
         shiny::span(
           shiny::actionButton(
             ns("add_item"),
-            shiny::icon("plus"),
+            fa_icon("plus"),
             class = "btn-primary btn-sm rounded-circle",
             style = add_button_style,
             title = "Add Item"
@@ -195,7 +195,7 @@ mark_rubric_ui = function(id) {
         shiny::span(
           shiny::actionButton(
             ns("add_group"),
-            shiny::icon("layer-group"),
+            fa_icon("layer-group"),
             class = "btn-outline-primary btn-sm rounded-circle",
             style = add_button_style,
             title = "Add Group"
@@ -1003,14 +1003,14 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
               class = "d-flex align-items-center gap-3 mt-2",
               shiny::span(
                 shiny::actionButton(
-                  session$ns(paste0("editor_add_item_", k)), shiny::icon("plus"),
+                  session$ns(paste0("editor_add_item_", k)), fa_icon("plus"),
                   class = "btn-primary btn-sm rounded-circle", style = add_button_style, title = "Add Item"
                 ),
                 shiny::span("Add Item", class = "ms-1 text-dark")
               ),
               shiny::span(
                 shiny::actionButton(
-                  session$ns(paste0("editor_add_group_", k)), shiny::icon("layer-group"),
+                  session$ns(paste0("editor_add_group_", k)), fa_icon("layer-group"),
                   class = "btn-outline-primary btn-sm rounded-circle", style = add_button_style, title = "Add Group"
                 ),
                 shiny::span("Add Group", class = "ms-1 text-dark")

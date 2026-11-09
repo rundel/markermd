@@ -30,7 +30,7 @@ rubric_group_chips = function(group) {
   if (isTRUE(group@exclusive)) {
     chips[[length(chips) + 1]] = shiny::span(
       class = "rubric-group-chip rubric-group-chip-excl",
-      shiny::icon("circle-dot"), " pick one"
+      fa_icon("circle-dot"), " pick one"
     )
   }
   shiny::tagList(chips)
@@ -72,7 +72,7 @@ mark_rubric_group_ui = function(id, group, item_uis, subtotal = NULL) {
     class = paste("rubric-group", if (capped) "rubric-group-capped"),
     shiny::div(
       class = "rubric-group-head d-flex align-items-center gap-2 position-relative",
-      shiny::icon("layer-group", class = "text-muted", style = "font-size: 11px;"),
+      fa_icon("layer-group", class = "text-muted", style = "font-size: 11px;"),
       shiny::span(class = "rubric-group-name", group@label),
       shiny::span(class = "rubric-group-chips d-inline-flex gap-1", rubric_group_chips(group)),
       shiny::span(class = "rubric-group-subtotal", rubric_group_subtotal(sum, applied)),
@@ -84,7 +84,7 @@ mark_rubric_group_ui = function(id, group, item_uis, subtotal = NULL) {
           shiny::actionButton(
             ns("move_up_btn"),
             label = NULL,
-            icon = shiny::icon("chevron-up"),
+            icon = fa_icon("chevron-up"),
             class = "btn btn-sm p-1",
             style = action_style,
             title = "Move group up"
@@ -92,7 +92,7 @@ mark_rubric_group_ui = function(id, group, item_uis, subtotal = NULL) {
           shiny::actionButton(
             ns("move_down_btn"),
             label = NULL,
-            icon = shiny::icon("chevron-down"),
+            icon = fa_icon("chevron-down"),
             class = "btn btn-sm p-1",
             style = action_style,
             title = "Move group down"
@@ -101,7 +101,7 @@ mark_rubric_group_ui = function(id, group, item_uis, subtotal = NULL) {
             shiny::actionButton(
               ns("settings_btn"),
               label = NULL,
-              icon = shiny::icon("sliders"),
+              icon = fa_icon("sliders"),
               class = "btn btn-sm p-1",
               style = action_style,
               title = "Group settings"

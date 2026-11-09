@@ -126,7 +126,7 @@ create_rule_details = function(question, question_result) {
       style = paste0("margin: 6px 0; padding: 8px; border-left: 3px solid ", rule_color, "; background-color: #f8f9fa; border-radius: 3px;"),
       shiny::div(
         style = "display: flex; align-items: center; flex-wrap: wrap; row-gap: 2px;",
-        shiny::icon(rule_icon, class = "fa-fw", style = paste0("color: ", rule_color, "; margin-right: 8px; font-size: 14px;")),
+        fa_icon(rule_icon, class = "fa-fw", style = paste0("color: ", rule_color, "; margin-right: 8px; font-size: 14px;")),
         if (!is.null(rule)) {
           lapply(rule@node_type, function(nt) {
             shiny::span(
@@ -174,9 +174,9 @@ create_question_card = function(question, question_result, current_ast, session,
   
   # Solid circle status icons - only pass/fail states
   status_icon = switch(question_result$status,
-    "pass" = shiny::icon("circle-check", class = "fa-fw text-success"),
-    "fail" = shiny::icon("circle-xmark", class = "fa-fw text-danger"),
-    shiny::icon("circle-question", class = "fa-fw text-muted")  # Default for unknown status
+    "pass" = fa_icon("circle-check", class = "fa-fw text-success"),
+    "fail" = fa_icon("circle-xmark", class = "fa-fw text-danger"),
+    fa_icon("circle-question", class = "fa-fw text-muted")  # Default for unknown status
   )
   
   header = bslib::card_header(
@@ -221,7 +221,7 @@ create_question_card = function(question, question_result, current_ast, session,
         `data-bs-target` = paste0("#", body_id),
         `aria-expanded` = if (collapsed) "false" else "true",
         `aria-controls` = body_id,
-        shiny::icon("chevron-down", class = "fa-fw"),
+        fa_icon("chevron-down", class = "fa-fw"),
         "Matched content"
       ),
       htmltools::div(

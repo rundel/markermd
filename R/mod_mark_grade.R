@@ -105,7 +105,7 @@ mark_grade_ui = function(id, grade_state, capped = 0, breakdown = NULL) {
     tabindex = "0",
     role = "button",
     title = "Item group bounds changed this score",
-    shiny::icon("compress"), " ",
+    fa_icon("compress"), " ",
     shiny::span(id = ns("cap_badge_text"), cap_badge_text(capped))
   )
   if (!is.null(breakdown)) {
@@ -159,7 +159,7 @@ mark_grade_ui = function(id, grade_state, capped = 0, breakdown = NULL) {
                   if (grade_state@total_score == 1) "pt" else "pts"
                 )
               ),
-              shiny::icon("pen", class = "text-muted small")
+              fa_icon("pen", class = "text-muted small")
             ),
             title = "Total points",
             placement = "bottom",
@@ -184,7 +184,7 @@ mark_grade_ui = function(id, grade_state, capped = 0, breakdown = NULL) {
         bslib::popover(
           shiny::actionButton(
             ns("grade_settings"),
-            shiny::icon("gear"),
+            fa_icon("gear"),
             class = "btn-outline-secondary btn-sm",
             title = "Grading settings"
           ),

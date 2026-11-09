@@ -437,7 +437,7 @@ node_preview_button = function(item, ns, id_prefix = NULL) {
 
   shiny::actionButton(
     ns(button_id),
-    shiny::icon("search"),
+    fa_icon("search"),
     class = "btn-outline-info",
     style = "font-size: 10px; padding: 2px 6px; min-width: 24px; height: 22px; border-width: 1px; margin-left: 8px;",
     title = "Preview content"
@@ -518,9 +518,9 @@ ast_tree_node_content = function(item, opts, tree_items, ns,
 
     if (is_selectable) {
       button_icon = if (is_directly_selected) {
-        shiny::icon("check")
+        fa_icon("check")
       } else if (is_indirectly_selected) {
-        shiny::icon("ellipsis-v")
+        fa_icon("ellipsis-v")
       } else {
         ""
       }
@@ -549,9 +549,9 @@ ast_tree_node_content = function(item, opts, tree_items, ns,
     }
 
     indicator_icon = if (is_indirectly_selected) {
-      shiny::icon("ellipsis-v")
+      fa_icon("ellipsis-v")
     } else if (is_directly_selected) {
-      shiny::icon("check")
+      fa_icon("check")
     } else {
       ""
     }

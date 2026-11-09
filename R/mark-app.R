@@ -286,12 +286,13 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
     bslib::nav_panel(
       title = "Assignments",
       value = "assignments",
-      # Font Awesome ships with shiny::icon()'s html dependency (the rubric
-      # tab uses static icons), so no CDN stylesheet is needed
+      # Font Awesome comes from fa_dependency() in the head below (the
+      # fa_icon() tags carry none), so no CDN stylesheet is needed
       app_loading_overlay("Loading the grading data\u2026"),
       shiny::tags$head(
         shinyjs::useShinyjs(),
         markermd_modal_css(),
+        fa_dependency(),
         mark_validate_script("explore_module"),
         rubric_item_editing_head(),
         shiny::tags$style(shiny::HTML('
@@ -600,7 +601,7 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       if (is.null(err)) return(NULL)
       shiny::div(
         class = "alert alert-danger d-flex align-items-start gap-2 small mb-2",
-        shiny::icon("triangle-exclamation", class = "mt-1"),
+        fa_icon("triangle-exclamation", class = "mt-1"),
         shiny::div(
           shiny::strong("This repository could not be validated."),
           shiny::tags$pre(
@@ -741,7 +742,7 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
                 href = artifact_urls[[repo]],
                 target = "_blank",
                 class = "btn btn-outline-secondary btn-sm",
-                shiny::icon("up-right-from-square"),
+                fa_icon("up-right-from-square"),
                 " Open in browser"
               ),
               # Names the report shown when several HTML files were found
@@ -764,7 +765,7 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
               easyClose = TRUE,
               shiny::div(
                 class = "p-4 text-center",
-                shiny::icon("triangle-exclamation", class = "fa-fw fs-3 text-warning me-2"),
+                fa_icon("triangle-exclamation", class = "fa-fw fs-3 text-warning me-2"),
                 "Artifact file not found."
               )
             )
@@ -818,7 +819,7 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
               easyClose = TRUE,
               shiny::div(
                 class = "p-4 text-center",
-                shiny::icon("triangle-exclamation", class = "fa-fw fs-3 text-warning me-2"),
+                fa_icon("triangle-exclamation", class = "fa-fw fs-3 text-warning me-2"),
                 "Source file not found."
               )
             )
@@ -843,7 +844,7 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
             easyClose = TRUE,
             shiny::div(
               class = "p-4 text-center",
-              shiny::icon("triangle-exclamation", class = "fa-fw fs-3 text-danger me-2"),
+              fa_icon("triangle-exclamation", class = "fa-fw fs-3 text-danger me-2"),
               paste("Could not open folder:", repo_path)
             )
           )
@@ -946,7 +947,7 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       by = if (length(notice$by) > 0) paste0(" (", paste(notice$by, collapse = ", "), ")") else ""
       shiny::div(
         class = "alert alert-warning d-flex align-items-center gap-2 small mb-0 py-2 px-3 rounded-0",
-        shiny::icon("triangle-exclamation"),
+        fa_icon("triangle-exclamation"),
         if (notice$template) {
           shiny::span(paste0("The grading template was changed outside the app", by, ". Restart mark() to apply it."))
         } else {
@@ -1001,7 +1002,7 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       # latest snapshot, and when it was taken
       text = htmltools::span(
         class = "d-inline-flex align-items-center gap-2",
-        shiny::icon("camera", class = "fs-5"),
+        fa_icon("camera", class = "fs-5"),
         htmltools::span(
           class = "d-inline-flex flex-column lh-sm text-start",
           htmltools::span(changes),

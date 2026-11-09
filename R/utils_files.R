@@ -112,7 +112,7 @@ validate_file_question = function(question, repo_dir) {
 file_view_ui = function(path, label, editor_id, note = NULL) {
   header = htmltools::div(
     class = "d-flex align-items-center gap-2 px-2 py-1 border-bottom bg-light small",
-    shiny::icon("file-lines", class = "text-muted"),
+    fa_icon("file-lines", class = "text-muted"),
     htmltools::tags$code(label),
     if (!is.null(note)) htmltools::span(class = "text-muted", note)
   )
@@ -122,7 +122,7 @@ file_view_ui = function(path, label, editor_id, note = NULL) {
       header,
       htmltools::div(
         class = "alert alert-warning m-2 small",
-        shiny::icon("triangle-exclamation"),
+        fa_icon("triangle-exclamation"),
         paste0(" ", label, " was not found in this repository.")
       )
     ))

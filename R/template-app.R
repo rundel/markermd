@@ -33,6 +33,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     # Initialize shinyjs
     shinyjs::useShinyjs(),
     markermd_modal_css(),
+    fa_dependency(),
 
       shiny::tags$style(shiny::HTML("
       /* Rule form controls */
@@ -213,7 +214,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
               # the template a snapshot recorded (see template_snapshot_controls())
               bslib::popover(
                 shiny::tags$button(
-                  shiny::icon("clock-rotate-left"),
+                  fa_icon("clock-rotate-left"),
                   id = "snapshot_menu",
                   type = "button",
                   class = "btn btn-outline-secondary btn-sm",
@@ -534,7 +535,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       shiny::actionLink(
         "show_parse_warnings",
         paste0(n, " parser warning", if (n == 1) "" else "s"),
-        icon = shiny::icon("triangle-exclamation"),
+        icon = fa_icon("triangle-exclamation"),
         class = "badge text-bg-warning fw-normal text-decoration-none"
       )
     })
@@ -590,7 +591,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
           shiny::div(
             class = "text-center text-muted py-4 px-3",
             shiny::p(
-              shiny::icon("arrow-left", class = "me-2"),
+              fa_icon("arrow-left", class = "me-2"),
               "Click a heading in the Document Structure to start your first question; the heading and the section beneath it become the question's nodes."
             ),
             shiny::p(
@@ -604,7 +605,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
           shiny::actionButton(
             "add_question",
             "Add Question",
-            icon = shiny::icon("plus"),
+            icon = fa_icon("plus"),
             class = "btn-outline-primary btn-sm"
           )
         )

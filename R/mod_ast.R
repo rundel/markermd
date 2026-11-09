@@ -39,7 +39,7 @@ show_node_preview = function(node, back_id = NULL) {
       size = "l",
       easyClose = TRUE,
       footer = htmltools::tagList(
-        if (!is.null(back_id)) shiny::actionButton(back_id, "Back", icon = shiny::icon("arrow-left"), class = "btn-outline-secondary"),
+        if (!is.null(back_id)) shiny::actionButton(back_id, "Back", icon = fa_icon("arrow-left"), class = "btn-outline-secondary"),
         shiny::modalButton("Close")
       ),
       shiny::div(

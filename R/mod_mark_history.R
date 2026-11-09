@@ -47,14 +47,14 @@ mark_history_ui = function(id) {
             ),
             bslib::tooltip(
               shiny::actionButton(
-                ns("take_snapshot"), shiny::icon("camera"),
+                ns("take_snapshot"), fa_icon("camera"),
                 class = "btn-primary btn-sm"
               ),
               "Take a snapshot: record the current template, rubric and marks with a label and a summary of what is about to change (shortcut: s)"
             ),
             bslib::tooltip(
               shiny::actionButton(
-                ns("backup"), shiny::icon("hard-drive"),
+                ns("backup"), fa_icon("hard-drive"),
                 class = "btn-outline-secondary btn-sm"
               ),
               "Back up: copy the database file and the project config into the project's backups/ directory. Snapshots live inside the database, so this is the protection against losing the file itself."
@@ -164,8 +164,8 @@ history_reactable = function(data, selected = NULL) {
       app = "Grading in the app", action = paste("A markermd call by", actor)
     )
     htmltools::tagList(
-      shiny::icon(icon, class = "fa-fw text-muted", title = title),
-      if (isTRUE(data$pinned[index])) shiny::icon("thumbtack", class = "fa-fw text-primary", title = "Pinned")
+      fa_icon(icon, class = "fa-fw text-muted", title = title),
+      if (isTRUE(data$pinned[index])) fa_icon("thumbtack", class = "fa-fw text-primary", title = "Pinned")
     )
   }
   reactable::reactable(
@@ -655,7 +655,7 @@ mark_history_server = function(id, root, question_names, refresh, reload_rubric,
             shiny::span(class = "text-muted ms-2 small", row$actor, " \u00b7 ", format_age(row$created_at))
           ),
           if (!is.na(row$snapshot_id)) bslib::tooltip(
-            shiny::actionButton(session$ns("show_snapshot_before"), "Snapshot before", icon = shiny::icon("camera"), class = "btn-outline-secondary btn-sm"),
+            shiny::actionButton(session$ns("show_snapshot_before"), "Snapshot before", icon = fa_icon("camera"), class = "btn-outline-secondary btn-sm"),
             "Select the snapshot taken just before this change (restore it to undo the change)"
           )
         ))
@@ -676,7 +676,7 @@ mark_history_server = function(id, root, question_names, refresh, reload_rubric,
           class = "d-flex align-items-center gap-1",
           bslib::tooltip(
             shiny::actionButton(
-              session$ns("toggle_pin"), shiny::icon("thumbtack"),
+              session$ns("toggle_pin"), fa_icon("thumbtack"),
               class = paste("btn-sm", if (info@pinned) "btn-primary" else "btn-outline-secondary")
             ),
             if (info@pinned) {
@@ -686,15 +686,15 @@ mark_history_server = function(id, root, question_names, refresh, reload_rubric,
             }
           ),
           bslib::tooltip(
-            shiny::actionButton(session$ns("restore"), "Restore\u2026", icon = shiny::icon("rotate-left"), class = "btn-outline-danger btn-sm"),
+            shiny::actionButton(session$ns("restore"), "Restore\u2026", icon = fa_icon("rotate-left"), class = "btn-outline-danger btn-sm"),
             "Restore: write this snapshot's rubric and marks (or chosen questions and repositories) back into the database, undoing every change since. The current state is snapshotted first, so the restore can be undone."
           ),
           bslib::tooltip(
-            shiny::actionButton(session$ns("export"), "Export\u2026", icon = shiny::icon("file-export"), class = "btn-outline-secondary btn-sm"),
+            shiny::actionButton(session$ns("export"), "Export\u2026", icon = fa_icon("file-export"), class = "btn-outline-secondary btn-sm"),
             "Export: write this snapshot's template, rubric and marks as YAML files, with a snapshot.yaml sidecar, into a directory of your choice"
           ),
           if (!info@pinned) bslib::tooltip(
-            shiny::actionButton(session$ns("delete"), shiny::icon("trash"), class = "btn-outline-secondary btn-sm"),
+            shiny::actionButton(session$ns("delete"), fa_icon("trash"), class = "btn-outline-secondary btn-sm"),
             "Delete: permanently remove this snapshot, its notes and its recorded scores (pin it to protect it)"
           )
         )
