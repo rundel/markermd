@@ -545,7 +545,10 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       })
     }
     initial_template_stamp = template_stamp()
-    watch_project_db(root, session, function() db_changed(shiny::isolate(db_changed()) + 1L))
+    db_watch = watch_project_db(root, session, function() db_changed(shiny::isolate(db_changed()) + 1L))
+    # Called right after each of this session's own writes, so the change it
+    # makes does not wake the external-change observer below
+    note_own_commit = db_watch$absorb
 
     # The parsed documents and their validation, re-read for one repository
     # on request (the validation modal's Re-check, after a submission was
@@ -581,6 +584,7 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       if (!is.null(id)) {
         own_action_ids <<- c(own_action_ids, id)
       }
+      note_own_commit()
       invisible(id)
     }
 
@@ -968,7 +972,8 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       set_repo_labels = content_result$set_repo_labels,
       external_version = shiny::reactive(external_version()),
       active_tab = shiny::reactive(input$main_navbar),
-      app_action = app_action
+      app_action = app_action,
+      on_commit = note_own_commit
     )
 
     # A commit by another connection: list the markermd calls recorded since

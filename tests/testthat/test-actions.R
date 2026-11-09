@@ -158,3 +158,40 @@ test_that("a schema 5 database migrates to the current schema keeping its events
     expect_equal(nrow(DBI::dbGetQuery(conn, "SELECT * FROM grades")), 1)
   })
 })
+
+test_that("the database watcher ignores the session's own absorbed writes until the sweep", {
+  d = sn_project()
+  ended = NULL
+  session = list(onSessionEnded = function(f) ended <<- f)
+  changes = 0L
+  watch = markermd:::watch_project_db(d, session, function() changes <<- changes + 1L, interval = 0.02, sweep = 0.3)
+  write = function(value) {
+    markermd:::with_database(d, function(conn) markermd:::set_metadata(conn, "watch_probe", value))
+  }
+  pump = function(seconds) {
+    end = Sys.time() + seconds
+    while (Sys.time() < end) later::run_now(0.01)
+  }
+
+  # An outside commit is noticed
+  write("1")
+  pump(0.1)
+  expect_equal(changes, 1L)
+
+  # The session's own write, absorbed right after it, is not, until the sweep
+  write("2")
+  watch$absorb()
+  pump(0.1)
+  expect_equal(changes, 1L)
+  pump(0.4)
+  expect_equal(changes, 2L)
+
+  # Nothing absorbed and nothing written: no further calls
+  pump(0.4)
+  expect_equal(changes, 2L)
+
+  ended()
+  write("3")
+  pump(0.1)
+  expect_equal(changes, 2L)
+})

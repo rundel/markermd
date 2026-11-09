@@ -414,10 +414,13 @@ rubric_hotkeys_js = function(rubric_ns, content_ns) {
 # app_action: Function(fn, code, call, summary, parts) running a bulk
 #   operation as a recorded action of the app (see mark-app.R); the default
 #   just runs the code
+# on_commit: Zero-argument function called right after the module writes
+#   selections or comments (the app's watcher absorb(), so its own writes do
+#   not look like changes made outside the app)
 
 mark_rubric_server = function(id, template, repos, root, database_state = NULL, selected_repo, set_repo_labels,
                               external_version = shiny::reactive(0L), active_tab = shiny::reactive("grade"),
-                              app_action = function(fn, code, ...) code) {
+                              app_action = function(fn, code, ...) code, on_commit = function() NULL) {
   shiny::moduleServer(id, function(input, output, session) {
 
     # Which tab draws the rubric's items, groups and scoring inputs: the
@@ -457,6 +460,7 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
     # write has actually happened
     grading_data_version = shiny::reactiveVal(0L)
     bump_grading_version = function() {
+      on_commit()
       grading_data_version(shiny::isolate(grading_data_version()) + 1L)
     }
 
@@ -1708,7 +1712,7 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
     # Only the public channel feeds grading progress: a non-empty public
     # comment counts the pair as graded, while private notes never do
     refresh_comment = bind_comment_autosave("question_comment", load_comment, save_comment, on_saved = bump_grading_version)
-    refresh_private_comment = bind_comment_autosave("question_private_comment", load_private_comment, save_private_comment)
+    refresh_private_comment = bind_comment_autosave("question_private_comment", load_private_comment, save_private_comment, on_saved = on_commit)
 
     # Items of the pair on screen that a markermd call selected and nobody
     # has touched here since (see pair_agent_badges()); re-read on every
@@ -1838,7 +1842,8 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
       apply_saved_selections()
       redraw()
       grade_redraw(shiny::isolate(grade_redraw()) + 1)
-      bump_grading_version()
+      # A read, not a write: the restore that preceded it noted its own commit
+      grading_data_version(shiny::isolate(grading_data_version()) + 1L)
       invisible(NULL)
     }
 

@@ -763,16 +763,39 @@ pair_agent_badges = function(conn, question_name, assignment_repo) {
 # Keep on_change cheap (bump a reactive value): errors in a timer callback
 # are not caught by Shiny.
 #
+# The session's own writes use other connections, so they change the version
+# too. The returned absorb() is called right after such a write: it takes the
+# new version as seen, so the next check does not call on_change (and the
+# app does not query the action log) for a change it made itself. A commit by
+# another connection landing in the instant between the write and absorb()
+# would be absorbed with it, so whenever something was absorbed on_change
+# also runs once `sweep` seconds later, which catches it.
+#
 # root: Project root
 # session: The Shiny session
 # on_change: Zero-argument function
 # interval: Seconds between checks
+# sweep: Seconds after an absorbed change before on_change runs anyway
+# Returns: Invisibly, list(absorb), absorb a zero-argument function
 
-watch_project_db = function(root, session, on_change, interval = 1) {
+watch_project_db = function(root, session, on_change, interval = 1, sweep = 30) {
   conn = initialize_database(root)
   version = function() DBI::dbGetQuery(conn, "PRAGMA data_version")[[1]]
   last = version()
   active = TRUE
+  absorbed_at = NULL
+
+  absorb = function() {
+    if (!active) {
+      return(invisible(NULL))
+    }
+    current = version()
+    if (!identical(current, last)) {
+      last <<- current
+      if (is.null(absorbed_at)) absorbed_at <<- Sys.time()
+    }
+    invisible(NULL)
+  }
 
   tick = function() {
     if (!active) {
@@ -781,6 +804,10 @@ watch_project_db = function(root, session, on_change, interval = 1) {
     current = version()
     if (!identical(current, last)) {
       last <<- current
+      absorbed_at <<- NULL
+      on_change()
+    } else if (!is.null(absorbed_at) && difftime(Sys.time(), absorbed_at, units = "secs") >= sweep) {
+      absorbed_at <<- NULL
       on_change()
     }
     later::later(tick, interval)
@@ -791,7 +818,7 @@ watch_project_db = function(root, session, on_change, interval = 1) {
     active <<- FALSE
     close_database(conn)
   })
-  invisible(NULL)
+  invisible(list(absorb = absorb))
 }
 
 # The newest action row id, 0 when there is none
