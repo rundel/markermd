@@ -1088,10 +1088,54 @@ save_template_to_db = function(collection_path, template, source_path = NULL, sn
     with_transaction(conn, "Failed to save the template", {
       snapshot_before_change(conn, collection_path, snapshot)
       changes = reconcile_question_names_conn(conn, db_template_list(conn), lst)
+      note_question_ids_conn(conn, lst)
       set_metadata(conn, "template", json)
       changes
     })
   }))
+}
+
+# The highest question id the project has ever stored: the recorded
+# "question_id_max" metadata value or, for a database written before it was
+# recorded, the highest id of the stored template. A new question takes an id
+# above it, so the id of a question deleted and saved is never issued again
+# (saving matches questions by id, and a reused id would read as a rename).
+#
+# conn: DBI connection object
+
+question_id_high_water_conn = function(conn) {
+  recorded = suppressWarnings(as.integer(get_metadata(conn, "question_id_max")))
+  stored = db_template_list(conn)
+  ids = vapply(stored$questions, function(q) as.integer(q$id), integer(1))
+  max(c(0L, recorded[!is.na(recorded)], ids))
+}
+
+# The id for a question the template editor adds: one above both the
+# session's highest id and the project's high-water mark. An unreadable
+# database counts as no stored ids, so the editor keeps working.
+#
+# root: Project root, or NULL outside a project
+# session_max: Highest question id already used in the editor session
+
+next_question_id = function(root, session_max = 0L) {
+  stored = 0L
+  if (!is.null(root)) {
+    stored = purrr::safely(function() with_database(root, question_id_high_water_conn))()$result
+    if (is.null(stored)) stored = 0L
+  }
+  as.integer(max(session_max, stored) + 1L)
+}
+
+# Raise the recorded question id high-water mark to cover a template about to
+# be stored (and the template it replaces, through
+# question_id_high_water_conn()). Call before the template is written.
+#
+# conn: DBI connection object
+# lst: Plain template list (template_to_list() shape) about to be stored
+
+note_question_ids_conn = function(conn, lst) {
+  ids = vapply(lst$questions, function(q) as.integer(q$id), integer(1))
+  set_metadata(conn, "question_id_max", as.character(max(c(question_id_high_water_conn(conn), ids))))
 }
 
 # The grading tables keyed by question name

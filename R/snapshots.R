@@ -1750,6 +1750,7 @@ restore_snapshot = function(proj, id, part, question = NULL, repo = NULL, summar
       name_changes = NULL
       if ("template" %in% part) {
         name_changes = reconcile_question_names_conn(conn, db_template_list(conn), parts$template)
+        note_question_ids_conn(conn, parts$template)
         set_metadata(conn, "template", as.character(jsonlite::toJSON(parts$template, auto_unbox = TRUE, null = "null")))
       }
 

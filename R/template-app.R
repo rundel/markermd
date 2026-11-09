@@ -270,16 +270,10 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       slot
     }
 
-    # A fresh question id: above every id of this session and of the
-    # project's stored template, which an agent may have changed meanwhile
+    # A fresh question id: above every id of this session and every id the
+    # project has ever stored, which an agent may have changed meanwhile
     mint_question_id = function() {
-      stored = 0L
-      if (!is.null(project)) {
-        lst = purrr::safely(function() with_database(project@root, db_template_list))()$result
-        ids = vapply(lst$questions, function(q) as.integer(q$id), integer(1))
-        stored = max(c(0L, ids))
-      }
-      id = as.integer(max(shiny::isolate(last_question_id()), stored) + 1L)
+      id = next_question_id(if (is.null(project)) NULL else project@root, shiny::isolate(last_question_id()))
       last_question_id(id)
       id
     }

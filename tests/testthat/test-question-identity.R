@@ -74,6 +74,28 @@ test_that("a template restore through the app's action reports its renames for t
   expect_match(orphan, "Removed questions \"Q7\", \"Q8\" still hold grading", fixed = TRUE)
 })
 
+test_that("a deleted question's id is never issued again", {
+  d = sn_graded_project()
+  # A database without the recorded mark falls back to the stored ids
+  markermd:::with_database(d, function(conn) markermd:::delete_metadata(conn, "question_id_max"))
+  expect_equal(markermd:::next_question_id(d), 3L)
+
+  sn_template_file(d, "add.yaml", list(list(id = 1, name = "Q1"), list(id = 2, name = "Q2"), list(id = 3, name = "Q3")))
+  suppressWarnings(suppressMessages(template_import("add.yaml", project = d)))
+  sn_template_file(d, "drop.yaml", list(list(id = 1, name = "Q1"), list(id = 2, name = "Q2")))
+  suppressWarnings(suppressMessages(template_import("drop.yaml", project = d)))
+
+  expect_equal(markermd:::project_question_names(d)$names, c("Q1", "Q2"))
+  # A new editor session adds its first question above the deleted Q3
+  expect_equal(markermd:::next_question_id(d), 4L)
+  expect_equal(markermd:::next_question_id(d, session_max = 6L), 7L)
+  expect_equal(markermd:::next_question_id(NULL, session_max = 2L), 3L)
+
+  # Restoring an older template does not lower the mark
+  suppressWarnings(suppressMessages(snapshot_restore("latest", project = d, part = "template")))
+  expect_equal(markermd:::next_question_id(d), 4L)
+})
+
 test_that("question_node_id_problems lists unknown and nested selections", {
   path = tempfile(fileext = ".qmd")
   writeLines(c("# A {#a}", "", "text", "", "## B {#b}", "", "more", "", "# C {#c}", "", "end"), path)
