@@ -8,12 +8,12 @@ has not been initialized.
 ## Usage
 
 ``` r
-project_config(path = ".")
+project_config(project = ".")
 ```
 
 ## Arguments
 
-- path:
+- project:
 
   Path to the project directory. Defaults to the working directory.
 
@@ -27,12 +27,14 @@ A `markermd_project` object.
 src = system.file("examples/test_assignment", package = "markermd")
 project = fs::dir_copy(src, fs::file_temp("markermd_example_"))
 init_project(project)
-#> ✔ Initialized markermd project at /tmp/RtmpXDFX45/markermd_example_382363137177
+#> ✔ Initialized markermd project at /tmp/Rtmpwtc1aX/markermd_example_2ed74371907d
 #> • database: .markermd/markermd.sqlite (created)
-#> • skills (claude): markermd-apply-rubric, markermd-fix-parsing,
-#>   markermd-scaffold-rubric, markermd-scaffold-template (.claude/skills/)
-#> • skills (codex): markermd-apply-rubric, markermd-fix-parsing,
-#>   markermd-scaffold-rubric, markermd-scaffold-template (.agents/skills/)
+#> • skills (claude): markermd-apply-rubric, markermd-check-injection,
+#>   markermd-fix-parsing, markermd-scaffold-rubric, markermd-scaffold-template
+#>   (.claude/skills/)
+#> • skills (codex): markermd-apply-rubric, markermd-check-injection,
+#>   markermd-fix-parsing, markermd-scaffold-rubric, markermd-scaffold-template
+#>   (.agents/skills/)
 #> • instructions: CLAUDE.md (created), AGENTS.md (created)
 #> • repos: repos/
 #> • comments: not found
@@ -42,10 +44,10 @@ init_project(project)
 project_config(project)
 #> 
 #> ── markermd project ────────────────────────────────────────────────────────────
-#> root: /tmp/RtmpXDFX45/markermd_example_382363137177
+#> root: /tmp/Rtmpwtc1aX/markermd_example_2ed74371907d
 #> version: 1.0
-#> created: 2026-09-30 02:41:48
-#> updated: 2026-09-30 02:41:49
+#> created: 2026-11-09 21:47:26
+#> updated: 2026-11-09 21:47:26
 #> 
 #> ── Locations ──
 #> 

@@ -10,12 +10,12 @@ comments were last exported relative to the last change).
 ## Usage
 
 ``` r
-project_sitrep(path = ".")
+project_sitrep(project = ".")
 ```
 
 ## Arguments
 
-- path:
+- project:
 
   Path to the project directory. Defaults to the working directory.
 
@@ -29,12 +29,14 @@ The project's `markermd_project` object, invisibly.
 src = system.file("examples/test_assignment", package = "markermd")
 project = fs::dir_copy(src, fs::file_temp("markermd_example_"))
 init_project(project)
-#> ✔ Initialized markermd project at /tmp/RtmpXDFX45/markermd_example_38236f3c42
+#> ✔ Initialized markermd project at /tmp/Rtmpwtc1aX/markermd_example_2ed75cade7c
 #> • database: .markermd/markermd.sqlite (created)
-#> • skills (claude): markermd-apply-rubric, markermd-fix-parsing,
-#>   markermd-scaffold-rubric, markermd-scaffold-template (.claude/skills/)
-#> • skills (codex): markermd-apply-rubric, markermd-fix-parsing,
-#>   markermd-scaffold-rubric, markermd-scaffold-template (.agents/skills/)
+#> • skills (claude): markermd-apply-rubric, markermd-check-injection,
+#>   markermd-fix-parsing, markermd-scaffold-rubric, markermd-scaffold-template
+#>   (.claude/skills/)
+#> • skills (codex): markermd-apply-rubric, markermd-check-injection,
+#>   markermd-fix-parsing, markermd-scaffold-rubric, markermd-scaffold-template
+#>   (.agents/skills/)
 #> • instructions: CLAUDE.md (created), AGENTS.md (created)
 #> • repos: repos/
 #> • comments: not found
@@ -44,10 +46,10 @@ init_project(project)
 project_sitrep(project)
 #> 
 #> ── markermd project ────────────────────────────────────────────────────────────
-#> root: /tmp/RtmpXDFX45/markermd_example_38236f3c42
+#> root: /tmp/Rtmpwtc1aX/markermd_example_2ed75cade7c
 #> version: 1.0
-#> created: 2026-09-30 02:41:50
-#> updated: 2026-09-30 02:41:50
+#> created: 2026-11-09 21:47:27
+#> updated: 2026-11-09 21:47:27
 #> 
 #> ── Locations ──
 #> 

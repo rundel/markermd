@@ -16,7 +16,8 @@ marks_set(
   comment = NULL,
   private_comment = NULL,
   project = ".",
-  overwrite = FALSE
+  overwrite = FALSE,
+  summary = NULL
 )
 ```
 
@@ -53,6 +54,12 @@ marks_set(
 
   When `TRUE`, a pair with existing grading activity is re-marked
   instead of raising an error.
+
+- summary:
+
+  Optional text recorded in the project's activity log (see
+  [`project_activity()`](https://rundel.github.io/markermd/reference/project_activity.md)):
+  what the change is and why.
 
 ## Value
 

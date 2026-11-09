@@ -9,6 +9,7 @@ metadata
 markermd_template(
   original_ast = NULL,
   questions = list(),
+  files = character(0),
   metadata = markermd_metadata()
 )
 ```
@@ -22,6 +23,13 @@ markermd_template(
 - questions:
 
   List of question objects
+
+- files:
+
+  Character vector. The assignment's files besides its Quarto document,
+  as paths relative to the repository root, that questions can target
+  (see the `file` property of
+  [`markermd_question()`](https://rundel.github.io/markermd/reference/markermd_question.md)).
 
 - metadata:
 

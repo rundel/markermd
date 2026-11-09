@@ -16,6 +16,8 @@ Initialize a grading project and inspect or edit its configuration.
   : Validate a project's student repositories against its template
 - [`parse_project()`](https://rundel.github.io/markermd/reference/parse_project.md)
   : Check that every student repository's assignment document parses
+- [`scan_project()`](https://rundel.github.io/markermd/reference/scan_project.md)
+  : Scan a project's submissions for prompt injection attempts
 - [`markermd_skills_path()`](https://rundel.github.io/markermd/reference/markermd_skills_path.md)
   : Path to the bundled markermd agent skills
 
@@ -39,12 +41,12 @@ database.
   : Import a grading template from YAML into a project's database
 - [`template_export()`](https://rundel.github.io/markermd/reference/template_export.md)
   : Export a project's grading template to YAML
-- [`add_question()`](https://rundel.github.io/markermd/reference/add_question.md)
-  : Add Question to Template
-- [`remove_question()`](https://rundel.github.io/markermd/reference/remove_question.md)
-  : Remove Question from Template
-- [`get_question()`](https://rundel.github.io/markermd/reference/get_question.md)
-  : Get Question by ID
+- [`template_add_question()`](https://rundel.github.io/markermd/reference/template_add_question.md)
+  : Add a question to a template
+- [`template_remove_question()`](https://rundel.github.io/markermd/reference/template_remove_question.md)
+  : Remove a question from a template
+- [`template_question()`](https://rundel.github.io/markermd/reference/template_question.md)
+  : Get a template's question by ID
 - [`template_methods`](https://rundel.github.io/markermd/reference/template_methods.md)
   : Methods for Markermd Template Classes
 - [`parse_assignment_document()`](https://rundel.github.io/markermd/reference/parse_assignment_document.md)
@@ -58,6 +60,8 @@ Move per-question rubrics between the project database and YAML.
   : Import a grading rubric from YAML into a project's database
 - [`rubric_export()`](https://rundel.github.io/markermd/reference/rubric_export.md)
   : Export a project's grading rubric to YAML
+- [`rubric_item_set()`](https://rundel.github.io/markermd/reference/rubric_item_set.md)
+  : Reword or re-point one rubric item
 
 ## Marks and score export
 
@@ -74,7 +78,7 @@ comments.
   : Export per-repository scores to a CSV file
 - [`export_comments()`](https://rundel.github.io/markermd/reference/export_comments.md)
   : Export student-facing feedback to per-repository markdown files
-- [`export_marks()`](https://rundel.github.io/markermd/reference/export_marks.md)
+- [`export_feedback()`](https://rundel.github.io/markermd/reference/export_feedback.md)
   : Export scores and feedback for a graded project
 
 ## Snapshots
@@ -110,6 +114,15 @@ database, and how to compare and restore them.
   : Snapshot of a project's grading state
 - [`markermd_snapshot_diff()`](https://rundel.github.io/markermd/reference/markermd_snapshot_diff.md)
   : Differences between two snapshots
+
+## Activity log
+
+Read the recorded changes to a project’s grading state.
+
+- [`project_activity()`](https://rundel.github.io/markermd/reference/project_activity.md)
+  : The activity log of a project
+- [`activity_detail()`](https://rundel.github.io/markermd/reference/activity_detail.md)
+  : What one activity entry changed
 
 ## YAML file formats
 
@@ -162,11 +175,11 @@ plus the allowed rule vocabularies.
   : Grade State S7 Class
 - [`markermd_project()`](https://rundel.github.io/markermd/reference/markermd_project.md)
   : Markermd Project
-- [`get_allowed_rule_verbs()`](https://rundel.github.io/markermd/reference/get_allowed_rule_verbs.md)
+- [`rule_verbs()`](https://rundel.github.io/markermd/reference/rule_verbs.md)
   : Get allowed verbs for rules
-- [`get_allowed_node_types()`](https://rundel.github.io/markermd/reference/get_allowed_node_types.md)
+- [`rule_node_types()`](https://rundel.github.io/markermd/reference/rule_node_types.md)
   : Get allowed node types for rules
-- [`get_allowed_filter_condition_types()`](https://rundel.github.io/markermd/reference/get_allowed_filter_condition_types.md)
+- [`filter_condition_types()`](https://rundel.github.io/markermd/reference/filter_condition_types.md)
   : Get allowed filter condition types
 - [`template_classes`](https://rundel.github.io/markermd/reference/template_classes.md)
   : S7 Class Definitions for Markermd Templates

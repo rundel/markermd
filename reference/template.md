@@ -6,7 +6,7 @@ Launch the markermd Template Creation Application
 
 ``` r
 template(
-  assignment_path,
+  source,
   local_dir = NULL,
   filename = "*.[Rq]md",
   assignment = NULL,
@@ -16,7 +16,7 @@ template(
 
 ## Arguments
 
-- assignment_path:
+- source:
 
   Assignment source or existing template. Can be:
 
@@ -28,7 +28,8 @@ template(
     saving writes the template into the project and records it in the
     config.
 
-  - Character path to local directory containing assignment
+  - Character path to an assignment file (`.qmd`/`.Rmd`) or a local
+    directory containing one
 
   - Character GitHub repo in format "owner/repo"
 
@@ -53,13 +54,14 @@ template(
 
 - ...:
 
-  Additional arguments passed to shiny::shinyApp()
+  Additional arguments passed to
+  [`shiny::runApp()`](https://rdrr.io/pkg/shiny/man/runApp.html)
 
 ## Value
 
-A Shiny app object (from
-[`shiny::shinyApp()`](https://rdrr.io/pkg/shiny/man/shinyApp.html));
-printing it at an interactive console runs the template editor.
+The value returned by
+[`shiny::runApp()`](https://rdrr.io/pkg/shiny/man/runApp.html) when the
+app exits; called for its side effect of running the template editor.
 
 ## Examples
 

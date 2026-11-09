@@ -8,7 +8,7 @@ Paths are interpreted relative to the project root.
 
 ``` r
 project_set(
-  path = ".",
+  project = ".",
   repos = NULL,
   comments = NULL,
   template = NULL,
@@ -19,7 +19,7 @@ project_set(
 
 ## Arguments
 
-- path:
+- project:
 
   Path to the project directory. Defaults to the working directory.
 

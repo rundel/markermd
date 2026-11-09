@@ -4,8 +4,10 @@
 [![pkgdown](https://img.shields.io/badge/docs-pkgdown-blue.svg)](https://rundel.github.io/markermd/)
 
 markermd is a Shiny-based grading environment for assignments submitted
-as git repositories containing Quarto (`.qmd`) or R Markdown (`.Rmd`)
-documents, such as the classroom layouts produced by
+as git repositories containing Quarto (`.qmd`) documents (R Markdown
+`.Rmd` documents are read the same way, with `mark(use_qmd = FALSE)`,
+since knitr-style chunk headers are rewritten to Quarto form before
+parsing), such as the classroom layouts produced by
 [ghclass](https://rundel.github.io/ghclass/)’s `org_grade_assignment()`.
 Each submission is parsed into a document tree (via
 [q2r](https://github.com/rundel/q2r)), validated against the structural
@@ -26,18 +28,21 @@ The package is built around two apps:
 Around the apps, a set of helper functions
 ([`validate_project()`](https://rundel.github.io/markermd/reference/validate_project.md),
 [`parse_project()`](https://rundel.github.io/markermd/reference/parse_project.md),
+[`scan_project()`](https://rundel.github.io/markermd/reference/scan_project.md),
 [`template_import()`](https://rundel.github.io/markermd/reference/template_import.md)
 /
 [`template_export()`](https://rundel.github.io/markermd/reference/template_export.md),
 [`rubric_import()`](https://rundel.github.io/markermd/reference/rubric_import.md)
 /
-[`rubric_export()`](https://rundel.github.io/markermd/reference/rubric_export.md),
+[`rubric_export()`](https://rundel.github.io/markermd/reference/rubric_export.md)
+/
+[`rubric_item_set()`](https://rundel.github.io/markermd/reference/rubric_item_set.md),
 [`marks_import()`](https://rundel.github.io/markermd/reference/marks_import.md)
 /
 [`marks_export()`](https://rundel.github.io/markermd/reference/marks_export.md)
 /
 [`marks_set()`](https://rundel.github.io/markermd/reference/marks_set.md),
-[`export_marks()`](https://rundel.github.io/markermd/reference/export_marks.md))
+[`export_feedback()`](https://rundel.github.io/markermd/reference/export_feedback.md))
 makes the entire workflow scriptable, and bundled agent skills (for
 Claude Code and Codex) can scaffold the template and rubric, repair
 submissions the strict parser rejects, or apply the rubric across all
@@ -141,13 +146,31 @@ their selected sections and validation rules on the right
 
 Some problems belong to no single question: a render setting in the YAML
 header, global chunk options, a document that does not render. “Add
-Document Entry” creates a document-scope question for them. It selects
-no sections (its filters and rules, if any, run against the whole
-document), and is written as `scope: document` in the template YAML
-(format 3.1). Add one only when a submission needs it. Paired with
+Question” with “The entire document” chosen creates a document entry for
+them. It selects no sections (its filters and rules, if any, run against
+the whole document), and is written as `scope: document` in the template
+YAML (format 3.1). Add one only when a submission needs it. Paired with
 rubric scoring worth 0 points, marked optional and not bounded below
 zero, it records such a problem once as a deduction from the total
 instead of spreading it across the questions it affects.
+
+An assignment can consist of more than the document: scripts students
+write, data, images. The Files button in the Questions card’s title bar
+picks which of the key directory’s files questions can cover (hidden
+files, render output, lock files, project files and the README are left
+out unless “Show hidden and filtered files” is on). “Add Question” opens
+a dialog asking for the question’s name, its file (the document or one
+of those files) and, on the document, whether it covers selected
+sections or the entire document; the file and coverage are fixed once
+added, and shown beside the question’s name. Selecting a question on
+another file shows that file’s source in place of the document tree.
+Such a question covers the whole file: it has no rules,
+[`mark()`](https://rundel.github.io/markermd/reference/mark.md) shows
+the file from each repository while grading it (the repository-relative
+path, else a file with the same name elsewhere in the repository), and
+validation fails a repository that lacks it. Templates with files are
+written as format 3.2, with a top-level `files:` list and `file:` on
+those questions.
 
 When the app is opened on an initialized project, saving writes the
 template directly into the project database, ready for grading.
@@ -164,15 +187,18 @@ repository’s rendered reports.
 The app opens on the Assignments tab, one table with a row per
 repository: links to its folder, GitHub repository, rendered report and
 source, its validation status, its grading progress, and its score per
-question and in total, computed from the rubric selections exactly as
-[`export_scores()`](https://rundel.github.io/markermd/reference/export_scores.md)
-would. The class summary is pinned beneath the rows: how many
-repositories are graded, then the mean, median and standard deviation
-per question and for the total. The table filters by name and by status
-(failed validation, incomplete, complete), sorts by any column, and
-updates as grading proceeds. Clicking a repository’s validation marker
-opens it in the Validation tab, and clicking a score opens that
-repository and question in the Rubric tab.
+question and in total, computed from the rubric selections with the same
+code as
+[`export_scores()`](https://rundel.github.io/markermd/reference/export_scores.md).
+Like the export, the total counts only once every question is graded;
+until then the running sum of the graded questions is shown in grey,
+while `scores.csv` leaves `total` empty. The class summary is pinned
+beneath the rows: how many repositories are graded, then the mean,
+median and standard deviation per question and for the total. The table
+filters by name and by status (failed validation, incomplete, complete),
+sorts by any column, and updates as grading proceeds. Clicking a
+repository’s validation marker opens its validation results, and
+clicking a score opens that repository and question in the Grade tab.
 
 ![The mark app’s Assignments tab: one row per repository with folder,
 GitHub, report and source links, validation status, grading progress and
@@ -185,25 +211,21 @@ per-question scores, with the class summary pinned beneath
 
 ### Validation
 
-The Validation tab checks the selected repository against the template’s
-rules, so structural problems (missing sections, missing chunks, absent
-content) are visible before any grading starts. Its repository selector,
-whose entries carry each repository’s count of passed questions, stays
-in step with the rest of the app, and a question selector beside it,
-whose entries carry each question’s pass or fail mark for that
-repository, jumps to a question’s results. Each question’s results
-collapse behind their header, and a collapsed question stays collapsed
-while moving between repositories.
+Validation checks each repository against the template’s rules, so
+structural problems (missing sections, missing chunks, absent content)
+are visible before any grading starts. The table’s validation column
+shows each repository’s passed-question count, and clicking it opens
+that repository’s per-question results in a modal, with a question
+selector, whose entries carry each question’s pass or fail mark, that
+jumps to a question’s results. Each question’s card shows its pass or
+fail and its rule results in the header, with the matched document
+content collapsed beneath it by default; a question expanded stays
+expanded for the next repository opened. A content node’s preview button
+shows the node’s source, with a Back button to the results.
 
-![The mark app’s Validation tab: the selected repository’s per-question
-rule results](reference/figures/mark_validation_screenshot.png)
+### Grade
 
-The mark app’s Validation tab: the selected repository’s per-question
-rule results
-
-### Rubric
-
-The Rubric tab is where grading happens. The left pane shows the
+The Grade tab is where grading happens. The left pane shows the
 student’s rendered report or source; the right pane shows the current
 question’s rubric. Items toggle by click or number-key hotkey (the first
 ten items of a question get the keys 1-9 and 0; there is no limit on
@@ -221,13 +243,13 @@ Below the items are two comment boxes: a public, student-facing comment
 never shared with students. Every action autosaves to the project
 database.
 
-![The mark app’s Rubric tab: rendered report on the left; rubric items
+![The mark app’s Grade tab: rendered report on the left; rubric items
 with hotkeys, the computed score, and the public and private comment
 boxes on the right](reference/figures/mark_rubric_screenshot.png)
 
-The mark app’s Rubric tab: rendered report on the left; rubric items
-with hotkeys, the computed score, and the public and private comment
-boxes on the right
+The mark app’s Grade tab: rendered report on the left; rubric items with
+hotkeys, the computed score, and the public and private comment boxes on
+the right
 
 Rubric items can be added, edited, reordered, and grouped while grading
 (Add Group creates a group whose settings popover holds its label,
@@ -235,24 +257,69 @@ bounds and exclusivity; each item’s group menu moves it in or out), and
 the rubric pane’s menu offers YAML import and export for editing the
 rubric outside the app.
 
+### Rubric
+
+The Rubric tab shows every question’s rubric in one place, without the
+documents: each question’s scoring settings (total points, positive or
+negative grading, the score bounds, optional) and its items and groups,
+all editable as in the Grade tab (descriptions and points, adding,
+deleting, reordering, grouping, group settings). In place of its toggle,
+each item shows how many repositories have it selected. Both tabs edit
+the same rubric, so a change in one is in the other.
+
+### Changes made outside the app
+
+While [`mark()`](https://rundel.github.io/markermd/reference/mark.md)
+runs, it notices changes made from outside (an agent in a terminal, a
+script) within about a second: the Assignments table and History
+refresh, the pair on screen is re-read (an unsaved comment edit is
+kept), and items an agent selected carry a small robot badge until the
+pair is changed in the app. A changed rubric asks for a page reload, and
+a changed template for a restart of
+[`mark()`](https://rundel.github.io/markermd/reference/mark.md).
+
+### Terminal
+
+`mark(project, terminal = TRUE)` adds a Terminal tab, using the optional
+[shinyterm](https://github.com/rundel/shinyterm) package, whose “+” menu
+opens a shell, Claude Code or Codex in the project root (each agent with
+its own sandbox confined to the project). The app is then protected by
+an access token in its URL. A terminal runs as you, so this is for your
+own machine only.
+
 ### History
 
-The History tab lists the project’s snapshots: named, timestamped copies
-of the grading state (template, rubric and marks) kept inside the
-project database. Snapshots are taken automatically before every bulk
-change (a rubric import, deleting an item that has selections, deleting
-a group, a restore), and by hand from the camera button or the `s` key,
-with a label and a summary of what is about to change. Selecting a
-snapshot shows its fields and notes, what changed between it and the
-current state (or any other snapshot): items added, removed, reworded or
-re-pointed, selections and comments changed, and every repository’s
-total before and after; and the scores it recorded. From there a
-snapshot can be restored (undoing every change since to the rubric and
-marks, or to chosen questions and repositories), exported to YAML files,
-pinned, or deleted, and the database file backed up. The navbar shows
-when the latest snapshot was taken and how many selections have been
-recorded since, turning amber when that number grows large, as a nudge
-to take a named checkpoint at the end of a session.
+The History tab is one timeline of the project’s snapshots and its
+activity log. Snapshots are named, timestamped copies of the grading
+state (template, rubric and marks) kept inside the project database,
+taken automatically before every bulk change (a rubric import, deleting
+an item that has selections, deleting a group, a restore), and by hand
+from the camera button or the `s` key, with a label and a summary of
+what is about to change. The activity log records every call of a
+markermd function that changed the grading state (an import,
+[`marks_set()`](https://rundel.github.io/markermd/reference/marks_set.md),
+a restore), with who made it (`claude` or `codex` when an agent CLI ran
+it, `R` otherwise, or whatever `MARKERMD_ACTOR` names), its summary and
+what it touched, next to the grading done in the app, grouped into
+sessions; the filter narrows the timeline to snapshots, agents and
+scripts, or grading in the app. Selecting a snapshot shows its fields
+and notes, what changed between it and the current state (or any other
+snapshot): items added, removed, reworded or re-pointed, selections and
+comments changed, and every repository’s total before and after; and the
+scores it recorded. From there a snapshot can be restored (undoing every
+change since to the rubric and marks, or to chosen questions and
+repositories), exported to YAML files, pinned, or deleted, and the
+database file backed up. Selecting an activity entry shows what it
+changed: the items selected and deselected and the comments and private
+notes written, per repository and question, plus the rubric or template
+changes of a call that replaced them, with a button selecting the
+snapshot taken just before it. The same log is available from R with
+[`project_activity()`](https://rundel.github.io/markermd/reference/project_activity.md)
+and
+[`activity_detail()`](https://rundel.github.io/markermd/reference/activity_detail.md).
+The navbar shows how many selections have been recorded since the latest
+snapshot and when it was taken, turning amber when that number grows
+large, as a nudge to take a named checkpoint at the end of a session.
 
 ## Scripting the workflow
 
@@ -317,10 +384,10 @@ snapshot_export("Before feedback review", "backups/before-review", project = "hw
 project_backup("hw01")
 ```
 
-Snapshots live in the project database (schema version 5; an existing
-database gains a baseline snapshot when first opened). Identical parts
-are stored once, an automatic snapshot of an unchanged state is recorded
-as a note on the latest one rather than a new row, and
+Snapshots live in the project database (added in schema version 5, now
+9; an existing database gains a baseline snapshot when first opened).
+Identical parts are stored once, an automatic snapshot of an unchanged
+state is recorded as a note on the latest one rather than a new row, and
 [`snapshot_prune()`](https://rundel.github.io/markermd/reference/snapshot_prune.md)
 removes old automatic snapshots while keeping every manual or pinned
 one.
@@ -335,7 +402,7 @@ stale.
 ## Exporting results
 
 When grading is complete,
-[`export_marks()`](https://rundel.github.io/markermd/reference/export_marks.md)
+[`export_feedback()`](https://rundel.github.io/markermd/reference/export_feedback.md)
 writes the final hand-off artifacts from the project database (or run
 [`export_scores()`](https://rundel.github.io/markermd/reference/export_scores.md)
 and
@@ -344,7 +411,7 @@ individually):
 
 ``` r
 
-export_marks("hw01")
+export_feedback("hw01")
 ```
 
 - [`export_scores()`](https://rundel.github.io/markermd/reference/export_scores.md)
@@ -375,7 +442,7 @@ export_marks("hw01")
 ## Agent skills (Claude Code and Codex)
 
 [`init_project()`](https://rundel.github.io/markermd/reference/init_project.md)
-installs four agent skills into the project, in two sets: a [Claude
+installs five agent skills into the project, in two sets: a [Claude
 Code](https://claude.com/claude-code) set under `.claude/skills/` and a
 [Codex](https://developers.openai.com/codex) set under `.agents/skills/`
 (the `agents` argument selects one or both; the default installs both).
@@ -389,6 +456,12 @@ skill is invoked as `/markermd-fix-parsing` in Claude Code and
   parser rejects, making the smallest possible edits on a
   `grading-fixes` branch in each repository so the original submission
   stays intact, and flags any substantive change in the document.
+- `markermd-check-injection`: scans every student repository and
+  rendered report for prompt injection attempts (hidden or visible text
+  aimed at an automated grader, found by the deterministic
+  [`scan_project()`](https://rundel.github.io/markermd/reference/scan_project.md)),
+  triages the candidates, and reports the evidence for the instructor;
+  it never edits a repository or changes marks.
 - `markermd-scaffold-rubric`: drafts per-question rubric items and
   scoring from the key, optionally sampling student submissions to
   anticipate common mistakes.
@@ -402,10 +475,12 @@ also writes a project instructions file for each selected agent at the
 project root (`CLAUDE.md` for Claude Code, `AGENTS.md` for Codex)
 describing the project layout, the workflow and skills, the headless
 entry points, the template, rubric, and marks YAML formats, and the
-rules for working with student submissions. An existing file is kept, so
-it can be customized per project, unless `overwrite_instructions = TRUE`
-replaces it with the packaged version (to pick up a newer markermd’s
-instructions); `instructions = FALSE` skips it.
+rules for working with student submissions and for keeping the project
+root clean (working files go under `scratch/`, notes worth keeping under
+`notes/`). An existing file is kept, so it can be customized per
+project, unless `overwrite_instructions = TRUE` replaces it with the
+packaged version (to pick up a newer markermd’s instructions);
+`instructions = FALSE` skips it.
 
 See `inst/skills/README.md` for details and per-user installation.
 
@@ -436,6 +511,8 @@ Initialize a grading project and inspect or edit its configuration.
   : Validate a project's student repositories against its template
 - [`parse_project()`](https://rundel.github.io/markermd/reference/parse_project.md)
   : Check that every student repository's assignment document parses
+- [`scan_project()`](https://rundel.github.io/markermd/reference/scan_project.md)
+  : Scan a project's submissions for prompt injection attempts
 - [`markermd_skills_path()`](https://rundel.github.io/markermd/reference/markermd_skills_path.md)
   : Path to the bundled markermd agent skills
 
@@ -459,12 +536,12 @@ database.
   : Import a grading template from YAML into a project's database
 - [`template_export()`](https://rundel.github.io/markermd/reference/template_export.md)
   : Export a project's grading template to YAML
-- [`add_question()`](https://rundel.github.io/markermd/reference/add_question.md)
-  : Add Question to Template
-- [`remove_question()`](https://rundel.github.io/markermd/reference/remove_question.md)
-  : Remove Question from Template
-- [`get_question()`](https://rundel.github.io/markermd/reference/get_question.md)
-  : Get Question by ID
+- [`template_add_question()`](https://rundel.github.io/markermd/reference/template_add_question.md)
+  : Add a question to a template
+- [`template_remove_question()`](https://rundel.github.io/markermd/reference/template_remove_question.md)
+  : Remove a question from a template
+- [`template_question()`](https://rundel.github.io/markermd/reference/template_question.md)
+  : Get a template's question by ID
 - [`template_methods`](https://rundel.github.io/markermd/reference/template_methods.md)
   : Methods for Markermd Template Classes
 - [`parse_assignment_document()`](https://rundel.github.io/markermd/reference/parse_assignment_document.md)
@@ -478,6 +555,8 @@ Move per-question rubrics between the project database and YAML.
   : Import a grading rubric from YAML into a project's database
 - [`rubric_export()`](https://rundel.github.io/markermd/reference/rubric_export.md)
   : Export a project's grading rubric to YAML
+- [`rubric_item_set()`](https://rundel.github.io/markermd/reference/rubric_item_set.md)
+  : Reword or re-point one rubric item
 
 ## Marks and score export
 
@@ -494,7 +573,7 @@ comments.
   : Export per-repository scores to a CSV file
 - [`export_comments()`](https://rundel.github.io/markermd/reference/export_comments.md)
   : Export student-facing feedback to per-repository markdown files
-- [`export_marks()`](https://rundel.github.io/markermd/reference/export_marks.md)
+- [`export_feedback()`](https://rundel.github.io/markermd/reference/export_feedback.md)
   : Export scores and feedback for a graded project
 
 ## Snapshots
@@ -530,6 +609,15 @@ database, and how to compare and restore them.
   : Snapshot of a project's grading state
 - [`markermd_snapshot_diff()`](https://rundel.github.io/markermd/reference/markermd_snapshot_diff.md)
   : Differences between two snapshots
+
+## Activity log
+
+Read the recorded changes to a project’s grading state.
+
+- [`project_activity()`](https://rundel.github.io/markermd/reference/project_activity.md)
+  : The activity log of a project
+- [`activity_detail()`](https://rundel.github.io/markermd/reference/activity_detail.md)
+  : What one activity entry changed
 
 ## YAML file formats
 
@@ -582,11 +670,11 @@ plus the allowed rule vocabularies.
   : Grade State S7 Class
 - [`markermd_project()`](https://rundel.github.io/markermd/reference/markermd_project.md)
   : Markermd Project
-- [`get_allowed_rule_verbs()`](https://rundel.github.io/markermd/reference/get_allowed_rule_verbs.md)
+- [`rule_verbs()`](https://rundel.github.io/markermd/reference/rule_verbs.md)
   : Get allowed verbs for rules
-- [`get_allowed_node_types()`](https://rundel.github.io/markermd/reference/get_allowed_node_types.md)
+- [`rule_node_types()`](https://rundel.github.io/markermd/reference/rule_node_types.md)
   : Get allowed node types for rules
-- [`get_allowed_filter_condition_types()`](https://rundel.github.io/markermd/reference/get_allowed_filter_condition_types.md)
+- [`filter_condition_types()`](https://rundel.github.io/markermd/reference/filter_condition_types.md)
   : Get allowed filter condition types
 - [`template_classes`](https://rundel.github.io/markermd/reference/template_classes.md)
   : S7 Class Definitions for Markermd Templates

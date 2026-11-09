@@ -12,7 +12,8 @@ markermd_question(
   selected_nodes = markermd_node_selection(),
   rules = list(),
   filters = list(),
-  scope = "sections"
+  scope = "sections",
+  file = NA_character_
 )
 ```
 
@@ -48,6 +49,14 @@ markermd_question(
   issues that belong to no single question). A document-scope question
   selects no nodes; its filters and rules, if any, evaluate against the
   whole document.
+
+- file:
+
+  Character. The assignment file the question covers, as a path relative
+  to the repository root (one of the template's `files`), or `NA` (the
+  default) for the assignment's Quarto document. A question on another
+  file covers the whole file: it selects no nodes and has no rules or
+  filters, and it fails validation when a repository lacks the file.
 
 ## Value
 

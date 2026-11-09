@@ -17,12 +17,12 @@ it needs no stored template.
 ## Usage
 
 ``` r
-parse_project(path = ".", use_qmd = TRUE)
+parse_project(project = ".", use_qmd = TRUE)
 ```
 
 ## Arguments
 
-- path:
+- project:
 
   Path to an initialized markermd project directory.
 

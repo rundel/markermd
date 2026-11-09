@@ -11,12 +11,12 @@ repositories is usually too strict and should be relaxed in
 ## Usage
 
 ``` r
-validate_project(path = ".", template = NULL, use_qmd = TRUE)
+validate_project(project = ".", template = NULL, use_qmd = TRUE)
 ```
 
 ## Arguments
 
-- path:
+- project:
 
   Path to the project directory. Defaults to the working directory.
 

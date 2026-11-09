@@ -12,20 +12,51 @@ template.
 ## Usage
 
 ``` r
-assignment_outline(assignment_path, filename = "*.[Rq]md")
+assignment_outline(
+  source,
+  filename = "*.[Rq]md",
+  template = NULL,
+  local_dir = NULL,
+  assignment = NULL
+)
 ```
 
 ## Arguments
 
-- assignment_path:
+- source:
 
-  Path to an assignment file (`.qmd`/`.Rmd`) or a directory containing
-  one.
+  Anything
+  [`template()`](https://rundel.github.io/markermd/reference/template.md)
+  accepts: an initialized markermd project directory (outlines the key
+  repository's document), a path to an assignment file (`.qmd`/`.Rmd`),
+  a directory containing one, a saved template (`.yaml`/`.yml`), a
+  `markermd_template` object, or a GitHub `<owner>/<repo>` (cloned into
+  `local_dir`).
 
 - filename:
 
-  Glob used to find the assignment when `assignment_path` is a
-  directory. Defaults to any `.Rmd`/`.qmd` file.
+  Glob used to find the assignment when `source` is a directory, a
+  project or a repository. Defaults to any `.Rmd`/`.qmd` file.
+
+- template:
+
+  Optional `markermd_template`. When given, a heading's counts stop at
+  the first heading one of the template's questions selects (other than
+  the row's own), exactly as grading ends that question's section, so an
+  outline taken against a template shows what each question would be
+  graded on. When `NULL` (the default) the source's own template is used
+  if it has one (a template object or file, or a project's stored
+  template); otherwise a section runs to the next heading of the same or
+  higher level.
+
+- local_dir:
+
+  Directory to clone into when `source` is a GitHub repository.
+
+- assignment:
+
+  Optional assignment document for a template `source` whose
+  `source.path` cannot be located.
 
 ## Value
 
@@ -34,7 +65,17 @@ A data frame with one row per anchorable section and columns `type`
 the content counts `n_chunk`, `n_code_block`, `n_markdown`, `n_list`,
 `n_table`, `n_div`, `n_other` and `n_content` (all non-heading blocks;
 HTML comments, which never render, are not counted anywhere). The
-resolved source file is attached as the `"source_file"` attribute.
+resolved source file is attached as the `"source_file"` attribute
+(`NULL` for a template object whose document is unknown), and the
+assignment's other files (everything else in the repository, which a
+template question can cover with `file:`) as the `"files"` attribute: a
+data frame with `path` (relative to the repository root: the project's
+key repository, `source` when it is a directory, the cloned repository,
+else the enclosing git repository when the document sits at most two
+directories below it, else the document's directory; empty when the
+document is unknown), `size` (bytes), `filtered` (`TRUE` for hidden
+files, render output, lock files, project files and the README, which
+are seldom graded) and `reason`.
 
 ## Examples
 

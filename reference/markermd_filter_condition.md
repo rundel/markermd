@@ -20,16 +20,16 @@ markermd_filter_condition(
 - type:
 
   Character. The condition type. Must be one of the values returned by
-  get_allowed_filter_condition_types().
+  filter_condition_types().
 
 - value:
 
   Character. The condition value. For "node type" this must be a node
-  kind from get_allowed_node_types() (excluding "Any node"); for "has
-  option" it is a Quarto cell option as written on a `#|` line ("eval"
-  for key presence, "eval: false" for a key/value test); for "has
-  engine" it is a cell engine name (e.g. "r"); for the other types it is
-  the class name, id, regex pattern, or glob pattern.
+  kind from rule_node_types() (excluding "Any node"); for "has option"
+  it is a Quarto cell option as written on a `#|` line ("eval" for key
+  presence, "eval: false" for a key/value test); for "has engine" it is
+  a cell engine name (e.g. "r"); for the other types it is the class
+  name, id, regex pattern, or glob pattern.
 
 - negate:
 
@@ -38,6 +38,18 @@ markermd_filter_condition(
 ## Value
 
 A `markermd_filter_condition` S7 object.
+
+## Details
+
+"has text" matches a node's rendered text
+([`q2r::ast_text()`](https://rundel.github.io/q2r/reference/ast_text.html),
+without markup) against a case-sensitive regular expression; "has label"
+matches a heading or div id, or a chunk's label option, against a glob
+pattern (`fig-*`). Rules
+([`markermd_rule()`](https://rundel.github.io/markermd/reference/markermd_rule.md))
+differ: their content verbs match the node's qmd source
+case-insensitively and "has name" matches a heading title or chunk label
+by regular expression.
 
 ## Examples
 

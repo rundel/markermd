@@ -3,10 +3,12 @@
 Returns per-repository, per-question scores as
 [`snapshot_diff()`](https://rundel.github.io/markermd/reference/snapshot_diff.md)
 and the History tab compare them: for a snapshot, the scores cached when
-it was taken; for `"current"`, the live database scored with the same
-code as
+it was taken; for `"current"`, the live database. Both are computed by
+the one scorer behind
 [`export_scores()`](https://rundel.github.io/markermd/reference/export_scores.md)
-and the Assignments table.
+and the Assignments table, over the same in-memory frame of items,
+selections and comments, so which pairs count as graded and what they
+score cannot differ between a snapshot and the live state.
 
 ## Usage
 

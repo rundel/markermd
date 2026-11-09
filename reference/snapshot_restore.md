@@ -3,11 +3,14 @@
 Writes a snapshot's rubric and marks (and optionally its template) back
 into the project database, undoing every change made since. An automatic
 snapshot of the current state is taken first, so a restore can itself be
-undone. The parts are written through the same paths as the imports, in
-one transaction: the template is stored, each chosen question's rubric
-items, groups and scoring are replaced, and each chosen repository's
-selections and comments are set to the snapshot's (pairs the snapshot
-did not know are cleared). The restored scores are then recomputed and
+undone. Everything is written in one transaction: the template is
+stored, each chosen question's rubric items, groups and scoring are put
+back in place by id (an item the snapshot knows keeps its id, and with
+it every repository's recorded selections of it; items and groups the
+snapshot does not have are removed), and each chosen repository's
+selections and comments are set to the snapshot's, matched by the item
+ids the snapshot carries. Pairs with grading activity the snapshot did
+not record are cleared. The restored scores are then recomputed and
 compared with the scores the snapshot recorded; a mismatch aborts and
 rolls everything back.
 
@@ -49,7 +52,7 @@ snapshot_restore(
 - repo:
 
   Optional character vector of repository names whose marks to restore.
-  Defaults to every repository in the snapshot.
+  Defaults to every repository of the project.
 
 - summary:
 
@@ -64,14 +67,25 @@ when the state was already recorded).
 
 ## Details
 
-Restoring the rubric alone drops every selection of an item the snapshot
-does not have, and restoring the marks alone can leave selections that
-name items the current rubric lacks, so the default restores both and a
-partial restore warns. `question` and `repo` narrow the restore ("undo
-the review for Q1c only"). Repositories in the snapshot that no longer
-exist under the project's repos directory are skipped with a warning. A
-question the snapshot has that is not in the current template aborts
-unless `"template"` is among the parts.
+Restoring the rubric alone keeps every repository's selections (of the
+items the snapshot still has), and restoring the marks alone aborts when
+the snapshot's selections name items the current rubric lacks, so the
+default restores both and a partial restore warns. `question` and `repo`
+narrow the restore ("undo the review for Q1c only", "for one student
+only"); repositories outside `repo` are left exactly as they are, and
+only the restored repositories are checked against the recorded scores.
+Without `repo`, every repository under the project's repos directory is
+restored, including repositories graded only after the snapshot, whose
+grading is cleared. Clearing appends deselection and empty-comment
+events (the grading tables are append-only logs), so a cleared pair
+still counts as having grading activity for
+[`marks_import()`](https://rundel.github.io/markermd/reference/marks_import.md)'s
+default skip; pass `overwrite = TRUE` to re-mark it. Repositories in the
+snapshot that no longer exist under the repos directory are skipped with
+a warning. A question the snapshot has that is not in the current
+template aborts unless `"template"` is among the parts. A question
+renamed since the snapshot is matched by its question id and restored
+under its current name.
 
 ## See also
 

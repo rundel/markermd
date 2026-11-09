@@ -46,7 +46,7 @@ them accordingly.
 ## See also
 
 [`export_scores()`](https://rundel.github.io/markermd/reference/export_scores.md),
-[`export_marks()`](https://rundel.github.io/markermd/reference/export_marks.md),
+[`export_feedback()`](https://rundel.github.io/markermd/reference/export_feedback.md),
 [`marks_export()`](https://rundel.github.io/markermd/reference/marks_export.md)
 
 ## Examples

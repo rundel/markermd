@@ -5,8 +5,9 @@ the same readers the imports use: `markermd-template.yaml` (when the
 snapshot holds a template), `markermd-rubric.yaml` and
 `markermd-marks.yaml`, plus a `snapshot.yaml` sidecar with the
 snapshot's fields and notes, so the directory stands alone as an
-archive. The rubric file drops the item and group ids a snapshot carries
-internally, so it validates against the published schema.
+archive. The rubric and marks files drop the item and group ids a
+snapshot carries internally, so they validate against the published
+schemas.
 
 ## Usage
 

@@ -2,10 +2,11 @@
 
 Reports what changed between two snapshots (or between a snapshot and
 the project's current grading state): rubric items added, removed,
-reworded, re-pointed or regrouped, group bound and scoring changes;
-per-repository selection, public comment and private note changes;
-per-pair score deltas and every repository's total before and after; and
-template questions added, removed, renamed or changed.
+reworded, re-pointed or regrouped, groups added, removed, renamed or
+re-bounded, scoring changes; per-repository selection, public comment
+and private note changes; per-pair score deltas and every repository's
+total before and after; and template questions added, removed, renamed
+or changed.
 
 ## Usage
 
@@ -47,13 +48,17 @@ properties are data frames.
 
 ## Details
 
-Rubric items are matched across the two sides by the database ids a
-snapshot records, so an item reworded in
+Rubric items and groups are matched across the two sides by the database
+ids a snapshot records, so an item reworded or a group relabeled in
 [`mark()`](https://rundel.github.io/markermd/reference/mark.md) is
 reported as a rename. A replace import mints new ids; items it
 re-created are matched as a likely rename when they keep their points
-and are selected by the same repositories on both sides. Renamed items
-are not reported as selection changes in the marks.
+and are selected by the same repositories on both sides. Selections are
+compared by item id as well, so a reworded item is not a selection
+change while a deleted item whose description another item took over
+still is. Questions are matched by the ids of the two sides' templates,
+so a question renamed in between is compared with itself under its newer
+name, and only the template comparison reports the rename.
 
 The comparison is only meaningful when the snapshot's part is present on
 both sides; a `part` left out is reported as unchanged.

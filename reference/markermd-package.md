@@ -10,7 +10,8 @@ rendered-report previews. All grading state is stored in a per-project
 SQLite database, with YAML import and export for templates, rubrics, and
 marks, plus bundled agent skills (for Claude Code and Codex) that
 scaffold templates and rubrics, repair submissions the strict parser
-rejects, and record first-pass machine grading for human review.
+rejects, screen submissions for prompt injection attempts, and record
+first-pass machine grading for human review.
 
 ## See also
 

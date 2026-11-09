@@ -1,27 +1,27 @@
 # Initialize a markermd grading project
 
 Bootstraps a markermd project in a directory laid out by
-[`ghclass::org_grade_assignment()`](https://rundel.github.io/ghclass/reference/org_grade_assignment.html)
-(a `repos/` directory of student repositories, a `comments/` directory,
-an optional key/solution repository, and a directory per downloaded
-artifact). It creates a `.markermd/` directory at the project root
-holding the SQLite grading database and a `config.yml` recording the
-project's file locations, and installs the bundled agent skills so they
-are discoverable from the project: the Claude Code set into
-`<path>/.claude/skills/` and the Codex set into `<path>/.agents/skills/`
-(see `agents`). It also writes each selected agent's project
-instructions file at the project root (`CLAUDE.md` for Claude Code,
-`AGENTS.md` for Codex) describing the project layout, the grading
-workflow and skills, and the rules an agent must follow when working
-with student submissions. An existing instructions file is kept, so it
-can be customized freely, unless `overwrite_instructions = TRUE`; pass
-`instructions = FALSE` to skip this step.
+`ghclass::org_grade_assignment()` (a `repos/` directory of student
+repositories, a `comments/` directory, an optional key/solution
+repository, and a directory per downloaded artifact). It creates a
+`.markermd/` directory at the project root holding the SQLite grading
+database and a `config.yml` recording the project's file locations, and
+installs the bundled agent skills so they are discoverable from the
+project: the Claude Code set into `<project>/.claude/skills/` and the
+Codex set into `<project>/.agents/skills/` (see `agents`). It also
+writes each selected agent's project instructions file at the project
+root (`CLAUDE.md` for Claude Code, `AGENTS.md` for Codex) describing the
+project layout, the grading workflow and skills, and the rules an agent
+must follow when working with student submissions. An existing
+instructions file is kept, so it can be customized freely, unless
+`overwrite_instructions = TRUE`; pass `instructions = FALSE` to skip
+this step.
 
 ## Usage
 
 ``` r
 init_project(
-  path,
+  project,
   agents = c("claude", "codex"),
   instructions = TRUE,
   overwrite_instructions = FALSE,
@@ -31,16 +31,16 @@ init_project(
 
 ## Arguments
 
-- path:
+- project:
 
   Path to the project directory.
 
 - agents:
 
   Which agents' skill sets to install: `"claude"` (into
-  `<path>/.claude/skills/`), `"codex"` (into `<path>/.agents/skills/`),
-  or both, the default. The same selection decides which instructions
-  files are written.
+  `<project>/.claude/skills/`), `"codex"` (into
+  `<project>/.agents/skills/`), or both, the default. The same selection
+  decides which instructions files are written.
 
 - instructions:
 
