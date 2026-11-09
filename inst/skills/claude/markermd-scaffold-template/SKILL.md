@@ -237,13 +237,17 @@ Rules and constraints:
   need to check the exact structure.
 
 Before importing, confirm the file parses and the key document can be located.
-Note that `require_ast = TRUE` only re-parses the key to confirm `source.path`
-resolves; it does NOT check that each `node_id` exists in the document, so a
-mistyped anchor passes here and only surfaces as a per-repo error in step 7's
-`validate_project()`:
+Pass absolute paths: `source.path` is relative to the project root, while
+`read_template_yaml()` resolves it against the YAML file's directory and then
+the working directory, so name the key document explicitly with `assignment =`
+(the absolute `source_file` from step 3). `require_ast = TRUE` only re-parses
+the key to confirm the document resolves; it does NOT check that each
+`node_id` exists in the document, so a mistyped anchor passes here and only
+surfaces in step 7, where `validate_project()` fails every repository on that
+question with "Selected section #id not found in this document":
 
 ```
-Rscript -e 'invisible(markermd::read_template_yaml("<root>/scratch/markermd-template.yaml", require_ast = TRUE)); cat("OK\n")'
+Rscript -e 'invisible(markermd::read_template_yaml("<root>/scratch/markermd-template.yaml", assignment = "<source_file>", require_ast = TRUE)); cat("OK\n")'
 ```
 
 If `jsonvalidate` is installed, also check it against the schema:
@@ -255,19 +259,30 @@ Rscript -e 'print(markermd::validate_template_file("<root>/scratch/markermd-temp
 `TRUE` means it conforms. Fix any reported problems (commonly a missing value
 key for a verb, or duplicate names) and re-validate until it loads cleanly.
 Anchor typos are not caught here; they are caught by `validate_project()` in
-step 7.
+step 7. A `pattern` that is not a valid regular expression fails its rule in
+every repository, so escape literal parentheses and brackets.
 
 Then import the template into the project database (its canonical store):
 
 ```
-Rscript -e 'markermd::template_import("scratch/markermd-template.yaml", project = "<root>", summary = "<one line: what this template covers, or what changed>")'
+Rscript -e 'markermd::template_import("<root>/scratch/markermd-template.yaml", project = "<root>", summary = "<one line: what this template covers, or what changed>")'
 ```
 
 If a template is already stored in the project, ask the user whether to
-regenerate it or just refine the existing one before overwriting. The import
-takes an automatic snapshot of the state it replaces and records `summary`
-on it, so always pass one; `markermd::snapshot_restore("latest", part =
-"template", project = "<root>")` undoes the import.
+regenerate it or just refine the existing one before overwriting. Either way,
+start from the stored template rather than a fresh numbering: export it with
+`markermd::template_export("<root>/scratch/markermd-template.yaml", project =
+"<root>")` and edit that file. Question ids are what carry grading across a
+rename, so every existing question keeps its `id` (even when its name or
+anchors change) and a new question takes an id above the largest stored one.
+Renumbering the questions 1..n would move each shifted id's rubric and marks
+onto whichever question now holds that id. The import warns about every
+rename it carries grading through; a rename you did not intend means an id
+moved, so undo the import and fix the file. The import takes an automatic
+snapshot of the state it replaces and records `summary` on it, so always pass
+one; `markermd::snapshot_restore("latest", part = "template", project =
+"<root>")` undoes the import, moving any carried-over grading back to the
+restored question names.
 
 ### 7. Validate the template against every student repository
 
@@ -289,11 +304,18 @@ Rscript -e 'res <- markermd::validate_project("<root>"); print(res, row.names = 
 ```
 
 It returns one row per repository/question with columns `repo`, `question`,
-`status` (`pass`, `fail`, or `error`), and `detail`. Summarize the results:
-how many repos pass each question, and which rules fail widely. Interpretation:
+`status` (`pass`, `fail`, or `error`), and `detail`. It does not report parse
+warnings, so also run `markermd::parse_project("<root>")`: its `warning` rows
+are documents that parsed with diagnostics (an HTML element passed through as
+raw HTML, for example). Grade those normally, but check a widely failing rule
+against those warnings before calling the rule too strict. Summarize the
+results: how many repos pass each question, and which rules fail widely.
+Interpretation:
 
-- A rule that **fails for almost every repo** is usually too strict (or the
-  anchor does not exist in the students' documents) -- flag it for relaxing.
+- A rule that **fails for almost every repo** is usually too strict -- flag it
+  for relaxing. When the `detail` reads "Selected section #id not found in
+  this document", the anchor is wrong or the students renamed the heading:
+  fix the `node_id`, never the rule.
 - A `status` of `error` means the repo's assignment file was missing or failed
   to parse; list those repos for the user. For the ones that failed to parse,
   point the user at the `markermd-fix-parsing` skill: it shows each parser

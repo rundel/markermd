@@ -93,7 +93,7 @@ Rscript -e 'markermd::project_set("<root>", repos = "<repos-dir>")'
 Export the stored template and read it:
 
 ```
-Rscript -e 'p <- tempfile(fileext = ".yaml"); markermd::template_export(p, project = "<root>"); cat(readLines(p), sep = "\n")'
+Rscript -e 'p <- "<root>/scratch/markermd-template.yaml"; dir.create(dirname(p), showWarnings = FALSE); markermd::template_export(p, project = "<root>"); cat(readLines(p), sep = "\n")'
 ```
 
 If this errors with "No template is stored in this project's database", stop
@@ -108,15 +108,16 @@ From the printed YAML record, per question:
   a question on one of the assignment's other files (listed under the
   template's `files:`), the file it covers as a whole.
 
-Also note the top-level `source.path`: the assignment document's path, whose
-basename is how each repository's document is matched.
+Also note the top-level `source.path`: the assignment document's path,
+relative to the project root, whose basename is how each repository's
+document is matched (step 5 reads the matched path for each repository).
 
 ### 3. Confirm the rubric and learn its items
 
 Export the stored rubric and read it:
 
 ```
-Rscript -e 'p <- tempfile(fileext = ".yaml"); markermd::rubric_export(p, project = "<root>"); cat(readLines(p), sep = "\n")'
+Rscript -e 'p <- "<root>/scratch/markermd-rubric.yaml"; markermd::rubric_export(p, project = "<root>"); cat(readLines(p), sep = "\n")'
 ```
 
 From the printed YAML record, per question:
@@ -133,7 +134,7 @@ From the printed YAML record, per question:
   mark when present, in `positive` mode achievements to mark when earned.
 
 If every question's `items` list is empty, stop and point the user at the
-`markermd-scaffold-rubric` skill (or the Rubric pane of `mark()`); there is
+`markermd-scaffold-rubric` skill (or the Rubric tab of `mark()`); there is
 nothing to apply yet.
 
 Also identify each question's **confirmation item**: the item the grader
@@ -180,7 +181,10 @@ Phrase it as positive student-facing feedback and never mention grading
 mechanics such as deductions in the description. Without it a correct answer
 can only be recorded as `items: []`, which leaves the pair looking ungraded
 in `mark()` until the human confirms it. To add them, write a small rubric
-YAML covering just those questions and append it:
+YAML covering just those questions and append it. Only questions with no
+confirmation item go in the file: an append whose item repeats a description
+already stored for its question is refused, so check step 3's export first
+(a question whose "Looks good" item you did not recognize already has one):
 
 ```yaml
 format_version: "1.0"
@@ -192,7 +196,7 @@ questions:
 ```
 
 ```
-Rscript -e 'markermd::rubric_import("<file>.yaml", project = "<root>", mode = "append", summary = "Added the document question for document-level problems")'
+Rscript -e 'markermd::rubric_import("<file>.yaml", project = "<root>", mode = "append", summary = "Added a confirmation item to the questions that lacked one")'
 ```
 
 Then re-run step 3's export so the item list you mark against is current.
@@ -206,12 +210,26 @@ results across all repos:
 Rscript -e 'res <- markermd::validate_project("<root>"); print(res, row.names = FALSE)'
 ```
 
-Repos with `status` of `error` have a missing or unparseable document. For
+Also run the parse check, whose `file` column is the document each repository
+is graded on and whose `warning` status marks a document that parsed with
+diagnostics:
+
+```
+Rscript -e 'res <- markermd::parse_project("<root>"); print(res[, c("repo", "file", "status")], row.names = FALSE)'
+```
+
+Read `warning` documents normally, but a structure-based rule that fails
+there may fail for a parsing reason (an HTML element passed through as raw
+HTML, for example) rather than a missing answer, so read the section before
+selecting a "missing" item. Repos with `status` of `error` have a missing or
+unparseable document. For
 the unparseable ones, suggest the `markermd-fix-parsing` skill first: it
 repairs the document on a `grading-fixes` branch in the repository so it can
 be read here. Those still failing, and the missing ones, cannot be read and
 are excluded; list them in the final report (step 11) so the user grades them
-by hand. Per-question `fail` results indicate missing sections, a missing
+by hand. Per-question `fail` results indicate missing sections (a `detail` of
+"Selected section #id not found in this document" means the student renamed
+or removed the heading: find the answer by its heading text instead), a missing
 file (for a question with `file:`, whose `detail` reads "not found in the
 repository"), or rule violations -- useful pointers for which rubric items are likely to apply,
 but read the actual answer before selecting anything.
@@ -220,8 +238,10 @@ but read the actual answer before selecting anything.
 
 For every in-scope repository under `<root>/<paths.repos>`:
 
-- Match the assignment document by the basename of `source.path` from step 2,
-  falling back to the first `.qmd` file when absent.
+- Read the document named in the `file` column of step 5's `parse_project()`
+  output. It is the one `mark()` shows and grades (the basename of
+  `source.path`, a root-level copy preferred over a nested one); never pick a
+  different `.qmd` yourself, even when the repository holds several.
 - A repo whose checked-out branch is `grading-fixes` (`git -C <repo> branch
   --show-current`) carries repairs made by the `markermd-fix-parsing` skill,
   and the document you read includes them. `<!-- markermd: ... -->` comments
@@ -366,16 +386,16 @@ Rscript -e 'print(markermd::validate_marks_file("<root>/scratch/markermd-marks.y
 import (set `overwrite` per step 4):
 
 ```
-Rscript -e 'markermd::marks_import("scratch/markermd-marks.yaml", project = "<root>", overwrite = FALSE, summary = "<one line: which pass this is and what it covers>")'
+Rscript -e 'markermd::marks_import("<root>/scratch/markermd-marks.yaml", project = "<root>", overwrite = FALSE, summary = "<one line: which pass this is and what it covers>")'
 ```
 
 The import validates every repository name, question name, and item
 description before writing anything; on a description mismatch, fix the marks
 YAML against step 3's verbatim list and retry -- never edit the rubric to
 match the marks file. Relay the skipped-pairs report to the user: those pairs
-already had grading activity and were left untouched. With `overwrite = TRUE`
-the import takes an automatic snapshot of the marks it replaces and records
-`summary` on it, so always pass one; `Rscript -e
+already had grading activity and were left untouched. Every import takes an
+automatic snapshot of the marks it replaces (with or without
+`overwrite = TRUE`) and records `summary` on it, so always pass one; `Rscript -e
 'print(markermd::snapshot_diff("latest", project = "<root>"))'` then reports
 every selection, comment and score the import changed, which is the summary
 to relay. `markermd::snapshot_restore()` undoes it.
@@ -394,8 +414,10 @@ and that their selections were reviewed here before import. Then direct them to 
 markermd::mark("<root>")
 ```
 
-Point out that the marked selections appear pre-toggled in the Rubric pane
-(a group's header shows its subtotal and flags a bound that was hit), the
+Point out that the marked selections appear pre-toggled in the Grade tab,
+each carrying a robot badge until the grader touches that pair (a group's
+header shows its subtotal and flags a bound that was hit), that the History
+tab lists the import with its summary, the
 reasoning is in the private-notes box under the public comment (private
 notes are never shared with students), correct answers were registered
 through each question's confirmation item so they count as graded, and any

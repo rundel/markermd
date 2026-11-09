@@ -56,7 +56,7 @@ description.
   (proposing equal, content-weighted, and assignment-stated splits), then
   drafts concrete key-derived items, validates the YAML against the bundled
   schema, and imports it with `rubric_import()`, ready to refine in `mark()`'s
-  Rubric pane. When the sampled submissions show a problem that belongs to no
+  Grade and Rubric tabs. When the sampled submissions show a problem that belongs to no
   single question (such as a render setting in the YAML header), it proposes
   a document-scope question worth 0 points, optional and unbounded below, to
   record it once as a deduction from the total.
@@ -96,7 +96,8 @@ per-repository marks to files any LLM tool can draft or refine against the
 JSON Schemas at `system.file("schema", package = "markermd")`
 (`markermd-rubric.json`, `markermd-marks.json`), and `rubric_import()` /
 `marks_import()` bring them back into the project database. The rubric
-import/export is also available inside `mark()` from the Rubric pane's menu.
+import/export is also available inside `mark()`, from the Grade tab's rubric
+menu and the Rubric tab's header.
 `parse_project()` is the headless per-repository parse check the fix-parsing
 skill starts from; unlike `validate_project()` it needs no stored template.
 `scan_project()` is the deterministic prompt injection scan the

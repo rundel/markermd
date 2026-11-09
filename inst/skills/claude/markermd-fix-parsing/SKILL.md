@@ -143,13 +143,14 @@ problems: do not try to fix them by changing the template.
 character or token here`, followed by a source excerpt with a caret under the
 reported position. Three pitfalls:
 
-- **Line numbers are offset.** They refer to the text after markermd's knitr
-  chunk-header normalization, which rewrites `{r name}` and
-  `{r name, echo=FALSE}` headers into `{r}` plus `#| label:` / option lines.
-  The reported line exceeds the file line by the number of such chunks above
-  it (17 in one real key). Locate the problem by grepping for the quoted
-  text, never by line number, and verify a line with `sed -n '<n>p'` before
-  editing it.
+- **The reported line can differ from the file's line.** The parser reads
+  the text after markermd's knitr chunk-header normalization, which rewrites
+  `{r name}` and `{r name, echo=FALSE}` headers into `{r}` plus `#| label:` /
+  option lines. When that moved the line, the diagnostic ends with a hint
+  such as "Line 140 here is line 123 of hw1.qmd": use the file line from the
+  hint. The source excerpt still shows the normalized text, so a chunk
+  header in it may not look like the file's. Verify a line with
+  `sed -n '<n>p'` (or by grepping for the quoted text) before editing it.
 - **The column can point at the end of the line.** For an unclosed construct
   (a `$` opening inline math, a `_` opening emphasis, a quote) the error is
   reported where the paragraph ends, not where the offending character is.

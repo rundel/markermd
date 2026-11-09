@@ -58,7 +58,13 @@ Headless entry points, all taking the project root:
 
 - `project_sitrep()`, `project_config()`, `project_set()`: inspect and edit
   the config.
-- `parse_project()`: per-repository parse check, no template needed.
+- `parse_project()`: per-repository parse check, no template needed. Its
+  `file` column is the document each repository is graded on (the
+  template's document by name, a root-level match preferred over a nested
+  copy); read it from there rather than picking a `.qmd` yourself. Its
+  `warning` status means the document parsed with diagnostics, so a
+  structure-based rule can fail for a parsing reason rather than a missing
+  answer.
 - `validate_project()`: the stored template's rules across every repository.
 - `scan_project()`: deterministic scan of every repository and rendered
   report for prompt injection attempts; returns candidates with neutralized
@@ -91,9 +97,9 @@ Headless entry points, all taking the project root:
   who made it (you, as `claude` or `codex`), its `summary` and what it
   touched, next to the grading done in `mark()`; `activity_detail(id)`
   lists one entry's changes per repository and question. A running
-  `mark()` picks your changes up within a second, shows them in its
-  Activity tab and marks the items you selected until the grader reviews
-  them.
+  `mark()` picks your changes up within a second, lists them in its
+  History tab and marks the items you selected in the Grade tab until the
+  grader reviews them.
 
 ## File formats
 
@@ -145,7 +151,13 @@ questions:
   `has at least` / `has at most` take `count`; `has between` takes `min` and
   `max`; `has content` / `lacks content` / `has name` take `pattern`, a
   case-insensitive regular expression matched against each node's text
-  (for `has name`, against the heading title or chunk label).
+  (for `has name`, against the heading title or chunk label). A pattern
+  that is not a valid regular expression fails the rule ("invalid regular
+  expression"), so escape literal parentheses and brackets (`lm\\(`).
+- A selected section that a submission does not have (the student renamed
+  or deleted the heading) fails every rule of the question with "Selected
+  section #id not found in this document", so a `lacks content` or
+  `has at most` rule never passes on a missing section.
 - `node_type` is one of `Any node`, `Heading`, `Markdown`, `Chunk`,
   `Code block`, `Raw Block`, `HTML comment`, `Div`, `Bullet list`,
   `Ordered list`, `Block quote`, `Table`, `Figure`, `Horizontal rule`,
@@ -176,10 +188,14 @@ questions:
   `attr(assignment_outline(key), "files")` lists the key's other files.
 - Import with `template_import(path, project)`; export the stored template
   with `template_export()`. The import re-parses `source.path` but does not
-  check that each `node_id` exists; a wrong anchor surfaces as a per-repo
-  error from `validate_project()`.
+  check that each `node_id` exists; a wrong anchor surfaces as a "not found"
+  failure in every repository from `validate_project()`.
+- The question `id` is what carries grading across a rename: storing a
+  template whose question keeps its id under a new name moves its rubric,
+  scoring and marks to the new name (with a warning). See the Rules section
+  before regenerating a stored template.
 
-### Rubric (`format_version: "1.1"`)
+### Rubric (`format_version: "1.0"` to `"1.2"`)
 
 ```yaml
 format_version: "1.1"
@@ -250,12 +266,18 @@ questions:
 - Import with `rubric_import(path, project, mode = "append")`, which adds the
   file's items after each question's existing ones, merging a group into the
   existing group of the same label (items appended to it, bounds
-  overwritten) and creating a group for a new label; `mode = "replace"`
+  overwritten) and creating a group for a new label. An append whose file
+  repeats a description already stored for the question is refused, so
+  never re-import a whole exported rubric in append mode: export with
+  `rubric_export()`, compare, and append a file holding only the new items
+  (with `question =` to limit it to one question). `mode = "replace"`
   deletes each affected question's items and groups first, together with
-  every recorded selection of the items across all repositories, and cannot
-  be undone. Making an existing group exclusive while some repository has
-  two of its items selected aborts the import. Export the stored rubric with
-  `rubric_export()`. To reword an item or change its points, use
+  every recorded selection of the items across all repositories. A replace
+  is undone with `snapshot_restore()` from the snapshot it takes, which puts
+  the items and their selections back, but the activity log entries of the
+  deleted items' selections do not come back to History. Making an existing
+  group exclusive while some repository has two of its items selected
+  aborts the import. To reword an item or change its points, use
   `rubric_item_set()`, never a replace import: the replace drops every
   recorded selection of the question's items.
 
@@ -340,6 +362,17 @@ repos:
   (`snapshot_create(label =, summary =)`) before a multi-step change, and
   use `snapshot_restore()` to undo, never `rubric_import(mode = "replace")`
   from a copied file.
+- Question ids are what carry grading across a rename, and question names are
+  what the rubric and marks YAML files key on. To change a stored template,
+  export it with `template_export()` and edit that file, keeping every
+  existing question's `id`; a new question takes an id above the largest one
+  stored. Never renumber the questions of a regenerated template: an id that
+  now names a different question moves the old question's grading onto it.
+  Importing a template that renames a question prints a warning naming the
+  moves; a renamed question whose old name another question now carries
+  means the ids shifted, and `snapshot_restore("latest", part = "template")`
+  undoes it, grading included. A rubric or marks file exported before a
+  rename still names the old question, so export again after the rename.
 - Names match verbatim on import: question names against the stored template,
   rubric item descriptions against the stored rubric, repository names against
   the directories under `paths.repos`. Fix the file being imported; never edit

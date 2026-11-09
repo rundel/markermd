@@ -21,8 +21,9 @@ first ten items per question, counting a group's items in place, are bound
 to the keyboard hotkeys 1-9 and 0 and any further items are toggled by
 clicking (there is no limit on the number of items), so the most-used items
 belong first. The canonical store for the rubric is the project's grading
-database (`.markermd/markermd.sqlite`); YAML (`format_version: "1.1"`, or
-`"1.0"` for a file without groups) is the human-authorable import/export
+database (`.markermd/markermd.sqlite`); YAML (`format_version: "1.1"`,
+`"1.0"` for a file without groups, or `"1.2"` for a file with an optional
+question) is the human-authorable import/export
 format, with the full JSON Schema bundled at
 `system.file("schema/markermd-rubric.json", package = "markermd")`. This skill
 builds that scaffolding so the user does not have to author items one at a
@@ -47,7 +48,8 @@ and ask to import -> import into the project database (step 9). With the
 question-at-a-time workflow it repeats per question: draft -> show that
 question's proposed items -> confirm -> import, before moving to the next
 question (step 10). Either way, report at the end. The scaffold is a starting
-point; the user refines items while grading in the Rubric pane of `mark()`.
+point; the user refines items while grading in `mark()`, in the Grade tab
+beside each submission or in the Rubric tab for the whole rubric at once.
 
 Two hard rules:
 
@@ -96,7 +98,7 @@ The rubric hangs off the template's questions, so export the stored template
 and read it:
 
 ```
-Rscript -e 'p <- tempfile(fileext = ".yaml"); markermd::template_export(p, project = "<root>"); cat(readLines(p), sep = "\n")'
+Rscript -e 'p <- "<root>/scratch/markermd-template.yaml"; dir.create(dirname(p), showWarnings = FALSE); markermd::template_export(p, project = "<root>"); cat(readLines(p), sep = "\n")'
 ```
 
 If this errors with "No template is stored in this project's database", stop
@@ -254,7 +256,13 @@ Questions that `fail` widely are where deduction items will earn their keep.
 Repos with `status` of `error` have a missing or unparseable document: for
 the unparseable ones, suggest the `markermd-fix-parsing` skill (which repairs
 the document on a `grading-fixes` branch in the repository) before sampling;
-any still failing are excluded from sampling.
+any still failing are excluded from sampling. `validate_project()` does not
+report parse warnings, so also run `markermd::parse_project("<root>")`: a
+repository with status `warning` parsed with diagnostics (an HTML element
+passed through as raw HTML, for example), so a structure-based rule can fail
+there for a parsing reason rather than a missing answer. Sample those
+normally, but do not draft a deduction item from a failure the warnings
+explain.
 
 Then read actual submissions under `<root>/<paths.repos>`:
 
@@ -263,9 +271,12 @@ Then read actual submissions under `<root>/<paths.repos>`:
 - With more, sample about 5-8: prioritize repos whose validation failures fall
   on *different* questions, plus one or two fully passing repos as the
   "typical correct" baseline.
-- Match each repo's document by the same filename as the key's `source.path`.
-  Students sometimes edit headings so the template anchors are absent; fall
-  back to matching heading text rather than skipping the repo.
+- Read each repo's document from the `file` column of `parse_project()`:
+  it is the document `mark()` grades (the key's filename, a root-level copy
+  preferred over a nested one), so never pick a `.qmd` yourself. Students
+  sometimes edit headings so the template anchors are absent (validation then
+  reports "Selected section #id not found in this document"); fall back to
+  matching heading text rather than skipping the repo.
 - A repo whose checked-out branch is `grading-fixes` (`git -C <repo> branch
   --show-current`) carries repairs made by the `markermd-fix-parsing` skill
   so the document parses. Read it as-is, but `<!-- markermd: ... -->`
@@ -487,8 +498,10 @@ Rules and constraints:
   `items`, and optionally `floor` (a number `<= 0`), `ceiling` (a number
   `>= 0`) and `exclusive` (a boolean). Groups cannot nest, and item
   descriptions stay unique across the whole question, groups included.
-  Write `format_version: "1.1"` whenever the file has a group; `"1.0"` is
-  the version for a file without groups (both are read).
+  Write `format_version: "1.1"` whenever the file has a group, and `"1.2"`
+  whenever a question's scoring has `optional: true` (such as the document
+  question); `"1.0"` is the version for a file with neither (all three are
+  read).
 - `scoring` is optional per question; when omitted the project's existing
   scoring settings are left unchanged. In this skill, always emit `scoring`
   for every question, using the step 5 totals.
@@ -518,8 +531,14 @@ rubric items by exporting the current rubric (this succeeds, with empty
 here):
 
 ```
-Rscript -e 'p <- tempfile(fileext = ".yaml"); markermd::rubric_export(p, project = "<root>"); cat(readLines(p), sep = "\n")'
+Rscript -e 'p <- "<root>/scratch/markermd-rubric-current.yaml"; markermd::rubric_export(p, project = "<root>"); cat(readLines(p), sep = "\n")'
 ```
+
+An append import refuses an item whose description is already stored for its
+question, so the file you import must hold only items the question does not
+have yet. Compare the draft with this export and leave out every item it
+already lists; use `rubric_item_set()` to reword or re-point a stored item
+rather than importing a new copy of it.
 
 If any question already has items, **ask the user** which import mode to use:
 
@@ -533,8 +552,10 @@ If any question already has items, **ask the user** which import mode to use:
   import, listing the repositories.
 - `replace`: each affected question's existing items and groups are deleted
   first -- along with **all recorded selections of those items, for every
-  repository**. This cannot be undone, so say so explicitly when offering
-  it.
+  repository**, which turns graded pairs ungraded. Say so explicitly when
+  offering it. The import's automatic snapshot is the way back:
+  `snapshot_restore()` puts the items and their selections back, though the
+  History tab no longer lists the deleted items' past selection events.
 
 Ask this once: in the question-at-a-time workflow the chosen mode applies to
 every per-question import, and `replace` only touches the questions named in
@@ -560,7 +581,7 @@ have changed it. Never run `rubric_import()` without an explicit yes to this
 question. Then import, with the mode chosen in step 8:
 
 ```
-Rscript -e 'markermd::rubric_import("scratch/markermd-rubric.yaml", project = "<root>", mode = "append", summary = "<one line: what this rubric adds or changes, and why>")'
+Rscript -e 'markermd::rubric_import("<root>/scratch/markermd-rubric.yaml", project = "<root>", mode = "append", summary = "<one line: what this rubric adds or changes, and why>")'
 ```
 
 The import takes an automatic snapshot of the rubric and marks it replaces
@@ -601,7 +622,7 @@ Work through the template's questions in order. For each question:
    untouched, with the mode chosen in step 8:
 
    ```
-   Rscript -e 'markermd::rubric_import("scratch/markermd-rubric.yaml", project = "<root>", mode = "append", question = "<name>", summary = "<one line: what this question's rubric adds or changes>")'
+   Rscript -e 'markermd::rubric_import("<root>/scratch/markermd-rubric.yaml", project = "<root>", mode = "append", question = "<name>", summary = "<one line: what this question's rubric adds or changes>")'
    ```
 
    The `summary` is recorded on the automatic snapshot the import takes.
@@ -616,7 +637,10 @@ The user can stop after any question: confirmed questions are already in the
 database, and the YAML file keeps everything drafted so far. If they stop
 early, list the questions that remain; a later run of this skill can pick up
 there (the step 8 existing-items check shows which questions already have
-items).
+items). A later run imports only the remaining questions, each with
+`question = "<name>"`; never re-import the whole file in append mode, since
+the questions already imported would repeat their stored descriptions and
+the import refuses that.
 
 ### 11. Report
 
@@ -634,11 +658,12 @@ where the rubric is refined in place:
 markermd::mark("<root>")
 ```
 
-Point out that the Rubric pane shows the items with their hotkeys (the first
-ten per question, in order; any further items are toggled by clicking), that
-groups appear as sections whose header shows the live subtotal and flags a
-hit bound, that items can be edited, reordered, added and moved between
-groups while grading (Add Group creates a group; each item's group menu
-moves it), and that the pane's menu offers the same YAML import/export for
-later round trips. Remind them the scaffold is a starting point: real
+Point out that the Grade tab shows each question's items beside the
+submission with their hotkeys (the first ten per question, in order; any
+further items are toggled by clicking), that groups appear as sections whose
+header shows the live subtotal and flags a hit bound, that items can be
+edited, reordered, added and moved between groups while grading (Add Group
+creates a group; each item's group menu moves it), that the Rubric tab shows
+every question's rubric in one place with each item's selection count, and
+that both tabs offer the same YAML import/export for later round trips. Remind them the scaffold is a starting point: real
 submissions will suggest items no one anticipated.

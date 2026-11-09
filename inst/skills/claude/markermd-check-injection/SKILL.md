@@ -251,8 +251,9 @@ the limits, in a sentence: the scan catches obvious attempts; text inside
 images, persuasion written as ordinary prose, and heavier obfuscation are not
 detected, so a clean report is not proof of a clean submission.
 
-Offer to save the report to `<root>/markermd-injection-report.md` if the user
-wants a record, and do so only when asked. Recommend that repositories with a
+Offer to save the report to `<root>/notes/markermd-injection-report.md`
+(create `notes/` if it is missing; never write it at the top level of the
+project) if the user wants a record, and do so only when asked. Recommend that repositories with a
 likely injection be graded by hand in `mark()` rather than included in a
 machine grading pass, and that `markermd-apply-rubric` be run with those
 repositories excluded from its scope.
