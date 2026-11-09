@@ -166,10 +166,10 @@ save_rubric_items = function(collection_path, question_name, items) {
   })
 }
 
-# Delete rubric item from database, along with its grade-selection events,
-# optionally after an automatic snapshot taken in the same transaction (the
-# marking app passes one when the item has recorded selections, the case
-# where grading would otherwise be lost)
+# Soft-delete a rubric item (its grade-selection events are kept but stop
+# counting, see delete_item_records()), optionally after an automatic
+# snapshot taken in the same transaction (the marking app passes one when
+# the item has recorded selections, the grading that stops counting)
 #
 # collection_path: Path to collection directory
 # question_name: Character string
@@ -378,7 +378,7 @@ load_grade_state = function(collection_path, question_name) {
 load_rubric_items = function(collection_path, question_name) {
   with_database(collection_path, function(conn) {
     items_data = DBI::dbGetQuery(conn, paste0("
-      SELECT * FROM items WHERE question_id = ?
+      SELECT * FROM items WHERE question_id = ? AND ", live_item_sql, "
       ORDER BY ", items_display_order_sql
     ), params = list(question_id_conn(conn, question_name, create = FALSE)))
     
@@ -487,14 +487,18 @@ initialize_database_state = function(collection_path, template_obj) {
     list(
       settings = load_all_settings(conn),
       items = load_all_items(conn),
-      groups = load_all_item_groups(conn)
+      groups = load_all_item_groups(conn),
+      used_ids = used_item_ids(conn)
     )
   })
 
+  # used_ids: every item and group id ever stored (deleted ones included),
+  # which the marking app reserves so it never reissues one
   state = list(
     grade_states = list(),
     rubric_items = list(),
-    rubric_groups = list()
+    rubric_groups = list(),
+    used_ids = data$used_ids
   )
 
   for (question_name in question_names) {
@@ -629,9 +633,9 @@ exclusive_import_conflicts = function(conn, rubric) {
 # project's grading database in a single transaction.
 #
 # Mode "append" keeps each question's existing items and groups and adds the
-# file's items after them; "replace" deletes the existing items (which also
-# removes their per-repo grade-selection events, see delete_item_records)
-# and groups first. The file's groups are matched to the question's existing
+# file's items after them; "replace" soft-deletes the existing items and
+# groups first (their grade-selection events are kept for History but no
+# longer count, see delete_item_records()). The file's groups are matched to the question's existing
 # groups by label: a match reuses the stored group (its floor, ceiling and
 # exclusive flag are overwritten by the file's, just as scoring overwrites
 # settings) and an unknown label creates a new group. In both modes the
@@ -640,9 +644,10 @@ exclusive_import_conflicts = function(conn, rubric) {
 # order, normalized so an item imported into an existing group lands at the
 # end of that group and a new group lands at the end of the question) and the
 # hotkeys those positions imply (1-10, NA beyond). Fresh item and group ids
-# are minted avoiding every id in the database (across all questions, since
-# the mark app's module-id namespace is shared) plus any reserved_ids the
-# caller has ever bound. Making an existing group exclusive while some
+# are minted avoiding every id the database has ever stored, deleted ones
+# included (across all questions, since the mark app's module-id namespace is
+# shared; see used_item_ids()) plus any reserved_ids the caller has ever
+# bound. Making an existing group exclusive while some
 # repository has more than one of its items selected aborts before anything
 # is written (exclusive_import_conflicts()).
 #
@@ -711,20 +716,20 @@ check_exclusive_import_conflicts = function(conn, rubric, mode) {
 # reserved_ids: Additional item / group ids that must not be reused
 
 apply_rubric_import_conn = function(conn, rubric, mode, reserved_ids = character(0)) {
-  taken = union(DBI::dbGetQuery(conn, "SELECT item_id FROM items")$item_id, reserved_ids)
-  taken_groups = union(DBI::dbGetQuery(conn, "SELECT group_id FROM item_groups")$group_id, reserved_ids)
+  taken = union(used_item_ids(conn), reserved_ids)
+  taken_groups = taken
   summaries = list()
 
   for (question in rubric$questions) {
     question_name = question$name
 
     existing = DBI::dbGetQuery(conn, paste0("
-      SELECT * FROM items WHERE question_id = ?
+      SELECT * FROM items WHERE question_id = ? AND ", live_item_sql, "
       ORDER BY ", items_display_order_sql
     ), params = list(question_id_conn(conn, question_name, create = FALSE)))
-    existing_groups = DBI::dbGetQuery(conn, "
-      SELECT * FROM item_groups WHERE question_id = ?
-    ", params = list(question_id_conn(conn, question_name, create = FALSE)))
+    existing_groups = DBI::dbGetQuery(conn, paste("
+      SELECT * FROM item_groups WHERE question_id = ? AND", live_item_sql
+    ), params = list(question_id_conn(conn, question_name, create = FALSE)))
     n_existing = nrow(existing)
 
     if (identical(mode, "replace")) {
@@ -982,7 +987,7 @@ marked_question_pairs = function(collection_path) {
 
 marked_question_pairs_conn = function(conn) {
   grade_pairs = DBI::dbGetQuery(conn, paste(
-    "SELECT DISTINCT question_name, assignment_repo FROM grades WHERE", live_question_sql
+    "SELECT DISTINCT question_name, assignment_repo FROM grades WHERE", live_question_sql, "AND", live_grade_item_sql
   ))
 
   nonempty_latest_pairs = function(table) {

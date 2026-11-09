@@ -48,9 +48,10 @@ question's existing items; since descriptions identify items in every
 exchange format, an append is refused when the file repeats a description
 the question already stores (reword stored items with \code{\link[=rubric_item_set]{rubric_item_set()}},
 or import only the new ones). With \code{mode = "replace"} each affected question's
-existing items and item groups are deleted first; this also deletes any
-recorded selections of those items, for every repository (recoverable
-only from the automatic snapshot, see below). A question's scoring setup
+existing items and item groups are deleted first, so their recorded
+selections stop counting for every repository (the selection events stay
+in the activity log, and restoring the automatic snapshot, see below,
+brings the items back with their selections). A question's scoring setup
 is only updated when the file provides a \code{scoring} block.
 
 Item groups (format \code{"1.1"}; see \link{markermd_rubric_group}) are matched to

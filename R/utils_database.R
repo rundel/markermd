@@ -25,8 +25,12 @@
 #      question_id column on settings, items, item_groups, grades, comments
 #      and private_comments, which carries the keys question_name used to
 #      (see migrate_question_ids())
+#   9: soft-deleted rubric items and groups: items.deleted_at /
+#      deleted_action_id and the same on item_groups, whose label uniqueness
+#      becomes a partial index over live groups (see
+#      migrate_item_soft_delete())
 
-markermd_db_version = function() "8"
+markermd_db_version = function() "9"
 
 # ORDER BY clause giving a question's rubric items in display order. position
 # is authoritative; a row without one (written before schema version 2 and
@@ -156,11 +160,61 @@ create_tables_if_needed = function(conn, collection_path = NULL) {
   # and stamped version 8 only once the version-gated migrations after it
   # have run
   migrate_question_ids(conn, stamp = FALSE)
+  migrate_item_soft_delete(conn, stamp = FALSE)
   migrate_snapshots(conn, collection_path, baseline = snapshots_are_new)
   create_action_tables(conn)
   migrate_actions(conn)
   migrate_event_timestamps(conn)
   migrate_question_ids(conn)
+  migrate_item_soft_delete(conn)
+}
+
+# Schema version 8 -> 9: soft-deleted rubric items and groups. Deleting an
+# item or group stamps deleted_at (and the deleting action's id) instead of
+# removing the row, so its grade events stay in the log and History is never
+# rewritten; every grading reader filters on live_item_sql. items gains the
+# two columns in place. item_groups is rebuilt like migrate_question_ids()
+# does, because its UNIQUE (question_id, label) constraint must become a
+# partial unique index over live groups (SQLite cannot drop a table
+# constraint). Runs twice per first touch, like migrate_question_ids(): the
+# structural part early (before the snapshot baseline reads the tables) and
+# the version stamp last, once the version-gated migrations have run.
+#
+# conn: DBI connection object
+# stamp: Whether to stamp schema version 9
+
+migrate_item_soft_delete = function(conn, stamp = TRUE) {
+  missing_column = function(table) {
+    DBI::dbExistsTable(conn, table) && !"deleted_at" %in% DBI::dbListFields(conn, table)
+  }
+  if (missing_column("items") || missing_column("item_groups")) {
+    DBI::dbExecute(conn, "BEGIN IMMEDIATE")
+    if (missing_column("items")) {
+      DBI::dbExecute(conn, "ALTER TABLE items ADD COLUMN deleted_at TEXT")
+      DBI::dbExecute(conn, "ALTER TABLE items ADD COLUMN deleted_action_id TEXT")
+    }
+    if (missing_column("item_groups")) {
+      DBI::dbExecute(conn, "ALTER TABLE item_groups RENAME TO item_groups_v8")
+      DBI::dbExecute(conn, question_table_ddl()$item_groups)
+      cols = paste(DBI::dbListFields(conn, "item_groups_v8"), collapse = ", ")
+      DBI::dbExecute(conn, glue::glue("INSERT INTO item_groups ({cols}) SELECT {cols} FROM item_groups_v8"))
+      DBI::dbExecute(conn, "DROP TABLE item_groups_v8")
+      create_question_indexes(conn)
+    }
+    DBI::dbExecute(conn, "COMMIT")
+  }
+  if (DBI::dbExistsTable(conn, "item_groups")) {
+    DBI::dbExecute(conn, "
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_item_groups_live_label
+      ON item_groups (question_id, label) WHERE deleted_at IS NULL
+    ")
+  }
+  stored = get_metadata(conn, "schema_version")
+  if (stamp && !is.null(stored) && utils::compareVersion(stored, "8") >= 0 &&
+      utils::compareVersion(stored, "9") < 0) {
+    set_metadata(conn, "schema_version", "9")
+  }
+  invisible(NULL)
 }
 
 # Schema version 6 -> 7: rewrite the grading event tables' timestamps from
@@ -275,12 +329,16 @@ question_table_ddl = function() {
         description TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        deleted_action_id TEXT,
         UNIQUE (question_id, item_id)
       )
     ",
     # A named run of a question's items whose combined points are bounded by
     # floor (<= 0) and ceiling (>= 0), optionally exclusive. Labels are unique
-    # within a question because the rubric import matches groups by label.
+    # among a question's live groups because the rubric import matches groups
+    # by label; that is a partial index (see migrate_item_soft_delete()), so a
+    # deleted group's label can be used again.
     item_groups = "
       CREATE TABLE item_groups (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -293,8 +351,9 @@ question_table_ddl = function() {
         exclusive INTEGER NOT NULL DEFAULT 0 CHECK (exclusive IN (0, 1)),
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        UNIQUE (question_id, group_id),
-        UNIQUE (question_id, label)
+        deleted_at TEXT,
+        deleted_action_id TEXT,
+        UNIQUE (question_id, group_id)
       )
     ",
     grades = "
@@ -529,6 +588,33 @@ question_id_conn = function(conn, question_name, create = TRUE) {
 # grading state; orphans are kept but not shown)
 
 live_question_sql = "question_id IN (SELECT question_id FROM questions WHERE live = 1)"
+
+# SQL condition restricting items or item_groups rows to live (not
+# soft-deleted) ones
+
+live_item_sql = "deleted_at IS NULL"
+
+# SQL condition restricting grades rows to items that are not soft-deleted.
+# A deleted item's grade events stay in the log (History shows them) but are
+# no longer grading state. A row whose item is unknown is kept, as before.
+
+live_grade_item_sql = "NOT EXISTS (
+  SELECT 1 FROM items d
+  WHERE d.question_id = grades.question_id AND d.item_id = grades.item_id AND d.deleted_at IS NOT NULL
+)"
+
+# Every item and group id the database has ever stored, live or deleted,
+# across all questions: new ids are minted outside this set, so a deleted id
+# (whose grade rows are kept) is never reissued
+#
+# conn: DBI connection object
+
+used_item_ids = function(conn) {
+  unique(c(
+    DBI::dbGetQuery(conn, "SELECT item_id FROM items")$item_id,
+    DBI::dbGetQuery(conn, "SELECT group_id FROM item_groups")$group_id
+  ))
+}
 
 # Snapshot tables (schema version 5): named, timestamped, annotated copies of
 # the grading state (the template, rubric and marks exchange documents) kept
@@ -928,6 +1014,9 @@ upsert_settings = function(conn, question_name, grade_state) {
 #   item and an existing row keeps its stored position. Callers that reorder
 #   (save_rubric_items, apply_rubric_import) pass it explicitly; edits to a
 #   single item's points or description do not need to know it.
+# Writing a soft-deleted item's id brings it back (clears deleted_at), with
+# its kept grade rows; a snapshot restore relies on this. New items never take
+# a deleted id (see used_item_ids()).
 
 upsert_items = function(conn, question_name, item_id, rubric_item, position = NULL) {
   timestamp = get_current_timestamp()
@@ -940,7 +1029,7 @@ upsert_items = function(conn, question_name, item_id, rubric_item, position = NU
     INSERT INTO items (question_id, question_name, item_id, hotkey, position, group_id, points, description, created_at, updated_at)
     VALUES (
       ?, ?, ?, ?,
-      COALESCE(?, (SELECT COALESCE(MAX(position), 0) + 1 FROM items WHERE question_id = ?)),
+      COALESCE(?, (SELECT COALESCE(MAX(position), 0) + 1 FROM items WHERE question_id = ? AND deleted_at IS NULL)),
       ?, ?, ?, ?, ?
     )
     ON CONFLICT(question_id, item_id) DO UPDATE SET
@@ -950,7 +1039,9 @@ upsert_items = function(conn, question_name, item_id, rubric_item, position = NU
       group_id = excluded.group_id,
       points = excluded.points,
       description = excluded.description,
-      updated_at = excluded.updated_at
+      updated_at = excluded.updated_at,
+      deleted_at = NULL,
+      deleted_action_id = NULL
   ", params = list(
     question_id,
     question_name,
@@ -967,10 +1058,11 @@ upsert_items = function(conn, question_name, item_id, rubric_item, position = NU
   ))
 }
 
-# Upsert an item_groups record (created_at is preserved on update). The
-# UNIQUE (question_name, label) constraint rejects a label already used by
-# another group of the question; callers check availability first and this
-# is the safety net.
+# Upsert an item_groups record (created_at is preserved on update; a
+# soft-deleted group written again comes back). The unique index over live
+# groups' (question_id, label) rejects a label already used by another live
+# group of the question; callers check availability first and this is the
+# safety net.
 #
 # conn: DBI connection object
 # question_name: Character string
@@ -988,7 +1080,9 @@ upsert_item_group = function(conn, question_name, group_id, group) {
       floor = excluded.floor,
       ceiling = excluded.ceiling,
       exclusive = excluded.exclusive,
-      updated_at = excluded.updated_at
+      updated_at = excluded.updated_at,
+      deleted_at = NULL,
+      deleted_action_id = NULL
   ", params = list(
     question_id_conn(conn, question_name),
     question_name,
@@ -1002,8 +1096,10 @@ upsert_item_group = function(conn, question_name, group_id, group) {
   ))
 }
 
-# Delete an item_groups record and ungroup its members, which keep their
-# positions (they become ungrouped items in place). Grades are untouched.
+# Soft-delete an item_groups record (deleted_at and the current action's id
+# are stamped; the row stays so a restore can bring the group back under its
+# id) and ungroup its live members, which keep their positions (they become
+# ungrouped items in place). Grades are untouched.
 #
 # conn: DBI connection object
 # question_name: Character string
@@ -1012,11 +1108,12 @@ upsert_item_group = function(conn, question_name, group_id, group) {
 delete_item_group_records = function(conn, question_name, group_id) {
   question_id = question_id_conn(conn, question_name, create = FALSE)
   DBI::dbExecute(conn, "
-    UPDATE items SET group_id = NULL WHERE question_id = ? AND group_id = ?
+    UPDATE items SET group_id = NULL WHERE question_id = ? AND group_id = ? AND deleted_at IS NULL
   ", params = list(question_id, group_id))
   DBI::dbExecute(conn, "
-    DELETE FROM item_groups WHERE question_id = ? AND group_id = ?
-  ", params = list(question_id, group_id))
+    UPDATE item_groups SET deleted_at = ?, deleted_action_id = ?
+    WHERE question_id = ? AND group_id = ? AND deleted_at IS NULL
+  ", params = list(event_timestamp(), current_action_id(), question_id, group_id))
 }
 
 # Repositories with more than one of the given items selected (by the most
@@ -1057,21 +1154,23 @@ group_selection_conflicts = function(conn, question_name, member_ids) {
   out
 }
 
-# Delete an items record along with its grade-selection events, so a repo no
-# longer counts as graded via an item that no longer exists
+# Soft-delete an items record: deleted_at and the current action's id are
+# stamped and its grade-selection events are kept, so History still shows
+# them while every grading reader (live_item_sql, live_grade_item_sql) stops
+# counting the item, and a restore can bring it back with its selections
 #
 # conn: DBI connection object
 # question_name: Character string
 # item_id: Character string
 
 delete_item_records = function(conn, question_name, item_id) {
-  question_id = question_id_conn(conn, question_name, create = FALSE)
   DBI::dbExecute(conn, "
-    DELETE FROM items WHERE question_id = ? AND item_id = ?
-  ", params = list(question_id, item_id))
-  DBI::dbExecute(conn, "
-    DELETE FROM grades WHERE question_id = ? AND item_id = ?
-  ", params = list(question_id, item_id))
+    UPDATE items SET deleted_at = ?, deleted_action_id = ?
+    WHERE question_id = ? AND item_id = ? AND deleted_at IS NULL
+  ", params = list(
+    event_timestamp(), current_action_id(),
+    question_id_conn(conn, question_name, create = FALSE), item_id
+  ))
 }
 
 # Insert grade record
@@ -1165,7 +1264,7 @@ load_all_settings = function(conn) {
 # Returns: Data frame with items data
 
 load_all_items = function(conn) {
-  DBI::dbGetQuery(conn, paste("SELECT * FROM items WHERE", live_question_sql, "ORDER BY question_name, id"))
+  DBI::dbGetQuery(conn, paste("SELECT * FROM items WHERE", live_question_sql, "AND", live_item_sql, "ORDER BY question_name, id"))
 }
 
 # Load all item groups from database
@@ -1174,11 +1273,12 @@ load_all_items = function(conn) {
 # Returns: Data frame with item_groups data
 
 load_all_item_groups = function(conn) {
-  DBI::dbGetQuery(conn, paste("SELECT * FROM item_groups WHERE", live_question_sql, "ORDER BY question_name, id"))
+  DBI::dbGetQuery(conn, paste("SELECT * FROM item_groups WHERE", live_question_sql, "AND", live_item_sql, "ORDER BY question_name, id"))
 }
 
 # Most recent row per group from an event-log table, among the rows of live
 # questions (an orphaned question's rows are kept but are not grading state)
+# and, for grades, of items that are not soft-deleted
 #
 # Recency is decided by the autoincrement id, not the timestamp: timestamps
 # have 1-second resolution, so two quick events for the same group tie on
@@ -1195,7 +1295,7 @@ load_all_item_groups = function(conn) {
 
 latest_rows = function(conn, table, group_cols, where = NULL, params = NULL) {
   group_cols = unique(replace(group_cols, group_cols == "question_name", "question_id"))
-  conditions = c(live_question_sql, where)
+  conditions = c(live_question_sql, if (table == "grades") live_grade_item_sql, where)
   where_clause = paste0("WHERE ", paste0("(", conditions, ")", collapse = " AND "), "\n      ")
   DBI::dbGetQuery(conn, glue::glue("
     SELECT t1.*

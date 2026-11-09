@@ -1,4 +1,4 @@
-test_that("delete_rubric_item removes the item row and its grade events", {
+test_that("delete_rubric_item soft-deletes the item and keeps its grade events", {
   dir = tempfile("itemdel")
   dir.create(dir)
 
@@ -21,12 +21,17 @@ test_that("delete_rubric_item removes the item row and its grade events", {
 
   markermd:::delete_rubric_item(dir, "Q1", "item_0")
 
-  # the row is gone, same-named items elsewhere are untouched
+  # the item is no longer loaded, same-named items elsewhere are untouched
   expect_named(markermd:::load_rubric_items(dir, "Q1"), "item_1")
   expect_named(markermd:::load_rubric_items(dir, "Q2"), "item_2")
 
-  # the deleted item's grade events no longer count the repo as graded
+  # the deleted item's grade events no longer count the repo as graded, but
+  # they stay in the log (History still shows them)
   expect_equal(unname(markermd:::calculate_grading_progress(dir, "Q1", "repoA")), 0L)
+  n = markermd:::with_database(dir, function(conn) {
+    DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM grades WHERE item_id = 'item_0'")$n
+  })
+  expect_equal(n, 1)
 })
 
 

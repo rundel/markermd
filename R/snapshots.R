@@ -1810,8 +1810,9 @@ restore_snapshot = function(proj, id, part, question = NULL, repo = NULL, summar
 # in place, inside the caller's transaction: each item and group the
 # snapshot carries is upserted under its own id with the snapshot's
 # position, hotkey, group, points and description, so the recorded
-# selections of a surviving item are kept for every repository; items and
-# groups absent from the snapshot are deleted (an item's grade rows with it),
+# selections of a surviving item are kept for every repository (and a
+# soft-deleted item the snapshot carries comes back with its kept grade
+# rows); live items and groups absent from the snapshot are soft-deleted,
 # and the question's scoring is set to the snapshot's or removed when it had
 # none. An item without an id (not written by this package's snapshots) gets
 # a fresh one.
@@ -1823,8 +1824,8 @@ restore_snapshot = function(proj, id, part, question = NULL, repo = NULL, summar
 restore_rubric_conn = function(conn, rubric, questions) {
   all_items = load_all_items(conn)
   all_groups = load_all_item_groups(conn)
-  taken = all_items$item_id
-  taken_groups = all_groups$group_id
+  taken = used_item_ids(conn)
+  taken_groups = taken
 
   for (question in rubric$questions) {
     question_name = as.character(question$name)

@@ -726,10 +726,10 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
       question_item_servers[[question_name]][[server$id]] = NULL
       rm(list = server$id, envir = item_questions)
 
-      # Remove the item's row and its grade-selection events; otherwise it
-      # reappears on the next app start via load_rubric_items(). When the
-      # item is selected somewhere, that grading is about to be lost, so an
-      # automatic snapshot is taken in the same transaction.
+      # Soft-delete the item (its grade-selection events stay in the log but
+      # stop counting). When the item is selected somewhere, that grading
+      # stops counting, so an automatic snapshot is taken in the same
+      # transaction; restoring it brings the item and its selections back.
       n_selected = item_selection_count(root, question_name, server$id)
       snapshot = if (n_selected > 0) {
         list(
@@ -955,6 +955,7 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
         register_session_id(names(database_state$rubric_items[[question_name]]))
         register_session_id(names(database_state$rubric_groups[[question_name]]))
       }
+      register_session_id(database_state$used_ids)
     }
 
     # Build a question's servers from the database if they are not yet
