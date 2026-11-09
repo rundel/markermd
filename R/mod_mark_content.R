@@ -1,8 +1,12 @@
 # Mark Content Pane Module
 #
 # Shiny module for the grading interface's left Content pane: repo selection
-# and navigation, the rendered-report iframe, the Monaco source view, and the
+# and navigation, the rendered-report iframe, the source view, and the
 # per-question scroll/highlight wiring.
+
+# The DOM id of the Grade tab's Source view
+
+source_view_id = "markermd-source-editor"
 
 # Group consecutive line numbers into start/end ranges
 #
@@ -100,13 +104,13 @@ repo_document_lines = function(repo_name, collection) {
   readLines(file_path, warn = FALSE)
 }
 
-# Source-view content for a repo: the Monaco editor HTML (with the given line
-# ranges decorated) plus the document lines, or NULL when the repo has no
+# Source-view content for a repo: the code view HTML (with the given line
+# ranges highlighted) plus the document lines, or NULL when the repo has no
 # document
 #
 # repo_name: Character. Repository name
 # collection: Collection data frame (see parse_repo_documents())
-# highlight_ranges: Optional list of start/end line ranges to decorate
+# highlight_ranges: Optional list of start/end line ranges to highlight
 
 get_raw_document_content = function(repo_name, collection, highlight_ranges = NULL) {
   raw_content_lines = repo_document_lines(repo_name, collection)
@@ -114,25 +118,16 @@ get_raw_document_content = function(repo_name, collection, highlight_ranges = NU
     return(NULL)
   }
 
-  raw_content = paste(raw_content_lines, collapse = "\n")
+  document_path = collection$path[collection$repo == repo_name][1]
 
-  # One fixed editor id for the Source view: monaco_editor_config()
-  # disposes the previously registered editor for this id when the
-  # container is re-rendered, so cycling repos does not leak editors
-  editor_id = "markermd-source-editor"
-
-  editor_script = monaco_editor_config(
-    editor_id, raw_content, "markdown",
-    font_size = 11,
-    decorations = monaco_line_decorations(highlight_ranges)
-  )
-
-  formatted_content = as.character(htmltools::tagList(
-    htmltools::div(
-      class = "h-100 p-2",
-      htmltools::div(id = editor_id, class = "h-100 w-100 border rounded")
-    ),
-    htmltools::tags$script(htmltools::HTML(editor_script))
+  # One fixed id for the Source view, so a question switch can update its
+  # highlight in place (update_code_view_highlight())
+  formatted_content = as.character(htmltools::div(
+    class = "h-100 p-2",
+    code_view_ui(
+      source_view_id, raw_content_lines, file_code_language(document_path),
+      highlight_ranges = highlight_ranges, font_size = 11, class = "h-100 w-100"
+    )
   ))
 
   return(list(
@@ -376,8 +371,8 @@ mark_content_server = function(id, template, collection, artifact_paths, artifac
         if (!is.null(question_obj) && length(question_obj@selected_nodes@node_ids) > 0) {
           repo_ast = collection_ast_for(collection(), selected_repo)
           if (!is.null(repo_ast)) {
-            # Map against the raw content lines (without paying for the full
-            # Monaco editor build that get_raw_document_content() does)
+            # Map against the raw content lines (without building the code
+            # view that get_raw_document_content() does)
             document_lines = repo_document_lines(selected_repo, collection())
             if (!is.null(document_lines)) {
               highlight_ranges = map_content_to_lines(
@@ -394,18 +389,15 @@ mark_content_server = function(id, template, collection, artifact_paths, artifac
       return(highlight_ranges)
     })
 
-    # Decoration path for question switches while the Source view is showing:
-    # replace the registered editor's decorations in place. Repo switches and
-    # html/source toggles re-render the editor with the current ranges baked
-    # in (see raw_content_reactive), so they need no update here; running this
-    # on the toggle would race the re-render and decorate the editor that is
-    # about to be disposed.
+    # Highlight path for question switches while the Source view is showing:
+    # replace the view's highlighted lines in place. Repo switches and
+    # html/source toggles re-render the view with the current ranges baked
+    # in (see raw_content_reactive), so they need no update here.
     shiny::observe({
       if (isTRUE(input$html_toggle)) {
         return()
       }
-      decorations = monaco_line_decorations(highlight_ranges_reactive())
-      shinyjs::runjs(monaco_update_decorations_js("markermd-source-editor", decorations))
+      update_code_view_highlight(session, source_view_id, highlight_ranges_reactive())
     }) |>
       shiny::bindEvent(highlight_ranges_reactive(), ignoreNULL = FALSE, ignoreInit = TRUE)
 

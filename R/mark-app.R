@@ -291,6 +291,7 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
         shinyjs::useShinyjs(),
         markermd_modal_css(),
         fa_dependency(),
+        code_view_dependency(),
         mark_validate_script("explore_module"),
         rubric_item_editing_head(),
         # A focused score cell in the Assignments table opens on Enter or
@@ -347,18 +348,6 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
           /* Make switch more visible when in false state */
           .form-switch .form-check-input:not(:checked) {
             border-color: #212529 !important;
-          }
-
-          /* Monaco line decorations for the question highlight in the raw
-             Source view (the overview-ruler marker comes from the decoration
-             options themselves) */
-          .highlight-line {
-            background-color: rgba(255, 235, 59, 0.15) !important;
-          }
-          .highlight-margin {
-            background-color: rgba(255, 235, 59, 0.15) !important;
-            border-left: 3px solid rgba(255, 193, 7, 0.8) !important;
-            width: 100% !important;
           }
 
           /* Rubric item rows: action buttons stay visible at reduced emphasis
@@ -868,16 +857,9 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
         file_path = rows$path[repo_rows][1]
 
         if (file.exists(file_path)) {
-          # Read the raw source content
-          raw_content = readLines(file_path, warn = FALSE) |> paste(collapse = "\n")
-
+          raw_content = readLines(file_path, warn = FALSE)
           file_name = basename(file_path)
 
-          # One fixed editor id: the shared init disposes the previous
-          # modal's editor, so repeated viewing does not leak instances
-          editor_id = "markermd-source-modal-editor"
-
-          # Show source in modal with Monaco Editor
           shiny::showModal(
             shiny::modalDialog(
               title = paste("Source Code:", file_name),
@@ -886,15 +868,13 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
               footer = shiny::modalButton("Close"),
               shiny::div(
                 style = "height: 70vh;",
-                shiny::div(
-                  id = editor_id,
-                  class = "h-100 w-100 border rounded"
+                code_view_ui(
+                  "markermd-source-modal-editor", raw_content, file_code_language(file_path),
+                  class = "h-100 w-100"
                 )
               )
             )
           )
-
-          render_monaco_editor(editor_id, raw_content, "markdown")
         } else {
           # Show error modal - file not found
           shiny::showModal(

@@ -40,6 +40,7 @@ template_editor_app = function(ast, template_obj = NULL, source_path = NULL, pro
     shinyjs::useShinyjs(),
     markermd_modal_css(),
     fa_dependency(),
+    code_view_dependency(),
     question_name_reset_script(),
     question_move_script(),
     ast_tree_script(),

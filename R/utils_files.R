@@ -80,29 +80,6 @@ file_display_kind = function(path) {
   if (any(head == as.raw(0))) "binary" else "text"
 }
 
-# The Monaco editor language for a file, from its extension or name (the
-# languages bundled with Monaco; anything else, a Makefile among them, shows
-# as plain text)
-#
-# path: File path
-
-file_monaco_language = function(path) {
-  name = tolower(basename(path))
-  if (name == "dockerfile") {
-    return("dockerfile")
-  }
-  switch(
-    tolower(fs::path_ext(path)),
-    r = "r", py = "python", qmd = , rmd = , md = "markdown",
-    sh = , bash = "shell", sql = "sql", json = "json",
-    yaml = , yml = "yaml", toml = "ini", ini = "ini", cfg = "ini",
-    js = "javascript", ts = "typescript", css = "css", html = , htm = "html",
-    xml = "xml", cpp = , cc = , c = , h = , hpp = "cpp", java = "java",
-    jl = "julia", rs = "rust", go = "go",
-    "plaintext"
-  )
-}
-
 # The validation result of a question on a file: it passes when the
 # repository has the file. Same shape as validate_question_rules()'s result,
 # plus the path that was found.
@@ -138,15 +115,15 @@ validate_file_question = function(question, repo_dir) {
 
 file_view_max_bytes = 2 * 1024^2
 
-# A read-only view of one file: its source in a Monaco editor (language from
-# the extension), an image preview, or a note for other binaries (and for a
-# text file over file_view_max_bytes), under a header naming the file. Used by the template editor's file view and by the
-# mark app's content pane for a question on a file.
+# A read-only view of one file: its source in a code view (language from the
+# extension, see file_code_language()), an image preview, or a note for other
+# binaries (and for a text file over file_view_max_bytes), under a header
+# naming the file. Used by the template editor's file view and by the mark
+# app's content pane for a question on a file.
 #
 # path: Absolute path of the file, or NA when it was not found
 # label: The file's repository-relative path, shown in the header
-# editor_id: DOM id for the Monaco editor (one per view, so the shared editor
-#   registry disposes the previous editor on re-render)
+# editor_id: DOM id for the code view
 # note: Optional extra text for the header (e.g. where the file was found)
 
 file_view_ui = function(path, label, editor_id, note = NULL) {
@@ -195,19 +172,14 @@ file_view_ui = function(path, label, editor_id, note = NULL) {
       )
     )
   } else {
-    content = paste(readLines(path, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+    content = readLines(path, warn = FALSE, encoding = "UTF-8")
     # A fixed height: a container sized from its parent's percentage heights
-    # has no definite height here, and Monaco's automatic layout then keeps
-    # growing it
-    htmltools::tagList(
-      htmltools::div(
-        class = "p-2",
-        style = "height: 70vh;",
-        htmltools::div(id = editor_id, class = "h-100 w-100 border rounded")
-      ),
-      htmltools::tags$script(htmltools::HTML(
-        monaco_editor_config(editor_id, content, file_monaco_language(path), font_size = 11)
-      ))
+    # has no definite height here, so the view would grow with its content
+    # instead of scrolling
+    htmltools::div(
+      class = "p-2",
+      style = "height: 70vh;",
+      code_view_ui(editor_id, content, file_code_language(path), font_size = 11, class = "h-100 w-100")
     )
   }
 

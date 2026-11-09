@@ -307,39 +307,6 @@ line_node_id_chains = function(lines, repo_ast) {
   chains
 }
 
-# Monaco editor language for a code-cell engine
-#
-# engine: Character. A code-cell engine name (e.g. "r", "python")
-
-monaco_language_for_engine = function(engine) {
-  switch(
-    engine,
-    "r" = "r",
-    "python" = "python",
-    "sql" = "sql",
-    "bash" = "shell",
-    "sh" = "shell",
-    "javascript" = "javascript",
-    "js" = "javascript",
-    "css" = "css",
-    "html" = "html",
-    "yaml" = "yaml",
-    "json" = "json",
-    "markdown"
-  )
-}
-
-# Monaco editor language for a Pandoc node (engine for code cells, else markdown)
-#
-# node: A q2r pandoc node
-
-monaco_language_for_node = function(node) {
-  if (S7::S7_inherits(node, q2r::pandoc_code_block) && q2r::is_code_cell(node)) {
-    return(monaco_language_for_engine(q2r::cell_engine(node)))
-  }
-  "markdown"
-}
-
 # Flatten a q2r document into an ordered list of indexable node records
 #
 # Walks the Pandoc AST in document order, descending into fenced divs so that

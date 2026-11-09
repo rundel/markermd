@@ -222,3 +222,26 @@ test_that("monaco_line_decorations converts ranges to Monaco decorations", {
   expect_true(dec[[1]]$options$isWholeLine)
   expect_equal(dec[[1]]$options$overviewRuler$color, "#ffc107")
 })
+
+test_that("Monaco loads from the vendored copy, never a CDN", {
+  dep = markermd:::monaco_dependency()
+  root = system.file(dep$src$file, package = dep$package)
+  expect_true(file.exists(file.path(root, "vs", "loader.js")))
+  expect_true(file.exists(file.path(root, "vs", "editor", "editor.main.js")))
+  expect_true(file.exists(file.path(root, "LICENSE")))
+
+  langs = c(
+    vapply(
+      c("a.r", "a.py", "a.qmd", "a.sh", "a.sql", "a.yml", "a.toml", "a.js", "a.ts", "a.css",
+        "a.html", "a.xml", "a.cpp", "a.java", "a.jl", "a.rs", "a.go", "Dockerfile"),
+      markermd:::file_monaco_language, character(1)
+    ),
+    vapply(c("bash", "javascript", "css", "html", "yaml"), markermd:::monaco_language_for_engine, character(1))
+  )
+  shipped = c(list.files(file.path(root, "vs", "basic-languages")), "json", "plaintext")
+  expect_true(all(langs %in% shipped))
+
+  js = markermd:::monaco_editor_config("ed", "x", "r")
+  expect_match(js, paste0("markermd-monaco-", dep$version, "/vs/loader.js"), fixed = TRUE)
+  expect_false(grepl("jsdelivr", js))
+})

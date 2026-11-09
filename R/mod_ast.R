@@ -8,7 +8,7 @@
 # heading toggle and preview click through one delegated input, tree_event, so
 # nothing is bound per node.
 
-# Open the read-only Monaco preview modal for a single q2r node
+# Open the read-only code preview modal for a single q2r node
 #
 # node: A q2r pandoc node
 # back_id: Optional full input id of a Back button in the footer, for a
@@ -19,8 +19,8 @@ show_node_preview = function(node, back_id = NULL) {
     as.character() |>
     paste(collapse = "\n")
 
-  language = monaco_language_for_node(node)
-  if (!identical(language, "markdown")) {
+  language = code_language_for_node(node)
+  if (!identical(language, "qmd")) {
     # Engine-language previews: drop the surrounding fence lines so the
     # engine grammar is not applied to the ``` markers themselves
     lines = strsplit(content, "\n", fixed = TRUE)[[1]]
@@ -30,8 +30,7 @@ show_node_preview = function(node, back_id = NULL) {
     }
   }
 
-  # One fixed editor id: only one preview modal is open at a time, and
-  # the shared init disposes the previous editor before creating anew
+  # One fixed id: only one preview modal is open at a time
   editor_id = "markermd-preview-editor"
 
   shiny::showModal(
@@ -47,22 +46,17 @@ show_node_preview = function(node, back_id = NULL) {
       ),
       shiny::div(
         style = "height: 400px;",
-        shiny::div(
-          id = editor_id,
-          class = "h-100 w-100 border rounded"
-        )
+        code_view_ui(editor_id, content, language, class = "h-100 w-100")
       )
     )
   )
-
-  render_monaco_editor(editor_id, content, language)
 }
 
 # Wire preview-modal observers for a set of nodes
 #
 # Binds an observer to each node's preview button (preview_<id_prefix>_<index>,
-# or preview_<index> when id_prefix is NULL) that opens a read-only Monaco
-# editor showing the node rendered back to qmd. Shared by the template app and
+# or preview_<index> when id_prefix is NULL) that opens a read-only code
+# view showing the node rendered back to qmd. Shared by the template app and
 # the mark validation display so the preview behavior is defined once.
 #
 # When node_at is supplied the clicked node is resolved lazily at click time
