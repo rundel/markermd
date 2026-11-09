@@ -724,3 +724,14 @@ test_that("the history table helpers derive deltas, search text and metadata", {
   expect_match(html, "Half credit")
   expect_match(html, "hw01-team02")
 })
+
+test_that("printing a diff treats item descriptions as text, not as a cli template", {
+  d = sn_graded_project()
+  suppressMessages(snapshot_create(d, label = "Before"))
+  markermd:::save_rubric_item(d, "Q1", "item_1", markermd_rubric_item(2L, -3, "Missing {dplyr} pipe {cat('CODE-EXECUTED')}"))
+  diff = snapshot_diff("Before", project = d)
+  printed = paste(cli::cli_fmt(print(diff)), collapse = "\n")
+  expect_match(printed, "Missing {dplyr} pipe", fixed = TRUE)
+  expect_no_match(printed, "\nCODE-EXECUTED")
+  expect_match(printed, "was: Issue A")
+})

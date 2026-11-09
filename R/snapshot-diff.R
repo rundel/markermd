@@ -453,10 +453,21 @@ S7::method(print, markermd_snapshot_diff) = function(x, ...) {
       rows = x@rubric[x@rubric$question == question, , drop = FALSE]
       cli::cli_text("{.strong {question}}")
       cli::cli_ul()
+      # Descriptions and details are user text, so they are passed to cli as
+      # values and never pasted into the template string
       for (i in seq_len(nrow(rows))) {
-        item = if (is.na(rows$item[i])) "" else paste0(" {.val ", rows$item[i], "}")
-        detail = if (nzchar(rows$detail[i])) paste0(": ", rows$detail[i]) else ""
-        cli::cli_li(paste0("{rows$change[i]}", item, detail))
+        change = rows$change[i]
+        item = rows$item[i]
+        detail = rows$detail[i]
+        if (is.na(item) && !nzchar(detail)) {
+          cli::cli_li("{change}")
+        } else if (is.na(item)) {
+          cli::cli_li("{change}: {detail}")
+        } else if (!nzchar(detail)) {
+          cli::cli_li("{change} {.val {item}}")
+        } else {
+          cli::cli_li("{change} {.val {item}}: {detail}")
+        }
       }
       cli::cli_end()
     }
