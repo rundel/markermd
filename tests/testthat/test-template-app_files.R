@@ -106,7 +106,7 @@ test_that("the Add modal adds sections and entire-document entries", {
   # An entire-document entry does not take heading selections
   app$run_js("document.getElementById('question_wrapper_1').click()")
   app$wait_for_idle()
-  app$click("ast_panel-select_children_3")
+  click_tree_node(app, 3)
   app$wait_for_idle()
   expect_equal(length(app$get_values(export = "selected_nodes")$export$selected_nodes[["1"]]), 0)
 

@@ -31,8 +31,10 @@ filter_groups_from_keyed = function(groups) {
 # state: reactiveVal holding the markermd_question S7 object (shared source
 #   of truth; @filters is written by this machine)
 # ast: Reactive. The parsed AST object
+# filtered_indices: Reactive. The node indices the question's filters exclude
+#   (question_server()'s deduplicated question_filtered_indices())
 
-question_filters_server = function(input, output, session, state, ast) {
+question_filters_server = function(input, output, session, state, ast, filtered_indices) {
 
   # Filter management. filters_list mirrors rules_list but is two-level:
   # group keys each holding list(negate = logical, conditions = named list of
@@ -350,8 +352,7 @@ question_filters_server = function(input, output, session, state, ast) {
     if (length(filters_list()) == 0) {
       return(shiny::span("None", class = "text-muted"))
     }
-    excluded = question_filtered_indices(ast(), state())
-    n = length(excluded)
+    n = length(filtered_indices())
     shiny::span(
       class = "badge text-bg-secondary fw-normal",
       glue::glue("excludes {n} node{if (n == 1) '' else 's'}")

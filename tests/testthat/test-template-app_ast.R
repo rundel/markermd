@@ -15,7 +15,7 @@ test_that("Select Question 1 heading", {
     name  = "select_3"
   )
 
-  app$click("ast_panel-select_children_3")
+  click_tree_node(app, 3)
   app$expect_values(export = TRUE)
 })
 
@@ -29,7 +29,7 @@ test_that("Select Question 2 heading", {
     name  = "select_8"
   )
 
-  app$click("ast_panel-select_children_8")
+  click_tree_node(app, 8)
   app$expect_values(export = TRUE)
 })
 
@@ -43,7 +43,7 @@ test_that("Select Question 1 & 2 headings", {
     name  = "select_3_8"
   )
 
-  app$click("ast_panel-select_children_3")
-  app$click("ast_panel-select_children_8")
+  click_tree_node(app, 3)
+  click_tree_node(app, 8)
   app$expect_values(export = TRUE)
 })

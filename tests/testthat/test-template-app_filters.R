@@ -12,7 +12,7 @@ test_that("Filters build a q2r expression and narrow the rule evaluation set", {
   # Create a question, scope it to the Question 1 section, and add a default
   # rule ("Any node" / "has at least" / 1), which passes on that section.
   add_entry(app)
-  app$click("ast_panel-select_children_3")
+  click_tree_node(app, 3)
   app$click("question_1-add_rule")
   app$wait_for_idle()
 
@@ -23,7 +23,7 @@ test_that("Filters build a q2r expression and narrow the rule evaluation set", {
     app$get_values(export = TRUE)$export$filter_exprs_per_question[[1]]
   }
   tree_html = function() {
-    app$get_value(output = "ast_panel-ast_tree_ui")$html
+    tree_dom_html(app)
   }
 
   expect_match(rule_status_html(), "fa-check")

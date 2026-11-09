@@ -35,6 +35,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     markermd_modal_css(),
     fa_dependency(),
     question_name_reset_script(),
+    ast_tree_script(),
 
       shiny::tags$style(shiny::HTML("
       /* Rule form controls */
@@ -322,6 +323,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     # structure (q2r_flatten over the whole document) once and is reused by the
     # node-click handlers instead of re-flattening on every interaction.
     tree_items_memo = shiny::reactive(build_ast_tree_structure(ast()))
+    tree_children_memo = shiny::reactive(tree_children_index(tree_items_memo()))
 
     
     # The name a new question gets when the Add modal leaves it blank
@@ -419,6 +421,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     })
     
     # Tree indices excluded by the current question's filters, drawn in red
+    # (the question server computes them once per selection or filter change)
     filtered_nodes = shiny::reactive({
       current_q_id = current_slot()
       modules_list = question_modules()
@@ -428,11 +431,11 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
         return(integer(0))
       }
 
-      question_filtered_indices(ast(), current_module$server$question())
+      current_module$server$filtered_indices()
     })
 
     # Initialize AST selectable module
-    ast_result = ast_module_server("ast_panel", ast, selected_nodes, filtered_nodes, interactive = TRUE)
+    ast_result = ast_module_server("ast_panel", ast, selected_nodes, filtered_nodes)
 
     # Toggle a node in the current question's selection: a no-op when the node
     # sits under an already-selected ancestor, a removal when itself selected,
@@ -455,7 +458,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       if (node_index %in% current_selected) {
         current_module$server$remove_node(node_index)
       } else {
-        descendants_to_remove = find_selected_descendants(tree_items, node_index, current_selected)
+        descendants_to_remove = find_selected_descendants(tree_items, node_index, current_selected, tree_children_memo())
         for (desc in descendants_to_remove) {
           current_module$server$remove_node(desc)
         }

@@ -13,7 +13,7 @@ test_that("A rule shows a live pass/fail status against the document", {
   # Create a question, scope it to the Question 1 section, and add a default
   # rule ("Any node" / "has at least" / 1), which passes on that section.
   add_entry(app)
-  app$click("ast_panel-select_children_3")
+  click_tree_node(app, 3)
   app$click("question_1-add_rule")
 
   app$wait_for_idle()
@@ -36,7 +36,7 @@ test_that("Rule edits are captured into state before an add re-renders the rows"
   }
 
   add_entry(app)
-  app$click("ast_panel-select_children_3")
+  click_tree_node(app, 3)
   app$click("question_1-add_rule")
   app$wait_for_idle()
 
@@ -71,7 +71,7 @@ test_that("Deleting a rule keeps the survivor under its own id with its values",
   }
 
   add_entry(app)
-  app$click("ast_panel-select_children_3")
+  click_tree_node(app, 3)
   app$click("question_1-add_rule")
   app$wait_for_idle()
 
@@ -123,7 +123,7 @@ test_that("A double-click on Add Rule keeps every rule's node types", {
   }
 
   add_entry(app)
-  app$click("ast_panel-select_children_3")
+  click_tree_node(app, 3)
   app$click("question_1-add_rule")
   app$wait_for_idle()
 

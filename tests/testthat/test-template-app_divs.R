@@ -12,6 +12,6 @@ test_that("Select an id'd div", {
 
   # Flatten index 3 is the ::: {#q1-answer .answer} div (heading 1, intro para,
   # then the div); clicking its circle selects the div and stores its id.
-  app$click("ast_panel-select_children_3")
+  click_tree_node(app, 3)
   app$expect_values(export = TRUE)
 })

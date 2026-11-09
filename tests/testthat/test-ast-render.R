@@ -80,3 +80,61 @@ test_that("css class names are preserved across modes", {
     fixed = TRUE
   )
 })
+
+test_that("the interactive tree reports clicks through one delegated input", {
+  html = render_html(sample_qmd, ast_render_opts(mode = "interactive"))
+
+  expect_match(html, "data-tree-input=\"tree_event\"", fixed = TRUE)
+  expect_match(html, "data-tree-index=\"1\" data-tree-selectable=\"1\"", fixed = TRUE)
+  expect_match(html, "data-tree-index=\"2\" data-tree-selectable=\"0\"", fixed = TRUE)
+  expect_match(html, "data-tree-action=\"toggle\"", fixed = TRUE)
+  expect_match(html, "data-tree-action=\"preview\"", fixed = TRUE)
+  # nothing in the interactive tree binds an input of its own
+  expect_false(grepl("action-button", html, fixed = TRUE))
+
+  readonly = render_html(sample_qmd, ast_render_opts(mode = "readonly"))
+  expect_false(grepl("data-tree-input", readonly, fixed = TRUE))
+  expect_match(readonly, "action-button", fixed = TRUE)
+})
+
+test_that("tree_selection_state locks selectable nodes under a direct selection", {
+  ast = q2r::parse_qmd(sample_qmd, quiet = TRUE)
+  items = build_ast_tree_structure(ast)
+
+  state = tree_selection_state(items, 1L, integer(0))
+  expect_equal(state$direct, 1L)
+  expect_equal(state$selected, 1:5)
+  # the sub-heading (4) sits under the selected section heading
+  expect_equal(state$locked, 4L)
+  expect_equal(state$filtered, integer(0))
+
+  # the document root (a whole-document question) never locks headings
+  expect_equal(tree_selection_state(items, 0L, integer(0))$locked, integer(0))
+
+  # filtered nodes are kept only among the selected ones
+  expect_equal(tree_selection_state(items, 4L, c(2L, 5L))$filtered, 5L)
+})
+
+test_that("a locked heading renders as an indicator with the selection highlight", {
+  html = render_html(sample_qmd, ast_render_opts(mode = "interactive", selected = 1L))
+
+  expect_match(html, "tree-node-content tree-locked\" data-tree-index=\"4\"", fixed = TRUE)
+  expect_match(html, "btn btn-default tree-toggle-btn tree-marker-square selected", fixed = TRUE)
+  expect_match(html, "btn btn-default tree-toggle-btn selected\" title=\"Toggle this node", fixed = TRUE)
+  expect_match(html, "Selected via parent selection", fixed = TRUE)
+})
+
+test_that("tree_node_view matches the class order the in-place patch builds", {
+  view = tree_node_view(TRUE, TRUE, FALSE, TRUE, TRUE, "btn tree-toggle-btn", "label")
+  expect_false(view$open)
+  expect_equal(view$marker_class, "btn tree-toggle-btn tree-marker-square selected filtered")
+  expect_equal(view$label_class, "label selected filtered")
+  expect_equal(view$icon, "ellipsis")
+  expect_equal(view$title, "Excluded by question filters")
+
+  open = tree_node_view(TRUE, TRUE, TRUE, FALSE, FALSE, "m", "l")
+  expect_true(open$open)
+  expect_equal(open$marker_class, "m selected")
+  expect_equal(open$icon, "check")
+  expect_equal(open$title, "Toggle this node and its children")
+})

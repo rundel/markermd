@@ -245,6 +245,19 @@ question_server = function(id, ast, initial_question, name_available = function(
 
     state = shiny::reactiveVal(initial_question)
     observers = make_observer_tracker()
+
+    # The selection, scope and filters behind the tree's highlight, deduplicated
+    # so a rule edit or a rename neither re-runs question_filtered_indices() nor
+    # redraws the selected-nodes summary
+    selected_ids = deduplicated_reactive(shiny::reactive(state()@selected_nodes@node_ids), observers$track)
+    filter_key = deduplicated_reactive(shiny::reactive({
+      q = state()
+      list(q@selected_nodes@node_ids, q@scope, q@filters)
+    }), observers$track)
+    filtered_indices = shiny::reactive({
+      filter_key()
+      question_filtered_indices(ast(), shiny::isolate(state()))
+    })
     
     # Memoised flattened tree. ast() is write-once, so this is built once and
     # reused instead of re-flattening the whole document on every selection change.
@@ -298,8 +311,9 @@ question_server = function(id, ast, initial_question, name_available = function(
     # Render selected nodes display: each node-id selector followed by the
     # number of nodes it covers (the selected heading/div and its descendants).
     output$selected_nodes_display = shiny::renderUI({
-      ids = state()@selected_nodes@node_ids
-      if (is_document_question(state())) {
+      ids = selected_ids()
+      # A question's scope is fixed once it is added
+      if (is_document_question(shiny::isolate(state()))) {
         shiny::span("Entire document", class = "text-success")
       } else if (length(ids) == 0) {
         shiny::span("None", class = "text-muted")
@@ -375,7 +389,7 @@ question_server = function(id, ast, initial_question, name_available = function(
     # first, so observer creation order (and same-priority flush order)
     # matches the pre-split layout.
     rules_machine = question_rules_server(input, output, session, state, ast)
-    filters_machine = question_filters_server(input, output, session, state, ast)
+    filters_machine = question_filters_server(input, output, session, state, ast, filtered_indices)
 
     # Return reactive question data and methods
     return(list(
@@ -390,6 +404,10 @@ question_server = function(id, ast, initial_question, name_available = function(
       question = shiny::reactive({
         state()
       }),
+
+      # Tree indices the question's filters exclude, recomputed only when its
+      # selection, scope or filters change
+      filtered_indices = filtered_indices,
       
       # Node management methods. The public interface stays index-based (the tree
       # interaction works in index space), but selections are stored as the

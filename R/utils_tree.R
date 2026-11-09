@@ -153,8 +153,11 @@ ast_render_opts = function(mode = c("interactive", "readonly"),
 # tree_items: List of tree items from build_ast_tree_structure
 # ns: Shiny namespace function
 # opts: Render options from ast_render_opts()
+# state: Optional highlight state from tree_selection_state(); computed from
+#   opts$selected / opts$filtered when NULL. The interactive tree passes the
+#   state it later patches in place, so the first render and the patches agree.
 
-render_ast_tree = function(tree_items, ns, opts = ast_render_opts()) {
+render_ast_tree = function(tree_items, ns, opts = ast_render_opts(), state = NULL) {
   if (length(tree_items) == 0) {
     return(shiny::p("No document structure available"))
   }
@@ -183,19 +186,113 @@ render_ast_tree = function(tree_items, ns, opts = ast_render_opts()) {
     "ast-tree-readonly"
   }
 
-  # One children-by-parent index for the whole render: the tree re-renders on
-  # every selection click, and per-level rescans of all items made large
-  # documents quadratic
+  # One children-by-parent index for the whole render, so each level looks up
+  # its items directly; per-level rescans of all items made large documents
+  # quadratic
   children_index = tree_children_index(tree_items)
 
-  all_selected_nodes = compute_all_selected_nodes(tree_items, opts$selected, children_index)
+  if (is.null(state)) {
+    state = if (opts$mode == "interactive") {
+      tree_selection_state(tree_items, opts$selected, opts$filtered, children_index)
+    } else {
+      all_selected = compute_all_selected_nodes(tree_items, opts$selected, children_index)
+      list(
+        selected = all_selected,
+        direct = as.integer(opts$selected),
+        filtered = intersect(as.integer(opts$filtered), all_selected),
+        locked = integer(0)
+      )
+    }
+  }
 
-  tree_html = build_ast_tree_level(tree_items, opts$start_depth, NULL, opts, all_selected_nodes, ns, children_index)
+  tree_html = build_ast_tree_level(tree_items, opts$start_depth, NULL, opts, state, ns, children_index)
 
+  # The interactive tree reports every click through one input named on its
+  # root list (see ast_tree_script())
   shiny::tagList(
     ast_tree_css(css_class, opts),
-    shiny::tags$ul(class = css_class, tree_html)
+    shiny::tags$ul(
+      class = css_class,
+      `data-tree-input` = if (opts$mode == "interactive") ns("tree_event"),
+      tree_html
+    )
   )
+}
+
+# The highlight state of an interactive tree for one selection, as index
+# vectors: `selected` is the direct selection plus everything it covers
+# (compute_all_selected_nodes()), `direct` the direct selection, `filtered` the
+# covered nodes the question's filters exclude (drawn red), and `locked` the
+# selectable nodes beneath a directly selected ancestor, drawn as indicators
+# rather than toggles. The document root (index 0, a whole-document question's
+# selection) never locks its descendants, matching has_selected_ancestor().
+# The same state drives the first render and every in-place patch
+# (ast_tree_script()).
+#
+# tree_items: Tree items from build_ast_tree_structure()
+# selected: Integer vector of directly selected node indices
+# filtered: Integer vector of node indices excluded by the question's filters
+# children_index: Optional children-by-parent index (see tree_children_index())
+
+tree_selection_state = function(tree_items, selected, filtered, children_index = NULL) {
+  if (is.null(children_index)) {
+    children_index = tree_children_index(tree_items)
+  }
+  direct = sort(unique(as.integer(selected)))
+  all_selected = compute_all_selected_nodes(tree_items, direct, children_index)
+
+  under_selection = unlist(lapply(setdiff(direct, 0L), function(s) tree_descendant_indices(children_index, s)))
+  locked = integer(0)
+  for (index in unique(as.integer(under_selection))) {
+    if (tree_item_selectable(tree_items[[index + 1]])) {
+      locked = c(locked, index)
+    }
+  }
+
+  list(
+    selected = as.integer(all_selected),
+    direct = direct,
+    filtered = sort(intersect(as.integer(filtered), as.integer(all_selected))),
+    locked = sort(locked)
+  )
+}
+
+# How one interactive node is drawn for its highlight state: the marker and
+# label classes, the marker's icon ("check", "ellipsis" or "") and its title.
+# The class strings are built in the same order as the in-place patch in
+# ast_tree_script() builds them, so a patched node matches a rendered one.
+#
+# selectable: Whether the node can be a question target (tree_item_selectable())
+# selected, direct, filtered, locked: The node's membership in each of the
+#   tree_selection_state() vectors
+# marker_base, label_base: The marker and label elements' fixed classes
+
+tree_node_view = function(selectable, selected, direct, filtered, locked, marker_base, label_base) {
+  open = selectable && !locked
+  highlight = if (selected && filtered) " selected filtered" else if (selected) " selected" else ""
+  list(
+    open = open,
+    marker_class = paste0(marker_base, if (!open) " tree-marker-square" else "", highlight),
+    label_class = paste0(label_base, highlight),
+    icon = if (direct) "check" else if (selected) "ellipsis" else "",
+    title = if (open) {
+      "Toggle this node and its children"
+    } else if (selected && filtered) {
+      "Excluded by question filters"
+    } else if (selected) {
+      "Selected via parent selection"
+    } else {
+      "Non-selectable node"
+    }
+  )
+}
+
+# The icon markup for a tree_node_view() icon name
+#
+# name: "check", "ellipsis" or ""
+
+tree_node_icon = function(name) {
+  switch(name, check = fa_icon("check"), ellipsis = fa_icon("ellipsis-v"), "")
 }
 
 # CSS for a rendered tree
@@ -410,6 +507,14 @@ ast_tree_css = function(css_class, opts) {
       .<<css_class>> .tree-node-description-btn.selected.filtered {
         background-color: #dc3545 !important;
       }
+
+      /* A selectable node under a selected ancestor is an indicator, not a
+         toggle, until the ancestor is deselected */
+      .<<css_class>> .tree-locked .tree-toggle-btn,
+      .<<css_class>> .tree-locked .tree-node-description-btn {
+        cursor: default;
+        pointer-events: none;
+      }
       ",
       .open = "<<",
       .close = ">>"
@@ -465,7 +570,7 @@ ast_tree_css = function(css_class, opts) {
 # ns: Shiny namespace function
 # id_prefix: Optional prefix to namespace the button id
 
-node_preview_button = function(item, ns, id_prefix = NULL) {
+node_preview_button = function(item, ns, id_prefix = NULL, delegated = FALSE) {
   if (item$type == "document_root" || item$type == "pandoc_header") {
     return(NULL)
   }
@@ -474,6 +579,20 @@ node_preview_button = function(item, ns, id_prefix = NULL) {
     paste0("preview_", id_prefix, "_", item$index)
   } else {
     paste0("preview_", item$index)
+  }
+
+  # The interactive tree's buttons are plain markup reported through its one
+  # delegated input; the read-only trees bind one input per button
+  if (delegated) {
+    return(shiny::tags$button(
+      id = ns(button_id),
+      type = "button",
+      class = "btn btn-default btn-outline-info",
+      style = "font-size: 10px; padding: 2px 6px; min-width: 24px; height: 22px; border-width: 1px; margin-left: 8px;",
+      title = "Preview content",
+      `data-tree-action` = "preview",
+      fa_icon("search")
+    ))
   }
 
   shiny::actionButton(
@@ -500,31 +619,17 @@ tree_item_selectable = function(item) {
 
 # Build the .tree-node-content block for a single tree item
 #
+# An interactive node carries its index and selectability as data attributes
+# and plain buttons, so ast_tree_script() can patch its highlight in place and
+# report its clicks through the tree's one input; the read-only trees draw the
+# highlight once.
+#
 # item: A tree item
 # opts: Render options from ast_render_opts()
-# tree_items: All tree items (for ancestor lookup in interactive mode)
 # ns: Shiny namespace function
-# is_selected: Whether the item is selected (directly or via an ancestor)
-# is_directly_selected: Whether the item itself was selected
-# is_indirectly_selected: Whether the item is selected only via an ancestor
-# is_filtered: Whether the item is excluded by the current question's filters
-#   (drawn red instead of green; only meaningful for selected items)
+# state: Highlight state (see tree_selection_state())
 
-ast_tree_node_content = function(item, opts, tree_items, ns,
-                                 is_selected, is_directly_selected, is_indirectly_selected,
-                                 is_filtered = FALSE) {
-
-  # Selected nodes are green; those excluded by the question's filters are red
-  highlight_class = function(base) {
-    if (is_selected && is_filtered) {
-      paste(base, "selected filtered")
-    } else if (is_selected) {
-      paste(base, "selected")
-    } else {
-      base
-    }
-  }
-
+ast_tree_node_content = function(item, opts, ns, state) {
   if (item$type == "document_root") {
     label = shiny::span(
       item$description,
@@ -551,88 +656,84 @@ ast_tree_node_content = function(item, opts, tree_items, ns,
     ))
   }
 
-  preview_btn = node_preview_button(item, ns, opts$id_prefix)
+  is_selected = item$index %in% state$selected
+  is_filtered = item$index %in% state$filtered
 
   if (opts$mode == "interactive") {
-    is_selectable = tree_item_selectable(item) &&
-      !has_selected_ancestor(tree_items, item$index, opts$selected)
-
-    if (is_selectable) {
-      button_icon = if (is_directly_selected) {
-        fa_icon("check")
-      } else if (is_indirectly_selected) {
-        fa_icon("ellipsis-v")
-      } else {
-        ""
-      }
-
-      toggle_button = shiny::actionButton(
-        ns(paste0("select_children_", item$index)),
-        button_icon,
-        class = highlight_class("tree-toggle-btn"),
-        title = "Toggle this node and its children"
-      )
-
-      return(shiny::div(
-        class = "tree-node-content",
-        toggle_button,
-        shiny::div(
-          class = "tree-node-info",
-          shiny::actionButton(
-            ns(paste0("select_", item$index)),
-            item$description,
-            class = highlight_class("tree-node-description-btn"),
-            style = "background: none; border: none; padding: 0; margin: 0; font: inherit; cursor: pointer; text-align: left; color: inherit;"
-          ),
-          preview_btn
-        )
-      ))
-    }
-
-    indicator_icon = if (is_indirectly_selected) {
-      fa_icon("ellipsis-v")
-    } else if (is_directly_selected) {
-      fa_icon("check")
-    } else {
-      ""
-    }
-
-    selection_indicator = shiny::div(
-      class = highlight_class("tree-toggle-btn tree-marker-square"),
-      style = "cursor: default; pointer-events: none;",
-      indicator_icon,
-      title = if (is_selected && is_filtered) {
-        "Excluded by question filters"
-      } else if (is_selected) {
-        "Selected via parent selection"
-      } else {
-        "Non-selectable node"
-      }
-    )
-
-    text_class = highlight_class("tree-node-description")
-
-    return(shiny::div(
-      class = "tree-node-content",
-      selection_indicator,
-      shiny::div(
-        class = "tree-node-info",
-        tree_node_label_ui(item$description, item$detail, text_class),
-        preview_btn
-      )
-    ))
+    return(ast_tree_interactive_node(item, ns, state, is_selected, is_filtered))
   }
 
-  # Read-only mode - no interactive elements except preview
-  text_class = highlight_class("tree-node-description")
+  text_class = paste0("tree-node-description", if (is_selected && is_filtered) " selected filtered" else if (is_selected) " selected" else "")
 
   shiny::div(
     class = "tree-node-content",
     shiny::div(
       class = "tree-node-info",
       tree_node_label_ui(item$description, item$detail, text_class),
-      preview_btn
+      node_preview_button(item, ns, opts$id_prefix)
     )
+  )
+}
+
+# The interactive tree's markup for one non-root node: a marker (a toggle
+# button for a selectable node, a square indicator otherwise), its label and,
+# for content nodes, a preview button. A selectable node keeps its buttons
+# while locked under a selected ancestor (the .tree-locked class turns them
+# into indicators), so a patch never has to replace elements.
+#
+# item: A tree item
+# ns: Shiny namespace function
+# state: Highlight state (see tree_selection_state())
+# is_selected, is_filtered: The node's highlight
+
+ast_tree_interactive_node = function(item, ns, state, is_selected, is_filtered) {
+  selectable = tree_item_selectable(item)
+  marker_base = if (selectable) "btn btn-default tree-toggle-btn" else "tree-toggle-btn"
+  label_base = if (selectable) "btn btn-default tree-node-description-btn" else "tree-node-description"
+  view = tree_node_view(
+    selectable, is_selected, item$index %in% state$direct, is_filtered,
+    item$index %in% state$locked, marker_base, label_base
+  )
+  preview_btn = node_preview_button(item, ns, delegated = TRUE)
+
+  if (selectable) {
+    marker = shiny::tags$button(
+      id = ns(paste0("select_children_", item$index)),
+      type = "button",
+      class = view$marker_class,
+      title = view$title,
+      `data-tree-action` = "toggle",
+      `data-tree-base` = marker_base,
+      `data-tree-icon` = view$icon,
+      tree_node_icon(view$icon)
+    )
+    label = shiny::tags$button(
+      id = ns(paste0("select_", item$index)),
+      type = "button",
+      class = view$label_class,
+      style = "background: none; border: none; padding: 0; margin: 0; font: inherit; cursor: pointer; text-align: left; color: inherit;",
+      `data-tree-action` = "toggle",
+      `data-tree-base` = label_base,
+      item$description
+    )
+  } else {
+    marker = shiny::div(
+      class = view$marker_class,
+      style = "cursor: default; pointer-events: none;",
+      title = view$title,
+      `data-tree-base` = marker_base,
+      `data-tree-icon` = view$icon,
+      tree_node_icon(view$icon)
+    )
+    label = tree_node_label_ui(item$description, item$detail, view$label_class, label_base)
+  }
+
+  shiny::div(
+    class = paste0("tree-node-content", if (selectable && !view$open) " tree-locked" else ""),
+    `data-tree-index` = item$index,
+    `data-tree-selectable` = if (selectable) "1" else "0",
+    marker,
+    shiny::div(class = "tree-node-info", label, preview_btn)
   )
 }
 
@@ -657,11 +758,11 @@ tree_children_index = function(tree_items) {
 # target_depth: Current depth level to build
 # parent_index: Parent node index (NULL for the level's roots)
 # opts: Render options from ast_render_opts()
-# all_selected_nodes: Vector of all selected node indices (direct + descendants)
+# state: Highlight state (see tree_selection_state())
 # ns: Shiny namespace function
 # children_index: Children-by-parent index (see tree_children_index())
 
-build_ast_tree_level = function(tree_items, target_depth, parent_index, opts, all_selected_nodes, ns, children_index = NULL) {
+build_ast_tree_level = function(tree_items, target_depth, parent_index, opts, state, ns, children_index = NULL) {
   if (is.null(children_index)) {
     children_index = tree_children_index(tree_items)
   }
@@ -675,24 +776,11 @@ build_ast_tree_level = function(tree_items, target_depth, parent_index, opts, al
   }
 
   lapply(level_items, function(item) {
-
-    is_selected = item$index %in% all_selected_nodes
-    is_directly_selected = item$index %in% opts$selected
-    is_indirectly_selected = is_selected && !is_directly_selected
-    is_filtered = item$index %in% opts$filtered
-
-    has_children = length(children_index[[as.character(item$index)]]) > 0
-
-    node_content = ast_tree_node_content(
-      item, opts, tree_items, ns,
-      is_selected, is_directly_selected, is_indirectly_selected,
-      is_filtered
-    )
-
+    node_content = ast_tree_node_content(item, opts, ns, state)
     li_class = if (item$type == "document_root") "document-root" else NULL
 
-    if (has_children) {
-      child_elements = build_ast_tree_level(tree_items, target_depth + 1, item$index, opts, all_selected_nodes, ns, children_index)
+    if (length(children_index[[as.character(item$index)]]) > 0) {
+      child_elements = build_ast_tree_level(tree_items, target_depth + 1, item$index, opts, state, ns, children_index)
       shiny::tags$li(
         class = li_class,
         node_content,
@@ -712,69 +800,42 @@ build_ast_tree_level = function(tree_items, target_depth, parent_index, opts, al
 # description: Character. The node's primary label
 # detail: Character. Optional content preview ("" or NULL for none)
 # text_class: Character. CSS class(es) for the primary label
+# base_class: Optional fixed classes of the label, recorded for the
+#   interactive tree's in-place patch (see ast_tree_script())
 
-tree_node_label_ui = function(description, detail, text_class) {
+tree_node_label_ui = function(description, detail, text_class, base_class = NULL) {
   if (is.null(detail) || !nzchar(detail)) {
-    return(shiny::span(description, class = text_class, style = "line-height: 1.4;"))
+    return(shiny::span(description, class = text_class, `data-tree-base` = base_class, style = "line-height: 1.4;"))
   }
 
   shiny::div(
     style = "margin-right: 12px;",
-    shiny::div(shiny::span(description, class = text_class)),
+    shiny::div(shiny::span(description, class = text_class, `data-tree-base` = base_class)),
     shiny::div(detail, class = "text-secondary", style = "font-size: 0.85em; line-height: 1.3; margin-top: 1px;")
   )
 }
 
-# Find all child nodes for a given parent node
+# Indices of every tree descendant of a node (children, grandchildren, and so
+# on), walking the children-by-parent index so the cost is linear in the
+# subtree; a scan of every item per node made a click on a large top-level
+# heading quadratic in the document
 #
-# tree_items: List of tree items
-# parent_node_index: Index of parent node
+# children_index: Children-by-parent index (see tree_children_index())
+# node_index: Index of the node whose descendants are wanted
 
-find_node_children = function(tree_items, parent_node_index) {
-
-  children = integer(0)
-
-  if (is.null(parent_node_index)) {
-    return(children)
-  }
-
-  for (i in seq_along(tree_items)) {
-    item = tree_items[[i]]
-
-    if (!is.null(item$parent_index) && !is.na(item$parent_index) &&
-        item$parent_index == parent_node_index) {
-      children = c(children, item$index)
+tree_descendant_indices = function(children_index, node_index) {
+  found = list()
+  stack = as.integer(node_index)
+  while (length(stack) > 0) {
+    kids = children_index[[as.character(stack[[1]])]]
+    stack = stack[-1]
+    if (length(kids) > 0) {
+      ids = vapply(kids, function(k) as.integer(k$index), integer(1))
+      found[[length(found) + 1]] = ids
+      stack = c(ids, stack)
     }
   }
-
-  return(children)
-}
-
-# Find all descendant nodes (children, grandchildren, etc.) for a given parent node
-#
-# tree_items: List of tree items
-# parent_node_index: Index of parent node
-
-find_all_descendants = function(tree_items, parent_node_index) {
-
-  all_descendants = integer(0)
-
-  if (is.null(parent_node_index)) {
-    return(all_descendants)
-  }
-
-  direct_children = find_node_children(tree_items, parent_node_index)
-
-  if (length(direct_children) > 0) {
-    all_descendants = c(all_descendants, direct_children)
-
-    for (child_index in direct_children) {
-      child_descendants = find_all_descendants(tree_items, child_index)
-      all_descendants = c(all_descendants, child_descendants)
-    }
-  }
-
-  return(unique(all_descendants))
+  as.integer(unlist(found))
 }
 
 # Check if any ancestor node of the given node is in the directly selected list
@@ -827,24 +888,27 @@ compute_all_selected_nodes = function(tree_items, directly_selected_nodes, child
     }
   }
 
-  all_selected = integer(0)
+  # A seen flag per index (offset by one for the root) instead of a growing
+  # %in% check, which made a whole-document selection quadratic
+  max_index = max(vapply(tree_items, function(item) as.integer(item$index), integer(1)), as.integer(directly_selected_nodes))
+  seen = logical(max_index + 1L)
   stack = as.integer(directly_selected_nodes)
   while (length(stack) > 0) {
     node_index = stack[[1]]
     stack = stack[-1]
-    if (node_index %in% all_selected) {
+    if (seen[node_index + 1L]) {
       next
     }
-    all_selected = c(all_selected, node_index)
+    seen[node_index + 1L] = TRUE
 
     kids = children_index[[as.character(node_index)]]
     if (length(kids) > 0) {
-      stack = c(stack, vapply(kids, function(k) as.integer(k$index), integer(1)))
+      stack = c(vapply(kids, function(k) as.integer(k$index), integer(1)), stack)
     }
-    stack = c(stack, as.integer(sections[[as.character(node_index)]]))
+    stack = c(as.integer(sections[[as.character(node_index)]]), stack)
   }
 
-  return(unique(sort(all_selected)))
+  which(seen) - 1L
 }
 
 # Given a list of currently selected nodes and a new node, find which selected
@@ -853,16 +917,14 @@ compute_all_selected_nodes = function(tree_items, directly_selected_nodes, child
 # tree_items: List of tree items
 # new_node_index: Index of the newly selected node
 # current_selected: Vector of currently selected node indices
+# children_index: Optional children-by-parent index (see tree_children_index())
 
-find_selected_descendants = function(tree_items, new_node_index, current_selected) {
-
+find_selected_descendants = function(tree_items, new_node_index, current_selected, children_index = NULL) {
   if (length(current_selected) == 0) {
     return(integer(0))
   }
-
-  all_descendants = find_all_descendants(tree_items, new_node_index)
-
-  selected_descendants = intersect(current_selected, all_descendants)
-
-  return(selected_descendants)
+  if (is.null(children_index)) {
+    children_index = tree_children_index(tree_items)
+  }
+  intersect(current_selected, tree_descendant_indices(children_index, new_node_index))
 }

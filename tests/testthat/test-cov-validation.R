@@ -95,24 +95,14 @@ test_that("assert_template_compatible accepts the current template version", {
 })
 
 
-test_that("find_node_children returns the immediate children for each tree node", {
+test_that("tree_descendant_indices returns all nested descendants for each tree node", {
   tree = cv_nested_tree()
+  index = markermd:::tree_children_index(tree)
 
-  expect_equal(markermd:::find_node_children(tree, 0), 1)
-  expect_equal(markermd:::find_node_children(tree, 1), 2)
-  expect_equal(markermd:::find_node_children(tree, 2), 3)
-  expect_equal(markermd:::find_node_children(tree, 3), integer(0))
-  expect_equal(markermd:::find_node_children(tree, NULL), integer(0))
-})
-
-test_that("find_all_descendants returns all nested descendants for each tree node", {
-  tree = cv_nested_tree()
-
-  expect_equal(markermd:::find_all_descendants(tree, 0), c(1, 2, 3))
-  expect_equal(markermd:::find_all_descendants(tree, 1), c(2, 3))
-  expect_equal(markermd:::find_all_descendants(tree, 2), 3)
-  expect_equal(markermd:::find_all_descendants(tree, 3), integer(0))
-  expect_equal(markermd:::find_all_descendants(tree, NULL), integer(0))
+  expect_equal(sort(markermd:::tree_descendant_indices(index, 0)), c(1, 2, 3))
+  expect_equal(sort(markermd:::tree_descendant_indices(index, 1)), c(2, 3))
+  expect_equal(markermd:::tree_descendant_indices(index, 2), 3)
+  expect_equal(markermd:::tree_descendant_indices(index, 3), integer(0))
 })
 
 test_that("find_selected_descendants intersects descendants with the current selection", {

@@ -153,7 +153,7 @@ test_that("an active document entry highlights the entire tree", {
     name  = "document_tree"
   )
   n_selected = function() {
-    html = app$get_value(output = "ast_panel-ast_tree_ui")$html
+    html = tree_dom_html(app)
     sum(gregexpr(" selected\"", html)[[1]] > 0)
   }
 
