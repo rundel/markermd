@@ -516,6 +516,11 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
   # Define server logic
   server = function(input, output, session) {
 
+    # The rubric module's result is assigned after the table and content
+    # modules that read it (reactives only evaluate at flush time); the
+    # placeholder makes it a local for static code inspection
+    rubric_result = NULL
+
     # Export values for testing
     shiny::exportTestValues(
       repo_names = repo_list,

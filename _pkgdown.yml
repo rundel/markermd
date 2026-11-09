@@ -62,6 +62,11 @@ reference:
   - project_backup
   - markermd_snapshot
   - markermd_snapshot_diff
+- title: Activity log
+  desc: Read the recorded changes to a project's grading state.
+  contents:
+  - project_activity
+  - activity_detail
 - title: YAML file formats
   desc: Read, write, and schema-validate the template, rubric, and marks file formats.
   contents:
