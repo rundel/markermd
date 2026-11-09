@@ -1,38 +1,7 @@
-# Self-contained fixture (mirrors make_mark_fixture in test-mark-app.R but with a
-# unique name, since testthat does not share helpers across files reliably). Two
-# questions: Q2 graded on "quantile" content, Q3 on "ggplot".
+# Two questions on the shared fixture (helper-mark-fixture.R): Q2 graded on
+# "quantile" content, Q3 on "ggplot"
 mg_make_fixture = function() {
-  src = system.file("examples/test_assignment/repos", package = "markermd")
-  root = tempfile("markproj_")
-  repos = file.path(root, "repos")
-  dir.create(repos, recursive = TRUE)
-  file.copy(list.files(src, full.names = TRUE), repos, recursive = TRUE)
-
-  html_dir = file.path(root, "html")
-  dir.create(html_dir)
-  writeLines("<html><body>r</body></html>", file.path(html_dir, "student1-excellent.html"))
-
-  qmd = file.path(repos, "student1-excellent", "assignment.qmd")
-  ast = markermd:::parse_assignment_document(qmd)
-  template = markermd::markermd_template(
-    original_ast = ast,
-    questions = list(
-      markermd::markermd_question(
-        1L, "Q2", markermd::markermd_node_selection(node_ids = "question-2-basic-programming"),
-        list(markermd::markermd_rule(node_type = "Any node", verb = "has content", values = "quantile"))
-      ),
-      markermd::markermd_question(
-        2L, "Q3", markermd::markermd_node_selection(node_ids = "question-3-data-visualization"),
-        list(markermd::markermd_rule(node_type = "Any node", verb = "has content", values = "ggplot"))
-      )
-    ),
-    metadata = markermd::markermd_metadata()
-  )
-  markermd::write_template_yaml(template, file.path(root, "template.yaml"), source_path = qmd)
-
-  suppressMessages(markermd::init_project(root))
-  suppressMessages(markermd::project_set(root, template = "template.yaml"))
-  root
+  make_mark_fixture()$project
 }
 
 mg_score = function(app, q) {
@@ -372,13 +341,9 @@ test_that("the Assignments table tabulates rubric scores per repository and per 
   expect_match(table_html, "Median")
   expect_match(table_html, "progress-bar bg-success", fixed = TRUE)
 
-  # Clicking a score cell (second row, Q3: the ninth visible cell, after the
-  # repository, four link, validation and progress columns and Q2) opens
-  # that repository and question in the Rubric tab
-  app$run_js("
-    var row = document.querySelectorAll('#repo_table .rt-tbody .rt-tr')[1];
-    row.querySelectorAll('.rt-td')[8].click();
-  ")
+  # Clicking a score cell (second row, the Q3 column, found by its header)
+  # opens that repository and question in the Grade tab
+  click_score_cell(app, row = 2, question = "Q3")
   app$wait_for_idle()
   expect_equal(app$get_value(input = "main_navbar"), "grade")
   expect_equal(app$get_value(input = "content_module-content_repo_select"), "student2-average")
@@ -446,7 +411,7 @@ test_that("the table's validation marker opens the repo's results in a modal", {
   ")
   app$set_inputs(`explore_module-question_select` = "Q3")
   app$wait_for_idle()
-  Sys.sleep(1)
+  app$wait_for_js("document.querySelector('#shiny-modal .modal-body').scrollTop > 0")
   expect_gt(app$get_js("document.querySelector('#shiny-modal .modal-body').scrollTop"), 0)
   expect_match(
     app$get_js("document.getElementById('explore_module-question_select').parentElement.querySelector('.selectize-control .item').outerHTML"),
@@ -459,10 +424,16 @@ test_that("the table's validation marker opens the repo's results in a modal", {
   is_shown = function(q) {
     app$get_js(paste0("document.getElementById('explore_module-qcard_", q, "_body').classList.contains('show')"))
   }
+  # Bootstrap's collapse animates; wait until the body has settled (shown or
+  # hidden, no "collapsing" class) and the expanded list has been reported
   toggle = function(q) {
+    was_shown = is_shown(q)
     app$run_js(paste0("document.querySelector('#explore_module-qcard_", q, " .validation-collapse-toggle').click()"))
+    app$wait_for_js(paste0(
+      "(function() { var b = document.getElementById('explore_module-qcard_", q, "_body');",
+      " return !b.classList.contains('collapsing') && b.classList.contains('show') === ", tolower(!was_shown), "; })()"
+    ))
     app$wait_for_idle()
-    Sys.sleep(1)
   }
   expect_false(is_shown("Q2"))
   expect_true(is_shown("Q3"))
@@ -514,11 +485,94 @@ test_that("a rubric item's toggle button keeps its size under a long description
     app$get_js(glue::glue(
       "(function() {
         var r = document.getElementById('rubric_module-<<item>>-hotkey_btn').getBoundingClientRect();
-        return Math.round(r.width) + 'x' + Math.round(r.height);
+        return [r.width, r.height];
       })()",
       .open = "<<", .close = ">>"
     ))
   }
-  expect_equal(size("item_0"), "28x28")
-  expect_equal(size("item_1"), "28x28")
+  # The long description must not squeeze its button: both buttons keep the
+  # same square size whatever the theme makes that size
+  short = unlist(size("item_0"))
+  long = unlist(size("item_1"))
+  expect_equal(long, short, tolerance = 0.5)
+  expect_equal(short[1], short[2], tolerance = 0.5)
+  expect_gt(short[1], 10)
+})
+
+
+test_that("grading A, visiting B and returning to A writes only the user's own grade rows", {
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
+  root = mg_make_fixture()
+  # Eleven items so the ids straddle item_9 / item_10, which sort differently
+  # as text and as numbers; student2 already has item_10 selected
+  markermd:::save_rubric_items(root, "Q2", stats::setNames(lapply(1:11, function(i) {
+    markermd::markermd_rubric_item(markermd:::position_hotkey(i), -1, LETTERS[i])
+  }), paste0("item_", 0:10)))
+  markermd:::save_grade_selection(root, "Q2", "student2-average", "item_10", TRUE)
+  before = db_max_id(root, "grades")
+  comments_before = db_max_id(root, "comments")
+
+  app = new_app_driver(markermd:::mark_app(root), name = "mark_navigation_writes")
+  app$set_inputs(main_navbar = "grade")
+  app$wait_for_idle()
+
+  selected = function(item) {
+    app$get_js(paste0("document.getElementById('rubric_module-", item, "-hotkey_btn').classList.contains('btn-success')"))
+  }
+  press = function(key) {
+    app$run_js(paste0("document.dispatchEvent(new KeyboardEvent('keydown', {key: '", key, "'}));"))
+    app$wait_for_idle()
+  }
+  click = function(item) {
+    app$click(selector = paste0("#rubric_module-", item, "-hotkey_btn"))
+    app$wait_for_idle()
+  }
+  repo = function() app$get_value(input = "content_module-content_repo_select")
+
+  expect_equal(repo(), "student1-excellent")
+  click("item_0")
+  click("item_9")
+
+  press("x")
+  expect_equal(repo(), "student2-average")
+  expect_true(selected("item_10"))
+  expect_false(selected("item_0"))
+  expect_false(selected("item_9"))
+
+  press("z")
+  expect_equal(repo(), "student1-excellent")
+  expect_true(selected("item_0"))
+  expect_true(selected("item_9"))
+  expect_false(selected("item_10"))
+
+  # Exactly the two toggles on A: nothing for B, no deselections, no comments
+  rows = db_rows_after(root, "grades", before)
+  expect_equal(nrow(rows), 2)
+  expect_equal(unique(rows$question_name), "Q2")
+  expect_equal(unique(rows$assignment_repo), "student1-excellent")
+  expect_equal(sort(rows$item_id), c("item_0", "item_9"))
+  expect_true(all(rows$selected == 1))
+  expect_equal(nrow(db_rows_after(root, "comments", comments_before)), 0)
+  marked = markermd:::marked_question_pairs(root)
+  expect_setequal(marked$assignment_repo[marked$question_name == "Q2"], c("student1-excellent", "student2-average"))
+
+  # A toggle on B lands on B alone, and returning to A writes nothing more
+  second = db_max_id(root, "grades")
+  press("x")
+  click("item_1")
+  press("z")
+  expect_true(selected("item_0"))
+  expect_true(selected("item_9"))
+  expect_false(selected("item_1"))
+  rows = db_rows_after(root, "grades", second)
+  expect_equal(nrow(rows), 1)
+  expect_equal(rows$assignment_repo, "student2-average")
+  expect_equal(rows$item_id, "item_1")
+  expect_equal(rows$selected, 1)
+  expect_setequal(
+    names(Filter(isTRUE, markermd:::load_grade_selections(root, "Q2", "student2-average"))),
+    c("item_1", "item_10")
+  )
 })
