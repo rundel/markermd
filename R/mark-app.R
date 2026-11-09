@@ -293,6 +293,7 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
         shinyjs::useShinyjs(),
         markermd_modal_css(),
         mark_validate_script("explore_module"),
+        rubric_item_editing_head(),
         shiny::tags$style(shiny::HTML('
           /* Content repo select styling - selectize */
           .selectize-control.single .selectize-input {
@@ -618,15 +619,24 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
     # write or visit to the tab: the graded pairs and per-repo progress (which
     # also drive the status filter), the per-question totals, and the wide
     # score table with its class summary. The rubric module bumps its version
-    # on selection, comment, delete and import writes; reading
-    # input$main_navbar as well makes a return to the tab recompute, which
-    # picks up a question total edited in the rubric pane (that edit does not
-    # bump the version). The outputs are suspended while the tab is hidden,
-    # so tabbing back recomputes at most once.
+    # on selection, comment, delete and import writes; a return to the tab
+    # (assignments_visit) recomputes as well, which picks up a question total
+    # edited in the rubric pane (that edit does not bump the version). Only
+    # arrivals count: reading input$main_navbar itself re-rendered the
+    # leaving table on every switch away, before the client reported it
+    # hidden.
+    assignments_visit = shiny::reactiveVal(0L)
+    shiny::observe({
+      if (identical(input$main_navbar, "assignments")) {
+        assignments_visit(shiny::isolate(assignments_visit()) + 1L)
+      }
+    }) |>
+      shiny::bindEvent(input$main_navbar)
+
     table_state = shiny::reactive({
       rubric_result$grading_data_version()
       external_version()
-      input$main_navbar
+      assignments_visit()
 
       if (is.null(template_obj) || length(template_obj@questions) == 0) {
         return(list(

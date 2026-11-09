@@ -52,7 +52,8 @@ mark_rubric_item_hotkey_btn = function(id, rubric_item, exclusive = FALSE) {
 }
 
 # One entry of an item's group menu: choosing it reports the group id (or ""
-# for no group) to the item module's group_choice input as an event. Entries
+# for no group) to the item module's group_choice input as an event (through
+# the delegated handler in rubric_item_editing_head()). Entries
 # are links rather than buttons so the number-key handler, which scans the
 # pane's buttons by label, never matches a group label.
 #
@@ -68,11 +69,8 @@ rubric_group_menu_item = function(ns, group_id, label, active) {
       class = "dropdown-item rubric-group-menu-item d-flex align-items-center gap-2",
       href = "#",
       `data-group` = value,
-      onclick = glue::glue(
-        "Shiny.setInputValue('<<ns('group_choice')>>', '<<value>>', {priority: 'event'}); return false;",
-        .open = "<<", .close = ">>"
-      ),
-      shiny::icon("check", class = paste("fa-fw", if (!active) "invisible")),
+      `data-input` = ns("group_choice"),
+      cached_icon("check", class = if (active) "fa-fw" else "fa-fw invisible"),
       shiny::span(class = "rubric-group-menu-label", label)
     )
   )
@@ -99,16 +97,25 @@ mark_rubric_item_ui = function(id, rubric_item, groups = list(), selected_count 
     # Action buttons row: always present at reduced emphasis, full opacity on
     # hover or keyboard focus (styled via .rubric-action-btns in mark-app.R).
     # Every item has the full set, grouped or not: move within its run,
-    # move to another group (or out of its group), delete.
+    # move to another group (or out of its group), delete. In the Rubric
+    # tab's editor the item's selection count sits just left of them.
     shiny::div(
-      class = "rubric-action-btns position-absolute",
+      class = "position-absolute d-flex align-items-center gap-2",
       style = "top: 0; right: 8px;",
+      if (!is.null(selected_count)) {
+        shiny::span(
+          class = "badge rounded-pill text-bg-secondary rubric-selected-count",
+          title = paste0("Selected for ", selected_count, " repositor", if (selected_count == 1) "y" else "ies"),
+          paste0(selected_count, "\u00d7")
+        )
+      },
       shiny::div(
-        style = "display: flex; gap: 2px;",
+        class = "rubric-action-btns d-flex",
+        style = "gap: 2px;",
         shiny::actionButton(
           ns("move_up_btn"),
           label = NULL,
-          icon = shiny::icon("chevron-up"),
+          icon = cached_icon("chevron-up"),
           class = "btn btn-sm p-1",
           style = action_style,
           title = "Move item up"
@@ -116,7 +123,7 @@ mark_rubric_item_ui = function(id, rubric_item, groups = list(), selected_count 
         shiny::actionButton(
           ns("move_down_btn"),
           label = NULL,
-          icon = shiny::icon("chevron-down"),
+          icon = cached_icon("chevron-down"),
           class = "btn btn-sm p-1",
           style = action_style,
           title = "Move item down"
@@ -133,7 +140,7 @@ mark_rubric_item_ui = function(id, rubric_item, groups = list(), selected_count 
             `data-bs-toggle` = "dropdown",
             `aria-expanded` = "false",
             title = "Move item to a group",
-            shiny::icon("layer-group")
+            cached_icon("layer-group")
           ),
           shiny::tags$ul(
             class = "dropdown-menu dropdown-menu-end shadow-sm rubric-group-menu",
@@ -150,7 +157,7 @@ mark_rubric_item_ui = function(id, rubric_item, groups = list(), selected_count 
         shiny::actionButton(
           ns("delete_btn"),
           label = NULL,
-          icon = shiny::icon("times"),
+          icon = cached_icon("times"),
           class = "btn btn-sm p-1",
           style = "border: none; background: transparent; color: #6c757d; font-size: 16px;",
           title = "Delete rubric item"
@@ -166,13 +173,6 @@ mark_rubric_item_ui = function(id, rubric_item, groups = list(), selected_count 
       # mark_rubric_item_hotkey_btn())
       if (is.null(selected_count)) {
         shiny::uiOutput(ns("hotkey_btn_ui"), class = "flex-shrink-0")
-      } else {
-        shiny::span(
-          class = paste("badge rounded-pill flex-shrink-0 mt-1", if (selected_count > 0) "text-bg-secondary" else "text-bg-light border"),
-          style = "min-width: 2.5rem;",
-          title = paste0("Selected for ", selected_count, " repositor", if (selected_count == 1) "y" else "ies"),
-          paste0(selected_count, "\u00d7")
-        )
       },
       shiny::div(
         class = "flex-grow-1",
@@ -180,6 +180,7 @@ mark_rubric_item_ui = function(id, rubric_item, groups = list(), selected_count 
         # Points
         shiny::div(
           id = ns("points_text"),
+          class = "rubric-points-edit",
           contenteditable = "true",
           `data-points` = rubric_item@points,
           style = glue::glue(
@@ -208,7 +209,7 @@ mark_rubric_item_ui = function(id, rubric_item, groups = list(), selected_count 
         shiny::div(
           id = ns("description_text"),
           contenteditable = "true",
-          class = "form-control-like",
+          class = "form-control-like rubric-desc-edit",
           style = paste0(
             "border: 1px solid transparent; ",
             "background: transparent; ",
@@ -228,112 +229,85 @@ mark_rubric_item_ui = function(id, rubric_item, groups = list(), selected_count 
           rubric_item@description
         )
       )
-    ),
-    shiny::tags$style(shiny::HTML(glue::glue("
-        #<<ns('description_text')>>:hover {
-          border: 1px solid #80bdff !important;
-          background: #f8f9fa !important;
+    )
+  )
+}
+
+# The editing behavior of every rubric item's points and description
+# (contenteditable divs), delegated from the document once in the page head
+# rather than a style and script per item, which made a long rubric slow to
+# draw. Points show the bare number while focused, commit on blur or Enter
+# and report to the item's points_text input; descriptions report each edit
+# to description_text. Pastes are reduced to plain text in both. A group
+# menu entry reports its group to the item's group_choice input.
+
+rubric_item_editing_head = function() {
+  shiny::tagList(
+    shiny::tags$style(shiny::HTML("
+      .rubric-points-edit:hover, .rubric-desc-edit:hover {
+        border: 1px solid #80bdff !important; background: #f8f9fa !important;
+      }
+      .rubric-points-edit:focus, .rubric-desc-edit:focus {
+        border: 1px solid #80bdff !important; background: white !important;
+      }
+      .rubric-points-edit:focus { color: #495057 !important; }
+      .rubric-desc-edit:empty:before { content: attr(data-placeholder); color: #adb5bd; }
+      .rubric-desc-edit:focus:before { display: none; }
+    ")),
+    shiny::tags$script(shiny::HTML(glue::glue("
+      (function() {
+        function points(el) {
+          var v = parseFloat(el.getAttribute('data-points'));
+          return isNaN(v) ? 0 : v;
         }
-        #<<ns('description_text')>>:focus {
-          border: 1px solid #80bdff !important;
-          background: white !important;
-        }
-        #<<ns('description_text')>>:empty:before {
-          content: attr(data-placeholder);
-          color: #adb5bd;
-        }
-        #<<ns('description_text')>>:focus:before {
-          display: none;
-        }
-        #<<ns('points_text')>>:hover {
-          border: 1px solid #80bdff !important;
-          background: #f8f9fa !important;
-        }
-        #<<ns('points_text')>>:focus {
-          border: 1px solid #80bdff !important;
-          background: white !important;
-          color: #495057 !important;
-          width: fit-content !important;
-        }
-      ", .open = "<<", .close = ">>"))),
-      shiny::tags$script(shiny::HTML(glue::glue("
-        $(document).ready(function() {
-          var editableDiv = document.getElementById('<<ns('description_text')>>');
-          var pointsDiv = document.getElementById('<<ns('points_text')>>');
-          
-          if (editableDiv) {
-            // Handle input changes
-            editableDiv.addEventListener('input', function() {
-              var newValue = this.innerText || this.textContent || '';
-              Shiny.setInputValue('<<ns('description_text')>>', newValue);
-            });
-            
-            // Handle paste to clean up formatting
-            editableDiv.addEventListener('paste', function(e) {
-              e.preventDefault();
-              var text = e.clipboardData.getData('text/plain');
-              document.execCommand('insertText', false, text);
-            });
-          }
-          
-          if (pointsDiv) {
-            // Store original formatted text
-            var originalText = pointsDiv.innerHTML;
-            var originalPoints = parseFloat(pointsDiv.getAttribute('data-points'));
-            
-            // Handle focus - switch to plain number and select all
-            pointsDiv.addEventListener('focus', function() {
-              this.innerHTML = originalPoints.toString();
-              
-              // Select all text after a brief delay to ensure content is set
-              setTimeout(() => {
-                var range = document.createRange();
-                range.selectNodeContents(this);
-                var selection = window.getSelection();
-                selection.removeAllRanges();
-                selection.addRange(range);
-              }, 10);
-            });
-            
-            // Handle keydown to prevent multiline and exit on Enter
-            pointsDiv.addEventListener('keydown', function(e) {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                this.blur();
-              }
-            });
-            
-            // Handle blur - format and update
-            pointsDiv.addEventListener('blur', function() {
-              var newValue = parseFloat(this.innerText || this.textContent || '0');
-              if (isNaN(newValue)) newValue = originalPoints;
-              
-              // Update data attribute
-              this.setAttribute('data-points', newValue);
-              originalPoints = newValue;
-              
-              // Format display text. Match the initial cli::pluralize() render,
-              // which is singular only when the value is exactly 1 (so -1 and
-              // 1.5 are both plural).
-              var sign = newValue >= 0 ? '+' : '';
-              var suffix = newValue === 1 ? 'pt' : 'pts';
-              this.innerHTML = sign + newValue + ' ' + suffix;
-              
-              // Update color
-              this.style.color = newValue >= 0 ? '<<POINTS_POSITIVE_COLOR>>' : '<<POINTS_NEGATIVE_COLOR>>';
-              
-              Shiny.setInputValue('<<ns('points_text')>>', newValue);
-            });
-            
-            // Handle paste to clean up formatting
-            pointsDiv.addEventListener('paste', function(e) {
-              e.preventDefault();
-              var text = e.clipboardData.getData('text/plain');
-              document.execCommand('insertText', false, text);
-            });
+        document.addEventListener('click', function(e) {
+          var el = e.target.closest && e.target.closest('a.rubric-group-menu-item[data-input]');
+          if (!el) return;
+          e.preventDefault();
+          Shiny.setInputValue(el.dataset.input, el.dataset.group, {priority: 'event'});
+        });
+        document.addEventListener('input', function(e) {
+          var el = e.target.closest && e.target.closest('.rubric-desc-edit');
+          if (el) Shiny.setInputValue(el.id, el.innerText || el.textContent || '');
+        });
+        document.addEventListener('paste', function(e) {
+          var el = e.target.closest && e.target.closest('.rubric-desc-edit, .rubric-points-edit');
+          if (!el) return;
+          e.preventDefault();
+          document.execCommand('insertText', false, e.clipboardData.getData('text/plain'));
+        });
+        document.addEventListener('focusin', function(e) {
+          var el = e.target.closest && e.target.closest('.rubric-points-edit');
+          if (!el) return;
+          el.innerHTML = points(el).toString();
+          setTimeout(function() {
+            var range = document.createRange();
+            range.selectNodeContents(el);
+            var selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+          }, 10);
+        });
+        document.addEventListener('keydown', function(e) {
+          var el = e.target.closest && e.target.closest('.rubric-points-edit');
+          if (el && e.key === 'Enter') {
+            e.preventDefault();
+            el.blur();
           }
         });
-      ", .open = "<<", .close = ">>")))
+        document.addEventListener('focusout', function(e) {
+          var el = e.target.closest && e.target.closest('.rubric-points-edit');
+          if (!el) return;
+          var value = parseFloat(el.innerText || el.textContent || '0');
+          if (isNaN(value)) value = points(el);
+          el.setAttribute('data-points', value);
+          // Singular only for exactly 1, matching the cli::pluralize() render
+          el.innerHTML = (value >= 0 ? '+' : '') + value + ' ' + (value === 1 ? 'pt' : 'pts');
+          el.style.color = value >= 0 ? '<<POINTS_POSITIVE_COLOR>>' : '<<POINTS_NEGATIVE_COLOR>>';
+          Shiny.setInputValue(el.id, value);
+        });
+      })();
+    ", .open = "<<", .close = ">>")))
   )
 }
 

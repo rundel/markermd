@@ -263,11 +263,17 @@ mark_rubric_editor_ui = function(id) {
     bslib::card_header(
       class = "bg-light d-flex justify-content-between align-items-center",
       shiny::span("Rubric"),
-      shiny::span(class = "small text-muted", "Every question's items, groups and scoring; the count beside an item is how many repositories selected it")
+      shiny::div(
+        class = "rubric-editor-jump",
+        shiny::selectizeInput(
+          ns("editor_jump"), label = NULL, choices = NULL, width = "220px",
+          options = list(placeholder = "Jump to question\u2026")
+        )
+      )
     ),
     bslib::card_body(
       class = "overflow-auto",
-      shiny::tags$style(shiny::HTML(".rubric-editor .rubric-group-subtotal { display: none; } .rubric-editor-settings .shiny-input-container { margin-bottom: 0; width: auto; } .rubric-editor-settings .form-check { margin-bottom: 0; } .rubric-editor-settings input[type=number] { height: 28px; padding: 2px 6px; font-size: 12px; }")),
+      shiny::tags$style(shiny::HTML(".rubric-editor .rubric-group-subtotal { display: none; } .rubric-editor-settings .shiny-input-container { margin-bottom: 0; width: auto; } .rubric-editor-settings .form-check { margin-bottom: 0; } .rubric-editor-settings input[type=number] { height: 28px; padding: 2px 6px; font-size: 12px; } .rubric-editor-jump .shiny-input-container { margin-bottom: 0; }")),
       shiny::uiOutput(ns("rubric_editor_ui"))
     )
   )
@@ -981,6 +987,7 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
         grade_server = question_grade_servers[[question_name]]
 
         bslib::card(
+          id = session$ns(paste0("editor_question_", k)),
           class = "mb-3",
           bslib::card_header(
             class = "bg-light d-flex flex-wrap align-items-center gap-3",
@@ -1016,6 +1023,17 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
     }) |>
       shiny::bindEvent(redraw_ui(), grade_redraw(), items_owner(), grading_data_version(), external_version())
     shiny::outputOptions(output, "rubric_editor_ui", suspendWhenHidden = FALSE)
+
+    # The editor's jump select scrolls to the chosen question's card, then
+    # clears, so choosing the same question again scrolls again
+    shiny::updateSelectizeInput(session, "editor_jump", choices = question_names, selected = "")
+    shiny::observe({
+      shiny::req(nzchar(input$editor_jump))
+      k = match(input$editor_jump, question_names)
+      session$sendCustomMessage("markermd_scroll_to", list(id = session$ns(paste0("editor_question_", k))))
+      shiny::updateSelectizeInput(session, "editor_jump", selected = "")
+    }) |>
+      shiny::bindEvent(input$editor_jump)
 
     # Add an empty item at the end of a question. In the Grade tab the new
     # item is inserted into the list in place, so in-progress edits on the
