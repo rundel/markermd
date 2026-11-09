@@ -27,6 +27,7 @@ tree_dom_html = function(app) {
 }
 
 add_entry = function(app, file = NULL, coverage = "sections", name = NULL) {
+  app$wait_for_js("!!document.querySelector('#add_question.shiny-bound-input')")
   app$click("add_question")
   app$wait_for_js("!!document.getElementById('confirm_add_entry')")
   if (!is.null(file)) app$set_inputs(new_entry_file = file)

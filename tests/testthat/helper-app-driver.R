@@ -8,6 +8,31 @@
 
 new_app_driver = function(..., .env = parent.frame()) {
   app = shinytest2::AppDriver$new(...)
-  withr::defer(app$stop(), envir = .env)
+  withr::defer({
+    if (nzchar(Sys.getenv("CI"))) report_app_problems(app)
+    app$stop()
+  }, envir = .env)
   app
+}
+
+# On CI, print what went wrong inside an app before it is torn down: whether
+# its R process is still alive and any error or warning lines from its server
+# log. Browser tests there fail on timing that never reproduces on a dev
+# machine, and the test failure alone does not say whether the app crashed,
+# hung or errored.
+#
+# app: The shinytest2 AppDriver
+
+report_app_problems = function(app) {
+  alive = isTRUE(try(app$.__enclos_env__$private$shiny_process$is_alive(), silent = TRUE))
+  logs = try(as.data.frame(app$get_logs()), silent = TRUE)
+  problems = if (inherits(logs, "data.frame")) {
+    logs[logs$location == "shiny" & grepl("error|warning|halted|killed|segfault|abort", logs$message, ignore.case = TRUE), , drop = FALSE]
+  } else {
+    data.frame()
+  }
+  if (!alive || nrow(problems) > 0) {
+    message("---- app problems (", app$get_dir(), "): process ", if (alive) "alive" else "NOT ALIVE", " ----")
+    if (nrow(problems) > 0) message(paste(problems$timestamp, problems$message, collapse = "\n"))
+  }
 }
