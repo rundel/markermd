@@ -42,7 +42,7 @@ mg_score = function(app, q) {
 }
 
 mg_set_points = function(app, item, value) {
-  app$run_js(sprintf("Shiny.setInputValue('rubric_module-%s-points_text', %s)", item, value))
+  item_event(app, item, "points", value)
   app$wait_for_idle()
 }
 
@@ -72,7 +72,7 @@ test_that("negative-mode score recomputes live and clamps at zero", {
   app$click("rubric_module-add_item")
   app$wait_for_idle()
   mg_set_points(app, "item_0", -3)
-  app$click("rubric_module-item_0-hotkey_btn")
+  app$click(selector = "#rubric_module-item_0-hotkey_btn")
   app$wait_for_idle()
   expect_equal(mg_score(app, "Q2"), "7 / 10 pts")
 
@@ -80,7 +80,7 @@ test_that("negative-mode score recomputes live and clamps at zero", {
   app$click("rubric_module-add_item")
   app$wait_for_idle()
   mg_set_points(app, "item_1", -8)
-  app$click("rubric_module-item_1-hotkey_btn")
+  app$click(selector = "#rubric_module-item_1-hotkey_btn")
   app$wait_for_idle()
   expect_equal(mg_score(app, "Q2"), "0 / 10 pts")
 })
@@ -101,12 +101,12 @@ test_that("positive-mode score clamps at the question total", {
   app$click("rubric_module-add_item")
   app$wait_for_idle()
   mg_set_points(app, "item_0", 15)
-  app$click("rubric_module-item_0-hotkey_btn")
+  app$click(selector = "#rubric_module-item_0-hotkey_btn")
   app$wait_for_idle()
   expect_equal(mg_score(app, "Q2"), "10 / 10 pts")
 
   # Deselecting returns to zero
-  app$click("rubric_module-item_0-hotkey_btn")
+  app$click(selector = "#rubric_module-item_0-hotkey_btn")
   app$wait_for_idle()
   expect_equal(mg_score(app, "Q2"), "0 / 10 pts")
 })
@@ -125,9 +125,7 @@ test_that("moving a rubric item reorders it and renumbers hotkeys, including the
   for (i in 0:2) {
     app$click("rubric_module-add_item")
     app$wait_for_idle()
-    app$run_js(sprintf(
-      "Shiny.setInputValue('rubric_module-item_%d-description_text', '%s')", i, LETTERS[i + 1]
-    ))
+    item_event(app, paste0("item_", i), "description", LETTERS[i + 1])
     app$wait_for_idle()
   }
 
@@ -301,7 +299,7 @@ test_that("items past the tenth have no hotkey, toggle by click, and keep their 
   expect_equal(label("item_10"), "")
 
   # the eleventh item is reachable by clicking ...
-  app$click("rubric_module-item_10-hotkey_btn")
+  app$click(selector = "#rubric_module-item_10-hotkey_btn")
   app$wait_for_idle()
   expect_true(selected("item_10"))
 
@@ -340,9 +338,9 @@ test_that("the Assignments table tabulates rubric scores per repository and per 
   # Grade Q2 for the first repo: one 4-point item selected
   app$click("rubric_module-add_item")
   app$wait_for_idle()
-  app$run_js("Shiny.setInputValue('rubric_module-item_0-points_text', 4)")
+  item_event(app, "item_0", "points", 4)
   app$wait_for_idle()
-  app$click("rubric_module-item_0-hotkey_btn")
+  app$click(selector = "#rubric_module-item_0-hotkey_btn")
   app$wait_for_idle()
 
   app$set_inputs(main_navbar = "assignments")

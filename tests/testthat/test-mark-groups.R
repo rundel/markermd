@@ -78,8 +78,13 @@ mgr_selected = function(app, item) {
   ))
 }
 
+# Toggle an item row's group menu (open, or closed again)
+open_group_menu = function(app, item) {
+  app$run_js(paste0("document.querySelector('#rubric_module-", item, "-container .rubric-group-menu-btn').click();"))
+}
+
 mgr_click = function(app, item) {
-  app$click(sprintf("rubric_module-%s-hotkey_btn", item))
+  app$click(selector = sprintf("#rubric_module-%s-hotkey_btn", item))
   app$wait_for_idle()
 }
 
@@ -286,10 +291,12 @@ test_that("groups can be added, joined through the item menu, moved as blocks an
     app$get_js("document.querySelector('#rubric_module-group_2-container .rubric-group-name').textContent"),
     "Style"
   )
+  open_group_menu(app, "item_0")
   expect_equal(
     app$get_js("document.querySelector('#rubric_module-item_0-container a[data-group=group_2] .rubric-group-menu-label').textContent"),
     "Style"
   )
+  open_group_menu(app, "item_0")
   app$set_inputs(`rubric_module-group_2-floor` = 2, wait_ = FALSE)
   app$wait_for_idle()
   expect_match(app$get_html("#rubric_module-group_2-settings_feedback"), "must be 0 or negative")
@@ -298,12 +305,15 @@ test_that("groups can be added, joined through the item menu, moved as blocks an
   app$wait_for_idle()
 
   # Every item row carries the group menu, listing the question's groups
+  # (filled in when it opens)
+  open_group_menu(app, "item_3")
   menu = app$get_html("#rubric_module-item_3-container .rubric-group-menu")
+  open_group_menu(app, "item_3")
   expect_match(menu, "No group", fixed = TRUE)
   expect_match(menu, "Style", fixed = TRUE)
 
   # The item menu moves an ungrouped item to the end of a group ...
-  app$run_js("Shiny.setInputValue('rubric_module-item_1-group_choice', 'group_0', {priority: 'event'})")
+  item_event(app, "item_1", "group", "group_0")
   app$wait_for_idle()
   expect_equal(ids(), c("item_0", "item_2", "item_3", "item_4", "item_1", "item_5", "item_6"))
   expect_equal(unname(groups()["item_1"]), "group_0")
@@ -313,7 +323,7 @@ test_that("groups can be added, joined through the item menu, moved as blocks an
   expect_equal(unname(purrr::map_int(items, ~ .x@hotkey)), 1:7)
 
   # ... and a grouped item out of it, right after the group
-  app$run_js("Shiny.setInputValue('rubric_module-item_2-group_choice', '', {priority: 'event'})")
+  item_event(app, "item_2", "group", "")
   app$wait_for_idle()
   expect_equal(ids(), c("item_0", "item_3", "item_4", "item_1", "item_2", "item_5", "item_6"))
   expect_true(is.na(groups()["item_2"]))

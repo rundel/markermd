@@ -432,9 +432,11 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
       grading_data_version(shiny::isolate(grading_data_version()) + 1L)
     }
 
-    # Per question: the item servers in display order (the source of truth
-    # for the item order and each item's group), the group servers keyed by
-    # group id, and the grade server
+    # Per question: the item handles in display order (rubric_item_handle(),
+    # the item's live state; the source of truth for the item order and each
+    # item's group), the group servers keyed by group id, and the grade
+    # server. "Item servers" below means these handles: items have no module
+    # servers, their row events arrive through input$item_event.
     question_item_servers = shiny::reactiveValues()
     question_group_servers = shiny::reactiveValues()
     question_grade_servers = shiny::reactiveValues()
@@ -472,16 +474,14 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
       names(group_of)[!is.na(group_of) & group_of == group_id]
     }
 
-    # Whether a group of a question is exclusive; handed to each item server,
-    # whose toggle button reads it reactively
-    group_exclusive_for = function(question_name) {
-      function(group_id) {
-        if (is.na(group_id)) {
-          return(FALSE)
-        }
-        server = question_group_servers[[question_name]][[group_id]]
-        !is.null(server) && isTRUE(server$group()@exclusive)
+    # Whether a group of a question is exclusive (an item in it gets a radio
+    # toggle, and selecting it deselects its siblings)
+    group_is_exclusive = function(question_name, group_id) {
+      if (is.na(group_id)) {
+        return(FALSE)
       }
+      server = question_group_servers[[question_name]][[group_id]]
+      !is.null(server) && isTRUE(server$group()@exclusive)
     }
 
     # Repositories with more than one of the given items selected, with the
@@ -514,167 +514,210 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
       redraw()
     }
 
-    # Wire the parent-side handlers for one rubric item server: moves within
-    # its run, the group menu, deletion, and the exclusive-group rule on a
-    # user toggle. Called for items added in this session and for items
-    # recreated from the database, so loaded items respond to their buttons
-    # too.
-    #
-    # question_name: the item's question
-    # server: the item server
-    wire_item_signals = function(question_name, server) {
-      handles = list()
+    # --- Item events -----------------------------------------------------------
+    # Items have no module servers: each is a rubric_item_handle() in
+    # question_item_servers, and every interaction with an item row arrives
+    # as one item_event ({item, action, value}; see rubric_item_editing_head())
+    # handled here. The question an item belongs to, by item id:
+    item_questions = new.env(parent = emptyenv())
 
-      # Move this item one position in the given direction (-1 up, 1 down)
-      # within its group, or among the top-level blocks when ungrouped,
-      # wrapping at the ends (see move_in_blocks()), then renumber
-      move_item = function(direction) {
-        servers = question_item_servers[[question_name]]
-        ids = names(servers)
-        new_ids = move_in_blocks(ids, item_groups_of(servers), server$id, direction)
-        if (identical(new_ids, ids)) {
-          return()
-        }
-        reorder_items(question_name, new_ids)
+    # Move an item one position in the given direction (-1 up, 1 down)
+    # within its group, or among the top-level blocks when ungrouped,
+    # wrapping at the ends (see move_in_blocks()), then renumber
+    move_item = function(question_name, server, direction) {
+      servers = question_item_servers[[question_name]]
+      ids = names(servers)
+      new_ids = move_in_blocks(ids, item_groups_of(servers), server$id, direction)
+      if (identical(new_ids, ids)) {
+        return()
       }
-
-      handles$move_up = shiny::observe({
-        move_item(-1)
-      }) |>
-        shiny::bindEvent(server$move_up_signal(), ignoreInit = TRUE)
-
-      handles$move_down = shiny::observe({
-        move_item(1)
-      }) |>
-        shiny::bindEvent(server$move_down_signal(), ignoreInit = TRUE)
-
-      # The group menu: move the item to the end of the chosen group, or out
-      # of its group (see move_item_to_group()). Moving into an exclusive
-      # group is refused while any repository would end up with two of its
-      # items selected, like turning the exclusive switch on.
-      handles$group = shiny::observe({
-        choice = server$group_signal()
-        target = if (is.null(choice) || !nzchar(choice)) NA_character_ else choice
-        item = server$item()
-        if (identical(item@group, target)) {
-          return()
-        }
-        if (!is.na(target)) {
-          group_server = question_group_servers[[question_name]][[target]]
-          if (is.null(group_server)) {
-            return()
-          }
-          if (isTRUE(group_server$group()@exclusive)) {
-            conflicts = selection_conflicts(
-              question_name, c(group_members(question_name, target), server$id)
-            )
-            if (nrow(conflicts) > 0) {
-              shiny::showModal(rubric_group_conflict_modal(
-                glue::glue("Cannot move this item into \"{group_server$group()@label}\""),
-                conflicts
-              ))
-              return()
-            }
-          }
-        }
-
-        servers = question_item_servers[[question_name]]
-        moved = move_item_to_group(names(servers), item_groups_of(servers), server$id, target)
-        item@group = target
-        server$update_item(item)
-        reorder_items(question_name, moved$ids)
-      }) |>
-        shiny::bindEvent(server$group_signal(), ignoreInit = TRUE)
-
-      # In an exclusive group, selecting an item deselects its selected
-      # siblings. Bound to the item's user-toggle signal rather than its
-      # state, so loading a repository's stored selections never triggers it.
-      handles$toggle = shiny::observe({
-        item = server$item()
-        if (!item@selected || is.na(item@group)) {
-          return()
-        }
-        group_server = question_group_servers[[question_name]][[item@group]]
-        if (is.null(group_server) || !isTRUE(group_server$group()@exclusive)) {
-          return()
-        }
-        for (sibling in question_item_servers[[question_name]]) {
-          if (identical(sibling$id, server$id)) {
-            next
-          }
-          other = sibling$item()
-          if (identical(other@group, item@group) && other@selected) {
-            other@selected = FALSE
-            sibling$update_item(other)
-          }
-        }
-      }) |>
-        shiny::bindEvent(server$toggle_signal(), ignoreInit = TRUE)
-
-      # Handle delete signal
-      handles$delete = shiny::observe({
-        question_item_servers[[question_name]][[server$id]] = NULL
-
-        # Remove the item's row and its grade-selection events; otherwise it
-        # reappears on the next app start via load_rubric_items(). When the
-        # item is selected somewhere, that grading is about to be lost, so an
-        # automatic snapshot is taken in the same transaction.
-        n_selected = item_selection_count(root, question_name, server$id)
-        snapshot = if (n_selected > 0) {
-          list(
-            trigger = "mark(): delete item",
-            summary = glue::glue(
-              "Deleted item \"{server$item()@description}\" of {question_name}, ",
-              "selected by {n_selected} repositor{if (n_selected == 1) 'y' else 'ies'}"
-            )
-          )
-        }
-        delete_rubric_item(root, question_name, server$id, snapshot = snapshot)
-        bump_grading_version()
-
-        # Reorder hotkeys for remaining items to ensure continuity. Each item's
-        # hotkey button self-renders from its server state, so remaining labels
-        # renumber without a parent re-render, and persistence keeps the database
-        # in sync with what is shown.
-        remaining_servers = question_item_servers[[question_name]]
-        if (length(remaining_servers) > 0) {
-          persist_item_order(root, question_name, remaining_servers)
-        }
-
-        # Remove only the deleted item; existing items keep their DOM (and any
-        # in-progress edit) instead of being rebuilt by a full re-render.
-        shiny::removeUI(selector = paste0("#", session$ns(server$id), "-container"))
-
-        # The item is gone, so destroy its handlers; repeated add/delete cycles
-        # would otherwise accumulate dead observers for the session's lifetime.
-        for (handle in handles) {
-          handle$destroy()
-        }
-      }) |>
-        shiny::bindEvent(server$delete_signal(), ignoreInit = TRUE)
+      reorder_items(question_name, new_ids)
     }
 
-    # Create and register the module server for one rubric item: bind the
-    # module (module id == item id), store it under its question, wire the
-    # signals and reserve the id for the session. Shared by the startup
-    # loader, the add-item handler and the rubric import refresh.
+    # The group menu: move the item to the end of the chosen group, or out
+    # of its group (see move_item_to_group()). Moving into an exclusive
+    # group is refused while any repository would end up with two of its
+    # items selected, like turning the exclusive switch on.
+    #
+    # choice: The chosen group id, or "" / NULL for no group
+    set_item_group = function(question_name, server, choice) {
+      target = if (is.null(choice) || !nzchar(choice)) NA_character_ else choice
+      item = server$item()
+      if (identical(item@group, target)) {
+        return()
+      }
+      if (!is.na(target)) {
+        group_server = question_group_servers[[question_name]][[target]]
+        if (is.null(group_server)) {
+          return()
+        }
+        if (isTRUE(group_server$group()@exclusive)) {
+          conflicts = selection_conflicts(
+            question_name, c(group_members(question_name, target), server$id)
+          )
+          if (nrow(conflicts) > 0) {
+            shiny::showModal(rubric_group_conflict_modal(
+              glue::glue("Cannot move this item into \"{group_server$group()@label}\""),
+              conflicts
+            ))
+            return()
+          }
+        }
+      }
+
+      servers = question_item_servers[[question_name]]
+      moved = move_item_to_group(names(servers), item_groups_of(servers), server$id, target)
+      item@group = target
+      server$update_item(item)
+      reorder_items(question_name, moved$ids)
+    }
+
+    # A user toggle (button click or hotkey). In an exclusive group,
+    # selecting an item deselects its selected siblings; loading a
+    # repository's stored selections goes through update_item() instead, so
+    # it never triggers this.
+    toggle_item = function(question_name, server) {
+      item = server$item()
+      item@selected = !item@selected
+      server$update_item(item)
+      if (!item@selected || !group_is_exclusive(question_name, item@group)) {
+        return()
+      }
+      for (sibling in question_item_servers[[question_name]]) {
+        if (identical(sibling$id, server$id)) {
+          next
+        }
+        other = sibling$item()
+        if (identical(other@group, item@group) && other@selected) {
+          other@selected = FALSE
+          sibling$update_item(other)
+        }
+      }
+    }
+
+    # A points or description edit: persist it when it changes the item.
+    # The hotkey, group and selection are carried over untouched.
+    edit_item = function(question_name, server, description = NULL, points = NULL) {
+      item = server$item()
+      if (!is.null(description)) {
+        item@description = description
+      }
+      if (!is.null(points)) {
+        item@points = as.numeric(points)
+      }
+      if (identical(item@description, server$item()@description) && identical(item@points, server$item()@points)) {
+        return()
+      }
+      server$update_item(item)
+      save_rubric_item(root, question_name, server$id, item)
+    }
+
+    # Confirm before deleting: the item is shared across all repos and its
+    # recorded selections are removed everywhere, so a stray click mid-grading
+    # must not destroy it (same pattern as question deletion in template())
+    pending_delete = NULL
+    confirm_delete_item = function(question_name, server) {
+      pending_delete <<- list(question = question_name, id = server$id)
+      desc = server$item()@description
+      label = if (nchar(trimws(desc)) > 0) {
+        glue::glue("Delete the rubric item \"{desc}\"?")
+      } else {
+        "Delete this rubric item?"
+      }
+      shiny::showModal(shiny::modalDialog(
+        title = "Delete rubric item?",
+        paste(
+          label,
+          "This removes it, and any recorded selections of it, for every repository.",
+          "This cannot be undone."
+        ),
+        easyClose = TRUE,
+        footer = shiny::tagList(
+          shiny::modalButton("Cancel"),
+          shiny::actionButton(session$ns("confirm_delete_item"), "Delete", class = "btn-danger")
+        )
+      ))
+    }
+
+    delete_item = function(question_name, server) {
+      question_item_servers[[question_name]][[server$id]] = NULL
+      rm(list = server$id, envir = item_questions)
+
+      # Remove the item's row and its grade-selection events; otherwise it
+      # reappears on the next app start via load_rubric_items(). When the
+      # item is selected somewhere, that grading is about to be lost, so an
+      # automatic snapshot is taken in the same transaction.
+      n_selected = item_selection_count(root, question_name, server$id)
+      snapshot = if (n_selected > 0) {
+        list(
+          trigger = "mark(): delete item",
+          summary = glue::glue(
+            "Deleted item \"{server$item()@description}\" of {question_name}, ",
+            "selected by {n_selected} repositor{if (n_selected == 1) 'y' else 'ies'}"
+          )
+        )
+      }
+      delete_rubric_item(root, question_name, server$id, snapshot = snapshot)
+      bump_grading_version()
+
+      # Renumber the remaining items' hotkeys (the toggle buttons are
+      # patched in place) and keep the database in step with what is shown
+      remaining_servers = question_item_servers[[question_name]]
+      if (length(remaining_servers) > 0) {
+        persist_item_order(root, question_name, remaining_servers)
+      }
+
+      # Remove only the deleted item; existing items keep their DOM (and any
+      # in-progress edit) instead of being rebuilt by a full re-render
+      shiny::removeUI(selector = paste0("#", session$ns(server$id), "-container"))
+    }
+
+    shiny::observe({
+      event = input$item_event
+      question_name = item_questions[[event$item]]
+      if (is.null(question_name)) {
+        return()
+      }
+      server = question_item_servers[[question_name]][[event$item]]
+      if (is.null(server)) {
+        return()
+      }
+      switch(event$action,
+        toggle = toggle_item(question_name, server),
+        move_up = move_item(question_name, server, -1),
+        move_down = move_item(question_name, server, 1),
+        group = set_item_group(question_name, server, event$value),
+        delete = confirm_delete_item(question_name, server),
+        description = edit_item(question_name, server, description = as.character(event$value)),
+        points = if (is.numeric(event$value)) edit_item(question_name, server, points = event$value)
+      )
+    }) |>
+      shiny::bindEvent(input$item_event)
+
+    shiny::observe({
+      shiny::removeModal()
+      pending = pending_delete
+      pending_delete <<- NULL
+      shiny::req(pending)
+      server = question_item_servers[[pending$question]][[pending$id]]
+      if (!is.null(server)) {
+        delete_item(pending$question, server)
+      }
+    }) |>
+      shiny::bindEvent(input$confirm_delete_item)
+
+    # Create and register the state handle for one rubric item, store it
+    # under its question and reserve the id for the session. Shared by the
+    # startup loader, the add-item handler and the rubric import refresh.
     #
     # question_name: Question the item belongs to
-    # item_id: Database item id, used as the module server id
+    # item_id: Database item id
     # item: markermd_rubric_item S7 object
 
     add_question_item_server = function(question_name, item_id, item) {
-      server = mark_rubric_item_server(
-        item_id,
-        item,
-        collection_path = root,
-        question_name = question_name,
-        item_id = item_id,
-        group_exclusive = group_exclusive_for(question_name),
-        badge = function() agent_badges()[[item_id]]
-      )
+      server = rubric_item_handle(item_id, item)
       question_item_servers[[question_name]][[item_id]] = server
-      wire_item_signals(question_name, server)
+      assign(item_id, question_name, envir = item_questions)
       register_session_id(item_id)
       server
     }
@@ -916,7 +959,8 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
     # The item list as blocks (see rubric_blocks()): ungrouped items and
     # groups wrapping their members, then the groups with no members. Item
     # rows keep their own markup, so the hotkeys (matched by button label)
-    # and the item modules are untouched by grouping.
+    # are untouched by grouping. The wrapper routes the rows' events (see
+    # rubric_item_container_attrs()).
     output$rubric_items_ui = shiny::renderUI({
       shiny::req(input$question_select)
       if (!identical(items_owner(), "grade")) {
@@ -930,7 +974,11 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
       result = question_score()
 
       item_ui = function(item_id) {
-        mark_rubric_item_ui(session$ns(item_id), servers[[item_id]]$item(), groups = groups)
+        item = servers[[item_id]]$item()
+        mark_rubric_item_ui(
+          session$ns(item_id), item,
+          exclusive = !is.na(item@group) && isTRUE(groups[[item@group]]@exclusive)
+        )
       }
       block_ui = function(block) {
         if (block$type == "item") {
@@ -945,10 +993,14 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
         block$type == "group" && length(block$ids) == 0
       }, logical(1))
 
-      shiny::tagList(
-        shiny::div(id = session$ns("rubric_blocks"), lapply(blocks[!is_empty_group], block_ui)),
-        shiny::div(id = session$ns("rubric_empty_groups"), lapply(blocks[is_empty_group], block_ui))
-      )
+      do.call(shiny::div, c(
+        list(
+          id = session$ns("rubric_item_rows"),
+          shiny::div(id = session$ns("rubric_blocks"), lapply(blocks[!is_empty_group], block_ui)),
+          shiny::div(id = session$ns("rubric_empty_groups"), lapply(blocks[is_empty_group], block_ui))
+        ),
+        rubric_item_container_attrs(session$ns, groups)
+      ))
     }) |>
       shiny::bindEvent(redraw_ui(), input$question_select, items_owner())
     shiny::outputOptions(output, "rubric_items_ui", suspendWhenHidden = FALSE)
@@ -974,7 +1026,7 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
         item_ui = function(item_id) {
           n = counts[paste(question_name, item_id, sep = "\x1f")]
           mark_rubric_item_ui(
-            session$ns(item_id), servers[[item_id]]$item(), groups = groups,
+            session$ns(item_id), servers[[item_id]]$item(),
             selected_count = if (is.na(n)) 0L else unname(n),
             repo_count = length(repos)
           )
@@ -1001,7 +1053,7 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
             class = "small",
             fillable = FALSE,
             if (length(blocks) == 0) shiny::div(class = "text-muted", "No items yet."),
-            lapply(blocks, block_ui),
+            do.call(shiny::div, c(list(lapply(blocks, block_ui)), rubric_item_container_attrs(session$ns, groups))),
             shiny::div(
               class = "d-flex align-items-center gap-3 mt-2",
               shiny::span(
@@ -1082,9 +1134,7 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
       shiny::insertUI(
         selector = paste0("#", session$ns("rubric_blocks")),
         where = "beforeEnd",
-        ui = mark_rubric_item_ui(
-          session$ns(server$id), new_item, groups = groups_of(question_name)
-        )
+        ui = mark_rubric_item_ui(session$ns(server$id), new_item)
       )
       invisible(server)
     }
@@ -1526,6 +1576,52 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
       grading_data_version()
       external_version()
       with_database(root, function(conn) pair_agent_badges(conn, input$question_select, selected_repo()))
+    })
+
+    # The Grade tab's item rows are drawn once and patched in place after
+    # each flush (so a redraw in the same flush cannot clobber a patch): the
+    # toggle buttons whenever an item's selection or hotkey, or a group's
+    # exclusivity, changes, and the agent badges whenever they change
+    shiny::observe({
+      shiny::req(input$question_select)
+      redraw_ui()
+      if (!identical(items_owner(), "grade")) {
+        return()
+      }
+      question_name = input$question_select
+      payload = lapply(unname(question_item_servers[[question_name]]), function(server) {
+        item = server$item()
+        c(
+          list(id = session$ns(paste0(server$id, "-hotkey_btn"))),
+          rubric_item_button_state(item, group_is_exclusive(question_name, item@group))
+        )
+      })
+      session$onFlushed(function() {
+        session$sendCustomMessage("markermd_item_buttons", payload)
+      }, once = TRUE)
+    })
+
+    shiny::observe({
+      redraw_ui()
+      if (!identical(items_owner(), "grade")) {
+        return()
+      }
+      badges = agent_badges()
+      titles = structure(list(), names = character(0))
+      for (item_id in names(badges)) {
+        value = badges[[item_id]]
+        who = if (is.na(value$fn)) value$actor else paste0(value$actor, " (", value$fn, ")")
+        titles[[session$ns(paste0(item_id, "-agent_badge"))]] = paste0(
+          "Selected by ", who, " and not yet reviewed; any change to this question clears it"
+        )
+      }
+      session$onFlushed(function() {
+        session$sendCustomMessage("markermd_agent_badges", list(
+          container = session$ns("rubric_items_container"),
+          icon = as.character(fa_icon("robot")),
+          badges = titles
+        ))
+      }, once = TRUE)
     })
 
     # Store previous selection states to detect changes

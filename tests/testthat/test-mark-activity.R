@@ -30,7 +30,7 @@ test_that("changes made outside the app show up live, badged and in Activity", {
   )
 
   # Any change to the pair in the app clears the badge
-  app$click("rubric_module-item_0-hotkey_btn")
+  app$click(selector = "#rubric_module-item_0-hotkey_btn")
   app$wait_for_js("!document.querySelector('#rubric_module-item_1-agent_badge .agent-badge')", timeout = 10000)
 
   # The History timeline lists the call and the app's own grading next to

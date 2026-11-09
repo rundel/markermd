@@ -39,3 +39,14 @@ make_mark_fixture = function() {
 
   list(project = root)
 }
+
+# Send one rubric item event as the item rows' delegated handler does (see
+# rubric_item_editing_head()): action is "toggle", "move_up", "move_down",
+# "group", "delete", "description" or "points", value its payload
+item_event = function(app, item, action, value = NULL) {
+  payload = jsonlite::toJSON(
+    list(item = item, action = action, value = value, nonce = stats::runif(1)),
+    auto_unbox = TRUE, null = "null"
+  )
+  app$run_js(paste0("Shiny.setInputValue('rubric_module-item_event', ", payload, ", {priority: 'event'})"))
+}

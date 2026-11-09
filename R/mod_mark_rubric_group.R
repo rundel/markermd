@@ -3,10 +3,10 @@
 # Shiny module for one rubric item group in the marking app's Rubric pane: a
 # header row (icon, label, a bounds or pick-one chip, the live subtotal, and
 # the move and settings actions) wrapping its member items' rows. The items
-# stay ordinary item modules (see mod_mark_rubric_item.R); the group's
+# stay ordinary item rows (see mod_mark_rubric_item.R); the group's
 # settings are edited in a popover off the header and saved on blur, and its
 # structural actions (move up/down, ungroup) are signals the rubric module
-# acts on, mirroring mark_rubric_item_server(). The subtotal is patched in
+# acts on. The subtotal is patched in
 # place by the rubric module (markermd_update_group_subtotals) rather than
 # re-rendered, so in-progress item edits survive a selection change.
 
@@ -189,13 +189,19 @@ rubric_groups_js = function() {
           var chips = el.querySelector('.rubric-group-chips');
           if (chips) chips.innerHTML = msg.chips;
         }
-        var container = document.getElementById(msg.container);
-        if (container) {
-          var entries = container.querySelectorAll(
-            'a.rubric-group-menu-item[data-group=\"' + msg.group + '\"] .rubric-group-menu-label'
-          );
-          entries.forEach(function(label) { label.textContent = msg.label; });
-        }
+        // The item rows' group menus are built from their container's
+        // groups list when they open (see rubric_item_container_attrs())
+        document.querySelectorAll('[data-groups]').forEach(function(box) {
+          var groups = JSON.parse(box.dataset.groups || '[]');
+          var changed = false;
+          groups.forEach(function(g) {
+            if (g.id === msg.group) {
+              g.label = msg.label;
+              changed = true;
+            }
+          });
+          if (changed) box.dataset.groups = JSON.stringify(groups);
+        });
       });
 
       Shiny.addCustomMessageHandler('markermd_show_popover', function(msg) {
