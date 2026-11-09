@@ -1,0 +1,122 @@
+/*
+ * markermd's read-only code view (see markermd-code-view.js). Token colors
+ * follow Visual Studio's light "vs" palette. Both apps are
+ * light-themed, so there is no dark variant.
+ */
+.markermd-code-view {
+  --mm-code-font: var(--bs-font-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace);
+  --mm-code-size: 12px;
+  --mm-code-lh: 1.5;
+  --mm-gutter: 3ch;
+  --mm-bg: #ffffff;
+  --mm-fg: #1f2328;
+  --mm-gutter-fg: #8c959f;
+  --mm-gutter-rule: #d8dee4;
+  --mm-hl-bg: rgba(255, 235, 59, 0.22);
+  --mm-hl-edge: rgba(255, 193, 7, 0.9);
+  --mm-comment: #008000;
+  --mm-keyword: #0000ff;
+  --mm-string: #a31515;
+  --mm-number: #098658;
+  --mm-function: #795e26;
+  --mm-title: #0451a5;
+  --mm-attr: #e50000;
+  --mm-punct: #393a34;
+  --mm-tag: #800000;
+  --mm-selector: #800000;
+  position: relative;
+  overflow: auto;
+  background: var(--mm-bg);
+}
+
+.markermd-code-view > pre {
+  margin: 0;
+  padding: 4px 0;
+  background: transparent;
+  border: 0;
+  color: var(--mm-fg);
+  font-family: var(--mm-code-font);
+  font-size: var(--mm-code-size);
+  line-height: var(--mm-code-lh);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 4;
+}
+
+.markermd-code-view > pre > code {
+  display: block;
+  font: inherit;
+  color: inherit;
+  background: none;
+  padding: 0;
+  white-space: inherit;
+  word-break: normal;
+}
+
+.markermd-code-view .mm-line {
+  display: block;
+  position: relative;
+  min-height: calc(var(--mm-code-size) * var(--mm-code-lh));
+  padding-left: calc(var(--mm-gutter) + 1.6ch);
+  padding-right: 8px;
+  background-image: linear-gradient(var(--mm-gutter-rule), var(--mm-gutter-rule));
+  background-size: 1px 100%;
+  background-position: calc(var(--mm-gutter) + 0.6ch) 0;
+  background-repeat: no-repeat;
+}
+
+.markermd-code-view .mm-line::before {
+  content: attr(data-n);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--mm-gutter);
+  text-align: right;
+  color: var(--mm-gutter-fg);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* The question highlight: a whole-line band with an amber edge */
+.markermd-code-view .mm-line.mm-hl {
+  background-color: var(--mm-hl-bg);
+  box-shadow: inset 3px 0 0 var(--mm-hl-edge);
+}
+
+.markermd-code-view .token.comment,
+.markermd-code-view .token.prolog,
+.markermd-code-view .token.doctype,
+.markermd-code-view .token.cdata { color: var(--mm-comment); }
+.markermd-code-view .token.keyword,
+.markermd-code-view .token.boolean,
+.markermd-code-view .token.important,
+.markermd-code-view .token.constant { color: var(--mm-keyword); }
+.markermd-code-view .token.string,
+.markermd-code-view .token.char,
+.markermd-code-view .token.url,
+.markermd-code-view .token.regex,
+.markermd-code-view .token.code-snippet,
+.markermd-code-view .token.code-block { color: var(--mm-string); }
+.markermd-code-view .token.number { color: var(--mm-number); }
+.markermd-code-view .token.function,
+.markermd-code-view .token.builtin { color: var(--mm-function); }
+.markermd-code-view .token.title { color: var(--mm-title); font-weight: 600; }
+.markermd-code-view .token.attr-name,
+.markermd-code-view .token.key,
+.markermd-code-view .token.atrule,
+.markermd-code-view .token.property,
+.markermd-code-view .token.variable { color: var(--mm-attr); }
+.markermd-code-view .token.punctuation,
+.markermd-code-view .token.operator,
+.markermd-code-view .token.entity { color: var(--mm-punct); }
+.markermd-code-view .token.tag { color: var(--mm-tag); }
+.markermd-code-view .token.selector,
+.markermd-code-view .token.class-name { color: var(--mm-selector); }
+.markermd-code-view .token.bold { font-weight: 600; }
+.markermd-code-view .token.italic { font-style: italic; }
+.markermd-code-view .token.chunk-header .token.keyword,
+.markermd-code-view .token.inline-engine { color: var(--mm-keyword); font-weight: 600; }
+/* Code inside a chunk or inline R uses its own language's colors, not
+   markdown's code color */
+.markermd-code-view .token.chunk-code,
+.markermd-code-view .token.inline-code { color: var(--mm-fg); }
