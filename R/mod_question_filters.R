@@ -1,15 +1,20 @@
 # The filter-groups row machinery for the question module: a two-level
-# dynamic collection (groups keyed "1".."g", each holding conditions keyed
-# "1".."k") kept in sync with the question state. Group controls use
-# filter_group_<gid>-<field> ids and conditions filter_<gid>_<cid>-<field>
-# ids, built by filter_group_ui()/filters_ui_direct(). Like the rules machine
-# in mod_question_rules.R (its structural twin), this is a plain wiring
-# function on the question module's own session, not a nested Shiny module.
+# dynamic collection (groups keyed by a stable group key, each holding
+# conditions keyed by a stable condition key) kept in sync with the question
+# state. Keys are minted from monotonic counters and never reused or
+# renumbered (see mod_question_rows.R); the list order is the display order
+# and the question state holds the groups and conditions as unnamed lists in
+# that order. Group controls use filter_group_<gid>-<field> ids and
+# conditions filter_<gid>_<cid>-<field> ids, built by
+# filter_group_ui()/filters_ui_direct(). Like the rules machine in
+# mod_question_rules.R (its structural twin), this is a plain wiring function
+# on the question module's own session, not a nested Shiny module.
 
 # Convert the keyed filters_list structure into the question's list of
 # markermd_filter_group objects
 #
-# groups: Named list keyed "1".."g" of list(negate =, conditions =) entries
+# groups: Named list keyed by group key of list(negate =, conditions =,
+#   next_cond =) entries
 
 filter_groups_from_keyed = function(groups) {
   lapply(unname(groups), function(group) {
@@ -30,8 +35,9 @@ filter_groups_from_keyed = function(groups) {
 question_filters_server = function(input, output, session, state, ast) {
 
   # Filter management. filters_list mirrors rules_list but is two-level:
-  # group ids ("1".."g") each holding list(negate = logical, conditions =
-  # named list of markermd_filter_condition keyed "1".."k").
+  # group keys each holding list(negate = logical, conditions = named list of
+  # markermd_filter_condition keyed by condition key, next_cond = the next
+  # condition key to mint in this group). next_group_id only ever grows.
   filters_list = shiny::reactiveVal(list())
   next_group_id = shiny::reactiveVal(1L)
 
@@ -63,7 +69,8 @@ question_filters_server = function(input, output, session, state, ast) {
         }
         loaded_groups[[as.character(i)]] = list(
           negate = group@negate,
-          conditions = loaded_conditions
+          conditions = loaded_conditions,
+          next_cond = length(loaded_conditions) + 1L
         )
       }
       filters_list(loaded_groups)
@@ -73,10 +80,7 @@ question_filters_server = function(input, output, session, state, ast) {
   }, priority = 1000)  # High priority to run before other observers
 
   # Seen registry for the per-condition node-type multiselects, keyed
-  # "<gid>_<cid>". Unlike the rules machine, stale keys after re-indexing are
-  # harmless here (the deliberate-clear branch keeps the stored value and
-  # merely re-syncs the widget to it), so no remap on delete (see the policy
-  # note on make_seen_registry in mod_question_rows.R)
+  # "<gid>_<cid>" (see make_seen_registry in mod_question_rows.R)
   filter_values_seen = make_seen_registry()
 
   # Capture the current input values for a single filter condition into a new
@@ -149,37 +153,29 @@ question_filters_server = function(input, output, session, state, ast) {
     groups
   }
 
-  # Freeze every group and condition input for the given keyed groups, called
-  # by the structural observers after they capture pending edits and before
-  # the re-render (the filters-side twin of freeze_rule_inputs). Structural
-  # changes remap group/condition ids (deletes shift survivors down; adds may
-  # reuse a previously vacated slot), so the input-updates observer would
-  # otherwise read the pre-change widgets' stale inputs under the new ids in
-  # this same flush, clobbering the re-mapped groups. Freezing silences the
-  # stale reads for the rest of the flush, and the client re-reports every
-  # frozen input once the re-rendered widgets bind, even when unchanged.
-  freeze_filter_inputs = function(groups) {
-    for (group_id in names(groups)) {
-      shiny::freezeReactiveValue(input, paste0("filter_group_", group_id, "-negate"))
-      for (cond_id in names(groups[[group_id]]$conditions)) {
-        for (field in c("type", "value", "negate")) {
-          shiny::freezeReactiveValue(input, paste0("filter_", group_id, "_", cond_id, "-", field))
-        }
-      }
-    }
+  # The seen-registry keys of every condition in a group
+  #
+  # group_id: Character. The group key
+  # group: The group's filters_list entry
+
+  group_seen_keys = function(group_id, group) {
+    paste0(group_id, "_", names(group$conditions))
   }
 
-  # Add filter group button observer
+  # Add filter group button observer. No input is frozen around the
+  # structural re-renders in this machine (apart from the type-change freeze
+  # in capture_filter_inputs): surviving rows keep their keys, so the inputs
+  # the re-rendered widgets report are the ones already stored under them.
   shiny::observe({
     groups = capture_all_filter_inputs(filters_list())
 
     group_id = next_group_id()
     groups[[as.character(group_id)]] = list(
       negate = FALSE,
-      conditions = list("1" = new_markermd_filter_condition())
+      conditions = list("1" = new_markermd_filter_condition()),
+      next_cond = 2L
     )
 
-    freeze_filter_inputs(groups)
     set_filters_state(groups)
     next_group_id(group_id + 1L)
     filters_render$bump()
@@ -190,34 +186,41 @@ question_filters_server = function(input, output, session, state, ast) {
   # observers and "c<gid>_<cid>" for per-condition delete observers
   filter_observers = shiny::reactiveVal(list())
 
-  # Create the add-condition and delete observers for a filter group
+  # Create the add-condition and delete observers for a filter group. An
+  # event for a group key no longer in the list (a second click on a group
+  # already deleted) is dropped, since the key can only ever have meant that
+  # group.
   #
-  # group_id: Character. The group ID to create observers for
+  # group_id: Character. The group key to create observers for
 
   create_filter_group_observers = function(group_id) {
     add_observer = shiny::observe({
+      if (!group_id %in% names(filters_list())) {
+        return()
+      }
       groups = capture_all_filter_inputs(filters_list())
 
-      conditions = groups[[group_id]]$conditions
-      conditions[[as.character(length(conditions) + 1L)]] = new_markermd_filter_condition()
-      groups[[group_id]]$conditions = conditions
+      group = groups[[group_id]]
+      group$conditions[[as.character(group$next_cond)]] = new_markermd_filter_condition()
+      group$next_cond = group$next_cond + 1L
+      groups[[group_id]] = group
 
-      freeze_filter_inputs(groups)
       set_filters_state(groups)
       filters_render$bump()
     }) |>
       shiny::bindEvent(input[[paste0("filter_group_", group_id, "-add_condition")]], ignoreInit = TRUE)
 
     delete_observer = shiny::observe({
-      pre_groups = capture_all_filter_inputs(filters_list())
+      if (!group_id %in% names(filters_list())) {
+        return()
+      }
+      groups = capture_all_filter_inputs(filters_list())
 
-      groups = pre_groups
+      filter_values_seen$forget(group_seen_keys(group_id, groups[[group_id]]))
       groups[[group_id]] = NULL
-      groups = reindex_keys(groups)
+      if (length(groups) == 0) groups = list()
 
-      freeze_filter_inputs(pre_groups)
       set_filters_state(groups)
-      next_group_id(length(groups) + 1L)
       filters_render$bump()
     }) |>
       shiny::bindEvent(input[[paste0("filter_group_", group_id, "-delete")]], ignoreInit = TRUE)
@@ -226,28 +229,31 @@ question_filters_server = function(input, output, session, state, ast) {
   }
 
   # Create a delete observer for a specific filter condition. Deleting a
-  # group's last condition deletes the group.
+  # group's last condition deletes the group. An event for a condition key no
+  # longer in its group is dropped.
   #
-  # group_id: Character. The group ID containing the condition
-  # cond_id: Character. The condition ID to create the observer for
+  # group_id: Character. The group key containing the condition
+  # cond_id: Character. The condition key to create the observer for
 
   create_filter_condition_observer = function(group_id, cond_id) {
     shiny::observe({
-      pre_groups = capture_all_filter_inputs(filters_list())
+      current = filters_list()
+      if (!group_id %in% names(current) || !cond_id %in% names(current[[group_id]]$conditions)) {
+        return()
+      }
+      groups = capture_all_filter_inputs(current)
 
-      groups = pre_groups
+      filter_values_seen$forget(paste0(group_id, "_", cond_id))
       conditions = groups[[group_id]]$conditions
       conditions[[cond_id]] = NULL
 
       if (length(conditions) == 0) {
         groups[[group_id]] = NULL
-        groups = reindex_keys(groups)
-        next_group_id(length(groups) + 1L)
+        if (length(groups) == 0) groups = list()
       } else {
-        groups[[group_id]]$conditions = reindex_keys(conditions)
+        groups[[group_id]]$conditions = conditions
       }
 
-      freeze_filter_inputs(pre_groups)
       set_filters_state(groups)
       filters_render$bump()
     }) |>

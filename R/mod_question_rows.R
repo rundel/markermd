@@ -1,17 +1,12 @@
 # Shared mechanics for the question module's dynamic row machines (the rules
 # machine in mod_question_rules.R and the filters machine in
-# mod_question_filters.R). Both keep a keyed list of rows ("1".."n") whose
-# structured inputs are captured back into state before any structural
-# change; these helpers hold the pieces of that pattern that carry no
-# per-machine policy, so the invariants live in one place.
-
-# Re-key a list sequentially as "1".."n" (positional row ids)
-#
-# x: A named list to re-key
-
-reindex_keys = function(x) {
-  stats::setNames(unname(x), as.character(seq_along(x)))
-}
+# mod_question_filters.R). Both keep a keyed list of rows whose keys are
+# stable: a row's key is minted from a monotonic counter when the row is
+# created and is never reused or renumbered within the session, so a row's
+# input ids stay bound to that row for its whole life and the list order
+# alone carries the row order. Structured inputs are captured back into state
+# before any structural change; these helpers hold the pieces of that pattern
+# that carry no per-machine policy, so the invariants live in one place.
 
 # Structural render trigger: bump() on load/add/delete (and edits that swap a
 # row's control) so the row UI re-renders on structural changes but not on
@@ -31,27 +26,20 @@ make_render_trigger = function() {
   )
 }
 
-# Seen-widget registry for asynchronously initialising selectize
+# Seen-widget registry for asynchronously initializing selectize
 # multiselects: an empty multiselect reports NULL, which is also the
-# not-yet-initialised state, so a key is noted once its widget has reported
-# a non-NULL value at least once. A later NULL for a noted key is a
-# deliberate clear; for an un-noted key it means the widget has not reported
-# yet, so the stored value must be kept. Keys are positional row ids;
-# bookkeeping only, so reads/writes are isolated from reactivity.
-#
-# Whether stale keys after a delete's re-indexing are harmful depends on the
-# machine's NULL-when-seen semantics, so the remap policy deliberately
-# differs between the two machines:
-# - The RULES machine treats a deliberate clear as the meaningful catch-all
-#   "Any node", so a stale key would turn a not-yet-reported widget's NULL
-#   into a spurious clear; it calls remap() on every delete.
-# - The FILTERS machine treats an empty kind set as invalid (it would match
-#   nothing), keeps the stored value, and snaps the widget back to it, so a
-#   stale key cannot corrupt state; it does not remap.
+# not-yet-initialized state, so a key is noted once its widget has reported
+# a non-NULL value at least once. What a later NULL for a noted key means is
+# the machine's call (the rules machine reads it as the deliberate clear
+# "Any node", the filters machine keeps the stored kinds since an empty kind
+# set would match nothing); for an un-noted key it means the widget has not
+# reported yet, so the stored value must be kept. Keys are the stable row
+# keys, so a deleted row's note can never be inherited by another row;
+# forget() just keeps the registry tidy. Bookkeeping only, so reads/writes
+# are isolated from reactivity.
 #
 # Returns list(note = function(key), has = function(key),
-# remap = function(surviving_keys) mapping the k-th surviving old key to new
-# key k and dropping the rest)
+# forget = function(keys))
 
 make_seen_registry = function() {
   seen = shiny::reactiveVal(character(0))
@@ -65,9 +53,8 @@ make_seen_registry = function() {
     has = function(key) {
       key %in% shiny::isolate(seen())
     },
-    remap = function(surviving_keys) {
-      cur = shiny::isolate(seen())
-      seen(as.character(which(surviving_keys %in% cur)))
+    forget = function(keys) {
+      seen(setdiff(shiny::isolate(seen()), keys))
     }
   )
 }

@@ -1,9 +1,12 @@
 # The validation-rules row machinery for the question module: a dynamic
-# collection of rule rows (rule_<id>-<field> inputs) kept in sync with the
-# question state. Like ast_preview_observers(), this is a plain wiring
-# function operating on the question module's own session, not a nested Shiny
-# module: the structured input ids are built by rule_ui_direct() and read
-# directly off the module's input.
+# collection of rule rows (rule_<key>-<field> inputs) kept in sync with the
+# question state. Row keys are stable (minted once, never reused or
+# renumbered; see mod_question_rows.R), so a row's inputs always belong to
+# that row and the question state holds the rules as an unnamed list in row
+# order. Like ast_preview_observers(), this is a plain wiring function
+# operating on the question module's own session, not a nested Shiny module:
+# the structured input ids are built by rule_ui_direct() and read directly
+# off the module's input.
 
 # Small status badge from an evaluate_rule() result (or NULL). The message
 # rides in a bslib tooltip so it is reachable by keyboard and touch, not
@@ -38,14 +41,14 @@ rule_status_badge = function(status) {
 
 question_rules_server = function(input, output, session, state, ast) {
 
-  # Rule management - simplified working approach
+  # The rows, keyed by stable rule key in display order; next_rule_id only
+  # ever grows, so a deleted row's key (and its input ids) is never reused
   rules_list = shiny::reactiveVal(list())
   next_rule_id = shiny::reactiveVal(1L)
 
   # Seen registry for the per-rule node-type multiselects: a NULL from a
-  # noted widget is a deliberate clear meaning the catch-all "Any node", so
-  # the delete path MUST remap the keys through its re-indexing (see the
-  # policy note on make_seen_registry in mod_question_rows.R)
+  # noted widget is a deliberate clear meaning the catch-all "Any node" (see
+  # make_seen_registry in mod_question_rows.R)
   node_types_seen = make_seen_registry()
 
   # Structural render trigger: bumped on load/add/delete and verb changes
@@ -56,12 +59,14 @@ question_rules_server = function(input, output, session, state, ast) {
   # Live evaluation of every rule against the template's own document, through
   # the same evaluate_question_rules() grading uses (so a document-scope
   # question's rules evaluate against the whole document here as there, and a
-  # sections question without nodes fails here as there). Keyed by rule_id
-  # ("1".."k", matching the rules_list ordering) so per-rule status outputs can
-  # look up their result. Empty when no document/rules yet.
+  # sections question without nodes fails here as there). Keyed by the stable
+  # rule key (rules_list and state@rules are written together, in the same
+  # order) so per-rule status outputs can look up their result. Empty when no
+  # document/rules yet.
   rule_status = shiny::reactive({
     q = state()
     rules = q@rules
+    keys = names(rules_list())
     if (is.null(ast()) || length(rules) == 0) {
       return(list())
     }
@@ -89,7 +94,7 @@ question_rules_server = function(input, output, session, state, ast) {
         }
         res
       }),
-      as.character(seq_along(rules))
+      keys
     )
   })
 
@@ -158,11 +163,11 @@ question_rules_server = function(input, output, session, state, ast) {
     )
   }
 
-  # Write a keyed rules structure into rules_list and, unnamed, into the
-  # question state so consumers (per-rule status, serialization) update
-  # together (the rules-side twin of set_filters_state). The row keys are the
-  # editor's own; a named list would serialize as a mapping instead of the
-  # array the template schema requires.
+  # Write the keyed rows into rules_list and, unnamed, into the question
+  # state so consumers (per-rule status, serialization) update together (the
+  # rules-side twin of set_filters_state). The row keys are the editor's
+  # own; a named list would serialize as a mapping instead of the array the
+  # template schema requires.
   set_rules_state = function(rules) {
     rules_list(rules)
     cur_state = state()
@@ -188,24 +193,9 @@ question_rules_server = function(input, output, session, state, ast) {
     rules
   }
 
-  # Freeze every row input for the given rule ids, called by the structural
-  # observers after they capture pending edits and before the re-render.
-  # Structural changes remap row ids (deletes shift survivors down; adds may
-  # reuse a previously vacated slot), so the input-updates observer would
-  # otherwise read the pre-change widgets' stale inputs under the new ids in
-  # this same flush, clobbering the re-mapped rules. Freezing silences the
-  # stale reads for the rest of the flush, and the client re-reports every
-  # frozen input once the re-rendered widgets bind, even when the value is
-  # unchanged.
-  freeze_rule_inputs = function(rule_ids) {
-    for (rule_id in rule_ids) {
-      for (field in c("node_types", "verb", "values", "values_min", "values_max")) {
-        shiny::freezeReactiveValue(input, paste0("rule_", rule_id, "-", field))
-      }
-    }
-  }
-
-  # Add rule button observer
+  # Add rule button observer. No input is frozen around the re-render: the
+  # surviving rows keep their keys, so the inputs the re-rendered widgets
+  # report are the ones already stored under those keys.
   shiny::observe({
     rule_id = next_rule_id()
 
@@ -216,7 +206,6 @@ question_rules_server = function(input, output, session, state, ast) {
     # Create new rule with default values
     current_rules[[as.character(rule_id)]] = new_markermd_rule()
 
-    freeze_rule_inputs(names(current_rules))
     set_rules_state(current_rules)
 
     # Increment rule ID for next rule
@@ -231,9 +220,8 @@ question_rules_server = function(input, output, session, state, ast) {
   # Dynamic per-rule live-status output management (ids already wired)
   status_outputs = shiny::reactiveVal(character(0))
 
-  # Wire the live-status uiOutput for a rule. Reads rule_status() by rule_id
-  # reactively, so re-indexing on delete is transparent (id "1" always shows
-  # whichever rule now occupies slot 1).
+  # Wire the live-status uiOutput for a rule. Reads rule_status() by its
+  # stable key reactively.
   #
   # rule_id: Character. The rule ID to wire a status output for
 
@@ -243,43 +231,33 @@ question_rules_server = function(input, output, session, state, ast) {
     })
   }
 
-  # Create a delete observer for a specific rule
+  # Create a delete observer for a specific rule. A click for a key that is
+  # no longer in the list (a second click on a row already deleted in this
+  # session) is dropped, since the key can only ever have meant that row.
   #
-  # rule_id: Character. The rule ID to create observer for
+  # rule_id: Character. The rule key to create the observer for
 
   create_delete_observer = function(rule_id) {
     delete_input_id = paste0("rule_", rule_id, "-delete")
 
     observer = shiny::observe({
       current_rules = rules_list()
-      all_ids = names(current_rules)
+      if (!rule_id %in% names(current_rules)) {
+        return()
+      }
 
       # Before deletion, capture current input values for the surviving
       # rules, keeping stored values when a values input is absent or invalid
       preserved_rules = capture_all_rule_inputs(
-        current_rules[setdiff(all_ids, rule_id)]
+        current_rules[setdiff(names(current_rules), rule_id)]
       )
 
-      # Re-index preserved rules to maintain sequential numbering; state
-      # never sees a zero-length named list
-      reindexed = if (length(preserved_rules) > 0) reindex_keys(preserved_rules) else list()
+      # State never sees a zero-length named list
+      if (length(preserved_rules) == 0) preserved_rules = list()
 
-      # Remap the seen-widget bookkeeping through the same re-indexing: the
-      # k-th preserved rule takes id k. Stale ids would otherwise mark
-      # whichever rule now holds an old id as already seen, turning its
-      # not-yet-rendered widget's NULL into a deliberate clear ("Any node").
-      node_types_seen$remap(names(preserved_rules))
-
-      freeze_rule_inputs(all_ids)
-      set_rules_state(reindexed)
-
-      # Reset next rule ID for sequential numbering
-      next_rule_id(length(reindexed) + 1L)
+      node_types_seen$forget(rule_id)
+      set_rules_state(preserved_rules)
       rules_render$bump()
-
-      # The monitor observer will handle creating new observers for the updated rules_list
-      # No need for manual cleanup here since re-indexing changes rule IDs anyway
-
     }) |>
       shiny::bindEvent(input[[delete_input_id]], ignoreInit = TRUE)
 

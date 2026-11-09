@@ -96,7 +96,8 @@ rule_item_ui = function(rule = NULL, input_id, verb_inputs) {
 
 # Rule UI without server module (direct input handling)
 #
-# id: Character. The rule ID for input naming
+# id: Character. The row's input prefix ("rule_<key>"; the key is the row
+#   machine's stable rule key)
 # rule: markermd_rule S7 object. The rule to display
 # ns: Function. Namespace function for proper input scoping (optional)
 

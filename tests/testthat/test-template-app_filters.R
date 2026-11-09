@@ -94,11 +94,26 @@ test_that("Filters build a q2r expression and narrow the rule evaluation set", {
   )
   expect_match(rule_status_html(), "fa-xmark")
 
-  # Deleting both remaining conditions removes the group and the rule passes
+  # Deleting the first condition leaves the second under its own id, and a
+  # new group takes a fresh id rather than the vacated group 2
+  app$click("question_1-filter_1_1-delete")
+  app$wait_for_idle()
+  expect_equal(filter_expr(), 'select_children(nodes, has_text("quantile"))')
+  expect_equal(app$get_js("document.querySelectorAll('[id^=\"question_1-filter_1_1-\"]').length"), 0)
+
+  app$click("question_1-add_filter_group")
+  app$wait_for_idle()
+  expect_equal(
+    filter_expr(),
+    'select_children(nodes, has_text("quantile") | is(q2r::pandoc_div))'
+  )
+  expect_equal(app$get_js("document.querySelectorAll('[id^=\"question_1-filter_3_1-\"]').length > 0"), TRUE)
+  app$click("question_1-filter_group_3-delete")
+  app$wait_for_idle()
+
+  # Deleting the last condition removes the group and the rule passes
   # against the unfiltered section again
   app$click("question_1-filter_1_2-delete")
-  app$wait_for_idle()
-  app$click("question_1-filter_1_1-delete")
   app$wait_for_idle()
 
   expect_true(is.null(filter_expr()))

@@ -141,9 +141,9 @@ create_filter_value_input = function(type, value, value_id) {
 # add-condition (AND) button, the group negation toggle, and the delete-group
 # button
 #
-# group_id: Character. The group ID used in input naming
+# group_id: Character. The group's stable key, used in input naming
 # group: Keyed group entry: list(negate = logical, conditions = named list of
-#   markermd_filter_condition objects keyed by condition id "1".."k")
+#   markermd_filter_condition objects keyed by their stable condition keys)
 # ns: Function. Namespace function for proper input scoping
 
 filter_group_ui = function(group_id, group, ns) {
@@ -206,7 +206,7 @@ filter_group_ui = function(group_id, group, ns) {
 # Render all of a question's filter groups, interleaved with "or" separators
 #
 # groups: Named list of keyed group entries (each list(negate, conditions)),
-#   keyed by group id ("1".."g")
+#   keyed by the row machine's stable group keys, in display order
 # ns: Function. Namespace function for proper input scoping
 
 filters_ui_direct = function(groups, ns) {
