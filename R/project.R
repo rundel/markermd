@@ -930,6 +930,138 @@ rubric_import = function(path, project = ".", mode = c("append", "replace"), que
   invisible(rubric)
 }
 
+#' Reword or re-point one rubric item
+#'
+#' Changes the description and/or points of a single stored rubric item in
+#' place. The item keeps its id, position, hotkey and group, so every
+#' recorded selection of it (and so every repository's marks) carries over to
+#' the new wording: unlike replacing the question's rubric with
+#' [rubric_import()], nothing has to be re-recorded.
+#'
+#' @details
+#' The item is identified by its current description, matched verbatim as in
+#' [marks_set()] and [marks_import()]. A new description must be non-empty
+#' and must not equal another item's description in the same question, since
+#' descriptions identify items on import. Changing the points changes the
+#' score of every repository that has the item selected; use
+#' [snapshot_diff()] afterwards to review the effect.
+#'
+#' An automatic snapshot of the state being changed is taken in the same
+#' transaction (see [snapshot_create()]), and the change is recorded in the
+#' activity log (see [project_activity()]). A running [mark()] session picks
+#' the change up and offers to reload its rubric.
+#'
+#' @param question Question name from the project's template.
+#' @param item Current description of the item, matched verbatim.
+#' @param description New description, or `NULL` to keep the current one.
+#' @param points New point value, or `NULL` to keep the current one.
+#' @param project Path to the project directory. Defaults to the working directory.
+#' @param snapshot Whether to take an automatic snapshot before the change.
+#' @param summary Optional text recorded on the automatic snapshot and in the
+#'   activity log: what the change is and why.
+#'
+#' @return Invisibly, the updated [markermd_rubric_item].
+#' @seealso [rubric_import()], [rubric_export()], [marks_set()]
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' rubric_item_set("Document", "Repository check failed",
+#'   description = "The repository check did not complete successfully on the final submission",
+#'   project = "hw03",
+#'   summary = "Feedback review: clearer wording"
+#' )
+#' }
+rubric_item_set = function(question, item, description = NULL, points = NULL, project = ".",
+                           snapshot = TRUE, summary = NULL) {
+  proj = project_config(project)
+
+  for (field in c("question", "item")) {
+    value = get(field)
+    if (!is.character(value) || length(value) != 1 || is.na(value) || !nzchar(trimws(value))) {
+      cli::cli_abort("{.arg {field}} must be a single non-empty string.")
+    }
+  }
+  if (is.null(description) && is.null(points)) {
+    cli::cli_abort("Supply {.arg description}, {.arg points}, or both.")
+  }
+  if (!is.null(description) &&
+      (!is.character(description) || length(description) != 1 || is.na(description) || !nzchar(trimws(description)))) {
+    cli::cli_abort("{.arg description} must be a single non-empty string.")
+  }
+  if (!is.null(points) && (!is.numeric(points) || length(points) != 1 || !is.finite(points))) {
+    cli::cli_abort("{.arg points} must be a single finite number.")
+  }
+
+  question_names = project_question_names(proj@root)$names
+  if (!question %in% question_names) {
+    cli::cli_abort(c(
+      "Question {.val {question}} is not in this project's template.",
+      "i" = "Questions: {.val {question_names}}."
+    ))
+  }
+
+  items = load_rubric_items(proj@root, question)
+  descriptions = vapply(items, function(x) x@description, character(1))
+  matched = names(items)[descriptions == item]
+  if (length(matched) == 0) {
+    cli::cli_abort(c(
+      "{.val {question}} has no rubric item described {.val {item}}.",
+      "i" = "Descriptions are matched verbatim; list them with {.code rubric_export()}."
+    ))
+  }
+  if (length(matched) > 1) {
+    cli::cli_abort("{.val {question}} has {length(matched)} rubric items described {.val {item}}; cannot tell which to change.")
+  }
+  item_id = matched
+
+  updated = items[[item_id]]
+  if (!is.null(description)) {
+    if (description %in% descriptions[names(items) != item_id]) {
+      cli::cli_abort("{.val {question}} already has another rubric item described {.val {description}}.")
+    }
+    updated@description = description
+  }
+  if (!is.null(points)) {
+    updated@points = as.numeric(points)
+  }
+  if (identical(updated@description, items[[item_id]]@description) && identical(updated@points, items[[item_id]]@points)) {
+    cli::cli_alert_info("No change: {.val {question}} item {.val {item}} already has that description and points.")
+    return(invisible(updated))
+  }
+
+  call = as.character(glue::glue("rubric_item_set(question = '{question}', item = '{item}')"))
+  spec = import_snapshot_spec(snapshot, call, summary)
+  with_action(
+    proj@root, "rubric_item_set", call = call, summary = summary, parts = "rubric",
+    with_database(proj@root, function(conn) {
+      DBI::dbBegin(conn)
+      tryCatch({
+        snapshot_before_change(conn, proj@root, spec)
+        upsert_items(conn, question, item_id, updated)
+        DBI::dbCommit(conn)
+      }, error = function(e) {
+        DBI::dbRollback(conn)
+        cli::cli_abort("Failed to update the rubric item: {conditionMessage(e)}")
+      })
+    })
+  )
+
+  changes = c(
+    if (!identical(updated@description, item)) "description",
+    if (!identical(updated@points, items[[item_id]]@points)) "points"
+  )
+  n_selected = with_database(proj@root, function(conn) {
+    grades = latest_rows(conn, "grades", c("question_name", "assignment_repo", "item_id"))
+    sum(grades$question_name == question & grades$item_id == item_id & grades$selected == 1)
+  })
+  cli::cli_alert_success(
+    "Updated the {paste(changes, collapse = ' and ')} of {.val {question}} item {.val {updated@description}} (selected by {n_selected} repositor{?y/ies})."
+  )
+
+  invisible(updated)
+}
+
 # Student repository names for a project: the top-level directories under the
 # configured repos dir, matching how mark() enumerates repositories. Aborts
 # when no repos directory is configured or it does not exist, since marks

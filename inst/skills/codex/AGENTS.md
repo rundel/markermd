@@ -67,6 +67,9 @@ Headless entry points, all taking the project root:
   `rubric_import()`, `marks_export()` / `marks_import()` / `marks_set()`: move
   the template, rubric, and marks between the database and YAML. The export
   is the way to learn the current questions, items, and marks.
+- `rubric_item_set()`: reword one rubric item or change its points in place
+  (identified by its current description). The item keeps its id, so every
+  recorded selection carries over; this is how to fix an item's wording.
 - `export_scores()`, `export_comments()`, `export_marks()`: final outputs.
   Each records which snapshot of the grading it came from.
 - `assignment_outline()`: a document's sections with their exact Pandoc
@@ -252,7 +255,9 @@ questions:
   every recorded selection of the items across all repositories, and cannot
   be undone. Making an existing group exclusive while some repository has
   two of its items selected aborts the import. Export the stored rubric with
-  `rubric_export()`.
+  `rubric_export()`. To reword an item or change its points, use
+  `rubric_item_set()`, never a replace import: the replace drops every
+  recorded selection of the question's items.
 
 ### Marks (`format_version: "1.0"`)
 
@@ -327,9 +332,9 @@ repos:
 - Every change to grading state goes through the import functions or the
   apps, never through the SQLite file or hand-edited YAML that is not then
   imported.
-- Every import you run (and every `marks_set()`) gets a `summary =` saying
-  what it changes and why; it is recorded on the automatic snapshot the
-  import takes and in the activity log. After a change,
+- Every import you run (and every `marks_set()` and `rubric_item_set()`)
+  gets a `summary =` saying what it changes and why; it is recorded on the
+  automatic snapshot the import takes and in the activity log. After a change,
   report what it did with `snapshot_diff("latest")` rather than by
   describing the file you imported. Take a named snapshot
   (`snapshot_create(label =, summary =)`) before a multi-step change, and

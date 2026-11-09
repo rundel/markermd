@@ -222,3 +222,54 @@ test_that("export -> import round trip is faithful", {
   expect_equal(unname(purrr::map_dbl(items, ~ .x@points)), c(-2.5, 3))
   expect_equal(unname(purrr::map_chr(items, ~ .x@description)), c("Fractional", "Bonus"))
 })
+
+
+test_that("rubric_item_set rewords an item in place, keeping its selections", {
+  d = make_rubric_project()
+  markermd:::save_rubric_item(d, "Q1", "item_0", markermd_rubric_item(1L, -2, "Old wording"))
+  markermd:::save_rubric_item(d, "Q1", "item_1", markermd_rubric_item(2L, -1, "Other item"))
+  markermd:::save_grade_selection(d, "Q1", "hw01-team01", "item_0", TRUE)
+  n_snapshots = nrow(snapshot_list(d))
+
+  suppressMessages(rubric_item_set(
+    "Q1", "Old wording", description = "New wording", project = d, summary = "clearer wording"
+  ))
+
+  items = markermd:::load_rubric_items(d, "Q1")
+  expect_equal(names(items), c("item_0", "item_1"))
+  expect_equal(items$item_0@description, "New wording")
+  expect_equal(items$item_0@points, -2)
+  expect_equal(items$item_0@hotkey, 1L)
+  expect_equal(markermd:::load_grade_selections(d, "Q1", "hw01-team01"), list(item_0 = TRUE))
+
+  expect_equal(nrow(snapshot_list(d)), n_snapshots + 1)
+  activity = project_activity(d, app = FALSE)
+  row = activity[activity$fn == "rubric_item_set", ]
+  expect_equal(nrow(row), 1)
+  expect_equal(row$summary, "clearer wording")
+
+  suppressMessages(rubric_item_set("Q1", "New wording", points = -3, project = d, snapshot = FALSE))
+  expect_equal(markermd:::load_rubric_items(d, "Q1")$item_0@points, -3)
+  expect_equal(nrow(snapshot_list(d)), n_snapshots + 1)
+})
+
+
+test_that("rubric_item_set refuses unknown, ambiguous and clashing items", {
+  d = make_rubric_project()
+  markermd:::save_rubric_item(d, "Q1", "item_0", markermd_rubric_item(1L, -2, "A"))
+  markermd:::save_rubric_item(d, "Q1", "item_1", markermd_rubric_item(2L, -1, "B"))
+  markermd:::save_rubric_item(d, "Q2", "item_2", markermd_rubric_item(1L, -1, "Dup"))
+  markermd:::save_rubric_item(d, "Q2", "item_3", markermd_rubric_item(2L, -1, "Dup"))
+
+  expect_error(rubric_item_set("Q9", "A", description = "x", project = d), "not in this project's template")
+  expect_error(rubric_item_set("Q1", "Z", description = "x", project = d), "no rubric item described")
+  expect_error(rubric_item_set("Q2", "Dup", description = "x", project = d), "cannot tell which")
+  expect_error(rubric_item_set("Q1", "A", description = "B", project = d), "already has another")
+  expect_error(rubric_item_set("Q1", "A", project = d), "Supply")
+  expect_error(rubric_item_set("Q1", "A", description = "", project = d), "non-empty")
+  expect_error(rubric_item_set("Q1", "A", points = NA_real_, project = d), "finite")
+
+  n_actions = nrow(project_activity(d, app = FALSE))
+  expect_message(rubric_item_set("Q1", "A", description = "A", project = d), "No change")
+  expect_equal(nrow(project_activity(d, app = FALSE)), n_actions)
+})

@@ -14,7 +14,7 @@ The package is built around two apps:
 - `template()` authors a grading template: which document sections are the questions, and what structural rules each answer must satisfy.
 - `mark()` grades a collection of student repositories against that template with per-question rubrics.
 
-Around the apps, a set of helper functions (`validate_project()`, `parse_project()`, `scan_project()`, `template_import()` / `template_export()`, `rubric_import()` / `rubric_export()`, `marks_import()` / `marks_export()` / `marks_set()`, `export_marks()`) makes the entire workflow scriptable, and bundled agent skills (for Claude Code and Codex) can scaffold the template and rubric, repair submissions the strict parser rejects, or apply the rubric across all submissions as a first pass for human review.
+Around the apps, a set of helper functions (`validate_project()`, `parse_project()`, `scan_project()`, `template_import()` / `template_export()`, `rubric_import()` / `rubric_export()` / `rubric_item_set()`, `marks_import()` / `marks_export()` / `marks_set()`, `export_marks()`) makes the entire workflow scriptable, and bundled agent skills (for Claude Code and Codex) can scaffold the template and rubric, repair submissions the strict parser rejects, or apply the rubric across all submissions as a first pass for human review.
 
 ## Experimental status
 
