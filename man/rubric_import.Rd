@@ -44,7 +44,10 @@ limit on their number). This is the inverse of \code{\link[=rubric_export]{rubri
 }
 \details{
 With \code{mode = "append"} (the default) the file's items are added after each
-question's existing items. With \code{mode = "replace"} each affected question's
+question's existing items; since descriptions identify items in every
+exchange format, an append is refused when the file repeats a description
+the question already stores (reword stored items with \code{\link[=rubric_item_set]{rubric_item_set()}},
+or import only the new ones). With \code{mode = "replace"} each affected question's
 existing items and item groups are deleted first; this also deletes any
 recorded selections of those items, for every repository (recoverable
 only from the automatic snapshot, see below). A question's scoring setup

@@ -25,3 +25,12 @@ test_that("find_repo_assignment returns NA when no document matches", {
   dir.create(d, recursive = TRUE)
   expect_true(is.na(markermd:::find_repo_assignment(d, NULL, "\\.qmd$")))
 })
+
+test_that("a basename match at the repo root wins over a nested copy", {
+  d = normalizePath(tempfile("repo_"), winslash = "/", mustWork = FALSE)
+  dir.create(file.path(d, "a_old"), recursive = TRUE)
+  writeLines("current", file.path(d, "hw1.qmd"))
+  writeLines("old", file.path(d, "a_old", "hw1.qmd"))
+  found = markermd:::find_repo_assignment(d, "hw1.qmd", "\\.qmd$")
+  expect_equal(normalizePath(dirname(found), winslash = "/"), normalizePath(d, winslash = "/"))
+})

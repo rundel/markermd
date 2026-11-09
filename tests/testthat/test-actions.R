@@ -100,8 +100,10 @@ test_that("rubric_import keeps the rubric before and after for its diff", {
   d = make_action_project()
   rubric_path = tempfile(fileext = ".yaml")
   rubric_export(rubric_path, project = d)
+  # An append carries only the new item: re-importing the stored items would
+  # duplicate their descriptions, which the import refuses
   rubric = yaml::read_yaml(rubric_path)
-  rubric$questions[[2]]$items = c(rubric$questions[[2]]$items, list(list(points = -1, description = "Late")))
+  rubric$questions = list(list(name = rubric$questions[[2]]$name, items = list(list(points = -1, description = "Late"))))
   yaml::write_yaml(rubric, rubric_path)
 
   suppressMessages(rubric_import(rubric_path, project = d, summary = "add late item"))

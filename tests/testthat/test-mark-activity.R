@@ -57,8 +57,7 @@ test_that("changes made outside the app show up live, badged and in Activity", {
   rubric_path = tempfile(fileext = ".yaml")
   markermd::rubric_export(rubric_path, project = root)
   rubric = yaml::read_yaml(rubric_path)
-  q2 = which(vapply(rubric$questions, function(q) q$name, character(1)) == "Q2")
-  rubric$questions[[q2]]$items = c(rubric$questions[[q2]]$items, list(list(points = -1, description = "Late")))
+  rubric$questions = list(list(name = "Q2", items = list(list(points = -1, description = "Late"))))
   yaml::write_yaml(rubric, rubric_path)
   withr::with_envvar(c(MARKERMD_ACTOR = "codex"), {
     suppressMessages(markermd::rubric_import(rubric_path, project = root))

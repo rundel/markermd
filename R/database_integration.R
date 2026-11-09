@@ -756,6 +756,17 @@ apply_rubric_import_conn = function(conn, rubric, mode, reserved_ids = character
     kept_items = items_df_to_rubric_list(existing, question_name)
     kept_ids = names(kept_items)
 
+    # Descriptions identify items in every exchange format, so an append
+    # must not create a second item with a stored description
+    incoming = vapply(question$items, function(item) item@description, character(1))
+    clashing = unique(incoming[incoming %in% existing$description])
+    if (length(clashing) > 0) {
+      cli::cli_abort(c(
+        "Cannot append to question {.val {question_name}}: {cli::qty(length(clashing))}{?an item with this description is/items with these descriptions are} already stored: {.val {clashing}}.",
+        "i" = "Reword or re-point a stored item with {.code rubric_item_set()}, or import only the new items (or use {.code mode = \"replace\"})."
+      ))
+    }
+
     new_ids = next_item_ids(taken, length(question$items))
     taken = union(taken, new_ids)
     new_items = lapply(question$items, function(item) {

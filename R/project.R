@@ -833,7 +833,10 @@ rubric_export = function(path, project = ".", question = NULL, snapshot = NULL) 
 #'
 #' @details
 #' With `mode = "append"` (the default) the file's items are added after each
-#' question's existing items. With `mode = "replace"` each affected question's
+#' question's existing items; since descriptions identify items in every
+#' exchange format, an append is refused when the file repeats a description
+#' the question already stores (reword stored items with [rubric_item_set()],
+#' or import only the new ones). With `mode = "replace"` each affected question's
 #' existing items and item groups are deleted first; this also deletes any
 #' recorded selections of those items, for every repository (recoverable
 #' only from the automatic snapshot, see below). A question's scoring setup
@@ -1921,19 +1924,16 @@ find_repo_assignment = function(repo_dir, assignment_file, ext) {
   if (length(files) == 0) {
     return(NA_character_)
   }
+  # A document at the repo root wins over one nested in a subdirectory, for
+  # basename matches as much as for the fallback: recursive listing sorts
+  # some subdirectory paths ahead of root-level files
+  at_root = normalizePath(dirname(files), mustWork = FALSE) == normalizePath(repo_dir, mustWork = FALSE)
+  files = files[order(!at_root)]
   if (!is.null(assignment_file)) {
     match = files[basename(files) == assignment_file]
     if (length(match) >= 1) {
       return(match[1])
     }
-  }
-  # Prefer a document at the repo root over one nested in a subdirectory:
-  # recursive listing sorts some subdirectory paths ahead of root-level files.
-  root_files = files[
-    normalizePath(dirname(files), mustWork = FALSE) == normalizePath(repo_dir, mustWork = FALSE)
-  ]
-  if (length(root_files) >= 1) {
-    return(root_files[1])
   }
   files[1]
 }

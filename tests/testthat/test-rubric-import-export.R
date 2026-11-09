@@ -273,3 +273,17 @@ test_that("rubric_item_set refuses unknown, ambiguous and clashing items", {
   expect_message(rubric_item_set("Q1", "A", description = "A", project = d), "No change")
   expect_equal(nrow(project_activity(d, app = FALSE)), n_actions)
 })
+
+test_that("rubric_import append refuses a description the question already stores", {
+  d = make_rubric_project()
+  markermd:::save_rubric_item(d, "Q1", "item_0", markermd_rubric_item(1L, -3, "Imported issue A"))
+  expect_error(
+    suppressMessages(rubric_import(write_rubric_fixture_yaml("Q1"), project = d, mode = "append")),
+    "already stored"
+  )
+  items = markermd:::load_rubric_items(d, "Q1")
+  expect_equal(unname(purrr::map_chr(items, ~ .x@description)), "Imported issue A")
+  # a replace import is the way to re-import the same descriptions
+  suppressMessages(rubric_import(write_rubric_fixture_yaml("Q1"), project = d, mode = "replace"))
+  expect_length(markermd:::load_rubric_items(d, "Q1"), 2)
+})
