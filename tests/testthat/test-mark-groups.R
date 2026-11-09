@@ -1,35 +1,10 @@
 # shinytest2 coverage of rubric item groups in mark(): grouped rendering,
 # the live subtotals and cap badge, exclusive (radio) groups, and authoring
-# (Add Group, the item group menu, block moves, ungrouping). Self-contained
-# fixture, since testthat does not share helpers across files reliably.
+# (Add Group, the item group menu, block moves, ungrouping), on the shared
+# fixture in helper-mark-fixture.R.
 
 mgr_make_fixture = function() {
-  src = system.file("examples/test_assignment/repos", package = "markermd")
-  root = tempfile("markproj_")
-  repos = file.path(root, "repos")
-  dir.create(repos, recursive = TRUE)
-  file.copy(list.files(src, full.names = TRUE), repos, recursive = TRUE)
-
-  qmd = file.path(repos, "student1-excellent", "assignment.qmd")
-  ast = markermd:::parse_assignment_document(qmd)
-  template = markermd::markermd_template(
-    original_ast = ast,
-    questions = list(
-      markermd::markermd_question(
-        1L, "Q2", markermd::markermd_node_selection(node_ids = "question-2-basic-programming"),
-        list(markermd::markermd_rule(node_type = "Any node", verb = "has content", values = "quantile"))
-      ),
-      markermd::markermd_question(
-        2L, "Q3", markermd::markermd_node_selection(node_ids = "question-3-data-visualization"),
-        list(markermd::markermd_rule(node_type = "Any node", verb = "has content", values = "ggplot"))
-      )
-    ),
-    metadata = markermd::markermd_metadata()
-  )
-  markermd::write_template_yaml(template, file.path(root, "template.yaml"), source_path = qmd)
-
-  suppressMessages(markermd::init_project(root))
-  suppressMessages(markermd::project_set(root, template = "template.yaml"))
+  root = make_mark_fixture(report = FALSE)$project
 
   # Q2 out of 12 in negative mode: two ungrouped items (item_0, item_1), a
   # "Sample game" group floored at -2 (item_2..item_4) and an exclusive
@@ -276,7 +251,7 @@ test_that("groups can be added, joined through the item menu, moved as blocks an
   # opens its settings popover
   app$click("rubric_module-add_group")
   app$wait_for_idle()
-  Sys.sleep(1)
+  app$wait_for_js("document.querySelector('.popover .rubric-group-settings') !== null")
   expect_equal(unname(unlist(mgr_export(app, "rubric_group_labels"))), c("Sample game", "Write-up", "New group"))
   expect_true(app$get_js("document.querySelector('#rubric_module-rubric_empty_groups #rubric_module-group_2-container') !== null"))
   expect_equal(markermd:::load_item_groups(root, "Q2")$group_2@label, "New group")

@@ -6,31 +6,7 @@
 # and Q3, and marks for student1 (so the rubric import leaves an automatic
 # snapshot behind and there is state to restore)
 mh_make_fixture = function() {
-  src = system.file("examples/test_assignment/repos", package = "markermd")
-  root = tempfile("markproj_")
-  repos = file.path(root, "repos")
-  dir.create(repos, recursive = TRUE)
-  file.copy(list.files(src, full.names = TRUE), repos, recursive = TRUE)
-
-  qmd = file.path(repos, "student1-excellent", "assignment.qmd")
-  ast = markermd:::parse_assignment_document(qmd)
-  template = markermd::markermd_template(
-    original_ast = ast,
-    questions = list(
-      markermd::markermd_question(
-        1L, "Q2", markermd::markermd_node_selection(node_ids = "question-2-basic-programming"),
-        list(markermd::markermd_rule(node_type = "Any node", verb = "has content", values = "quantile"))
-      ),
-      markermd::markermd_question(
-        2L, "Q3", markermd::markermd_node_selection(node_ids = "question-3-data-visualization"),
-        list(markermd::markermd_rule(node_type = "Any node", verb = "has content", values = "ggplot"))
-      )
-    ),
-    metadata = markermd::markermd_metadata()
-  )
-  markermd::write_template_yaml(template, file.path(root, "template.yaml"), source_path = qmd)
-  suppressMessages(markermd::init_project(root))
-  suppressMessages(markermd::project_set(root, template = "template.yaml"))
+  root = make_mark_fixture(report = FALSE)$project
 
   rubric = file.path(root, "rubric.yaml")
   writeLines(c(

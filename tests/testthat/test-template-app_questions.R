@@ -64,8 +64,10 @@ test_that("Add 2 questions, delete 1", {
 
   app$wait_for_idle()
   app$click("question_2-delete_question")
-  # Deleting now requires confirming the modal
+  # Deleting now requires confirming the modal; wait for it to be shown
+  app$wait_for_js("!!document.querySelector('#shiny-modal.show #question_2-confirm_delete_question')")
   app$click("question_2-confirm_delete_question")
+  app$wait_for_idle()
 
   expect_equal(get_n_questions(app), 1)
 
@@ -92,8 +94,10 @@ test_that("Add 2 questions, delete 1, add 1", {
 
   app$wait_for_idle()
   app$click("question_2-delete_question")
-  # Deleting now requires confirming the modal
+  # Deleting now requires confirming the modal; wait for it to be shown
+  app$wait_for_js("!!document.querySelector('#shiny-modal.show #question_2-confirm_delete_question')")
   app$click("question_2-confirm_delete_question")
+  app$wait_for_idle()
 
   expect_equal(get_n_questions(app), 1)
 

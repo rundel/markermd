@@ -142,9 +142,9 @@ test_that("public and private comments autosave to their own channels", {
   app$set_inputs(main_navbar = "grade")
   app$wait_for_idle()
 
-  # Sleeps outlast the 1-second autosave debounce
+  # The autosave is debounced, so wait for the write rather than a fixed time
   app$set_inputs(`rubric_module-question_private_comment` = "internal note")
-  Sys.sleep(1.5)
+  wait_until(function() identical(markermd:::load_private_comment(fixture$project, "Q2", "student1-excellent"), "internal note"))
   app$wait_for_idle()
 
   expect_equal(
@@ -160,7 +160,7 @@ test_that("public and private comments autosave to their own channels", {
   expect_false(any(graded$question_name == "Q2" & graded$assignment_repo == "student1-excellent"))
 
   app$set_inputs(`rubric_module-question_comment` = "public feedback")
-  Sys.sleep(1.5)
+  wait_until(function() identical(markermd:::load_comment(fixture$project, "Q2", "student1-excellent"), "public feedback"))
   app$wait_for_idle()
 
   expect_equal(
