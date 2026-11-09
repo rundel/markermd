@@ -897,42 +897,56 @@ graded_question_pairs = function(collection_path, assignment_repos = NULL) {
 # assignment_repos: See graded_question_pairs()
 
 graded_question_pairs_conn = function(conn, assignment_repos = NULL) {
-  # Pairs with a selected rubric item among the most recent grade per item;
-  # a grade row naming an item that no longer exists (written by a session
-  # whose rubric was replaced under it) does not count
-  latest_grades = load_most_recent_grades(conn)
+  graded_pairs_from_frames(grading_frames_from_conn(conn), assignment_repos)
+}
+
+# The live database as a grading frame (see utils_mark_scores.R): every
+# question with a settings row or an item, the most recent grade per item
+# (by autoincrement id, since timestamps can tie within a second) where it
+# selects an item that still exists (a grade row naming an item that no
+# longer exists, written by a session whose rubric was replaced under it,
+# does not count), and the pairs whose most recent public comment is
+# non-empty. One read of each table, however many pairs are scored.
+#
+# conn: DBI connection object
+
+grading_frames_from_conn = function(conn) {
+  settings = load_all_settings(conn)
   items = load_all_items(conn)
-  latest_grades = latest_grades[
-    paste(latest_grades$question_name, latest_grades$item_id, sep = "\x1f") %in%
-      paste(items$question_name, items$item_id, sep = "\x1f"),
-    , drop = FALSE
-  ]
-  selected_pairs = unique(latest_grades[
-    latest_grades$selected == 1,
-    c("question_name", "assignment_repo"),
-    drop = FALSE
-  ])
+  groups = load_all_item_groups(conn)
 
-  # Most recent comment per pair, kept when it is non-empty
-  comment_pairs = nonempty_comments(load_most_recent_comments(conn))[
-    , c("question_name", "assignment_repo"), drop = FALSE
-  ]
+  question_names = unique(c(settings$question_name, items$question_name))
+  questions = lapply(question_names, function(question_name) {
+    state = db_row_to_grade_state(settings[settings$question_name == question_name, , drop = FALSE])
+    list(
+      items = items_df_to_rubric_list(items, question_name),
+      groups = groups_df_to_list(groups, items, question_name),
+      state = if (is.null(state)) default_grade_state() else state
+    )
+  })
+  names(questions) = question_names
 
-  pairs = rbind(selected_pairs, comment_pairs)
+  latest_grades = load_most_recent_grades(conn)
+  known = paste(latest_grades$question_name, latest_grades$item_id, sep = "\x1f") %in%
+    paste(items$question_name, items$item_id, sep = "\x1f")
+  selected = latest_grades[known & latest_grades$selected == 1, , drop = FALSE]
 
-  if (length(assignment_repos) > 0) {
-    settings = load_all_settings(conn)
-    optional_questions = settings$question_name[is_true_flag(settings$optional)]
-    if (length(optional_questions) > 0) {
-      pairs = rbind(pairs, expand.grid(
-        question_name = optional_questions,
-        assignment_repo = assignment_repos,
-        stringsAsFactors = FALSE
-      ))
-    }
-  }
+  comments = nonempty_comments(load_most_recent_comments(conn))
 
-  unique(pairs)
+  list(
+    questions = questions,
+    selections = data.frame(
+      question_name = as.character(selected$question_name),
+      assignment_repo = as.character(selected$assignment_repo),
+      item_id = as.character(selected$item_id),
+      stringsAsFactors = FALSE
+    ),
+    comment_pairs = data.frame(
+      question_name = as.character(comments$question_name),
+      assignment_repo = as.character(comments$assignment_repo),
+      stringsAsFactors = FALSE
+    )
+  )
 }
 
 # Elementwise TRUE test for an integer/logical column that may be absent
@@ -992,7 +1006,8 @@ marked_question_pairs_conn = function(conn) {
 # total of 10 when a question has no settings row. The stored current_score
 # is ephemeral app state and is never used. A pair that does not count as
 # graded (see graded_question_pairs()) gets NA rather than a misleading 0 or
-# full marks.
+# full marks. The same scorer, score_pairs_from_frames(), gives a snapshot
+# its cached scores (score_snapshot_parts()).
 #
 # collection_path: Path to collection directory
 # question_names: Character vector of question names
@@ -1012,49 +1027,7 @@ collect_score_data = function(collection_path, question_names, assignment_repos)
 # assignment_repos: Character vector of assignment repository names
 
 collect_score_data_conn = function(conn, question_names, assignment_repos) {
-  data = list(
-    settings = load_all_settings(conn),
-    items = load_all_items(conn),
-    groups = load_all_item_groups(conn),
-    grades = load_most_recent_grades(conn)
-  )
-  graded = graded_question_pairs_conn(conn, assignment_repos)
-  # Unit-separator join so a name containing spaces cannot collide across pairs.
-  pair_key = function(question, repo) paste(question, repo, sep = "\x1f")
-  graded_keys = pair_key(graded$question_name, graded$assignment_repo)
-
-  # The selected item ids of every pair, found once rather than by scanning
-  # the grades for each pair
-  selected = data$grades[data$grades$selected == 1, , drop = FALSE]
-  selected_by_pair = split(selected$item_id, pair_key(selected$question_name, selected$assignment_repo))
-
-  out_question = rep(question_names, each = length(assignment_repos))
-  out_repo = rep(assignment_repos, times = length(question_names))
-  keys = pair_key(out_question, out_repo)
-  scores = rep(NA_real_, length(keys))
-
-  for (question_name in question_names) {
-    rows = which(out_question == question_name & keys %in% graded_keys)
-    if (length(rows) == 0) {
-      next
-    }
-    state = db_row_to_grade_state(data$settings[data$settings$question_name == question_name, , drop = FALSE])
-    if (is.null(state)) {
-      state = markermd_grade_state(current_score = 0, total_score = 10)
-    }
-    items = items_df_to_rubric_list(data$items, question_name)
-    groups = groups_df_to_list(data$groups, data$items, question_name)
-    for (i in rows) {
-      selected_ids = selected_by_pair[[keys[i]]]
-      if (is.null(selected_ids)) selected_ids = character(0)
-      scores[i] = score_question(items, selected_ids, groups, state)$score
-    }
-  }
-
-  data.frame(
-    question_name = out_question, assignment_repo = out_repo, score = scores,
-    stringsAsFactors = FALSE
-  )
+  score_pairs_from_frames(grading_frames_from_conn(conn), question_names, assignment_repos)
 }
 
 # Calculate grading progress for all assignments

@@ -20,8 +20,11 @@ graded).
 \description{
 Returns per-repository, per-question scores as \code{\link[=snapshot_diff]{snapshot_diff()}} and the
 History tab compare them: for a snapshot, the scores cached when it was
-taken; for \code{"current"}, the live database scored with the same code as
-\code{\link[=export_scores]{export_scores()}} and the Assignments table.
+taken; for \code{"current"}, the live database. Both are computed by the one
+scorer behind \code{\link[=export_scores]{export_scores()}} and the Assignments table, over the same
+in-memory frame of items, selections and comments, so which pairs count as
+graded and what they score cannot differ between a snapshot and the live
+state.
 }
 \examples{
 \dontrun{

@@ -302,15 +302,60 @@ rubric_question_parts = function(question) {
   )
 }
 
-# Score every (repository, question) pair of a rubric and marks document the
-# way collect_score_data() scores the live database: a pair counts as graded
-# when it has a selected item, a non-empty public comment, or an optional
-# question, and its score is score_question() over the selected items, the
-# question's groups and its scoring setup (positive mode out of 10 when the
-# question has none). Ungraded pairs score NA. Selections are matched by the
-# item ids a snapshot's marks carry (item_ids); a marks document without them
-# (an older snapshot) is matched by description, where a duplicated
-# description can only pick the first item.
+# A snapshot's rubric and marks documents as a grading frame (see
+# utils_mark_scores.R), the same shape grading_frames_from_conn() builds from
+# the live database, so both are scored by score_pairs_from_frames().
+# Selections are matched by the item ids a snapshot's marks carry
+# (item_ids); a marks document without them (an older snapshot) is matched by
+# description, where a duplicated description can only pick the first item.
+# A selection of an item the rubric no longer has is dropped, as the database
+# path drops a grade row naming a deleted item.
+#
+# rubric: Plain rubric list (rubric_to_list() shape)
+# marks: Plain marks list (marks_to_list() shape)
+
+grading_frames_from_parts = function(rubric, marks) {
+  parts = lapply(rubric$questions, rubric_question_parts)
+  names(parts) = vapply(rubric$questions, function(q) as.character(q$name), character(1))
+
+  selections = list(question_name = character(0), assignment_repo = character(0), item_id = character(0))
+  comment_pairs = list(question_name = character(0), assignment_repo = character(0))
+  for (repo in marks$repos) {
+    for (entry in repo$questions) {
+      question_name = as.character(entry$name)
+      question = parts[[question_name]]
+      selected_ids = if (is.null(question)) {
+        character(0)
+      } else if (!is.null(entry$item_ids)) {
+        intersect(as.character(unlist(entry$item_ids)), names(question$items))
+      } else {
+        wanted = as.character(unlist(entry$items))
+        names(question$items)[match(wanted, question$descriptions, nomatch = 0)]
+      }
+      if (length(selected_ids) > 0) {
+        selections$question_name = c(selections$question_name, rep(question_name, length(selected_ids)))
+        selections$assignment_repo = c(selections$assignment_repo, rep(as.character(repo$name), length(selected_ids)))
+        selections$item_id = c(selections$item_id, selected_ids)
+      }
+      if (!is.null(entry$comment) && nzchar(trimws(entry$comment))) {
+        comment_pairs$question_name = c(comment_pairs$question_name, question_name)
+        comment_pairs$assignment_repo = c(comment_pairs$assignment_repo, as.character(repo$name))
+      }
+    }
+  }
+
+  list(
+    questions = lapply(parts, function(p) p[c("items", "groups", "state")]),
+    selections = as.data.frame(selections, stringsAsFactors = FALSE),
+    comment_pairs = as.data.frame(comment_pairs, stringsAsFactors = FALSE)
+  )
+}
+
+# Score every (repository, question) pair of a rubric and marks document
+# with the scorer behind collect_score_data(), score_pairs_from_frames(), so
+# a snapshot's cached scores and the live scores are the same computation
+# over the same frame shape (grading_frames_from_parts()). Ungraded pairs
+# score NA.
 #
 # rubric: Plain rubric list (rubric_to_list() shape)
 # marks: Plain marks list (marks_to_list() shape)
@@ -319,49 +364,10 @@ rubric_question_parts = function(question) {
 # Returns: Data frame with question_name, assignment_repo and score
 
 score_snapshot_parts = function(rubric, marks, repo_names = character(0)) {
-  by_pair = list()
-  for (repo in marks$repos) {
-    for (question in repo$questions) {
-      by_pair[[paste(repo$name, question$name, sep = "\x1f")]] = question
-    }
-  }
   mark_repos = vapply(marks$repos, function(repo) as.character(repo$name), character(1))
   repos = c(repo_names, sort(setdiff(mark_repos, repo_names)))
-
-  n = length(rubric$questions) * length(repos)
-  out_question = character(n)
-  out_repo = character(n)
-  out_score = rep(NA_real_, n)
-  k = 0L
-  for (question in rubric$questions) {
-    parts = rubric_question_parts(question)
-    for (repo in repos) {
-      k = k + 1L
-      out_question[k] = as.character(question$name)
-      out_repo[k] = repo
-      entry = by_pair[[paste(repo, question$name, sep = "\x1f")]]
-      selected_ids = character(0)
-      has_comment = FALSE
-      if (!is.null(entry)) {
-        selected_ids = if (!is.null(entry$item_ids)) {
-          intersect(as.character(unlist(entry$item_ids)), names(parts$items))
-        } else {
-          wanted = as.character(unlist(entry$items))
-          names(parts$items)[match(wanted, parts$descriptions, nomatch = 0)]
-        }
-        has_comment = !is.null(entry$comment) && nzchar(trimws(entry$comment))
-      }
-      graded = length(selected_ids) > 0 || has_comment || parts$state@optional
-      if (graded) {
-        out_score[k] = score_question(parts$items, selected_ids, parts$groups, parts$state)$score
-      }
-    }
-  }
-
-  data.frame(
-    question_name = out_question, assignment_repo = out_repo, score = out_score,
-    stringsAsFactors = FALSE
-  )
+  question_names = vapply(rubric$questions, function(q) as.character(q$name), character(1))
+  score_pairs_from_frames(grading_frames_from_parts(rubric, marks), question_names, repos)
 }
 
 # Per-repository totals of a scores data frame, NA until every question is
@@ -1366,8 +1372,11 @@ snapshot_prune = function(project = ".", keep_last = 20, keep_days = 30, kind = 
 #'
 #' Returns per-repository, per-question scores as [snapshot_diff()] and the
 #' History tab compare them: for a snapshot, the scores cached when it was
-#' taken; for `"current"`, the live database scored with the same code as
-#' [export_scores()] and the Assignments table.
+#' taken; for `"current"`, the live database. Both are computed by the one
+#' scorer behind [export_scores()] and the Assignments table, over the same
+#' in-memory frame of items, selections and comments, so which pairs count as
+#' graded and what they score cannot differ between a snapshot and the live
+#' state.
 #'
 #' @param id A snapshot reference (see [snapshot_info()]), or `"current"` for
 #'   the live state.

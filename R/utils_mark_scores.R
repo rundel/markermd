@@ -3,7 +3,12 @@
 # score_question() is the one implementation of a question's score, shared by
 # the live score in the Grade tab (mark_rubric_server()) and the database
 # recomputation behind the Assignments table and export_scores()
-# (collect_score_data()). The builders below it take the per-pair scores from
+# (collect_score_data()). Which pairs count as graded and which items a pair
+# has selected are decided once as well, over the plain "grading frames" that
+# grading_frames_from_conn() builds from the live database and
+# grading_frames_from_parts() from a snapshot's rubric and marks documents,
+# so the live scores, a snapshot's cached scores and the restore check cannot
+# disagree. The builders below take the per-pair scores from
 # collect_score_data() plus each question's maximum points and return plain
 # data frames: the wide per-repository score table and the class summary
 # rows, which utils_mark_table.R folds into the Assignments table and pins
@@ -72,6 +77,128 @@ score_question = function(items, selected_ids, groups, state) {
     base = base,
     ungrouped = ungrouped,
     groups = group_rows
+  )
+}
+
+# --- Grading frames -----------------------------------------------------------
+#
+# A grading frame is the in-memory shape both the database and a snapshot's
+# exchange documents reduce to before scoring:
+#
+#   questions: Named list keyed by question name; each entry holds items (a
+#     named list of markermd_rubric_item keyed by item id, in display order),
+#     groups (a named list of markermd_rubric_group keyed by group id) and
+#     state (the question's markermd_grade_state)
+#   selections: Data frame with question_name, assignment_repo and item_id,
+#     one row per currently selected item of a pair; an id that names no item
+#     of its question is never included
+#   comment_pairs: Data frame with question_name and assignment_repo, the
+#     pairs whose public comment is non-empty
+#
+# A question absent from `questions` has no items, no groups and the app's
+# default scoring, positive mode out of 10 (question_frame()).
+
+# A frame's entry for a question, or the default entry when nothing is
+# stored for it
+#
+# frames: A grading frame
+# question_name: Character string
+
+question_frame = function(frames, question_name) {
+  entry = frames$questions[[question_name]]
+  if (is.null(entry)) {
+    entry = list(items = list(), groups = list(), state = default_grade_state())
+  }
+  entry
+}
+
+# The scoring setup of a question without a settings row
+
+default_grade_state = function() {
+  markermd_grade_state(current_score = 0, total_score = 10)
+}
+
+# An empty pairs data frame (question_name, assignment_repo)
+
+empty_pairs = function() {
+  data.frame(question_name = character(0), assignment_repo = character(0), stringsAsFactors = FALSE)
+}
+
+# The (question, repository) pairs of a grading frame that count as graded:
+# a pair with a selected item, a pair with a non-empty public comment, and,
+# when the repositories are known, every pair of an optional question (see
+# markermd_grade_state; an optional question with nothing recorded scores as
+# if no item were selected).
+#
+# frames: A grading frame
+# assignment_repos: Character vector of repository names whose
+#   optional-question pairs count, or NULL to leave them out (callers that do
+#   not know the repositories see only recorded grading)
+# Returns: Data frame with question_name and assignment_repo
+
+graded_pairs_from_frames = function(frames, assignment_repos = NULL) {
+  pairs = rbind(
+    frames$selections[, c("question_name", "assignment_repo"), drop = FALSE],
+    frames$comment_pairs[, c("question_name", "assignment_repo"), drop = FALSE]
+  )
+  if (length(assignment_repos) > 0) {
+    optional = names(frames$questions)[
+      vapply(frames$questions, function(q) isTRUE(q$state@optional), logical(1))
+    ]
+    if (length(optional) > 0) {
+      pairs = rbind(pairs, expand.grid(
+        question_name = optional,
+        assignment_repo = assignment_repos,
+        stringsAsFactors = FALSE
+      ))
+    }
+  }
+  pairs = unique(pairs)
+  rownames(pairs) = NULL
+  pairs
+}
+
+# Score every requested pair of a grading frame through score_question(): a
+# graded pair (graded_pairs_from_frames()) gets its score, any other pair NA
+# rather than a misleading 0 or full marks. Rows are question-major, in the
+# order of question_names and assignment_repos.
+#
+# frames: A grading frame
+# question_names: Character vector of question names
+# assignment_repos: Character vector of repository names
+# Returns: Data frame with question_name, assignment_repo and score
+
+score_pairs_from_frames = function(frames, question_names, assignment_repos) {
+  # Unit-separator join so a name containing spaces cannot collide across pairs
+  pair_key = function(question, repo) paste(question, repo, sep = "\x1f")
+  graded = graded_pairs_from_frames(frames, assignment_repos)
+  graded_keys = pair_key(graded$question_name, graded$assignment_repo)
+  selected_by_pair = split(
+    frames$selections$item_id,
+    pair_key(frames$selections$question_name, frames$selections$assignment_repo)
+  )
+
+  out_question = rep(question_names, each = length(assignment_repos))
+  out_repo = rep(assignment_repos, times = length(question_names))
+  keys = pair_key(out_question, out_repo)
+  scores = rep(NA_real_, length(keys))
+
+  for (question_name in question_names) {
+    rows = which(out_question == question_name & keys %in% graded_keys)
+    if (length(rows) == 0) {
+      next
+    }
+    q = question_frame(frames, question_name)
+    for (i in rows) {
+      selected_ids = selected_by_pair[[keys[i]]]
+      if (is.null(selected_ids)) selected_ids = character(0)
+      scores[i] = score_question(q$items, selected_ids, q$groups, q$state)$score
+    }
+  }
+
+  data.frame(
+    question_name = out_question, assignment_repo = out_repo, score = scores,
+    stringsAsFactors = FALSE
   )
 }
 
