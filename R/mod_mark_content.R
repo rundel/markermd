@@ -43,17 +43,39 @@ group_consecutive_lines = function(line_numbers) {
 # document_lines: Character vector of the document's lines as written
 # node_ids: Character vector of selected node ids (header or div ids)
 # repo_ast: q2r pandoc AST of the repo document
+# stop_ids: Optional ids where the question's heading sections end, the other
+#   questions' selections (see other_question_heading_ids()). With stops a
+#   line belongs to the question when its innermost enclosing heading is one
+#   the question covers (question_covered_indices()) or it sits in a selected
+#   div, so the highlight ends where grading's section does.
 
-map_content_to_lines = function(document_lines, node_ids, repo_ast) {
+map_content_to_lines = function(document_lines, node_ids, repo_ast, stop_ids = NULL) {
   if (length(node_ids) == 0) {
     return(list())
   }
 
   normalized = normalize_knitr_chunks(document_lines)
   chains = line_node_id_chains(normalized, repo_ast)
-  matched = which(vapply(chains, function(chain) {
-    any(node_ids %in% chain)
-  }, logical(1)))
+  in_question = if (length(stop_ids) == 0) {
+    function(chain) any(node_ids %in% chain)
+  } else {
+    records = q2r_flatten(repo_ast)
+    heading_ids = vapply(records, function(r) {
+      if (S7::S7_inherits(r$node, q2r::pandoc_header)) r$node@attr@id else NA_character_
+    }, character(1))
+    covered = question_covered_indices(repo_ast, node_ids, stop_ids)
+    covered_headings = stats::na.omit(heading_ids[covered])
+    all_headings = stats::na.omit(heading_ids)
+    div_ids = classify_selected_ids(repo_ast, node_ids)$div_ids
+    function(chain) {
+      if (any(div_ids %in% chain)) {
+        return(TRUE)
+      }
+      headings = chain[chain %in% all_headings]
+      length(headings) > 0 && headings[length(headings)] %in% covered_headings
+    }
+  }
+  matched = which(vapply(chains, in_question, logical(1)))
 
   map_ranges_to_original(group_consecutive_lines(matched), attr(normalized, "line_map"))
 }
@@ -136,7 +158,7 @@ mark_content_ui = function(id) {
         Shiny.addCustomMessageHandler('markermd_frame_highlight', function(msg) {
           var frame = document.getElementById('artifact-content-frame');
           if (!frame || !frame.contentWindow) return;
-          frame.contentWindow.postMessage({type: 'markermd-highlight', targets: msg.targets}, '*');
+          frame.contentWindow.postMessage({type: 'markermd-highlight', targets: msg.targets, stops: msg.stops || []}, '*');
         });
       });
     ")),
@@ -361,7 +383,8 @@ mark_content_server = function(id, template, collection, artifact_paths, artifac
               highlight_ranges = map_content_to_lines(
                 document_lines,
                 question_obj@selected_nodes@node_ids,
-                repo_ast
+                repo_ast,
+                other_question_heading_ids(template, question_obj)
               )
             }
           }
@@ -457,7 +480,8 @@ mark_content_server = function(id, template, collection, artifact_paths, artifac
         id
       }
       targets = lapply(node_ids, function(id) list(text = id_to_title(id), id = id))
-      session$sendCustomMessage("markermd_frame_highlight", list(targets = targets))
+      stops = as.list(other_question_heading_ids(template, question_obj))
+      session$sendCustomMessage("markermd_frame_highlight", list(targets = targets, stops = stops))
     }
 
     # Handle question selection change for scrolling

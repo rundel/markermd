@@ -20,6 +20,33 @@ template_question = function(template, name) {
   NULL
 }
 
+# The node ids the template's other questions select, at which this
+# question's heading sections stop (see heading_section_indices()): a section
+# ends at the next heading another question claims, so a student who promotes
+# a heading cannot pull a later question's answer into an earlier question. A
+# question's own ids never stop its own sections, and document-scope and file
+# questions select nothing. Questions are told apart by id.
+#
+# questions: A markermd_template, or a list of markermd_question objects
+# question: The markermd_question whose stop ids are wanted
+
+other_question_heading_ids = function(questions, question) {
+  if (S7::S7_inherits(questions, markermd_template)) {
+    questions = questions@questions
+  }
+  if (is_document_question(question) || is_file_question(question)) {
+    return(character(0))
+  }
+  ids = unlist(lapply(questions, function(q) {
+    if (identical(q@id, question@id) || is_document_question(q) || is_file_question(q)) {
+      character(0)
+    } else {
+      q@selected_nodes@node_ids
+    }
+  }))
+  sort(setdiff(unique(as.character(ids)), question@selected_nodes@node_ids))
+}
+
 # The q2r/Pandoc id of the selectable node at a flattened index
 #
 # Headings and id'd divs are selectable; everything else (and a div without an
@@ -127,9 +154,11 @@ duplicate_node_id_notes = function(ast) {
 # records: q2r_flatten() output for the AST
 # heading_ids: Character vector of selected heading ids
 # div_ids: Character vector of selected div ids
+# stop_ids: Optional ids of headings other questions select, at which the
+#   heading sections stop (see other_question_heading_ids())
 
-question_block_indices = function(records, heading_ids, div_ids) {
-  selected = heading_section_indices(records, heading_ids)
+question_block_indices = function(records, heading_ids, div_ids, stop_ids = NULL) {
+  selected = heading_section_indices(records, heading_ids, stop_ids)
   if (length(div_ids) == 0) {
     return(selected)
   }
@@ -234,7 +263,11 @@ classify_selected_ids = function(ast, ids) {
 #
 # A selected heading contributes itself and its following siblings (within the
 # same container) up to the next heading of the same or higher level - its
-# section. Sections are resolved at every container level, so a heading nested
+# section - or, when stop_ids are given, up to the first heading another
+# question selects, whatever its level. Blocks after such a stop heading, even
+# ones a level below the selected heading, are no longer part of the section:
+# a section ends at the stop, it does not resume after the other question's
+# part. Sections are resolved at every container level, so a heading nested
 # inside a fenced div resolves to that div's sibling blocks rather than silently
 # matching nothing. Indices are returned at the granularity of the matched
 # section's container: a top-level section yields its top-level block indices (a
@@ -246,13 +279,19 @@ classify_selected_ids = function(ast, ids) {
 #
 # records: q2r_flatten() output for the AST
 # heading_ids: Character vector of selected heading ids
+# stop_ids: Optional character vector of heading ids that end a section (the
+#   other questions' selections); the selected ids themselves never stop
 
-heading_section_indices = function(records, heading_ids) {
+heading_section_indices = function(records, heading_ids, stop_ids = NULL) {
   if (length(heading_ids) == 0) {
     return(integer(0))
   }
 
   is_header = function(node) S7::S7_inherits(node, q2r::pandoc_header)
+  stops = setdiff(as.character(stop_ids), heading_ids)
+  ends_section = function(sib, level) {
+    is_header(sib) && (sib@level <= level || (length(stops) > 0 && nzchar(sib@attr@id) && sib@attr@id %in% stops))
+  }
 
   children = list()
   for (record in records) {
@@ -272,8 +311,7 @@ heading_section_indices = function(records, heading_ids) {
         out = c(out, record$index)
         j = k + 1L
         while (j <= length(kids)) {
-          sib = kids[[j]]$node
-          if (is_header(sib) && sib@level <= level) {
+          if (ends_section(kids[[j]]$node, level)) {
             break
           }
           out = c(out, kids[[j]]$index)
@@ -545,8 +583,10 @@ rules_target_nothing = function(question) {
 #
 # current_ast: q2r pandoc AST object from the document to validate
 # question: markermd_question S7 object containing rules and node selections
+# stop_ids: Optional ids the template's other questions select, where this
+#   question's heading sections end (see other_question_heading_ids())
 
-evaluate_question_rules = function(current_ast, question) {
+evaluate_question_rules = function(current_ast, question, stop_ids = NULL) {
   rules = question@rules
   if (length(rules) == 0) {
     return(list())
@@ -562,7 +602,7 @@ evaluate_question_rules = function(current_ast, question) {
     )
     return(lapply(rules, function(rule) list(passed = FALSE, message = message)))
   }
-  question_ast = get_question_ast(current_ast, question)
+  question_ast = get_question_ast(current_ast, question, stop_ids)
   lapply(rules, function(rule) evaluate_rule(question_ast, rule))
 }
 
@@ -570,8 +610,10 @@ evaluate_question_rules = function(current_ast, question) {
 #
 # repo_ast: q2r pandoc AST object from the document to validate
 # question: markermd_question S7 object containing rules and node selections
+# stop_ids: Optional ids where the question's heading sections end (see
+#   other_question_heading_ids())
 
-validate_question_rules = function(repo_ast, question) {
+validate_question_rules = function(repo_ast, question, stop_ids = NULL) {
 
   # Selected nodes (by id) for details display; a document-scope question
   # covers the whole document
@@ -602,7 +644,7 @@ validate_question_rules = function(repo_ast, question) {
     ))
   }
 
-  rule_results = evaluate_question_rules(repo_ast, question)
+  rule_results = evaluate_question_rules(repo_ast, question, stop_ids)
   passed = vapply(rule_results, function(r) isTRUE(r$passed), logical(1))
   messages = vapply(rule_results, function(r) r$message, character(1))
 
@@ -637,8 +679,9 @@ assert_template_compatible = function(template) {
 }
 
 # Validates a parsed repository AST against template rules using section-based
-# matching; a question on one of the template's other files passes when the
-# repository has the file (see validate_file_question())
+# matching (each question's heading sections end at the headings the other
+# questions select); a question on one of the template's other files passes
+# when the repository has the file (see validate_file_question())
 #
 # ast: q2r pandoc AST object from parsing a repository document
 # template: markermd_template S7 object with questions and rules
@@ -655,7 +698,7 @@ validate_repo_against_rules = function(ast, template, repo_dir = NULL) {
     result = if (is_file_question(question)) {
       validate_file_question(question, repo_dir)
     } else {
-      validate_question_rules(ast, question)
+      validate_question_rules(ast, question, other_question_heading_ids(template, question))
     }
     results[[question@name]] = result
   }
@@ -696,8 +739,10 @@ record_descendant_indices = function(container_of, index) {
 #
 # current_ast: q2r pandoc AST object from the document to analyze
 # question: markermd_question S7 object containing selected nodes and filters
+# stop_ids: Optional ids where the question's heading sections end (see
+#   other_question_heading_ids())
 
-question_filtered_indices = function(current_ast, question) {
+question_filtered_indices = function(current_ast, question, stop_ids = NULL) {
 
   expr = filters_expr(question@filters)
   ids = question@selected_nodes@node_ids
@@ -713,7 +758,7 @@ question_filtered_indices = function(current_ast, question) {
     which(container_of == 0L)
   } else {
     split = classify_selected_ids(current_ast, ids)
-    question_block_indices(records, split$heading_ids, split$div_ids)
+    question_block_indices(records, split$heading_ids, split$div_ids, stop_ids)
   }
   nodes = lapply(node_indices, function(i) records[[i]]$node)
 
@@ -776,7 +821,8 @@ apply_question_filters = function(question_ast, question) {
 #
 # Heading ids match by section (heading_section_indices()): the heading plus
 # its following sibling blocks up to the next heading of the same or higher
-# level, nested subsections included, resolved in whatever container the
+# level or the first heading another question selects (stop_ids), nested
+# subsections included, resolved in whatever container the
 # heading sits (top level or inside a div). Div ids drill in: the selected
 # div's own child blocks are contributed, making nested content visible to
 # rule evaluation; a div already counted whole by a selected section or an
@@ -788,8 +834,12 @@ apply_question_filters = function(question_ast, question) {
 #
 # current_ast: q2r pandoc AST object from the document to analyze
 # question: markermd_question S7 object containing selected nodes and filters
+# stop_ids: Optional ids of the headings the template's other questions
+#   select, where this question's heading sections end (see
+#   other_question_heading_ids()); NULL ends them only at the next heading of
+#   the same or higher level
 
-get_question_ast = function(current_ast, question) {
+get_question_ast = function(current_ast, question, stop_ids = NULL) {
 
   stopifnot(S7::S7_inherits(question, markermd_question))
 
@@ -807,8 +857,33 @@ get_question_ast = function(current_ast, question) {
   records = q2r_flatten(current_ast)
   split = classify_selected_ids(current_ast, ids)
 
-  indices = question_block_indices(records, split$heading_ids, split$div_ids)
+  indices = question_block_indices(records, split$heading_ids, split$div_ids, stop_ids)
   result_blocks = lapply(indices, function(i) records[[i]]$node)
 
   apply_question_filters(q2r::pandoc(blocks = q2r::pandoc_blocks(result_blocks)), question)
+}
+
+# Tree indices (q2r_flatten index space) a sections question covers: the
+# blocks question_block_indices() counts plus everything nested in them, and
+# the selected nodes themselves. The template tree highlights this set when the
+# question's sections stop at other questions' headings, so the editor shows
+# exactly what grading takes; without stop ids the tree's own parent-child
+# walk (compute_all_selected_nodes()) gives the same set.
+#
+# current_ast: q2r pandoc AST object
+# ids: Character vector of selected node ids
+# stop_ids: Ids where heading sections end (see other_question_heading_ids())
+
+question_covered_indices = function(current_ast, ids, stop_ids = NULL) {
+  if (is.null(current_ast) || length(ids) == 0) {
+    return(integer(0))
+  }
+  records = q2r_flatten(current_ast)
+  container_of = vapply(records, function(r) as.integer(r$container), integer(1))
+  split = classify_selected_ids(current_ast, ids)
+  blocks = question_block_indices(records, split$heading_ids, split$div_ids, stop_ids)
+  direct = node_ids_to_indices(current_ast, ids)
+  roots = sort(unique(c(direct, blocks)))
+  nested = unlist(lapply(roots, function(i) record_descendant_indices(container_of, i)))
+  sort(unique(as.integer(c(roots, nested))))
 }

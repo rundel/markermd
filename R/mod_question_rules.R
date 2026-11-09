@@ -36,10 +36,12 @@ rule_status_badge = function(status) {
 # state: reactiveVal holding the markermd_question S7 object (shared source
 #   of truth; @rules is written by this machine)
 # ast: Reactive. The parsed AST object
+# stop_ids: Reactive. The other questions' selected ids, where this
+#   question's heading sections end (see other_question_heading_ids())
 #
 # Returns list(rule_status = reactive of per-rule evaluation results)
 
-question_rules_server = function(input, output, session, state, ast) {
+question_rules_server = function(input, output, session, state, ast, stop_ids = shiny::reactive(character(0))) {
 
   # The rows, keyed by stable rule key in display order; next_rule_id only
   # ever grows, so a deleted row's key (and its input ids) is never reused
@@ -71,7 +73,7 @@ question_rules_server = function(input, output, session, state, ast) {
     if (is.null(ast()) || length(rules) == 0) {
       return(list())
     }
-    results = evaluate_question_rules(ast(), q)
+    results = evaluate_question_rules(ast(), q, stop_ids())
     stats::setNames(
       lapply(seq_along(rules), function(i) {
         rule = rules[[i]]

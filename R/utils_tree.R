@@ -233,13 +233,21 @@ render_ast_tree = function(tree_items, ns, opts = ast_render_opts(), state = NUL
 # selected: Integer vector of directly selected node indices
 # filtered: Integer vector of node indices excluded by the question's filters
 # children_index: Optional children-by-parent index (see tree_children_index())
+# covered: Optional integer vector of the indices the selection covers, used in
+#   place of the tree's own descendant walk when a question's sections stop at
+#   other questions' headings (question_covered_indices()); a stopped part of
+#   a selected heading is then neither highlighted nor counted
 
-tree_selection_state = function(tree_items, selected, filtered, children_index = NULL) {
+tree_selection_state = function(tree_items, selected, filtered, children_index = NULL, covered = NULL) {
   if (is.null(children_index)) {
     children_index = tree_children_index(tree_items)
   }
   direct = sort(unique(as.integer(selected)))
-  all_selected = compute_all_selected_nodes(tree_items, direct, children_index)
+  all_selected = if (is.null(covered)) {
+    compute_all_selected_nodes(tree_items, direct, children_index)
+  } else {
+    sort(unique(c(direct, as.integer(covered))))
+  }
 
   under_selection = unlist(lapply(setdiff(direct, 0L), function(s) tree_descendant_indices(children_index, s)))
   locked = integer(0)

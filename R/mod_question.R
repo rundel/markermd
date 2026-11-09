@@ -256,13 +256,22 @@ question_move_script = function() {
 #   back, since the template's questions must be uniquely named
 # tree_items: Reactive. build_ast_tree_structure() of ast(), shared by every
 #   question so the document is structured once
+# all_questions: Reactive. Every question in the editor (this one included),
+#   whose selections end this question's heading sections, as in grading
+#   (see other_question_heading_ids())
 
-question_server = function(id, ast, initial_question, name_available = function(name) TRUE, tree_items = shiny::reactive(build_ast_tree_structure(ast()))) {
+question_server = function(id, ast, initial_question, name_available = function(name) TRUE, tree_items = shiny::reactive(build_ast_tree_structure(ast())), all_questions = shiny::reactive(list())) {
   force(name_available)
   shiny::moduleServer(id, function(input, output, session) {
 
     state = shiny::reactiveVal(initial_question)
     observers = make_observer_tracker()
+
+    # The other questions' selections, where this question's sections stop;
+    # deduplicated so an edit to another question's rules changes nothing here
+    stop_ids = deduplicated_reactive(shiny::reactive({
+      other_question_heading_ids(all_questions(), state())
+    }), observers$track)
 
     # The selection, scope and filters behind the tree's highlight, deduplicated
     # so a rule edit or a rename neither re-runs question_filtered_indices() nor
@@ -274,7 +283,21 @@ question_server = function(id, ast, initial_question, name_available = function(
     }), observers$track)
     filtered_indices = shiny::reactive({
       filter_key()
-      question_filtered_indices(ast(), shiny::isolate(state()))
+      question_filtered_indices(ast(), shiny::isolate(state()), stop_ids())
+    })
+
+    # The tree indices the question covers when its sections stop at other
+    # questions' headings, so the tree highlights what grading takes; NULL
+    # (no stops) lets the tree's own parent-child walk decide, which then
+    # gives the same set
+    covered_indices = shiny::reactive({
+      stops = stop_ids()
+      ids = selected_ids()
+      q = shiny::isolate(state())
+      if (length(stops) == 0 || length(ids) == 0 || is_document_question(q) || is_file_question(q)) {
+        return(NULL)
+      }
+      question_covered_indices(ast(), ids, stops)
     })
     
     question_tree_items = shiny::reactive({
@@ -335,8 +358,13 @@ question_server = function(id, ast, initial_question, name_available = function(
         shiny::span("None", class = "text-muted")
       } else {
         tree_items = question_tree_items()
+        stops = stop_ids()
         labels = vapply(ids, function(id) {
-          n = length(compute_all_selected_nodes(tree_items, node_ids_to_indices(ast(), id)))
+          n = if (length(stops) > 0) {
+            length(question_covered_indices(ast(), id, stops))
+          } else {
+            length(compute_all_selected_nodes(tree_items, node_ids_to_indices(ast(), id)))
+          }
           paste0("#", id, " (", n, " node", if (n != 1) "s" else "", ")")
         }, character(1))
 
@@ -404,7 +432,7 @@ question_server = function(id, ast, initial_question, name_available = function(
     # bookkeeping internally and writes into the shared question state. Rules
     # first, so observer creation order (and same-priority flush order)
     # matches the pre-split layout.
-    rules_machine = question_rules_server(input, output, session, state, ast)
+    rules_machine = question_rules_server(input, output, session, state, ast, stop_ids)
     filters_machine = question_filters_server(input, output, session, state, ast, filtered_indices)
 
     # Return reactive question data and methods
@@ -424,6 +452,10 @@ question_server = function(id, ast, initial_question, name_available = function(
       # Tree indices the question's filters exclude, recomputed only when its
       # selection, scope or filters change
       filtered_indices = filtered_indices,
+
+      # Tree indices covered when the sections stop at other questions'
+      # headings (NULL otherwise; see covered_indices above)
+      covered_indices = covered_indices,
       
       # Node management methods. The public interface stays index-based (the tree
       # interaction works in index space), but selections are stored as the

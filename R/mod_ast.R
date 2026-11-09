@@ -257,8 +257,12 @@ ast_module_ui = function(id, title = "Document Structure", header_extra = NULL) 
 #   filters, drawn in red (see question_filtered_indices())
 # tree_items: Reactive. build_ast_tree_structure() of ast(), shared with the
 #   app so the document is structured once
+# covered_nodes: Reactive. The node indices the selection covers when they
+#   differ from the tree's own descendants (a question whose sections stop at
+#   other questions' headings, see question_covered_indices()); NULL to walk
+#   the tree
 
-ast_module_server = function(id, ast, selected_nodes = shiny::reactive(integer(0)), filtered_nodes = shiny::reactive(integer(0)), tree_items = shiny::reactive(build_ast_tree_structure(ast()))) {
+ast_module_server = function(id, ast, selected_nodes = shiny::reactive(integer(0)), filtered_nodes = shiny::reactive(integer(0)), tree_items = shiny::reactive(build_ast_tree_structure(ast())), covered_nodes = shiny::reactive(NULL)) {
   shiny::moduleServer(id, function(input, output, session) {
 
     # Flattened AST nodes in tree order (index i aligns with the tree's node i)
@@ -278,8 +282,12 @@ ast_module_server = function(id, ast, selected_nodes = shiny::reactive(integer(0
     # an edit that changes neither sends nothing
     selected = deduplicated_reactive(shiny::reactive(sort(unique(as.integer(selected_nodes())))))
     filtered = deduplicated_reactive(shiny::reactive(sort(unique(as.integer(filtered_nodes())))))
+    covered = deduplicated_reactive(shiny::reactive({
+      nodes = covered_nodes()
+      if (is.null(nodes)) NULL else sort(unique(as.integer(nodes)))
+    }))
     tree_state = shiny::reactive({
-      tree_selection_state(ast_tree_items(), selected(), filtered(), children_index())
+      tree_selection_state(ast_tree_items(), selected(), filtered(), children_index(), covered = covered())
     })
 
     # Drawn once per document; the highlight is patched in place below

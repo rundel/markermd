@@ -402,6 +402,14 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       }
     }
     
+    # Every question in the editor, in registry order; each question's
+    # heading sections stop at the headings the others select, as in grading
+    all_questions = shiny::reactive({
+      Filter(Negate(is.null), lapply(question_modules(), function(m) {
+        if (is.null(m$server)) NULL else m$server$question()
+      }))
+    })
+
     # Get selected nodes for current question
     selected_nodes = shiny::reactive({
       current_q_id = current_slot()
@@ -435,8 +443,18 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       current_module$server$filtered_indices()
     })
 
+    # Tree indices the current question covers when its sections stop at
+    # other questions' headings (NULL: the tree walks its own descendants)
+    covered_nodes = shiny::reactive({
+      current_module = question_modules()[[as.character(current_slot())]]
+      if (is.null(current_module) || is.null(current_module$server)) {
+        return(NULL)
+      }
+      current_module$server$covered_indices()
+    })
+
     # Initialize AST selectable module
-    ast_result = ast_module_server("ast_panel", ast, selected_nodes, filtered_nodes, tree_items = tree_items_memo)
+    ast_result = ast_module_server("ast_panel", ast, selected_nodes, filtered_nodes, tree_items = tree_items_memo, covered_nodes = covered_nodes)
 
     # Toggle a node in the current question's selection: a no-op when the node
     # sits under an already-selected ancestor, a removal when itself selected,
@@ -629,7 +647,8 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
           ast,
           initial_question = modules_list[[q_id_str]]$initial_question,
           name_available = name_available,
-          tree_items = tree_items_memo
+          tree_items = tree_items_memo,
+          all_questions = all_questions
         )
       }
       question_modules(modules_list)

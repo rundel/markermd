@@ -306,8 +306,11 @@ artifact_frame_url = function(path, url) {
 # The script injected into the grading pane's copy of a report: on a
 # markermd-highlight message from the embedding page it clears the previous
 # highlight, scrolls to the first target and wraps every target (a heading
-# with its section, or an id'd div) in a highlighted block. Targets are found
-# by data-anchor-id, then element id, then heading text. The copy carries a
+# with its section, or an id'd div) in a highlighted block. A heading's
+# section ends at the next same-or-higher heading or at the first sibling that
+# is, or holds, a heading another question selects (the message's stops), as
+# grading's does. Targets are found by data-anchor-id, then element id, then
+# heading text. The copy carries a
 # <base> for its resources, which would send the report's own "#section"
 # links (its table of contents) to the base URL, so those are scrolled to
 # in place instead. Nothing here reads the embedding page: the frame is
@@ -343,7 +346,23 @@ artifact_frame_script = function() {
       }
       return el;
     }
-    function highlight(targets) {
+    function anchorOf(node) {
+      if (!node || !node.getAttribute) return null;
+      return node.getAttribute('data-anchor-id') || node.id || null;
+    }
+    function isStop(node, stops) {
+      var id = anchorOf(node);
+      if (id && stops[id]) return true;
+      if (!node.querySelectorAll) return false;
+      var inner = node.querySelectorAll('[id], [data-anchor-id]');
+      for (var i = 0; i < inner.length; i++) {
+        if (stops[anchorOf(inner[i])]) return true;
+      }
+      return false;
+    }
+    function highlight(targets, stopIds) {
+      var stops = {};
+      (stopIds || []).forEach(function(id) { stops[id] = true; });
       ensureStyle();
       clearHighlights();
       var first = targets.length > 0 ? findTarget(targets[0]) : null;
@@ -363,6 +382,7 @@ artifact_frame_script = function() {
           var cur = el.nextElementSibling;
           while (cur) {
             if (cur.tagName && cur.tagName.match(/^H[1-6]$/) && parseInt(cur.tagName.charAt(1)) <= level) break;
+            if (isStop(cur, stops)) break;
             toWrap.push(cur);
             cur = cur.nextElementSibling;
           }
@@ -387,11 +407,11 @@ artifact_frame_script = function() {
     window.addEventListener('message', function(e) {
       var msg = e.data;
       if (!msg || msg.type !== 'markermd-highlight' || !Array.isArray(msg.targets)) return;
-      if (document.readyState === 'loading') { pending = msg.targets; return; }
-      highlight(msg.targets);
+      if (document.readyState === 'loading') { pending = msg; return; }
+      highlight(msg.targets, msg.stops);
     });
     document.addEventListener('DOMContentLoaded', function() {
-      if (pending) { highlight(pending); pending = null; }
+      if (pending) { highlight(pending.targets, pending.stops); pending = null; }
     });
   })();"
 }

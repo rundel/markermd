@@ -4,7 +4,7 @@
 \alias{assignment_outline}
 \title{Outline the gradable sections of an assignment}
 \usage{
-assignment_outline(assignment_path, filename = "*.[Rq]md")
+assignment_outline(assignment_path, filename = "*.[Rq]md", template = NULL)
 }
 \arguments{
 \item{assignment_path}{Path to an assignment file (\code{.qmd}/\code{.Rmd}) or a
@@ -12,6 +12,13 @@ directory containing one.}
 
 \item{filename}{Glob used to find the assignment when \code{assignment_path} is a
 directory. Defaults to any \code{.Rmd}/\code{.qmd} file.}
+
+\item{template}{Optional \code{markermd_template}. When given, a heading's counts
+stop at the first heading one of the template's questions selects (other
+than the row's own), exactly as grading ends that question's section, so
+an outline taken against a stored template shows what each question
+would be graded on. When \code{NULL} (the default) a section runs to the next
+heading of the same or higher level.}
 }
 \value{
 A data frame with one row per anchorable section and columns \code{type}

@@ -79,10 +79,12 @@ mark_validate_question_select_ui = function(id, choices) {
 # repo_ast: The current document AST
 # question: The question object with selected headings
 # session: Shiny session object
+# stop_ids: Ids where the question's heading sections end, the other
+#   questions' selections (see other_question_heading_ids())
 
-get_question_content = function(repo_ast, question, session) {
+get_question_content = function(repo_ast, question, session, stop_ids = NULL) {
 
-  question_ast = get_question_ast(repo_ast, question)
+  question_ast = get_question_ast(repo_ast, question, stop_ids)
   tree_items = build_ast_tree_structure(question_ast)
   question_id = paste0("q_", question_dom_id(question@name))
 
@@ -159,8 +161,10 @@ create_rule_details = function(question, question_result) {
 # current_ast: The current document AST
 # session: Shiny session object
 # collapsed: Logical. Whether the card starts collapsed
+# stop_ids: Ids where the question's heading sections end (see
+#   other_question_heading_ids())
 
-create_question_card = function(question, question_result, current_ast, session, collapsed = TRUE) {
+create_question_card = function(question, question_result, current_ast, session, collapsed = TRUE, stop_ids = NULL) {
   question_name = question@name
   card_id = session$ns(question_card_id(question_name))
   body_id = paste0(card_id, "_body")
@@ -199,7 +203,7 @@ create_question_card = function(question, question_result, current_ast, session,
   }
 
   # Get the document nodes for this question using section selection
-  question_nodes_content = get_question_content(current_ast, question, session)
+  question_nodes_content = get_question_content(current_ast, question, session, stop_ids)
 
   # Create question card: the rule results at the top of the body, and below
   # them the matched document content, collapsed behind a toggle. mb-0 drops
@@ -355,7 +359,8 @@ mark_validate_server = function(id, ast, validation_results = shiny::reactiveVal
         create_question_card(
           question, current_validation[[question@name]],
           current_ast, session,
-          collapsed = !question@name %in% expanded
+          collapsed = !question@name %in% expanded,
+          stop_ids = other_question_heading_ids(current_template, question)
         )
       })
       
@@ -381,7 +386,7 @@ mark_validate_server = function(id, ast, validation_results = shiny::reactiveVal
 
     question_node_at = function(question) {
       function(index) {
-        question_ast = get_question_ast(ast(), question)
+        question_ast = get_question_ast(ast(), question, other_question_heading_ids(template(), question))
         records = if (is.null(question_ast)) list() else q2r_flatten(question_ast)
         if (index <= length(records)) records[[index]]$node else NULL
       }
@@ -393,7 +398,7 @@ mark_validate_server = function(id, ast, validation_results = shiny::reactiveVal
       for (question in template()@questions) {
         question_id = paste0("q_", question_dom_id(question@name))
 
-        question_ast = get_question_ast(ast(), question)
+        question_ast = get_question_ast(ast(), question, other_question_heading_ids(template(), question))
         n = if (is.null(question_ast)) 0L else length(q2r_flatten(question_ast))
 
         already = wired_count[[question_id]]

@@ -14,6 +14,12 @@
 #'   directory containing one.
 #' @param filename Glob used to find the assignment when `assignment_path` is a
 #'   directory. Defaults to any `.Rmd`/`.qmd` file.
+#' @param template Optional `markermd_template`. When given, a heading's counts
+#'   stop at the first heading one of the template's questions selects (other
+#'   than the row's own), exactly as grading ends that question's section, so
+#'   an outline taken against a stored template shows what each question
+#'   would be graded on. When `NULL` (the default) a section runs to the next
+#'   heading of the same or higher level.
 #'
 #' @return A data frame with one row per anchorable section and columns `type`
 #'   (`"heading"` or `"div"`), `id`, `level`, `title`, `n_subsections`, and the
@@ -34,7 +40,18 @@
 #' @examples
 #' key = system.file("examples/test_assignment/hw3-key", package = "markermd")
 #' assignment_outline(key)
-assignment_outline = function(assignment_path, filename = "*.[Rq]md") {
+assignment_outline = function(assignment_path, filename = "*.[Rq]md", template = NULL) {
+  if (!is.null(template) && !S7::S7_inherits(template, markermd_template)) {
+    cli::cli_abort("{.arg template} must be a {.cls markermd_template} or {.code NULL}.")
+  }
+  template_ids = if (is.null(template)) {
+    character(0)
+  } else {
+    unique(unlist(lapply(template@questions, function(q) {
+      if (is_document_question(q) || is_file_question(q)) character(0) else q@selected_nodes@node_ids
+    })))
+  }
+
   file = if (dir.exists(assignment_path)) {
     resolve_assignment_file(assignment_path, filename)
   } else if (file.exists(assignment_path)) {
@@ -62,7 +79,7 @@ assignment_outline = function(assignment_path, filename = "*.[Rq]md") {
       name = "outline",
       selected_nodes = markermd_node_selection(node_ids = id)
     )
-    blocks = get_question_ast(ast, question)@blocks@content
+    blocks = get_question_ast(ast, question, setdiff(template_ids, id))@blocks@content
     kinds = if (length(blocks) > 0) vapply(blocks, q2r_node_kind, character(1)) else character(0)
 
     rows[[length(rows) + 1]] = data.frame(
