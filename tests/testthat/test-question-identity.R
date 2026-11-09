@@ -25,13 +25,17 @@ test_that("swapping two question names in one import swaps their grading", {
   expect_setequal(sn_selected(d, "Q1", "hw01-team01"), "Full credit")
 })
 
-test_that("a rename onto a removed question's leftover grading is refused", {
+test_that("a rename onto a removed question's name keeps the two questions' grading apart", {
   d = sn_graded_project()
-  # Q2 is removed (its grading stays) and Q1 is renamed onto "Q2"
+  # Q2 is removed (its grading stays under its id) and Q1 is renamed onto "Q2"
   sn_template_file(d, "onto.yaml", list(list(id = 1, name = "Q2")))
-  expect_error(suppressMessages(template_import("onto.yaml", project = d)), "already hold")
-  expect_equal(markermd:::project_question_names(d)$names, c("Q1", "Q2"))
-  expect_length(markermd:::load_rubric_items(d, "Q1"), 4)
+  expect_warning(
+    expect_warning(suppressMessages(template_import("onto.yaml", project = d)), "Carried the grading"),
+    "no longer in the template"
+  )
+  expect_equal(markermd:::project_question_names(d)$names, "Q2")
+  expect_length(markermd:::load_rubric_items(d, "Q2"), 4)
+  expect_setequal(sn_selected(d, "Q2", "hw01-team01"), c("Issue A", "Minor"))
 })
 
 test_that("restoring the template undoes a regeneration that shifted the ids", {

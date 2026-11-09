@@ -131,7 +131,12 @@ test_that("removing a question that holds grading warns and leaves its rows in p
     "source:", "  path: hw1.qmd", "questions:", "  - id: 2", "    name: Q2"
   ), file.path(d, "one.yaml"))
   expect_warning(suppressMessages(template_import("one.yaml", project = d)), "no longer in the template")
-  expect_length(markermd:::load_rubric_items(d, "Q1"), 4)
+  # The rows stay under the removed question's id but are not grading state
+  n = markermd:::with_database(d, function(conn) {
+    DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM items WHERE question_id = 1")$n
+  })
+  expect_equal(n, 4)
+  expect_length(markermd:::load_rubric_items(d, "Q1"), 0)
 })
 
 # --- The document each repository is graded on -------------------------------------
@@ -209,7 +214,7 @@ test_that("event timestamps are UTC ISO 8601 and legacy rows migrate and parse",
   DBI::dbDisconnect(conn)
   rm(list = ls(markermd:::.initialized_dbs), envir = markermd:::.initialized_dbs)
   markermd:::with_database(d, function(conn) {
-    expect_equal(markermd:::get_metadata(conn, "schema_version"), "7")
+    expect_equal(markermd:::get_metadata(conn, "schema_version"), markermd:::markermd_db_version())
     ts = DBI::dbGetQuery(conn, "SELECT timestamp FROM grades LIMIT 1")$timestamp
     expect_match(ts, "T")
     expect_equal(

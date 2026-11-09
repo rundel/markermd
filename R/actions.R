@@ -478,12 +478,12 @@ event_marks_diff = function(conn, ids) {
       return(NULL)
     }
     touched = DBI::dbGetQuery(
-      conn, glue::glue("SELECT DISTINCT question_name, assignment_repo FROM {table} WHERE id IN ({paste(set, collapse = ',')})")
+      conn, glue::glue("SELECT DISTINCT question_id, assignment_repo FROM {table} WHERE id IN ({paste(set, collapse = ',')})")
     )
     rows = DBI::dbGetQuery(
-      conn, glue::glue("SELECT * FROM {table} WHERE question_name IN ({paste(DBI::dbQuoteString(conn, unique(touched$question_name)), collapse = ',')}) AND assignment_repo IN ({paste(DBI::dbQuoteString(conn, unique(touched$assignment_repo)), collapse = ',')}) ORDER BY id")
+      conn, glue::glue("SELECT * FROM {table} WHERE question_id IN ({paste(as.integer(unique(touched$question_id)), collapse = ',')}) AND assignment_repo IN ({paste(DBI::dbQuoteString(conn, unique(touched$assignment_repo)), collapse = ',')}) ORDER BY id")
     )
-    rows[key(rows, c("assignment_repo", "question_name")) %in% key(touched, c("assignment_repo", "question_name")), , drop = FALSE]
+    rows[key(rows, c("assignment_repo", "question_id")) %in% key(touched, c("assignment_repo", "question_id")), , drop = FALSE]
   }
   push = function(repo, question, change, before, after) {
     out[nrow(out) + 1, ] <<- list(repo, question, change, before, after)
@@ -491,15 +491,15 @@ event_marks_diff = function(conn, ids) {
 
   grades = pair_rows("grades", ids$grades)
   if (!is.null(grades)) {
-    items = DBI::dbGetQuery(conn, "SELECT question_name, item_id, description FROM items")
+    items = DBI::dbGetQuery(conn, "SELECT question_id, item_id, description FROM items")
     describe = function(question, item_ids) {
-      hit = items$description[match(paste(question, item_ids), paste(items$question_name, items$item_id))]
+      hit = items$description[match(paste(question, item_ids), paste(items$question_id, items$item_id))]
       ifelse(is.na(hit), item_ids, hit)
     }
-    grades$k = key(grades, c("assignment_repo", "question_name", "item_id"))
+    grades$k = key(grades, c("assignment_repo", "question_id", "item_id"))
     in_set = grades$id %in% ids$grades
-    for (pk in unique(key(grades[in_set, , drop = FALSE], c("assignment_repo", "question_name")))) {
-      rows = grades[key(grades, c("assignment_repo", "question_name")) == pk, , drop = FALSE]
+    for (pk in unique(key(grades[in_set, , drop = FALSE], c("assignment_repo", "question_id")))) {
+      rows = grades[key(grades, c("assignment_repo", "question_id")) == pk, , drop = FALSE]
       set_rows = rows[rows$id %in% ids$grades, , drop = FALSE]
       removed = character(0)
       added = character(0)
@@ -508,7 +508,7 @@ event_marks_diff = function(conn, ids) {
         prior = rows[rows$k == k & rows$id < min(mine$id), , drop = FALSE]
         was = nrow(prior) > 0 && isTRUE(as.logical(prior$selected[nrow(prior)]))
         now = isTRUE(as.logical(mine$selected[nrow(mine)]))
-        item = describe(mine$question_name[1], mine$item_id[1])
+        item = describe(mine$question_id[1], mine$item_id[1])
         if (was && !now) removed = c(removed, item)
         if (!was && now) added = c(added, item)
       }
@@ -525,7 +525,7 @@ event_marks_diff = function(conn, ids) {
       next
     }
     change = if (identical(table, "comments")) "comment" else "private_comment"
-    rows$k = key(rows, c("assignment_repo", "question_name"))
+    rows$k = key(rows, c("assignment_repo", "question_id"))
     for (pk in unique(rows$k[rows$id %in% ids[[table]]])) {
       pr = rows[rows$k == pk, , drop = FALSE]
       mine = pr[pr$id %in% ids[[table]], , drop = FALSE]
@@ -706,23 +706,23 @@ activity_detail = function(id, project = ".", gap = 15 * 60) {
 pair_agent_badges = function(conn, question_name, assignment_repo) {
   latest = latest_rows(
     conn, "grades", "item_id",
-    where = "question_name = ? AND assignment_repo = ?",
-    params = list(question_name, assignment_repo)
+    where = "question_id = ? AND assignment_repo = ?",
+    params = list(question_id_conn(conn, question_name, create = FALSE), assignment_repo)
   )
   agent = latest[latest$selected == 1 & !is.na(latest$action_id), , drop = FALSE]
   if (nrow(agent) == 0) {
     return(list())
   }
-  pair = list(question_name, assignment_repo)
+  pair = list(question_id_conn(conn, question_name, create = FALSE), assignment_repo)
   last_app_grade = DBI::dbGetQuery(conn, "
     SELECT MAX(id) AS id FROM grades
-    WHERE question_name = ? AND assignment_repo = ? AND action_id IS NULL
+    WHERE question_id = ? AND assignment_repo = ? AND action_id IS NULL
   ", params = pair)$id
   last_app_comment = DBI::dbGetQuery(conn, "
     SELECT MAX(timestamp) AS timestamp FROM (
-      SELECT timestamp FROM comments WHERE question_name = ? AND assignment_repo = ? AND action_id IS NULL
+      SELECT timestamp FROM comments WHERE question_id = ? AND assignment_repo = ? AND action_id IS NULL
       UNION ALL
-      SELECT timestamp FROM private_comments WHERE question_name = ? AND assignment_repo = ? AND action_id IS NULL
+      SELECT timestamp FROM private_comments WHERE question_id = ? AND assignment_repo = ? AND action_id IS NULL
     )
   ", params = c(pair, pair))$timestamp
 

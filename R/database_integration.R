@@ -198,7 +198,7 @@ item_selection_count = function(collection_path, question_name, item_id) {
   with_database(collection_path, function(conn) {
     grades = latest_rows(
       conn, "grades", "assignment_repo",
-      where = "question_name = ? AND item_id = ?", params = list(question_name, item_id)
+      where = "question_id = ? AND item_id = ?", params = list(question_id_conn(conn, question_name, create = FALSE), item_id)
     )
     sum(grades$selected == 1)
   })
@@ -362,8 +362,8 @@ save_private_comment = function(collection_path, question_name, assignment_repo,
 load_grade_state = function(collection_path, question_name) {
   with_database(collection_path, function(conn) {
     settings_data = DBI::dbGetQuery(conn, "
-      SELECT * FROM settings WHERE question_name = ?
-    ", params = list(question_name))
+      SELECT * FROM settings WHERE question_id = ?
+    ", params = list(question_id_conn(conn, question_name, create = FALSE)))
     
     return(db_row_to_grade_state(settings_data))
   })
@@ -378,9 +378,9 @@ load_grade_state = function(collection_path, question_name) {
 load_rubric_items = function(collection_path, question_name) {
   with_database(collection_path, function(conn) {
     items_data = DBI::dbGetQuery(conn, paste0("
-      SELECT * FROM items WHERE question_name = ?
+      SELECT * FROM items WHERE question_id = ?
       ORDER BY ", items_display_order_sql
-    ), params = list(question_name))
+    ), params = list(question_id_conn(conn, question_name, create = FALSE)))
     
     if (nrow(items_data) == 0) {
       return(list())
@@ -409,8 +409,8 @@ load_grade_selections = function(collection_path, question_name, assignment_repo
   with_database(collection_path, function(conn) {
     grades_data = latest_rows(
       conn, "grades", "item_id",
-      where = "question_name = ? AND assignment_repo = ?",
-      params = list(question_name, assignment_repo)
+      where = "question_id = ? AND assignment_repo = ?",
+      params = list(question_id_conn(conn, question_name, create = FALSE), assignment_repo)
     )
 
     if (nrow(grades_data) == 0) {
@@ -456,10 +456,10 @@ load_comment_row = function(collection_path, table, question_name, assignment_re
     comment_data = DBI::dbGetQuery(conn, glue::glue("
       SELECT comment_text
       FROM {table}
-      WHERE question_name = ? AND assignment_repo = ?
+      WHERE question_id = ? AND assignment_repo = ?
       ORDER BY id DESC
       LIMIT 1
-    "), params = list(question_name, assignment_repo))
+    "), params = list(question_id_conn(conn, question_name, create = FALSE), assignment_repo))
 
     if (nrow(comment_data) == 0) {
       return(NULL)
@@ -711,20 +711,20 @@ check_exclusive_import_conflicts = function(conn, rubric, mode) {
 # reserved_ids: Additional item / group ids that must not be reused
 
 apply_rubric_import_conn = function(conn, rubric, mode, reserved_ids = character(0)) {
-  taken = union(load_all_items(conn)$item_id, reserved_ids)
-  taken_groups = union(load_all_item_groups(conn)$group_id, reserved_ids)
+  taken = union(DBI::dbGetQuery(conn, "SELECT item_id FROM items")$item_id, reserved_ids)
+  taken_groups = union(DBI::dbGetQuery(conn, "SELECT group_id FROM item_groups")$group_id, reserved_ids)
   summaries = list()
 
   for (question in rubric$questions) {
     question_name = question$name
 
     existing = DBI::dbGetQuery(conn, paste0("
-      SELECT * FROM items WHERE question_name = ?
+      SELECT * FROM items WHERE question_id = ?
       ORDER BY ", items_display_order_sql
-    ), params = list(question_name))
+    ), params = list(question_id_conn(conn, question_name, create = FALSE)))
     existing_groups = DBI::dbGetQuery(conn, "
-      SELECT * FROM item_groups WHERE question_name = ?
-    ", params = list(question_name))
+      SELECT * FROM item_groups WHERE question_id = ?
+    ", params = list(question_id_conn(conn, question_name, create = FALSE)))
     n_existing = nrow(existing)
 
     if (identical(mode, "replace")) {
@@ -981,8 +981,9 @@ marked_question_pairs = function(collection_path) {
 # conn: DBI connection object
 
 marked_question_pairs_conn = function(conn) {
-  grade_pairs = DBI::dbGetQuery(conn, "
-    SELECT DISTINCT question_name, assignment_repo FROM grades")
+  grade_pairs = DBI::dbGetQuery(conn, paste(
+    "SELECT DISTINCT question_name, assignment_repo FROM grades WHERE", live_question_sql
+  ))
 
   nonempty_latest_pairs = function(table) {
     nonempty_comments(latest_rows(conn, table, c("question_name", "assignment_repo")))[
@@ -1087,7 +1088,7 @@ save_template_to_db = function(collection_path, template, source_path = NULL, sn
   invisible(with_database(collection_path, function(conn) {
     with_transaction(conn, "Failed to save the template", {
       snapshot_before_change(conn, collection_path, snapshot)
-      changes = reconcile_question_names_conn(conn, db_template_list(conn), lst)
+      changes = reconcile_question_names_conn(conn, lst)
       note_question_ids_conn(conn, lst)
       set_metadata(conn, "template", json)
       changes
@@ -1095,11 +1096,13 @@ save_template_to_db = function(collection_path, template, source_path = NULL, sn
   }))
 }
 
-# The highest question id the project has ever stored: the recorded
-# "question_id_max" metadata value or, for a database written before it was
-# recorded, the highest id of the stored template. A new question takes an id
-# above it, so the id of a question deleted and saved is never issued again
-# (saving matches questions by id, and a reused id would read as a rename).
+# The highest question id the project has ever used: the recorded
+# "question_id_max" metadata value, the highest id of the stored template (for
+# a database written before the value was recorded) and the highest id in the
+# questions registry (which also holds ids minted for names graded before a
+# template named them). A new question takes an id above it, so the id of a
+# question deleted and saved is never issued again (saving matches questions
+# by id, and a reused id would read as a rename).
 #
 # conn: DBI connection object
 
@@ -1107,7 +1110,8 @@ question_id_high_water_conn = function(conn) {
   recorded = suppressWarnings(as.integer(get_metadata(conn, "question_id_max")))
   stored = db_template_list(conn)
   ids = vapply(stored$questions, function(q) as.integer(q$id), integer(1))
-  max(c(0L, recorded[!is.na(recorded)], ids))
+  registry = DBI::dbGetQuery(conn, "SELECT COALESCE(MAX(question_id), 0) AS m FROM questions")$m
+  as.integer(max(c(0L, recorded[!is.na(recorded)], ids, registry)))
 }
 
 # The id for a question the template editor adds: one above both the
@@ -1128,7 +1132,8 @@ next_question_id = function(root, session_max = 0L) {
 
 # Raise the recorded question id high-water mark to cover a template about to
 # be stored (and the template it replaces, through
-# question_id_high_water_conn()). Call before the template is written.
+# question_id_high_water_conn()), and the registry's id sequence with it.
+# Call before the template is written.
 #
 # conn: DBI connection object
 # lst: Plain template list (template_to_list() shape) about to be stored
@@ -1136,21 +1141,18 @@ next_question_id = function(root, session_max = 0L) {
 note_question_ids_conn = function(conn, lst) {
   ids = vapply(lst$questions, function(q) as.integer(q$id), integer(1))
   set_metadata(conn, "question_id_max", as.character(max(c(question_id_high_water_conn(conn), ids))))
+  raise_question_sequence(conn)
 }
 
-# The grading tables keyed by question name
-
-question_keyed_tables = function() c("settings", "items", "item_groups", "grades", "comments", "private_comments")
-
-# Whether any grading table holds rows for a question name
+# Whether any grading table holds rows for a question id
 #
 # conn: DBI connection object
-# question_name: Character string
+# question_id: Integer
 
-question_has_grading_conn = function(conn, question_name) {
+question_has_grading_conn = function(conn, question_id) {
   for (table in question_keyed_tables()) {
     n = DBI::dbGetQuery(
-      conn, glue::glue("SELECT COUNT(*) AS n FROM {table} WHERE question_name = ?"), params = list(question_name)
+      conn, glue::glue("SELECT COUNT(*) AS n FROM {table} WHERE question_id = ?"), params = list(question_id)
     )$n
     if (n > 0) {
       return(TRUE)
@@ -1159,78 +1161,117 @@ question_has_grading_conn = function(conn, question_name) {
   FALSE
 }
 
-# Carry grading over when a stored template is replaced: a question present
-# in both templates by id under a new name has every grading row renamed.
-# The renames of one save are applied together through temporary names, so a
-# swap or a chain (A becomes B while B becomes C) moves each question's
-# grading with it. A rename onto a name that holds grading which no rename of
-# the save vacates (a removed question's leftover grading) is refused,
-# aborting the save, since applying it would merge two questions' grading. A
-# question dropped from the template that still holds grading is reported as
-# orphaned, its rows left in place (they come back if the name is restored).
+# Move every grading row of one question id to another (the target holds no
+# rows), and set the display name its rows carry
 #
 # conn: DBI connection object
-# previous: The stored template as a plain list (db_template_list()), or NULL
+# from: Integer question id the rows have now
+# to: Integer question id they move to
+
+rekey_question_rows = function(conn, from, to) {
+  for (table in question_keyed_tables()) {
+    DBI::dbExecute(conn, glue::glue("UPDATE {table} SET question_id = ? WHERE question_id = ?"), params = list(to, from))
+  }
+}
+
+# Set the display name every grading row of a question id carries
+#
+# conn: DBI connection object
+# question_id: Integer
+# name: Character string
+
+rename_question_rows = function(conn, question_id, name) {
+  for (table in question_keyed_tables()) {
+    DBI::dbExecute(
+      conn, glue::glue("UPDATE {table} SET question_name = ? WHERE question_id = ? AND question_name != ?"),
+      params = list(name, question_id, name)
+    )
+  }
+}
+
+# Bring the questions registry in line with a template about to be stored
+# (or restored). Grading is keyed by question id, so a question whose name
+# changed keeps its rows and only their display name is updated; renames
+# within one save (a swap, a chain) need no ordering. A question of the
+# template whose id is new to the registry adopts the rows of a name graded
+# before any template named it (a minted, not yet templated id), and
+# otherwise starts empty, even when an earlier question that left the
+# template had the same name: that question's grading stays under its own id
+# as an orphan, and comes back only with its id (restoring the old template
+# from a snapshot). Minted ids that collide with a template id are moved out
+# of the way first. Every registry row outside the template stops being live.
+#
+# conn: DBI connection object
 # current: The template being stored, as a plain list (template_to_list())
 # Returns: List with renamed (data frame with from, to and reused, whether
-#   another question of the new template carries the old name) and orphaned
-#   (character vector of names)
+#   another question of the new template carries the old name; only
+#   questions with grading are listed) and orphaned (character vector of the
+#   names of questions that left the template holding grading)
 
-reconcile_question_names_conn = function(conn, previous, current) {
+reconcile_question_names_conn = function(conn, current) {
   out = list(
     renamed = data.frame(from = character(0), to = character(0), reused = logical(0), stringsAsFactors = FALSE),
     orphaned = character(0)
   )
-  if (is.null(previous)) {
-    return(out)
+  new_ids = vapply(current$questions, function(q) as.integer(q$id), integer(1))
+  new_names = vapply(current$questions, function(q) as.character(q$name), character(1))
+  now = utc_timestamp()
+  registry = function() DBI::dbGetQuery(conn, "SELECT * FROM questions ORDER BY question_id")
+
+  raise_question_sequence(conn, floor = max(c(0L, new_ids)))
+  reg = registry()
+  for (rid in reg$question_id[reg$templated == 0 & reg$question_id %in% new_ids]) {
+    row = reg[reg$question_id == rid, , drop = FALSE]
+    DBI::dbExecute(conn, "
+      INSERT INTO questions (name, live, templated, created_at) VALUES (?, ?, 0, ?)
+    ", params = list(row$name, row$live, row$created_at))
+    fresh = as.integer(DBI::dbGetQuery(conn, "SELECT last_insert_rowid() AS id")$id)
+    DBI::dbExecute(conn, "DELETE FROM questions WHERE question_id = ?", params = list(rid))
+    rekey_question_rows(conn, rid, fresh)
   }
-  ids = function(x) vapply(x$questions, function(q) as.integer(q$id), integer(1))
-  names_of = function(x) vapply(x$questions, function(q) as.character(q$name), character(1))
-  old_ids = ids(previous)
-  old_names = names_of(previous)
-  new_ids = ids(current)
-  new_names = names_of(current)
+
+  reg = registry()
+  gone = reg[reg$templated == 1 & reg$live == 1 & !reg$question_id %in% new_ids, , drop = FALSE]
+  for (i in seq_len(nrow(gone))) {
+    if (question_has_grading_conn(conn, gone$question_id[i])) {
+      out$orphaned = c(out$orphaned, gone$name[i])
+    }
+  }
 
   from = character(0)
   to = character(0)
-  for (i in seq_along(old_ids)) {
-    j = match(old_ids[i], new_ids)
-    if (is.na(j)) {
-      if (!old_names[i] %in% new_names && question_has_grading_conn(conn, old_names[i])) {
-        out$orphaned = c(out$orphaned, old_names[i])
+  for (k in seq_along(new_ids)) {
+    id = new_ids[k]
+    name = new_names[k]
+    row = reg[reg$question_id == id, , drop = FALSE]
+    if (nrow(row) > 0) {
+      if (!identical(row$name, name) && question_has_grading_conn(conn, id)) {
+        from = c(from, row$name)
+        to = c(to, name)
       }
-      next
+      DBI::dbExecute(conn, "UPDATE questions SET name = ?, live = 1, templated = 1 WHERE question_id = ?", params = list(name, id))
+    } else {
+      minted = reg[reg$templated == 0 & reg$name == name, , drop = FALSE]
+      DBI::dbExecute(conn, "
+        INSERT INTO questions (question_id, name, live, templated, created_at) VALUES (?, ?, 1, 1, ?)
+      ", params = list(id, name, now))
+      if (nrow(minted) > 0) {
+        adopted = max(minted$question_id)
+        DBI::dbExecute(conn, "DELETE FROM questions WHERE question_id = ?", params = list(adopted))
+        rekey_question_rows(conn, adopted, id)
+      }
     }
-    if (identical(old_names[i], new_names[j]) || !question_has_grading_conn(conn, old_names[i])) {
-      next
-    }
-    from = c(from, old_names[i])
-    to = c(to, new_names[j])
-  }
-  if (length(from) == 0) {
-    return(out)
+    rename_question_rows(conn, id, name)
   }
 
-  held = vapply(to, function(name) question_has_grading_conn(conn, name), logical(1))
-  blocked = to[held & !to %in% from]
-  if (length(blocked) > 0) {
-    cli::cli_abort(c(
-      "Cannot carry grading over to {.val {blocked}}: {?that name/those names} already hold{?s/} the grading of a question no longer in the template.",
-      "i" = "Rename the question to a different name, or add the removed question back under its own name."
-    ), call = NULL)
+  if (length(new_ids) > 0) {
+    DBI::dbExecute(conn, paste0(
+      "UPDATE questions SET live = 0 WHERE live = 1 AND question_id NOT IN (", paste(new_ids, collapse = ", "), ")"
+    ))
+  } else {
+    DBI::dbExecute(conn, "UPDATE questions SET live = 0 WHERE live = 1")
   }
 
-  rename_rows = function(old, new) {
-    for (table in question_keyed_tables()) {
-      DBI::dbExecute(
-        conn, glue::glue("UPDATE {table} SET question_name = ? WHERE question_name = ?"),
-        params = list(new, old)
-      )
-    }
-  }
-  temp = paste0("\u001fmarkermd-rename-", seq_along(from))
-  for (k in seq_along(from)) rename_rows(from[k], temp[k])
-  for (k in seq_along(from)) rename_rows(temp[k], to[k])
   # A renamed question whose old name another question now carries is the
   # mark of a regenerated template whose ids shifted (see
   # report_question_name_changes())

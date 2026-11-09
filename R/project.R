@@ -650,7 +650,7 @@ report_question_name_changes = function(changes) {
   if (length(changes$orphaned) > 0) {
     cli::cli_warn(c(
       "Question{?s} {.val {changes$orphaned}} {?is/are} no longer in the template but still hold{?s/} grading, which the app and the exports no longer show.",
-      "i" = "Add the question back under the same name to see it again."
+      "i" = "The grading stays under the question's id: restore the template from a snapshot ({.code snapshot_restore(\"latest\", part = \"template\")}) to bring the question and its grading back. A new question with the same name starts empty."
     ))
   }
   invisible(changes)

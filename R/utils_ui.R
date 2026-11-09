@@ -210,7 +210,7 @@ question_name_change_messages = function(changes) {
     paste0(
       "Removed question", if (one) "" else "s", " ", paste0("\"", orphaned, "\"", collapse = ", "),
       " still hold", if (one) "s" else "", " grading, which mark() and the exports no longer show; ",
-      "add the question back under the same name to see it again."
+      "restore the template from a snapshot to bring it back (a new question with the same name starts empty)."
     )
   } else {
     character(0)

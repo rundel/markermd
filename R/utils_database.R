@@ -21,8 +21,12 @@
 #   7: the grading event tables' timestamps in UTC ISO 8601 (see
 #      migrate_event_timestamps()); earlier rows were local wall-clock time
 #      with no zone
+#   8: grading keyed by question id: the questions registry and a
+#      question_id column on settings, items, item_groups, grades, comments
+#      and private_comments, which carries the keys question_name used to
+#      (see migrate_question_ids())
 
-markermd_db_version = function() "7"
+markermd_db_version = function() "8"
 
 # ORDER BY clause giving a question's rubric items in display order. position
 # is authoritative; a row without one (written before schema version 2 and
@@ -116,131 +120,16 @@ initialize_database = function(collection_path) {
 #   snapshot the schema 5 migration takes (NULL skips it)
 
 create_tables_if_needed = function(conn, collection_path = NULL) {
-  # Settings table - stores markermd_grade_state properties
-  if (!DBI::dbExistsTable(conn, "settings")) {
-    DBI::dbExecute(conn, "
-      CREATE TABLE settings (
-        question_name TEXT PRIMARY KEY,
-        current_score REAL NOT NULL,
-        total_score REAL NOT NULL,
-        grading_mode TEXT NOT NULL CHECK (grading_mode IN ('positive', 'negative')),
-        bound_above_zero INTEGER NOT NULL CHECK (bound_above_zero IN (0, 1)),
-        bound_below_max INTEGER NOT NULL CHECK (bound_below_max IN (0, 1)),
-        optional INTEGER NOT NULL DEFAULT 0 CHECK (optional IN (0, 1)),
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      )
-    ")
-  }
-  
-  # Items table - stores markermd_rubric_item properties (without selected
-  # state). position is the 1-based display order within the question and the
-  # only ordering key; hotkey is derived from it (position <= 10) and kept in
-  # the row so the table reads sensibly by hand. group_id names the item's
-  # group in item_groups (NULL = ungrouped); a group's members are kept
-  # contiguous in position order (normalize_item_order()), and the group's
-  # display position is its first member's, so no separate group position
-  # is stored.
-  if (!DBI::dbExistsTable(conn, "items")) {
-    DBI::dbExecute(conn, "
-      CREATE TABLE items (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        question_name TEXT NOT NULL,
-        item_id TEXT NOT NULL,
-        hotkey INTEGER,
-        position INTEGER,
-        group_id TEXT,
-        points REAL NOT NULL,
-        description TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        UNIQUE(question_name, item_id)
-      )
-    ")
-  }
-
-  # Item groups table - stores markermd_rubric_group properties: a named run
-  # of a question's items whose combined points are bounded by floor (<= 0)
-  # and ceiling (>= 0), optionally exclusive (at most one member selected).
-  # Labels are unique within a question because the rubric import matches
-  # groups by label.
-  if (!DBI::dbExistsTable(conn, "item_groups")) {
-    DBI::dbExecute(conn, "
-      CREATE TABLE item_groups (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        question_name TEXT NOT NULL,
-        group_id TEXT NOT NULL,
-        label TEXT NOT NULL,
-        floor REAL CHECK (floor IS NULL OR floor <= 0),
-        ceiling REAL CHECK (ceiling IS NULL OR ceiling >= 0),
-        exclusive INTEGER NOT NULL DEFAULT 0 CHECK (exclusive IN (0, 1)),
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        UNIQUE (question_name, group_id),
-        UNIQUE (question_name, label)
-      )
-    ")
-  }
-  
-  # Grades table - stores grading events (selection/deselection of rubric items)
-  if (!DBI::dbExistsTable(conn, "grades")) {
-    DBI::dbExecute(conn, "
-      CREATE TABLE grades (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        question_name TEXT NOT NULL,
-        assignment_repo TEXT NOT NULL,
-        item_id TEXT NOT NULL,
-        selected INTEGER NOT NULL CHECK (selected IN (0, 1)),
-        timestamp TEXT NOT NULL,
-        username TEXT NOT NULL
-      )
-    ")
-    
-    # Create index for efficient querying of most recent grades
-    DBI::dbExecute(conn, "
-      CREATE INDEX idx_grades_lookup ON grades (question_name, assignment_repo, item_id, timestamp)
-    ")
-  }
-  
-  # Comments table - stores per-question/repo comments (event log; the most
-  # recent row per pair is the current comment)
-  if (!DBI::dbExistsTable(conn, "comments")) {
-    DBI::dbExecute(conn, "
-      CREATE TABLE comments (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        question_name TEXT NOT NULL,
-        assignment_repo TEXT NOT NULL,
-        comment_text TEXT NOT NULL,
-        timestamp TEXT NOT NULL,
-        username TEXT NOT NULL
-      )
-    ")
-    
-    # Create index for efficient querying of most recent comments
-    DBI::dbExecute(conn, "
-      CREATE INDEX idx_comments_lookup ON comments (question_name, assignment_repo, timestamp)
-    ")
-  }
-
-  # Private comments table - grader/skill-internal notes per question/repo
-  # pair, never shown to students (the comments table is the student-facing
-  # channel). Same event-log semantics as comments. Created here on first
-  # touch, so existing databases gain it without migration.
-  if (!DBI::dbExistsTable(conn, "private_comments")) {
-    DBI::dbExecute(conn, "
-      CREATE TABLE private_comments (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        question_name TEXT NOT NULL,
-        assignment_repo TEXT NOT NULL,
-        comment_text TEXT NOT NULL,
-        timestamp TEXT NOT NULL,
-        username TEXT NOT NULL
-      )
-    ")
-
-    DBI::dbExecute(conn, "
-      CREATE INDEX idx_private_comments_lookup ON private_comments (question_name, assignment_repo, timestamp)
-    ")
+  # The six grading tables (settings, items, item_groups and the three event
+  # logs), keyed by question id; see question_table_ddl() for their layout and
+  # migrate_question_ids() for how a database written before schema version 8
+  # is rebuilt into it
+  create_question_registry(conn)
+  ddl = question_table_ddl()
+  for (table in names(ddl)) {
+    if (!DBI::dbExistsTable(conn, table)) {
+      DBI::dbExecute(conn, ddl[[table]])
+    }
   }
 
   # Metadata table - key/value store for project-level singletons (the grading
@@ -263,10 +152,15 @@ create_tables_if_needed = function(conn, collection_path = NULL) {
   migrate_items_position(conn)
   migrate_items_group(conn)
   migrate_settings_optional(conn)
+  # The tables are rebuilt by id before the snapshot baseline reads them,
+  # and stamped version 8 only once the version-gated migrations after it
+  # have run
+  migrate_question_ids(conn, stamp = FALSE)
   migrate_snapshots(conn, collection_path, baseline = snapshots_are_new)
   create_action_tables(conn)
   migrate_actions(conn)
   migrate_event_timestamps(conn)
+  migrate_question_ids(conn)
 }
 
 # Schema version 6 -> 7: rewrite the grading event tables' timestamps from
@@ -301,6 +195,340 @@ migrate_event_timestamps = function(conn) {
 
   invisible(TRUE)
 }
+
+# Questions registry (schema version 8). Every grading row carries the
+# question_id of the question it belongs to, and question_id is the key every
+# reader and writer uses. A row of the registry gives an id's current name
+# (question_name in the grading tables is kept equal to it, for display and
+# hand-reading); live marks the ids the grading state shows (the stored
+# template's questions, or, before a template is stored, every name written
+# to); templated marks ids that have been part of a stored template. The
+# template's own question ids are the registry ids, so renaming a question in
+# the template renames its id's rows and nothing else; a question removed from
+# the template keeps its rows under its id (live = 0, an orphan) and a new
+# question that reuses its name gets a new id, so the old grading does not
+# come back unless the old question (its id) does. Names written to before
+# any template names them get ids minted here (templated = 0); the first
+# stored template that names them adopts their rows under its own ids (see
+# sync_question_registry_conn()).
+#
+# conn: DBI connection object
+
+create_question_registry = function(conn) {
+  if (!DBI::dbExistsTable(conn, "questions")) {
+    DBI::dbExecute(conn, "
+      CREATE TABLE questions (
+        question_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        live INTEGER NOT NULL DEFAULT 1 CHECK (live IN (0, 1)),
+        templated INTEGER NOT NULL DEFAULT 0 CHECK (templated IN (0, 1)),
+        created_at TEXT NOT NULL
+      )
+    ")
+    DBI::dbExecute(conn, "CREATE INDEX idx_questions_name ON questions (name, live)")
+  }
+}
+
+# The grading tables keyed by question id
+
+question_keyed_tables = function() c("settings", "items", "item_groups", "grades", "comments", "private_comments")
+
+# The CREATE TABLE statement of each question-keyed grading table at schema
+# version 8. question_id may be NULL only transiently: a row inserted without
+# one (by hand, or by code that predates the column) is given its name's id by
+# the trigger from create_question_indexes(). settings keeps an autoincrement
+# id so such a row cannot take a rowid as its question id.
+
+question_table_ddl = function() {
+  list(
+    settings = "
+      CREATE TABLE settings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        question_id INTEGER UNIQUE,
+        question_name TEXT NOT NULL,
+        current_score REAL NOT NULL,
+        total_score REAL NOT NULL,
+        grading_mode TEXT NOT NULL CHECK (grading_mode IN ('positive', 'negative')),
+        bound_above_zero INTEGER NOT NULL CHECK (bound_above_zero IN (0, 1)),
+        bound_below_max INTEGER NOT NULL CHECK (bound_below_max IN (0, 1)),
+        optional INTEGER NOT NULL DEFAULT 0 CHECK (optional IN (0, 1)),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ",
+    # position is the 1-based display order within the question and the only
+    # ordering key; hotkey is derived from it (position <= 10) and kept in the
+    # row so the table reads sensibly by hand. group_id names the item's group
+    # in item_groups (NULL = ungrouped); a group's members are kept contiguous
+    # in position order (normalize_item_order()), and the group's display
+    # position is its first member's.
+    items = "
+      CREATE TABLE items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        question_id INTEGER,
+        question_name TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        hotkey INTEGER,
+        position INTEGER,
+        group_id TEXT,
+        points REAL NOT NULL,
+        description TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (question_id, item_id)
+      )
+    ",
+    # A named run of a question's items whose combined points are bounded by
+    # floor (<= 0) and ceiling (>= 0), optionally exclusive. Labels are unique
+    # within a question because the rubric import matches groups by label.
+    item_groups = "
+      CREATE TABLE item_groups (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        question_id INTEGER,
+        question_name TEXT NOT NULL,
+        group_id TEXT NOT NULL,
+        label TEXT NOT NULL,
+        floor REAL CHECK (floor IS NULL OR floor <= 0),
+        ceiling REAL CHECK (ceiling IS NULL OR ceiling >= 0),
+        exclusive INTEGER NOT NULL DEFAULT 0 CHECK (exclusive IN (0, 1)),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (question_id, group_id),
+        UNIQUE (question_id, label)
+      )
+    ",
+    grades = "
+      CREATE TABLE grades (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        question_id INTEGER,
+        question_name TEXT NOT NULL,
+        assignment_repo TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        selected INTEGER NOT NULL CHECK (selected IN (0, 1)),
+        timestamp TEXT NOT NULL,
+        username TEXT NOT NULL,
+        action_id TEXT
+      )
+    ",
+    # The public, student-facing comment log; the most recent row per pair is
+    # the current comment
+    comments = "
+      CREATE TABLE comments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        question_id INTEGER,
+        question_name TEXT NOT NULL,
+        assignment_repo TEXT NOT NULL,
+        comment_text TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        username TEXT NOT NULL,
+        action_id TEXT
+      )
+    ",
+    # Grader and skill notes per pair, never student-facing
+    private_comments = "
+      CREATE TABLE private_comments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        question_id INTEGER,
+        question_name TEXT NOT NULL,
+        assignment_repo TEXT NOT NULL,
+        comment_text TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        username TEXT NOT NULL,
+        action_id TEXT
+      )
+    "
+  )
+}
+
+# The indexes and triggers of the question-keyed tables (created after the
+# tables, since a rebuild drops them with the old table). The trigger gives a
+# row inserted without a question_id the id of its question_name's live
+# registry row, minting one when the name is new, so rows written by hand or
+# by older code still land under the right question.
+#
+# conn: DBI connection object
+
+create_question_indexes = function(conn) {
+  for (table in c("grades", "comments", "private_comments")) {
+    cols = if (table == "grades") "question_id, assignment_repo, item_id, id" else "question_id, assignment_repo, id"
+    DBI::dbExecute(conn, glue::glue("CREATE INDEX IF NOT EXISTS idx_{table}_lookup ON {table} ({cols})"))
+    # migrate_actions() adds the column (and this index) to a table that
+    # predates it
+    if ("action_id" %in% DBI::dbListFields(conn, table)) {
+      DBI::dbExecute(conn, glue::glue("CREATE INDEX IF NOT EXISTS idx_{table}_action ON {table} (action_id)"))
+    }
+  }
+  for (table in question_keyed_tables()) {
+    DBI::dbExecute(conn, glue::glue("
+      CREATE TRIGGER IF NOT EXISTS trg_<<table>>_question_id
+      AFTER INSERT ON <<table>> WHEN NEW.question_id IS NULL
+      BEGIN
+        INSERT INTO questions (name, live, templated, created_at)
+          SELECT NEW.question_name, 1, 0, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+          WHERE NOT EXISTS (SELECT 1 FROM questions WHERE name = NEW.question_name AND live = 1);
+        UPDATE <<table>> SET question_id = (
+          SELECT question_id FROM questions
+          WHERE name = NEW.question_name AND live = 1
+          ORDER BY question_id DESC LIMIT 1
+        ) WHERE id = NEW.id;
+      END
+    ", .open = "<<", .close = ">>"))
+  }
+}
+
+# Schema version 7 -> 8: key the grading tables by question id. The registry
+# is seeded with the stored template's questions (their own ids, live and
+# templated); every other name found in the grading tables gets an id minted
+# above the project's question id high-water mark, one per name: an orphan
+# (not live) when a template is stored, since that name's question is no
+# longer in it, otherwise a live, not yet templated question that the first
+# stored template naming it adopts. Each table lacking question_id is rebuilt
+# (SQLite cannot change a table's keys in place): renamed aside, recreated
+# from question_table_ddl(), its rows copied with their ids (so event ids,
+# which snapshots count from, are kept) and the question_id of their name,
+# and dropped. Runs on first touch of each database per session like the
+# earlier migrations, a no-op once every table has the column, inside one
+# immediate transaction.
+#
+# conn: DBI connection object
+# stamp: Whether to stamp schema version 8 (FALSE while the version-gated
+#   migrations that follow have still to run)
+
+migrate_question_ids = function(conn, stamp = TRUE) {
+  needs = function(table) {
+    DBI::dbExistsTable(conn, table) && !"question_id" %in% DBI::dbListFields(conn, table)
+  }
+  stamp_version = stamp
+  stamp = function() {
+    stored = get_metadata(conn, "schema_version")
+    if (stamp_version && !is.null(stored) && utils::compareVersion(stored, "8") < 0) {
+      set_metadata(conn, "schema_version", "8")
+    }
+  }
+  if (!any(vapply(question_keyed_tables(), needs, logical(1)))) {
+    create_question_indexes(conn)
+    stamp()
+    return(invisible(FALSE))
+  }
+
+  DBI::dbExecute(conn, "BEGIN IMMEDIATE")
+  pending = Filter(needs, question_keyed_tables())
+  if (length(pending) > 0) {
+    template = stored_template_questions(conn)
+    has_template = !is.null(template)
+    for (i in seq_len(NROW(template))) {
+      DBI::dbExecute(conn, "
+        INSERT OR IGNORE INTO questions (question_id, name, live, templated, created_at) VALUES (?, ?, 1, 1, ?)
+      ", params = list(template$id[i], template$name[i], utc_timestamp()))
+    }
+    raise_question_sequence(conn)
+    seen = unique(unlist(lapply(pending, function(table) {
+      DBI::dbGetQuery(conn, glue::glue("SELECT DISTINCT question_name FROM {table}"))$question_name
+    })))
+    for (name in setdiff(seen, template$name)) {
+      DBI::dbExecute(conn, "
+        INSERT INTO questions (name, live, templated, created_at) VALUES (?, ?, ?, ?)
+      ", params = list(name, as.integer(!has_template), as.integer(has_template), utc_timestamp()))
+    }
+
+    ddl = question_table_ddl()
+    for (table in pending) {
+      old = paste0(table, "_v7")
+      DBI::dbExecute(conn, glue::glue("ALTER TABLE {table} RENAME TO {old}"))
+      DBI::dbExecute(conn, ddl[[table]])
+      cols = setdiff(intersect(DBI::dbListFields(conn, old), DBI::dbListFields(conn, table)), c("question_id", "id"))
+      if (table != "settings") cols = c("id", cols)
+      col_list = paste(cols, collapse = ", ")
+      DBI::dbExecute(conn, glue::glue("
+        INSERT INTO {table} ({col_list}, question_id)
+        SELECT {col_list}, (
+          SELECT q.question_id FROM questions q WHERE q.name = {old}.question_name
+          ORDER BY q.live DESC, q.question_id DESC LIMIT 1
+        ) FROM {old}
+      "))
+      DBI::dbExecute(conn, glue::glue("DROP TABLE {old}"))
+    }
+  }
+  create_question_indexes(conn)
+  stamp()
+  DBI::dbExecute(conn, "COMMIT")
+
+  invisible(TRUE)
+}
+
+# The stored template's questions as a data frame of id and name, read from
+# the template JSON in the metadata table without rebuilding the template
+# (which would re-parse the assignment document), or NULL when no template is
+# stored
+#
+# conn: DBI connection object
+
+stored_template_questions = function(conn) {
+  json = get_metadata(conn, "template")
+  if (is.null(json)) {
+    return(NULL)
+  }
+  questions = jsonlite::fromJSON(json, simplifyVector = FALSE)$questions
+  data.frame(
+    id = vapply(questions, function(q) as.integer(q$id), integer(1)),
+    name = vapply(questions, function(q) as.character(q$name), character(1)),
+    stringsAsFactors = FALSE
+  )
+}
+
+# Raise the registry's id sequence to the project's question id high-water
+# mark (the "question_id_max" metadata value) and any floor given, so an id
+# minted for a name never collides with one the template editor has issued
+#
+# conn: DBI connection object
+# floor: Optional integer the sequence must reach
+
+raise_question_sequence = function(conn, floor = 0L) {
+  recorded = suppressWarnings(as.integer(get_metadata(conn, "question_id_max")))
+  registry = DBI::dbGetQuery(conn, "SELECT COALESCE(MAX(question_id), 0) AS m FROM questions")$m
+  target = as.integer(max(c(0L, recorded[!is.na(recorded)], registry, floor)))
+  present = DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM sqlite_sequence WHERE name = 'questions'")$n
+  if (present == 0) {
+    DBI::dbExecute(conn, "INSERT INTO sqlite_sequence (name, seq) VALUES ('questions', ?)", params = list(target))
+  } else {
+    DBI::dbExecute(conn, "
+      UPDATE sqlite_sequence SET seq = ? WHERE name = 'questions' AND seq < ?
+    ", params = list(target, target))
+  }
+  invisible(target)
+}
+
+# The question id a name refers to: its live registry row, minted (live, not
+# yet templated) when the name is new and create is TRUE. Every grading
+# reader and writer resolves its question name here once and keys its SQL on
+# the id.
+#
+# conn: DBI connection object
+# question_name: Character string
+# create: Whether to mint an id for an unknown name (writers) or return NA
+#   (readers, which then match no rows)
+
+question_id_conn = function(conn, question_name, create = TRUE) {
+  row = DBI::dbGetQuery(conn, "
+    SELECT question_id FROM questions WHERE name = ? AND live = 1 ORDER BY question_id DESC LIMIT 1
+  ", params = list(question_name))
+  if (nrow(row) > 0) {
+    return(as.integer(row$question_id[1]))
+  }
+  if (!create) {
+    return(NA_integer_)
+  }
+  raise_question_sequence(conn)
+  DBI::dbExecute(conn, "
+    INSERT INTO questions (name, live, templated, created_at) VALUES (?, 1, 0, ?)
+  ", params = list(question_name, utc_timestamp()))
+  as.integer(DBI::dbGetQuery(conn, "SELECT last_insert_rowid() AS id")$id)
+}
+
+# SQL condition restricting a grading table's rows to live questions (the
+# grading state; orphans are kept but not shown)
+
+live_question_sql = "question_id IN (SELECT question_id FROM questions WHERE live = 1)"
 
 # Snapshot tables (schema version 5): named, timestamped, annotated copies of
 # the grading state (the template, rubric and marks exchange documents) kept
@@ -663,10 +891,11 @@ upsert_settings = function(conn, question_name, grade_state) {
   # Single atomic statement (created_at is preserved on update); the previous
   # SELECT-then-write pattern was racy against a concurrent skill writer
   DBI::dbExecute(conn, "
-    INSERT INTO settings (question_name, current_score, total_score, grading_mode,
+    INSERT INTO settings (question_id, question_name, current_score, total_score, grading_mode,
                           bound_above_zero, bound_below_max, optional, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(question_name) DO UPDATE SET
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(question_id) DO UPDATE SET
+      question_name = excluded.question_name,
       current_score = excluded.current_score,
       total_score = excluded.total_score,
       grading_mode = excluded.grading_mode,
@@ -675,6 +904,7 @@ upsert_settings = function(conn, question_name, grade_state) {
       optional = excluded.optional,
       updated_at = excluded.updated_at
   ", params = list(
+    question_id_conn(conn, question_name),
     question_name,
     grade_state@current_score,
     grade_state@total_score,
@@ -705,14 +935,16 @@ upsert_items = function(conn, question_name, item_id, rubric_item, position = NU
 
   # Single atomic statement (created_at is preserved on update); the previous
   # SELECT-then-write pattern was racy against a concurrent skill writer
+  question_id = question_id_conn(conn, question_name)
   DBI::dbExecute(conn, "
-    INSERT INTO items (question_name, item_id, hotkey, position, group_id, points, description, created_at, updated_at)
+    INSERT INTO items (question_id, question_name, item_id, hotkey, position, group_id, points, description, created_at, updated_at)
     VALUES (
-      ?, ?, ?,
-      COALESCE(?, (SELECT COALESCE(MAX(position), 0) + 1 FROM items WHERE question_name = ?)),
+      ?, ?, ?, ?,
+      COALESCE(?, (SELECT COALESCE(MAX(position), 0) + 1 FROM items WHERE question_id = ?)),
       ?, ?, ?, ?, ?
     )
-    ON CONFLICT(question_name, item_id) DO UPDATE SET
+    ON CONFLICT(question_id, item_id) DO UPDATE SET
+      question_name = excluded.question_name,
       hotkey = excluded.hotkey,
       position = COALESCE(?, items.position),
       group_id = excluded.group_id,
@@ -720,11 +952,12 @@ upsert_items = function(conn, question_name, item_id, rubric_item, position = NU
       description = excluded.description,
       updated_at = excluded.updated_at
   ", params = list(
+    question_id,
     question_name,
     item_id,
     if (is.na(rubric_item@hotkey)) NA_integer_ else rubric_item@hotkey,
     position,
-    question_name,
+    question_id,
     if (is.na(rubric_item@group)) NA_character_ else rubric_item@group,
     rubric_item@points,
     rubric_item@description,
@@ -747,15 +980,17 @@ upsert_items = function(conn, question_name, item_id, rubric_item, position = NU
 upsert_item_group = function(conn, question_name, group_id, group) {
   timestamp = get_current_timestamp()
   DBI::dbExecute(conn, "
-    INSERT INTO item_groups (question_name, group_id, label, floor, ceiling, exclusive, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(question_name, group_id) DO UPDATE SET
+    INSERT INTO item_groups (question_id, question_name, group_id, label, floor, ceiling, exclusive, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(question_id, group_id) DO UPDATE SET
+      question_name = excluded.question_name,
       label = excluded.label,
       floor = excluded.floor,
       ceiling = excluded.ceiling,
       exclusive = excluded.exclusive,
       updated_at = excluded.updated_at
   ", params = list(
+    question_id_conn(conn, question_name),
     question_name,
     group_id,
     group@label,
@@ -775,12 +1010,13 @@ upsert_item_group = function(conn, question_name, group_id, group) {
 # group_id: Character string
 
 delete_item_group_records = function(conn, question_name, group_id) {
+  question_id = question_id_conn(conn, question_name, create = FALSE)
   DBI::dbExecute(conn, "
-    UPDATE items SET group_id = NULL WHERE question_name = ? AND group_id = ?
-  ", params = list(question_name, group_id))
+    UPDATE items SET group_id = NULL WHERE question_id = ? AND group_id = ?
+  ", params = list(question_id, group_id))
   DBI::dbExecute(conn, "
-    DELETE FROM item_groups WHERE question_name = ? AND group_id = ?
-  ", params = list(question_name, group_id))
+    DELETE FROM item_groups WHERE question_id = ? AND group_id = ?
+  ", params = list(question_id, group_id))
 }
 
 # Repositories with more than one of the given items selected (by the most
@@ -803,7 +1039,7 @@ group_selection_conflicts = function(conn, question_name, member_ids) {
 
   grades = latest_rows(
     conn, "grades", c("assignment_repo", "item_id"),
-    where = "question_name = ?", params = list(question_name)
+    where = "question_id = ?", params = list(question_id_conn(conn, question_name, create = FALSE))
   )
   grades = grades[grades$selected == 1 & grades$item_id %in% member_ids, , drop = FALSE]
   if (nrow(grades) == 0) {
@@ -829,12 +1065,13 @@ group_selection_conflicts = function(conn, question_name, member_ids) {
 # item_id: Character string
 
 delete_item_records = function(conn, question_name, item_id) {
+  question_id = question_id_conn(conn, question_name, create = FALSE)
   DBI::dbExecute(conn, "
-    DELETE FROM items WHERE question_name = ? AND item_id = ?
-  ", params = list(question_name, item_id))
+    DELETE FROM items WHERE question_id = ? AND item_id = ?
+  ", params = list(question_id, item_id))
   DBI::dbExecute(conn, "
-    DELETE FROM grades WHERE question_name = ? AND item_id = ?
-  ", params = list(question_name, item_id))
+    DELETE FROM grades WHERE question_id = ? AND item_id = ?
+  ", params = list(question_id, item_id))
 }
 
 # Insert grade record
@@ -847,9 +1084,10 @@ delete_item_records = function(conn, question_name, item_id) {
 
 insert_grade = function(conn, question_name, assignment_repo, item_id, selected) {
   DBI::dbExecute(conn, "
-    INSERT INTO grades (question_name, assignment_repo, item_id, selected, timestamp, username, action_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO grades (question_id, question_name, assignment_repo, item_id, selected, timestamp, username, action_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   ", params = list(
+    question_id_conn(conn, question_name),
     question_name,
     assignment_repo,
     item_id,
@@ -877,9 +1115,10 @@ comment_tables = function() c(public = "comments", private = "private_comments")
 insert_comment_row = function(conn, table, question_name, assignment_repo, comment_text) {
   table = match.arg(table, comment_tables())
   DBI::dbExecute(conn, glue::glue("
-    INSERT INTO {table} (question_name, assignment_repo, comment_text, timestamp, username, action_id)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO {table} (question_id, question_name, assignment_repo, comment_text, timestamp, username, action_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   "), params = list(
+    question_id_conn(conn, question_name),
     question_name,
     assignment_repo,
     comment_text,
@@ -917,7 +1156,7 @@ insert_private_comment = function(conn, question_name, assignment_repo, comment_
 # Returns: Data frame with settings data
 
 load_all_settings = function(conn) {
-  DBI::dbGetQuery(conn, "SELECT * FROM settings")
+  DBI::dbGetQuery(conn, paste("SELECT * FROM settings WHERE", live_question_sql))
 }
 
 # Load all items from database
@@ -926,7 +1165,7 @@ load_all_settings = function(conn) {
 # Returns: Data frame with items data
 
 load_all_items = function(conn) {
-  DBI::dbGetQuery(conn, "SELECT * FROM items ORDER BY question_name, id")
+  DBI::dbGetQuery(conn, paste("SELECT * FROM items WHERE", live_question_sql, "ORDER BY question_name, id"))
 }
 
 # Load all item groups from database
@@ -935,14 +1174,17 @@ load_all_items = function(conn) {
 # Returns: Data frame with item_groups data
 
 load_all_item_groups = function(conn) {
-  DBI::dbGetQuery(conn, "SELECT * FROM item_groups ORDER BY question_name, id")
+  DBI::dbGetQuery(conn, paste("SELECT * FROM item_groups WHERE", live_question_sql, "ORDER BY question_name, id"))
 }
 
-# Most recent row per group from an event-log table
+# Most recent row per group from an event-log table, among the rows of live
+# questions (an orphaned question's rows are kept but are not grading state)
 #
 # Recency is decided by the autoincrement id, not the timestamp: timestamps
 # have 1-second resolution, so two quick events for the same group tie on
-# MAX(timestamp) and a timestamp join would return both rows.
+# MAX(timestamp) and a timestamp join would return both rows. A question is
+# grouped by its question_id whichever of question_id and question_name
+# group_cols names, since the name is a display column.
 #
 # conn: DBI connection object
 # table: Event-log table name ("grades", "comments", "private_comments")
@@ -952,7 +1194,9 @@ load_all_item_groups = function(conn) {
 # Returns: Data frame with the most recent full row per group
 
 latest_rows = function(conn, table, group_cols, where = NULL, params = NULL) {
-  where_clause = if (is.null(where)) "" else paste0("WHERE ", where, "\n      ")
+  group_cols = unique(replace(group_cols, group_cols == "question_name", "question_id"))
+  conditions = c(live_question_sql, where)
+  where_clause = paste0("WHERE ", paste0("(", conditions, ")", collapse = " AND "), "\n      ")
   DBI::dbGetQuery(conn, glue::glue("
     SELECT t1.*
     FROM <<table>> t1

@@ -226,6 +226,7 @@ marks_data_from_conn = function(conn, repo_names = NULL, question_names = NULL, 
   private_comments = nonempty_comments(load_most_recent_private_comments(conn))
   items = DBI::dbGetQuery(conn, paste0("
     SELECT question_name, item_id, description FROM items
+    WHERE ", live_question_sql, "
     ORDER BY question_name, ", items_display_order_sql))
 
   pair_key = function(question, repo) paste(question, repo, sep = "\x1f")
