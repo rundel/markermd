@@ -1604,7 +1604,8 @@ record_export_note = function(root, what, path) {
 #' `overwrite = TRUE` to re-mark it. Repositories in the snapshot that no
 #' longer exist under the repos directory are skipped with a warning. A question the
 #' snapshot has that is not in the current template aborts unless
-#' `"template"` is among the parts.
+#' `"template"` is among the parts. A question renamed since the snapshot
+#' is matched by its question id and restored under its current name.
 #'
 #' @inheritParams snapshot_info
 #' @param part Which parts to restore: any of `"rubric"`, `"marks"`,
@@ -1692,6 +1693,15 @@ restore_snapshot = function(proj, id, part, question = NULL, repo = NULL, summar
     snapshot_id = resolve_snapshot_id(conn, id)
     parts = read_snapshot_parts(conn, snapshot_id)
     stats = read_snapshot_stats(conn, snapshot_id)
+    # Without the template part, a question renamed since the snapshot is
+    # restored under its current name, matched by question id
+    if (!"template" %in% part) {
+      side = rename_side_questions(
+        list(parts = parts, stats = stats), question_name_map(parts$template, db_template_list(conn))
+      )
+      parts = side$parts
+      stats = side$stats
+    }
 
     if ("template" %in% part && is.null(parts$template)) {
       cli::cli_abort("Snapshot {.val {snapshot_id}} holds no template to restore.")
@@ -1749,7 +1759,7 @@ restore_snapshot = function(proj, id, part, question = NULL, repo = NULL, summar
       # undoing a template change also undoes the renames it carried out
       name_changes = NULL
       if ("template" %in% part) {
-        name_changes = reconcile_question_names_conn(conn, db_template_list(conn), parts$template)
+        name_changes = reconcile_question_names_conn(conn, parts$template)
         note_question_ids_conn(conn, parts$template)
         set_metadata(conn, "template", as.character(jsonlite::toJSON(parts$template, auto_unbox = TRUE, null = "null")))
       }
@@ -1862,7 +1872,7 @@ restore_rubric_conn = function(conn, rubric, questions) {
     }
 
     if (is.null(question$scoring)) {
-      DBI::dbExecute(conn, "DELETE FROM settings WHERE question_name = ?", params = list(question_name))
+      DBI::dbExecute(conn, "DELETE FROM settings WHERE question_id = ?", params = list(question_id_conn(conn, question_name, create = FALSE)))
     } else {
       upsert_settings(conn, question_name, parts$state)
     }

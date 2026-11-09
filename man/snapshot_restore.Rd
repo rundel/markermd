@@ -67,7 +67,8 @@ as having grading activity for \code{\link[=marks_import]{marks_import()}}'s def
 \code{overwrite = TRUE} to re-mark it. Repositories in the snapshot that no
 longer exist under the repos directory are skipped with a warning. A question the
 snapshot has that is not in the current template aborts unless
-\code{"template"} is among the parts.
+\code{"template"} is among the parts. A question renamed since the snapshot
+is matched by its question id and restored under its current name.
 }
 \examples{
 \dontrun{

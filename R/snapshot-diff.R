@@ -663,6 +663,62 @@ S7::method(print, markermd_snapshot_diff) = function(x, ...) {
   invisible(x)
 }
 
+# How one side's question names map onto the other side's, through the
+# question ids the two template parts share: a question renamed between the
+# two sides keeps its id, so its rubric, marks and scores are compared as one
+# question under its newer name. Empty when either side has no template.
+#
+# from_template: Plain template list of the older side, or NULL
+# to_template: Plain template list of the newer side, or NULL
+# Returns: Named character vector, old name -> new name, only for names that
+#   differ
+
+question_name_map = function(from_template, to_template) {
+  if (is.null(from_template) || is.null(to_template)) {
+    return(character(0))
+  }
+  ids = function(x) vapply(x$questions, function(q) as.integer(q$id), integer(1))
+  names_of = function(x) vapply(x$questions, function(q) as.character(q$name), character(1))
+  from_ids = ids(from_template)
+  to_ids = ids(to_template)
+  hit = match(from_ids, to_ids)
+  keep = !is.na(hit) & names_of(from_template) != names_of(to_template)[ifelse(is.na(hit), 1L, hit)]
+  stats::setNames(names_of(to_template)[hit[keep]], names_of(from_template)[keep])
+}
+
+# One side of a diff with its question names renamed by question_name_map(),
+# so diff_rubric(), diff_marks() and diff_scores() line a renamed question up
+# with itself
+#
+# side: List with parts (template, rubric, marks) and stats
+# map: Named character vector from question_name_map()
+
+rename_side_questions = function(side, map) {
+  if (length(map) == 0) {
+    return(side)
+  }
+  rename = function(x) ifelse(x %in% names(map), map[x], x)
+  if (!is.null(side$parts$rubric)) {
+    side$parts$rubric$questions = lapply(side$parts$rubric$questions, function(q) {
+      q$name = rename(q$name)
+      q
+    })
+  }
+  if (!is.null(side$parts$marks)) {
+    side$parts$marks$repos = lapply(side$parts$marks$repos, function(r) {
+      r$questions = lapply(r$questions, function(q) {
+        q$name = rename(q$name)
+        q
+      })
+      r
+    })
+  }
+  if (!is.null(side$stats) && nrow(side$stats) > 0) {
+    side$stats$question_name = rename(side$stats$question_name)
+  }
+  side
+}
+
 #' Compare two snapshots, or a snapshot with the live state
 #'
 #' Reports what changed between two snapshots (or between a snapshot and the
@@ -681,6 +737,9 @@ S7::method(print, markermd_snapshot_diff) = function(x, ...) {
 #' are selected by the same repositories on both sides. Selections are
 #' compared by item id as well, so a reworded item is not a selection change
 #' while a deleted item whose description another item took over still is.
+#' Questions are matched by the ids of the two sides' templates, so a question
+#' renamed in between is compared with itself under its newer name, and only
+#' the template comparison reports the rename.
 #'
 #' The comparison is only meaningful when the snapshot's part is present on
 #' both sides; a `part` left out is reported as unchanged.
@@ -728,6 +787,7 @@ snapshot_diff = function(from, to = "current", project = ".", part = c("rubric",
     }
     a = side(from)
     b = side(to)
+    a = rename_side_questions(a, question_name_map(a$parts$template, b$parts$template))
 
     rubric = if ("rubric" %in% part) {
       diff_rubric(a$parts$rubric, b$parts$rubric, a$parts$marks, b$parts$marks)

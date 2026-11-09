@@ -42,6 +42,9 @@ re-created are matched as a likely rename when they keep their points and
 are selected by the same repositories on both sides. Selections are
 compared by item id as well, so a reworded item is not a selection change
 while a deleted item whose description another item took over still is.
+Questions are matched by the ids of the two sides' templates, so a question
+renamed in between is compared with itself under its newer name, and only
+the template comparison reports the rename.
 
 The comparison is only meaningful when the snapshot's part is present on
 both sides; a \code{part} left out is reported as unchanged.
