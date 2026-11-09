@@ -27,8 +27,10 @@ YAML file. Items are written in display order; order is meaningful, as
 the first ten items are bound to keyboard hotkeys on import and any
 further items (there is no limit) are toggled by clicking. A group's
 items are nested under a group entry (\code{group}, optional \code{floor},
-\code{ceiling} and \code{exclusive}, then \code{items}). The file is written as
-\code{format_version} \code{"1.1"} when it contains a group and \code{"1.0"} otherwise.
+\code{ceiling} and \code{exclusive}, then \code{items}). The file is written with the
+lowest \code{format_version} that can represent it: \code{"1.2"} when a question's
+scoring is optional, \code{"1.1"} when it contains a group, and \code{"1.0"}
+otherwise.
 No per-repository grading data is written.
 }
 \seealso{

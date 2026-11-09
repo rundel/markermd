@@ -1,7 +1,11 @@
 #' Methods for Markermd Template Classes
 #'
-#' @description Methods for S7 template classes including validation, conversion,
-#' printing, and serialization support.
+#' @description Console methods for the S7 template classes: `print()` for
+#' templates, questions, node selections and template metadata, and
+#' `length()` for templates (the number of questions) and node selections
+#' (the number of selected node ids). Validation lives in the class
+#' validators and serialization in [read_template_yaml()] /
+#' [write_template_yaml()].
 #'
 #' @name template_methods
 NULL
@@ -22,12 +26,20 @@ S7::method(print, markermd_node_selection) = function(x, ...) {
 
 S7::method(print, markermd_question) = function(x, ...) {
   cat("Question:", x@name, "(ID:", x@id, ")\n")
+  if (is_file_question(x)) {
+    cat("File:", x@file, "\n")
+    return(invisible(x))
+  }
   if (is_document_question(x)) {
     cat("Scope: whole document\n")
   } else {
     cat("Selected nodes:", length(x@selected_nodes@node_ids), "\n")
   }
   cat("Rules:", length(x@rules), "\n")
+  filter_text = filters_expr_text(x@filters)
+  if (!is.null(filter_text)) {
+    cat("Filters:", filter_text, "\n")
+  }
   invisible(x)
 }
 

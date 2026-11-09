@@ -4,6 +4,10 @@
 \alias{template_methods}
 \title{Methods for Markermd Template Classes}
 \description{
-Methods for S7 template classes including validation, conversion,
-printing, and serialization support.
+Console methods for the S7 template classes: \code{print()} for
+templates, questions, node selections and template metadata, and
+\code{length()} for templates (the number of questions) and node selections
+(the number of selected node ids). Validation lives in the class
+validators and serialization in \code{\link[=read_template_yaml]{read_template_yaml()}} /
+\code{\link[=write_template_yaml]{write_template_yaml()}}.
 }

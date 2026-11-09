@@ -7,7 +7,7 @@
 [![pkgdown](https://img.shields.io/badge/docs-pkgdown-blue.svg)](https://rundel.github.io/markermd/)
 <!-- badges: end -->
 
-markermd is a Shiny-based grading environment for assignments submitted as git repositories containing Quarto (`.qmd`) or R Markdown (`.Rmd`) documents, such as the classroom layouts produced by [ghclass](https://rundel.github.io/ghclass/)'s `org_grade_assignment()`. Each submission is parsed into a document tree (via [q2r](https://github.com/rundel/q2r)), validated against the structural requirements of the assignment, and graded question by question with a fast, hotkey-driven rubric interface. Everything (the template, the rubric, and all recorded grading) lives in a per-project SQLite database.
+markermd is a Shiny-based grading environment for assignments submitted as git repositories containing Quarto (`.qmd`) documents (R Markdown `.Rmd` documents are read the same way, with `mark(use_qmd = FALSE)`, since knitr-style chunk headers are rewritten to Quarto form before parsing), such as the classroom layouts produced by [ghclass](https://rundel.github.io/ghclass/)'s `org_grade_assignment()`. Each submission is parsed into a document tree (via [q2r](https://github.com/rundel/q2r)), validated against the structural requirements of the assignment, and graded question by question with a fast, hotkey-driven rubric interface. Everything (the template, the rubric, and all recorded grading) lives in a per-project SQLite database.
 
 The package is built around two apps:
 
@@ -93,7 +93,7 @@ When the app is opened on an initialized project, saving writes the template dir
 
 ### Assignments
 
-The app opens on the Assignments tab, one table with a row per repository: links to its folder, GitHub repository, rendered report and source, its validation status, its grading progress, and its score per question and in total, computed from the rubric selections exactly as `export_scores()` would. The class summary is pinned beneath the rows: how many repositories are graded, then the mean, median and standard deviation per question and for the total. The table filters by name and by status (failed validation, incomplete, complete), sorts by any column, and updates as grading proceeds. Clicking a repository's validation marker opens its validation results, and clicking a score opens that repository and question in the Grade tab.
+The app opens on the Assignments tab, one table with a row per repository: links to its folder, GitHub repository, rendered report and source, its validation status, its grading progress, and its score per question and in total, computed from the rubric selections with the same code as `export_scores()`. Like the export, the total counts only once every question is graded; until then the running sum of the graded questions is shown in grey, while `scores.csv` leaves `total` empty. The class summary is pinned beneath the rows: how many repositories are graded, then the mean, median and standard deviation per question and for the total. The table filters by name and by status (failed validation, incomplete, complete), sorts by any column, and updates as grading proceeds. Clicking a repository's validation marker opens its validation results, and clicking a score opens that repository and question in the Grade tab.
 
 ![The mark app's Assignments tab: one row per repository with folder, GitHub, report and source links, validation status, grading progress and per-question scores, with the class summary pinned beneath](man/figures/mark_assignments_screenshot.png)
 
@@ -175,7 +175,7 @@ snapshot_export("Before feedback review", "backups/before-review", project = "hw
 project_backup("hw01")
 ```
 
-Snapshots live in the project database (schema version 5; an existing database gains a baseline snapshot when first opened). Identical parts are stored once, an automatic snapshot of an unchanged state is recorded as a note on the latest one rather than a new row, and `snapshot_prune()` removes old automatic snapshots while keeping every manual or pinned one. `export_scores()` and `export_comments()` record which snapshot each export came from, and `project_sitrep()` reports the snapshot state, including whether the exported scores are stale.
+Snapshots live in the project database (added in schema version 5, now 7; an existing database gains a baseline snapshot when first opened). Identical parts are stored once, an automatic snapshot of an unchanged state is recorded as a note on the latest one rather than a new row, and `snapshot_prune()` removes old automatic snapshots while keeping every manual or pinned one. `export_scores()` and `export_comments()` record which snapshot each export came from, and `project_sitrep()` reports the snapshot state, including whether the exported scores are stale.
 
 ## Exporting results
 

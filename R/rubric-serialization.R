@@ -406,8 +406,10 @@ rubric_data_from_conn = function(conn, question_names, ids = FALSE) {
 #' the first ten items are bound to keyboard hotkeys on import and any
 #' further items (there is no limit) are toggled by clicking. A group's
 #' items are nested under a group entry (`group`, optional `floor`,
-#' `ceiling` and `exclusive`, then `items`). The file is written as
-#' `format_version` `"1.1"` when it contains a group and `"1.0"` otherwise.
+#' `ceiling` and `exclusive`, then `items`). The file is written with the
+#' lowest `format_version` that can represent it: `"1.2"` when a question's
+#' scoring is optional, `"1.1"` when it contains a group, and `"1.0"`
+#' otherwise.
 #' No per-repository grading data is written.
 #'
 #' @param rubric A rubric list as returned by [read_rubric_yaml()] or

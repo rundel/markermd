@@ -61,8 +61,9 @@ sn_query = function(d, sql) {
   markermd:::with_database(d, function(conn) DBI::dbGetQuery(conn, sql))
 }
 
-# Descriptions of the items currently selected for a pair (a restore mints
-# fresh item ids, so selections are compared by description)
+# Descriptions of the items currently selected for a pair. A restore keeps
+# item ids, but a replace import re-mints them, so tests compare selections
+# by description.
 sn_selected = function(d, question, repo) {
   items = markermd:::load_rubric_items(d, question)
   sel = markermd:::load_grade_selections(d, question, repo)
