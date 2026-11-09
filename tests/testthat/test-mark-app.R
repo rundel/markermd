@@ -55,7 +55,7 @@ test_that("grading interactions patch the score display in place", {
   }
 
   # The grading pane's outputs are suspended until its tab is shown
-  app$set_inputs(main_navbar = "rubric")
+  app$set_inputs(main_navbar = "grade")
   app$wait_for_idle()
 
   expect_equal(score_display(), "0 / 10 pts")
@@ -110,7 +110,7 @@ test_that("a selection loaded from the database recomputes the score on question
     name = "mark_loaded_selection_score"
   )
 
-  app$set_inputs(main_navbar = "rubric")
+  app$set_inputs(main_navbar = "grade")
   app$wait_for_idle()
 
   # Switching questions re-renders the grade widget in the same flush that
@@ -139,7 +139,7 @@ test_that("public and private comments autosave to their own channels", {
     name = "mark_comments"
   )
 
-  app$set_inputs(main_navbar = "rubric")
+  app$set_inputs(main_navbar = "grade")
   app$wait_for_idle()
 
   # Sleeps outlast the 1-second autosave debounce
@@ -187,7 +187,7 @@ test_that("rubric YAML export and import work through the mark app", {
     name = "mark_rubric_io"
   )
 
-  app$set_inputs(main_navbar = "rubric")
+  app$set_inputs(main_navbar = "grade")
   app$wait_for_idle()
 
   # Open the io popover so its download buttons exist in the DOM, then export

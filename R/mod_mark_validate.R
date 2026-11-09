@@ -123,10 +123,10 @@ create_rule_details = function(question, question_result) {
     rule_icon = if (rule_passed) "check" else "times"
     
     shiny::div(
-      style = paste0("margin: 4px 0 0; padding: 4px 8px; border-left: 3px solid ", rule_color, "; background-color: #fff; border-radius: 3px;"),
+      style = paste0("margin: 6px 0; padding: 8px; border-left: 3px solid ", rule_color, "; background-color: #f8f9fa; border-radius: 3px;"),
       shiny::div(
         style = "display: flex; align-items: center; flex-wrap: wrap; row-gap: 2px;",
-        shiny::icon(rule_icon, class = "fa-fw", style = paste0("color: ", rule_color, "; margin-right: 8px; font-size: 13px;")),
+        shiny::icon(rule_icon, class = "fa-fw", style = paste0("color: ", rule_color, "; margin-right: 8px; font-size: 14px;")),
         if (!is.null(rule)) {
           lapply(rule@node_type, function(nt) {
             shiny::span(
@@ -138,8 +138,7 @@ create_rule_details = function(question, question_result) {
         },
         shiny::span(
           message,
-          class = "fw-normal text-body",
-          style = "font-size: 12px;"
+          style = "font-size: 13px;"
         )
       )
     )
@@ -180,67 +179,56 @@ create_question_card = function(question, question_result, current_ast, session,
     shiny::icon("circle-question", class = "fa-fw text-muted")  # Default for unknown status
   )
   
-  # A question on another file has no document content: the header alone
-  # carries its result (whether the repository has the file)
+  header = bslib::card_header(
+    class = "bg-light d-flex align-items-center",
+    shiny::span(status_icon, class = "me-2"),
+    shiny::span(question_name, class = "my-0 text-dark fw-semibold"),
+    if (is_file_question(question)) shiny::tags$code(class = "ms-2 small", question@file)
+  )
+  rule_details = create_rule_details(question, question_result)
+
+  # A question on another file has no document content: its body is the
+  # result alone (whether the repository has the file)
   if (is_file_question(question)) {
     return(bslib::card(
       id = card_id,
       class = "mb-0",
-      wrapper = NULL,
-      bslib::card_header(
-        class = "bg-light",
-        shiny::div(
-          class = "d-flex align-items-center",
-          shiny::span(status_icon, class = "me-2"),
-          shiny::span(question_name, class = "my-0 text-dark fw-semibold"),
-          shiny::tags$code(class = "ms-2 small", question@file)
-        ),
-        create_rule_details(question, question_result)
-      )
+      header,
+      bslib::card_body(class = "pt-1 pb-1", fillable = FALSE, rule_details)
     ))
   }
 
   # Get the document nodes for this question using section selection
   question_nodes_content = get_question_content(current_ast, question, session)
-  
-  # Create rule details
-  rule_details = create_rule_details(question, question_result)
-  
-  # Create question card. mb-0 drops bslib's default 1rem card margin so the
-  # column gap set in the container controls the spacing between cards. The
-  # id is the scroll target of the question shortcut select. wrapper = NULL
-  # keeps the collapsible div a direct child of the card (bslib would
-  # otherwise wrap it in a padded card body of its own).
+
+  # Create question card: the rule results at the top of the body, and below
+  # them the matched document content, collapsed behind a toggle. mb-0 drops
+  # bslib's default 1rem card margin so the column gap set in the container
+  # controls the spacing between cards. The id is the scroll target of the
+  # question shortcut select.
   bslib::card(
     id = card_id,
     class = "mb-0",
-    wrapper = NULL,
-    bslib::card_header(
-      class = "bg-light",
-      shiny::div(
-        class = "d-flex align-items-center",
-        shiny::span(status_icon, class = "me-2"),
-        shiny::span(question_name, class = "my-0 text-dark fw-semibold"),
-        shiny::tags$button(
-          type = "button",
-          class = "btn btn-link btn-sm p-0 ms-auto text-reset validation-collapse-toggle",
-          `data-bs-toggle` = "collapse",
-          `data-bs-target` = paste0("#", body_id),
-          `aria-expanded` = if (collapsed) "false" else "true",
-          `aria-controls` = body_id,
-          title = "Show or hide the matched content",
-          shiny::icon("chevron-down", class = "fa-fw")
-        )
+    header,
+    bslib::card_body(
+      class = "pt-1 pb-2",
+      fillable = FALSE,
+      rule_details,
+      shiny::tags$button(
+        type = "button",
+        class = "btn btn-link btn-sm p-0 text-decoration-none validation-collapse-toggle align-self-start",
+        `data-bs-toggle` = "collapse",
+        `data-bs-target` = paste0("#", body_id),
+        `aria-expanded` = if (collapsed) "false" else "true",
+        `aria-controls` = body_id,
+        shiny::icon("chevron-down", class = "fa-fw"),
+        "Matched content"
       ),
-      rule_details
-    ),
-    htmltools::div(
-      id = body_id,
-      class = if (collapsed) "collapse" else "collapse show",
-      `data-question` = question_name,
-      bslib::card_body(
-        class = "pt-2 pb-1",
-        question_nodes_content
+      htmltools::div(
+        id = body_id,
+        class = if (collapsed) "collapse" else "collapse show",
+        `data-question` = question_name,
+        htmltools::div(class = "pt-2", question_nodes_content)
       )
     )
   )

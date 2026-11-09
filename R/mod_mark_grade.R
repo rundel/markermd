@@ -270,6 +270,47 @@ mark_grade_ui = function(id, grade_state, capped = 0, breakdown = NULL) {
   )
 }
 
+# A question's scoring settings for the Rubric tab's editor: the total
+# points, the grading mode, the bounds and the optional switch, laid out on
+# one line. The inputs carry the same ids as mark_grade_ui()'s popovers, so
+# the question's grade server saves them; only one of the two is ever on the
+# page (see the rubric module's items_owner).
+#
+# id: Character. The grade server's id (namespaced), as for mark_grade_ui()
+# grade_state: markermd_grade_state with the question's scoring setup
+
+mark_grade_settings_ui = function(id, grade_state) {
+  safe_id = gsub("[^A-Za-z0-9_-]", "_", id)
+  ns = shiny::NS(safe_id)
+  shiny::div(
+    class = "rubric-editor-settings d-flex flex-wrap align-items-center gap-3 small",
+    shiny::div(
+      class = "d-flex align-items-center gap-1",
+      shiny::span("Total"),
+      shiny::div(
+        style = "width: 80px;",
+        shiny::numericInput(ns("total_score_input"), NULL, value = grade_state@total_score, min = 0, step = 0.5, width = "100%")
+      ),
+      shiny::span(if (grade_state@total_score == 1) "pt" else "pts")
+    ),
+    shiny::radioButtons(
+      ns("grading_mode"), NULL,
+      choices = list("Positive (from 0)" = "positive", "Negative (from max)" = "negative"),
+      selected = grade_state@grading_mode, inline = TRUE
+    ),
+    shiny::checkboxGroupInput(
+      ns("grade_bounds"), NULL,
+      choices = list("Score \u2265 0" = "above_zero", "Score \u2264 max" = "below_max"),
+      selected = c(
+        if (grade_state@bound_above_zero) "above_zero",
+        if (grade_state@bound_below_max) "below_max"
+      ),
+      inline = TRUE
+    ),
+    shiny::checkboxInput(ns("grade_optional"), "Optional", value = grade_state@optional)
+  )
+}
+
 # Server logic for grade management with S7 state management
 #
 # id: Character. Module namespace ID

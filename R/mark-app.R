@@ -288,6 +288,7 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       value = "assignments",
       # Font Awesome ships with shiny::icon()'s html dependency (the rubric
       # tab uses static icons), so no CDN stylesheet is needed
+      app_loading_overlay("Loading the grading data\u2026"),
       shiny::tags$head(
         shinyjs::useShinyjs(),
         markermd_modal_css(),
@@ -445,11 +446,11 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       )
     ),
 
-    # Rubric tab (right aligned): the content pane and rubric are sibling
+    # Grade tab (right aligned): the content pane and rubric are sibling
     # modules; the hotkey script drives ids in both, so it gets both namespaces
     bslib::nav_panel(
-      title = "Rubric",
-      value = "rubric",
+      title = "Grade",
+      value = "grade",
       bslib::layout_columns(
         col_widths = c(7, 5),
         class = "h-100",
@@ -459,17 +460,19 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       )
     ),
 
-    # Activity tab (right aligned): what changed the grading state, the calls
-    # of markermd functions (agents, scripts) and the app's own grading, with
-    # what each entry changed (see mod_mark_activity.R)
+    # Rubric tab (right aligned): every question's rubric edited in one
+    # place, without the documents; drawn by the same rubric module as the
+    # Grade tab's pane, so the two never disagree
     bslib::nav_panel(
-      title = "Activity",
-      value = "activity",
-      mark_activity_ui("activity_module")
+      title = "Rubric",
+      value = "rubric",
+      mark_rubric_editor_ui("rubric_module")
     ),
 
-    # History tab (right aligned): the project's snapshots, with the detail,
-    # compare, restore and export actions (see mod_mark_history.R)
+    # History tab (right aligned): one timeline of the project's snapshots
+    # and its activity log (markermd calls by agents and scripts, the app's
+    # own grading), with the detail, compare, restore and export actions
+    # (see mod_mark_history.R)
     bslib::nav_panel(
       title = "History",
       value = "history",
@@ -691,13 +694,13 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
     })
 
     # A click on a score cell in the table opens that repository and question
-    # in the Rubric tab. The content module follows current_repo_name and the
+    # in the Grade tab. The content module follows current_repo_name and the
     # rubric module follows the content module.
     shiny::observe({
       target = input$score_clicked
       shiny::req(select_repo(target$repo))
       rubric_result$select_question(target$question)
-      bslib::nav_select("main_navbar", "rubric")
+      bslib::nav_select("main_navbar", "grade")
     }) |> shiny::bindEvent(input$score_clicked)
 
     # A click on a repo's validation marker in the table opens its
@@ -876,7 +879,8 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       "rubric_module", template_obj, repo_list, root, session_database_state,
       selected_repo = content_result$selected_repo,
       set_repo_labels = content_result$set_repo_labels,
-      external_version = shiny::reactive(external_version())
+      external_version = shiny::reactive(external_version()),
+      active_tab = shiny::reactive(input$main_navbar)
     )
 
     # A commit by another connection: list the markermd calls recorded since
@@ -900,7 +904,7 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
             shiny::div(class = "fw-semibold", if (nrow(rows) == 1) "Changed outside the app" else paste(nrow(rows), "changes made outside the app")),
             lapply(utils::head(lines, 5), shiny::div),
             if (length(lines) > 5) shiny::div(class = "text-muted", paste0("and ", length(lines) - 5, " more")),
-            shiny::actionLink("activity_notice_link", "Show in Activity")
+            shiny::actionLink("activity_notice_link", "Show in History")
           ),
           id = "external_change_notice", duration = 10, type = "message"
         )
@@ -947,15 +951,10 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
     }) |> shiny::bindEvent(input$external_reload)
 
     shiny::observe({
-      bslib::nav_select("main_navbar", "activity")
+      bslib::nav_select("main_navbar", "history")
     }) |> shiny::bindEvent(input$activity_notice_link)
 
-    mark_activity_server(
-      "activity_module", root,
-      refresh = shiny::reactive(list(rubric_result$grading_data_version(), external_version(), input$main_navbar))
-    )
-
-    # Reverse sync: z/x navigation (or the dropdown) in the Rubric tab moves
+    # Reverse sync: z/x navigation (or the dropdown) in the Grade tab moves
     # the app-wide selection too, so a later score click on the repository
     # the rubric already shows still counts as a change
     shiny::observe({
@@ -982,20 +981,25 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
     output$snapshot_status = shiny::renderUI({
       status = history_result$status()
       warn = status$events_since > snapshot_warn_events()
-      text = if (is.null(status$latest)) {
-        if (status$changed) "No snapshot yet" else NULL
-      } else {
-        paste0(
-          "Last snapshot: ", format_age(status$latest$created_at),
-          if (status$changed) paste0(" \u00b7 ", status$events_since, " change", if (status$events_since == 1) "" else "s", " since")
-        )
-      }
-      if (is.null(text)) {
+      if (is.null(status$latest) && !status$changed) {
         return(NULL)
       }
+      n = status$events_since
+      changes = paste0(n, " change", if (n == 1) "" else "s")
+      when = if (is.null(status$latest)) "No snapshot yet" else paste("Last snapshot", format_age(status$latest$created_at))
+      # Two lines beside a larger camera: the changes recorded since the
+      # latest snapshot, and when it was taken
+      text = htmltools::span(
+        class = "d-inline-flex align-items-center gap-2",
+        shiny::icon("camera", class = "fs-5"),
+        htmltools::span(
+          class = "d-inline-flex flex-column lh-sm text-start",
+          htmltools::span(changes),
+          htmltools::span(class = "small", when)
+        )
+      )
       shiny::actionLink(
         "snapshot_status_link", text,
-        icon = shiny::icon("camera"),
         class = paste("nav-link snapshot-status", if (warn) "snapshot-status-warn text-warning-emphasis" else "text-muted"),
         title = if (warn) {
           "Many selections have been recorded since the latest snapshot; press s to take a named checkpoint"
@@ -1013,7 +1017,7 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
       mark_terminal_server("terminal_module", terminal_commands, root, token = terminal_token)
     }
 
-    # The Rubric tab's camera button opens the same Take snapshot modal
+    # The Grade tab's camera button opens the same Take snapshot modal
     shiny::observe({
       history_result$open_take_snapshot()
     }) |> shiny::bindEvent(input$`rubric_module-take_snapshot`)

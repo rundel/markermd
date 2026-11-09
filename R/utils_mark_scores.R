@@ -1,7 +1,7 @@
 # Scoring and score data for the marking app
 #
 # score_question() is the one implementation of a question's score, shared by
-# the live score in the Rubric tab (mark_rubric_server()) and the database
+# the live score in the Grade tab (mark_rubric_server()) and the database
 # recomputation behind the Assignments table and export_scores()
 # (collect_score_data()). The builders below it take the per-pair scores from
 # collect_score_data() plus each question's maximum points and return plain

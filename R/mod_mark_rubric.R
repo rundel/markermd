@@ -250,11 +250,34 @@ mark_rubric_ui = function(id) {
   )
 }
 
-# Keyboard hotkey script for the Rubric tab: numeric keys toggle rubric
+# The Rubric tab: every question's rubric in one scrolling card, edited in
+# place (see output$rubric_editor_ui), without the documents. It shares the
+# rubric module (and so its state) with the Grade tab.
+#
+# id: Character. The rubric module's namespace ID
+
+mark_rubric_editor_ui = function(id) {
+  ns = shiny::NS(id)
+  bslib::card(
+    class = "h-100",
+    bslib::card_header(
+      class = "bg-light d-flex justify-content-between align-items-center",
+      shiny::span("Rubric"),
+      shiny::span(class = "small text-muted", "Every question's items, groups and scoring; the count beside an item is how many repositories selected it")
+    ),
+    bslib::card_body(
+      class = "overflow-auto",
+      shiny::tags$style(shiny::HTML(".rubric-editor .rubric-group-subtotal { display: none; } .rubric-editor-settings .shiny-input-container { margin-bottom: 0; width: auto; } .rubric-editor-settings .form-check { margin-bottom: 0; } .rubric-editor-settings input[type=number] { height: 28px; padding: 2px 6px; font-size: 12px; }")),
+      shiny::uiOutput(ns("rubric_editor_ui"))
+    )
+  )
+}
+
+# Keyboard hotkey script for the Grade tab: numeric keys toggle rubric
 # items, z/x navigate repositories, ,/. navigate questions, h toggles the
 # HTML/source view. The ids it drives span both the rubric and content
 # modules, so it takes both namespace functions and is included by mark-app's
-# Rubric tab rather than either module's UI.
+# Grade tab rather than either module's UI.
 #
 # rubric_ns: the rubric module's namespace function
 # content_ns: the content module's namespace function
@@ -360,8 +383,25 @@ rubric_hotkeys_js = function(rubric_ns, content_ns) {
 #   repo selector labels (the content module's set_repo_labels)
 
 mark_rubric_server = function(id, template, repos, root, database_state = NULL, selected_repo, set_repo_labels,
-                              external_version = shiny::reactive(0L)) {
+                              external_version = shiny::reactive(0L), active_tab = shiny::reactive("grade")) {
   shiny::moduleServer(id, function(input, output, session) {
+
+    # Which tab draws the rubric's items, groups and scoring inputs: the
+    # Grade tab ("grade", the current question) or the Rubric tab ("rubric",
+    # every question). Their module ids are shared, so only one may be on
+    # the page at a time: on a switch between the two, nothing draws them
+    # for one flush (the leaving tab's outputs clear), and the arriving tab
+    # draws them after it. Other tabs leave the owner as it was.
+    items_owner = shiny::reactiveVal("grade")
+    shiny::observe({
+      tab = active_tab()
+      if (!tab %in% c("grade", "rubric") || identical(tab, shiny::isolate(items_owner()))) {
+        return()
+      }
+      items_owner("none")
+      session$onFlushed(function() items_owner(tab), once = TRUE)
+    }) |>
+      shiny::bindEvent(active_tab())
 
     # Global id index
     id_idx = 0
@@ -760,24 +800,59 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
       }
     }
 
-    # Initialize rubric items and groups from database state inside an observer
+    # A question's item and group servers are built the first time it is
+    # needed (shown in the Grade tab, the Rubric tab opening, an item or
+    # group added to it), not at startup: a rubric of a hundred items would
+    # otherwise bind hundreds of observers before the first page shows. The
+    # ids stored in the database are reserved at startup all the same, so a
+    # new item never takes the id of one in a question not loaded yet.
+    loaded_questions = character(0)
+    if (!is.null(database_state)) {
+      for (question_name in question_names) {
+        register_session_id(names(database_state$rubric_items[[question_name]]))
+        register_session_id(names(database_state$rubric_groups[[question_name]]))
+      }
+    }
+
+    # Build a question's servers from the database if they are not yet
+    # built. Returns TRUE when it built them (the caller redraws).
+    #
+    # question_name: The question
+    ensure_question_loaded = function(question_name) {
+      if (is.null(database_state) || question_name %in% loaded_questions) {
+        return(FALSE)
+      }
+      loaded_questions <<- c(loaded_questions, question_name)
+      sync_question_groups(question_name)
+      items = load_rubric_items(root, question_name)
+      for (item_id in names(items)) {
+        add_question_item_server(question_name, item_id, items[[item_id]])
+      }
+      TRUE
+    }
+
+    # The question shown in the Grade tab is loaded first (a higher priority
+    # than the observers and outputs that read its servers)
     shiny::observe({
-      if (!is.null(database_state) && !is.null(database_state$rubric_items)) {
-        for (question_name in question_names) {
-          saved_groups = database_state$rubric_groups[[question_name]]
-          for (group_id in names(saved_groups)) {
-            add_question_group_server(question_name, group_id, saved_groups[[group_id]])
-          }
-          saved_items = database_state$rubric_items[[question_name]]
-          for (item_id in names(saved_items)) {
-            add_question_item_server(question_name, item_id, saved_items[[item_id]])
-          }
-        }
-        # Trigger UI redraw to show loaded items
+      shiny::req(input$question_select)
+      if (ensure_question_loaded(input$question_select)) {
+        redraw()
+        apply_saved_selections()
+      }
+    }, priority = 10) |>
+      shiny::bindEvent(input$question_select)
+
+    # The Rubric tab shows every question
+    shiny::observe({
+      if (!identical(items_owner(), "rubric")) {
+        return()
+      }
+      loaded = vapply(question_names, ensure_question_loaded, logical(1))
+      if (any(loaded)) {
         redraw()
       }
-    }) |>
-      shiny::bindEvent(TRUE, once = TRUE)  # Run once when module starts
+    }, priority = 10) |>
+      shiny::bindEvent(items_owner())
 
     shiny::observe({
       shiny::updateSelectInput(
@@ -802,6 +877,9 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
     # Render grade UI for current question
     output$grade_ui = shiny::renderUI({
       shiny::req(input$question_select)
+      if (!identical(items_owner(), "grade")) {
+        return(NULL)
+      }
 
       current_grade_server = question_grade_servers[[input$question_select]]
       if (!is.null(current_grade_server)) {
@@ -819,7 +897,8 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
       # imperatively via update_grade() -> update_score_display(), so
       # rubric-item add/move/delete (which bump redraw_ui) must not rebuild
       # this widget.
-      shiny::bindEvent(input$question_select, grade_redraw())
+      shiny::bindEvent(input$question_select, grade_redraw(), items_owner())
+    shiny::outputOptions(output, "grade_ui", suspendWhenHidden = FALSE)
 
     # The cap badge's breakdown; it lives in a popover, so it is only
     # rendered while the popover is open
@@ -834,6 +913,9 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
     # and the item modules are untouched by grouping.
     output$rubric_items_ui = shiny::renderUI({
       shiny::req(input$question_select)
+      if (!identical(items_owner(), "grade")) {
+        return(NULL)
+      }
       question_name = input$question_select
 
       servers = question_item_servers[[question_name]]
@@ -862,11 +944,87 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
         shiny::div(id = session$ns("rubric_empty_groups"), lapply(blocks[is_empty_group], block_ui))
       )
     }) |>
-      shiny::bindEvent(redraw_ui(), input$question_select)
+      shiny::bindEvent(redraw_ui(), input$question_select, items_owner())
+    shiny::outputOptions(output, "rubric_items_ui", suspendWhenHidden = FALSE)
 
-    # Handle add item button
-    shiny::observe({
-      current_servers = question_item_servers[[input$question_select]]
+    # The Rubric tab's editor: every question with its scoring settings and
+    # its items and groups, editable as in the Grade tab (the same item and
+    # group modules), each item showing how many repositories selected it in
+    # place of its toggle
+    output$rubric_editor_ui = shiny::renderUI({
+      if (!identical(items_owner(), "rubric")) {
+        return(NULL)
+      }
+      grading_data_version()
+      external_version()
+      counts = item_selection_counts(root)
+      add_button_style = "width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; padding: 0;"
+
+      sections = lapply(seq_along(question_names), function(k) {
+        question_name = question_names[k]
+        servers = question_item_servers[[question_name]]
+        groups = groups_of(question_name)
+        blocks = rubric_blocks(names(servers), item_groups_of(servers), names(groups))
+        item_ui = function(item_id) {
+          n = counts[paste(question_name, item_id, sep = "\x1f")]
+          mark_rubric_item_ui(
+            session$ns(item_id), servers[[item_id]]$item(), groups = groups,
+            selected_count = if (is.na(n)) 0L else unname(n)
+          )
+        }
+        block_ui = function(block) {
+          if (block$type == "item") {
+            return(item_ui(block$id))
+          }
+          mark_rubric_group_ui(session$ns(block$group), groups[[block$group]], lapply(block$ids, item_ui))
+        }
+        grade_server = question_grade_servers[[question_name]]
+
+        bslib::card(
+          class = "mb-3",
+          bslib::card_header(
+            class = "bg-light d-flex flex-wrap align-items-center gap-3",
+            shiny::span(class = "fw-semibold", question_name),
+            if (!is.null(grade_server)) mark_grade_settings_ui(session$ns(grade_server$id), grade_server$grade())
+          ),
+          bslib::card_body(
+            class = "small",
+            fillable = FALSE,
+            if (length(blocks) == 0) shiny::div(class = "text-muted", "No items yet."),
+            lapply(blocks, block_ui),
+            shiny::div(
+              class = "d-flex align-items-center gap-3 mt-2",
+              shiny::span(
+                shiny::actionButton(
+                  session$ns(paste0("editor_add_item_", k)), shiny::icon("plus"),
+                  class = "btn-primary btn-sm rounded-circle", style = add_button_style, title = "Add Item"
+                ),
+                shiny::span("Add Item", class = "ms-1 text-dark")
+              ),
+              shiny::span(
+                shiny::actionButton(
+                  session$ns(paste0("editor_add_group_", k)), shiny::icon("layer-group"),
+                  class = "btn-outline-primary btn-sm rounded-circle", style = add_button_style, title = "Add Group"
+                ),
+                shiny::span("Add Group", class = "ms-1 text-dark")
+              )
+            )
+          )
+        )
+      })
+      shiny::div(class = "rubric-editor", sections)
+    }) |>
+      shiny::bindEvent(redraw_ui(), grade_redraw(), items_owner(), grading_data_version(), external_version())
+    shiny::outputOptions(output, "rubric_editor_ui", suspendWhenHidden = FALSE)
+
+    # Add an empty item at the end of a question. In the Grade tab the new
+    # item is inserted into the list in place, so in-progress edits on the
+    # others survive; in the Rubric tab the editor redraws.
+    #
+    # question_name: The question to add the item to
+    add_item_to = function(question_name) {
+      ensure_question_loaded(question_name)
+      current_servers = question_item_servers[[question_name]]
 
       # The unique server_id must not collide with ANY id this session has
       # bound, across questions and including ids since deleted or replaced
@@ -883,12 +1041,17 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
       # no hotkey and is toggled by clicking (there is no cap on items)
       new_item = markermd_rubric_item(position_hotkey(length(current_servers) + 1), 0, "")
 
-      server = add_question_item_server(input$question_select, server_id, new_item)
+      server = add_question_item_server(question_name, server_id, new_item)
 
       # Save new item to database (appended after the question's last item)
-      save_rubric_item(root, input$question_select, server_id, new_item)
+      save_rubric_item(root, question_name, server_id, new_item)
 
       id_idx <<- id_idx + 1
+
+      if (!identical(shiny::isolate(items_owner()), "grade") || !identical(question_name, shiny::isolate(input$question_select))) {
+        redraw()
+        return(invisible(server))
+      }
 
       # Insert only the new item rather than re-rendering the whole list, so
       # in-progress edits (e.g. a description being typed) on existing items are
@@ -899,16 +1062,18 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
         selector = paste0("#", session$ns("rubric_blocks")),
         where = "beforeEnd",
         ui = mark_rubric_item_ui(
-          session$ns(server$id), new_item, groups = groups_of(input$question_select)
+          session$ns(server$id), new_item, groups = groups_of(question_name)
         )
       )
-    }) |>
-      shiny::bindEvent(input$add_item, ignoreInit = TRUE)
+      invisible(server)
+    }
 
-    # Handle add group button: an empty group with a fresh label, rendered
-    # after the last item with its settings popover opened
-    shiny::observe({
-      question_name = input$question_select
+    # Add an empty group with a fresh label to a question, rendered after its
+    # last item with its settings popover opened
+    #
+    # question_name: The question to add the group to
+    add_group_to = function(question_name) {
+      ensure_question_loaded(question_name)
       labels = vapply(groups_of(question_name), function(g) g@label, character(1))
       label = "New group"
       k = 2
@@ -928,8 +1093,30 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
           id = session$ns(paste0(group_id, "-settings_popover"))
         ))
       }, once = TRUE)
+    }
+
+    # The Grade tab's add buttons act on the current question, the editor's
+    # on their own question
+    shiny::observe({
+      add_item_to(input$question_select)
+    }) |>
+      shiny::bindEvent(input$add_item, ignoreInit = TRUE)
+
+    shiny::observe({
+      add_group_to(input$question_select)
     }) |>
       shiny::bindEvent(input$add_group, ignoreInit = TRUE)
+
+    lapply(seq_along(question_names), function(k) {
+      shiny::observe({
+        add_item_to(question_names[k])
+      }) |>
+        shiny::bindEvent(input[[paste0("editor_add_item_", k)]], ignoreInit = TRUE)
+      shiny::observe({
+        add_group_to(question_names[k])
+      }) |>
+        shiny::bindEvent(input[[paste0("editor_add_group_", k)]], ignoreInit = TRUE)
+    })
 
     # --- Rubric YAML import/export -------------------------------------------
     # Exports read current database state via collect_rubric_data(): every
@@ -992,7 +1179,7 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
       }
 
       summary_items = lapply(rubric$questions, function(q) {
-        n_existing = length(question_item_servers[[q$name]])
+        n_existing = length(load_rubric_items(root, q$name))
         n_groups = length(q$groups)
         groups_note = if (n_groups == 0) "" else glue::glue(", {n_groups} group{if (n_groups == 1) '' else 's'}")
         scoring_note = if (is.null(q$scoring)) "" else "; updates scoring"
@@ -1066,6 +1253,14 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
       scoring_updated = FALSE
       for (question_name in names(summaries)) {
         s = summaries[[question_name]]
+        # A replace rebuilds every item's server below; an append keeps the
+        # existing servers, so a question not loaded yet is loaded first
+        # (from the database, which already holds the imported items)
+        if (identical(s$mode, "replace")) {
+          loaded_questions <<- union(loaded_questions, question_name)
+        } else {
+          ensure_question_loaded(question_name)
+        }
 
         # Groups first, so the items' group ids resolve to live servers
         if (identical(s$mode, "replace")) {
@@ -1442,6 +1637,7 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
     # the current question back in the state the database holds
     reload_from_db = function() {
       state = initialize_database_state(root, template)
+      loaded_questions <<- question_names
       for (question_name in question_names) {
         question_item_servers[[question_name]] = list()
         sync_question_groups(question_name)

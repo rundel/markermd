@@ -49,3 +49,30 @@ io_menu_ui = function(id, title, export_buttons, import_input_id, button_title =
     title = title
   )
 }
+
+# A full-page loading overlay shown from the first paint until the server's
+# first flush has finished (the first shiny:idle), so the seconds an app
+# spends building its initial outputs show a spinner rather than an empty
+# page. Removed once and never shown again.
+#
+# message: Text beside the spinner
+
+app_loading_overlay = function(message = "Loading…") {
+  htmltools::tagList(
+    htmltools::div(
+      id = "markermd-loading",
+      class = "position-fixed top-0 start-0 w-100 h-100 d-flex flex-column align-items-center justify-content-center gap-3 bg-body",
+      style = "z-index: 2000; transition: opacity 0.2s ease;",
+      htmltools::div(class = "spinner-border text-primary", role = "status"),
+      htmltools::div(class = "text-muted", message)
+    ),
+    htmltools::tags$script(htmltools::HTML("
+      $(document).one('shiny:idle', function() {
+        var el = document.getElementById('markermd-loading');
+        if (!el) return;
+        el.style.opacity = '0';
+        setTimeout(function() { el.remove(); }, 200);
+      });
+    "))
+  )
+}

@@ -10,10 +10,25 @@
 # rather than gt because gt's interactive mode cannot pin summary rows under
 # a sortable table.
 
+# Icon tags built once per name and class: shiny::icon() validates the name
+# and builds the tag afresh on every call, which adds up to a noticeable part
+# of the first render when the table needs a few per row
+.icon_cache = new.env(parent = emptyenv())
+
+cached_icon = function(name, class = NULL) {
+  key = paste(name, if (is.null(class)) "" else class, sep = "|")
+  icon = .icon_cache[[key]]
+  if (is.null(icon)) {
+    icon = shiny::icon(name, class = class)
+    .icon_cache[[key]] = icon
+  }
+  icon
+}
+
 # Icon tag for the table cells; the Font Awesome dependency is already on the
 # page via the static shiny::icon() uses in the rubric tab
-cell_icon = function(name, ...) {
-  shiny::icon(name, class = "fa-fw fs-6", ...)
+cell_icon = function(name) {
+  cached_icon(name, class = "fa-fw fs-6")
 }
 
 # Classes shared by every icon cell element (button, link or greyed span) so
@@ -278,13 +293,16 @@ repo_table_reactable = function(table_data, summary_rows, totals, click_input = 
   question_names = names(totals)
   has_scores = length(question_names) > 0 && !is.null(summary_rows)
 
-  # Column name on one line (an optional question's name followed by a small
-  # red dot), the points muted beneath
+  # Column name on one line, cut with an ellipsis when it does not fit (the
+  # full name shows on hover), an optional question's name followed by a
+  # small red dot, and the points muted beneath
   column_header = function(name, sub, is_optional = FALSE) {
     htmltools::tagList(
       htmltools::div(
-        style = if (is_optional) "white-space: nowrap;",
-        name,
+        class = "d-flex justify-content-end",
+        style = "white-space: nowrap;",
+        title = name,
+        htmltools::span(class = "text-truncate", name),
         if (is_optional) {
           htmltools::span(
             class = "markermd-optional-tag text-danger",
@@ -439,7 +457,7 @@ validation_status_cell = function(repo, validation_results, template_obj, repo_e
     return(as_cell(htmltools::span(
       class = "text-danger",
       title = first_line,
-      shiny::icon("triangle-exclamation")
+      cached_icon("triangle-exclamation")
     )))
   }
 
@@ -490,7 +508,7 @@ validation_status_cell = function(repo, validation_results, template_obj, repo_e
     htmltools::span(
       class = "text-warning-emphasis ms-1",
       title = paste0(n_warnings, " parser warning", if (n_warnings == 1) "" else "s", " (open to see)"),
-      shiny::icon("triangle-exclamation")
+      cached_icon("triangle-exclamation")
     )
   }
 
@@ -500,7 +518,7 @@ validation_status_cell = function(repo, validation_results, template_obj, repo_e
       htmltools::span(
         class = "text-success",
         title = tooltip_text,
-        shiny::icon("circle-check"),
+        cached_icon("circle-check"),
         paste0(" ", pass_count, "/", total_count)
       ),
       warnings_mark
@@ -511,7 +529,7 @@ validation_status_cell = function(repo, validation_results, template_obj, repo_e
       htmltools::span(
         class = "text-danger",
         title = tooltip_text,
-        shiny::icon("circle-xmark"),
+        cached_icon("circle-xmark"),
         paste0(" ", pass_count, "/", total_count)
       ),
       warnings_mark

@@ -62,7 +62,7 @@ test_that("negative-mode score recomputes live and clamps at zero", {
   )
 
   app = new_app_driver(markermd:::mark_app(root), name = "mark_negative_score")
-  app$set_inputs(main_navbar = "rubric")
+  app$set_inputs(main_navbar = "grade")
   app$wait_for_idle()
 
   # No deductions selected: negative mode starts at the maximum
@@ -93,7 +93,7 @@ test_that("positive-mode score clamps at the question total", {
   root = mg_make_fixture()  # Q2 has no settings row, so it defaults to positive / out of 10
 
   app = new_app_driver(markermd:::mark_app(root), name = "mark_belowmax_clamp")
-  app$set_inputs(main_navbar = "rubric")
+  app$set_inputs(main_navbar = "grade")
   app$wait_for_idle()
   expect_equal(mg_score(app, "Q2"), "0 / 10 pts")
 
@@ -119,7 +119,7 @@ test_that("moving a rubric item reorders it and renumbers hotkeys, including the
   root = mg_make_fixture()
 
   app = new_app_driver(markermd:::mark_app(root), name = "mark_item_reorder")
-  app$set_inputs(main_navbar = "rubric")
+  app$set_inputs(main_navbar = "grade")
   app$wait_for_idle()
 
   for (i in 0:2) {
@@ -162,7 +162,7 @@ test_that("a pending comment edit is saved to the pair it was typed against on n
   root = mg_make_fixture()
 
   app = new_app_driver(markermd:::mark_app(root), name = "mark_comment_attribution")
-  app$set_inputs(main_navbar = "rubric")
+  app$set_inputs(main_navbar = "grade")
   app$wait_for_idle()
 
   # Type into Q2's comment but do NOT wait out the 1s debounce
@@ -230,7 +230,7 @@ test_that("navigation hotkeys move repos (z/x), questions (,/.), and the html to
   root = mg_make_fixture()
 
   app = new_app_driver(markermd:::mark_app(root), name = "mark_nav_hotkeys")
-  app$set_inputs(main_navbar = "rubric")
+  app$set_inputs(main_navbar = "grade")
   app$wait_for_idle()
 
   press = function(key) {
@@ -275,7 +275,7 @@ test_that("items past the tenth have no hotkey, toggle by click, and keep their 
   }), paste0("item_", 0:10)))
 
   app = new_app_driver(markermd:::mark_app(root), name = "mark_item_eleven")
-  app$set_inputs(main_navbar = "rubric")
+  app$set_inputs(main_navbar = "grade")
   app$wait_for_idle()
 
   label = function(item) {
@@ -334,7 +334,7 @@ test_that("the Assignments table tabulates rubric scores per repository and per 
 
   root = mg_make_fixture()
   app = new_app_driver(markermd:::mark_app(root), name = "mark_scores_table")
-  app$set_inputs(main_navbar = "rubric")
+  app$set_inputs(main_navbar = "grade")
   app$wait_for_idle()
 
   # Grade Q2 for the first repo: one 4-point item selected
@@ -380,7 +380,7 @@ test_that("the Assignments table tabulates rubric scores per repository and per 
     row.querySelectorAll('.rt-td')[8].click();
   ")
   app$wait_for_idle()
-  expect_equal(app$get_value(input = "main_navbar"), "rubric")
+  expect_equal(app$get_value(input = "main_navbar"), "grade")
   expect_equal(app$get_value(input = "content_module-content_repo_select"), "student2-average")
   expect_equal(app$get_value(input = "rubric_module-question_select"), "Q3")
 })
@@ -453,8 +453,8 @@ test_that("the table's validation marker opens the repo's results in a modal", {
     "text-success", fixed = TRUE
   )
 
-  # Cards start collapsed with their rule results in the header (the
-  # question shortcut expanded Q3). Expanding one from its chevron keeps it
+  # Cards start with their rule results showing and the matched content
+  # collapsed (the question shortcut expanded Q3's). Expanding one from its chevron keeps it
   # expanded for the next repository opened, and collapsing it again sticks
   is_shown = function(q) {
     app$get_js(paste0("document.getElementById('explore_module-qcard_", q, "_body').classList.contains('show')"))
@@ -466,7 +466,7 @@ test_that("the table's validation marker opens the repo's results in a modal", {
   }
   expect_false(is_shown("Q2"))
   expect_true(is_shown("Q3"))
-  expect_true(app$get_js("document.querySelector('#explore_module-qcard_Q2 .card-header').innerText.trim().split('\\n').length > 1"))
+  expect_true(app$get_js("document.querySelector('#explore_module-qcard_Q2 .card-body').innerText.trim().length > 0"))
 
   toggle("Q2")
   expect_true(is_shown("Q2"))
@@ -493,7 +493,7 @@ test_that("a rubric item's toggle button keeps its size under a long description
 
   root = mg_make_fixture()
   app = new_app_driver(markermd:::mark_app(root), name = "mark_item_button_size")
-  app$set_inputs(main_navbar = "rubric")
+  app$set_inputs(main_navbar = "grade")
   app$wait_for_idle()
 
   app$click("rubric_module-add_item")

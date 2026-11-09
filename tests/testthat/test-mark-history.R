@@ -54,6 +54,9 @@ test_that("the History tab lists snapshots, takes one from the modal and shows t
 
   app$set_inputs(main_navbar = "history")
   app$wait_for_idle()
+  # The timeline also lists the activity log; these checks are about snapshots
+  app$set_inputs(`history_module-kind_filter` = "snapshots")
+  app$wait_for_idle()
 
   # The rubric import's automatic snapshot is listed, and the state has moved
   # on since (the marks were recorded after it)
@@ -95,7 +98,7 @@ test_that("the History tab lists snapshots, takes one from the modal and shows t
   detail = app$get_html("#history_module-detail_ui")
   expect_match(detail, "Before the review")
   expect_match(detail, "ticket")
-  expect_no_match(app$get_html("#snapshot_status"), "change")
+  expect_match(app$get_html("#snapshot_status"), "0 changes")
 
   # A note added from the pane lands in the log
   app$set_inputs(`history_module-new_note` = "Reviewed with the TA")
@@ -131,6 +134,9 @@ test_that("restoring a snapshot from the History tab rebuilds the rubric pane", 
 
   app$set_inputs(main_navbar = "history")
   app$wait_for_idle()
+  # The timeline also lists the activity log; these checks are about snapshots
+  app$set_inputs(`history_module-kind_filter` = "snapshots")
+  app$wait_for_idle()
   # Select the snapshot by clicking its row, then restore it with a summary
   app$run_js(sprintf(
     "Shiny.setInputValue('history_module-snapshot_table__reactable__selected', [%d]);",
@@ -162,7 +168,7 @@ test_that("restoring a snapshot from the History tab rebuilds the rubric pane", 
   expect_true(sel[[names(items)[1]]])
   expect_false(sel[[names(items)[2]]])
 
-  app$set_inputs(main_navbar = "rubric")
+  app$set_inputs(main_navbar = "grade")
   app$wait_for_idle()
   expect_match(app$get_html("#rubric_module-rubric_items_container"), "Missing quartiles")
 })

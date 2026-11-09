@@ -1,10 +1,14 @@
-# Shiny module for the marking app's History tab: the project's snapshots
-# (see snapshots.R), newest first, with a detail pane for the selected one
-# (its fields and notes, what changed between it and the current state or
-# another snapshot, and the scores it recorded) and the actions on it:
-# taking a snapshot, restoring one, exporting it, pinning and deleting it,
-# and backing up the database file. The tables use the same card and
-# reactable conventions as the Assignments tab.
+# Shiny module for the marking app's History tab: one timeline, newest first,
+# of the project's snapshots (see snapshots.R) and its activity log (see
+# actions.R: the calls of markermd functions by agents, scripts or a person
+# at an R prompt, and the app's own grading grouped into sessions). The
+# detail pane shows the selected entry: for a snapshot its fields and notes,
+# what changed between it and the current state or another snapshot, the
+# scores it recorded, and the actions on it (restoring, exporting, pinning,
+# deleting); for an activity entry what it changed, per repository and
+# question, with a link to the snapshot taken before it. Snapshots are taken
+# from here, and the database file backed up. The tables use the same card
+# and reactable conventions as the Assignments tab.
 
 # Mark History UI
 #
@@ -22,14 +26,18 @@ mark_history_ui = function(id) {
         class = "bg-light repo-table-controls",
         shiny::div(
           class = "d-flex justify-content-between align-items-center gap-2 w-100",
-          shiny::span("Snapshots"),
+          shiny::span("History"),
           shiny::div(
             class = "d-flex align-items-center gap-2",
             shiny::div(
-              style = "width: 120px;",
+              style = "width: 150px;",
               shiny::selectInput(
                 ns("kind_filter"), NULL,
-                choices = c("All" = "all", "Manual" = "manual", "Automatic" = "auto"),
+                choices = c(
+                  "Everything" = "all", "Snapshots" = "snapshots",
+                  "Manual snapshots" = "manual", "Automatic snapshots" = "auto",
+                  "Agents and scripts" = "action", "Grading in the app" = "app"
+                ),
                 width = "100%", selectize = FALSE
               )
             ),
@@ -144,8 +152,17 @@ one_line_text = function(text, width = 80) {
 
 history_reactable = function(data, selected = NULL) {
   kind_cell = function(value, index) {
-    icon = if (identical(value, "manual")) "hand" else "gear"
-    title = if (identical(value, "manual")) "Manual snapshot" else "Automatic snapshot"
+    actor = data$username[index]
+    icon = switch(
+      value,
+      manual = "hand", auto = "gear", app = "user",
+      action = if (actor %in% c("claude", "codex")) "robot" else "terminal"
+    )
+    title = switch(
+      value,
+      manual = "Manual snapshot", auto = "Automatic snapshot",
+      app = "Grading in the app", action = paste("A markermd call by", actor)
+    )
     htmltools::tagList(
       shiny::icon(icon, class = "fa-fw text-muted", title = title),
       if (isTRUE(data$pinned[index])) shiny::icon("thumbtack", class = "fa-fw text-primary", title = "Pinned")
@@ -166,14 +183,21 @@ history_reactable = function(data, selected = NULL) {
       created_at = reactable::colDef(
         name = "Time", minWidth = 110,
         cell = function(value, index) {
+          tz = data$created_tz[index]
           htmltools::span(
-            title = paste0(format(value, "%Y-%m-%d %H:%M:%S"), " (", data$created_tz[index], ")"),
+            title = paste0(format(value, "%Y-%m-%d %H:%M:%S"), if (!is.na(tz) && nzchar(tz)) paste0(" (", tz, ")")),
             format(value, "%b %d %H:%M")
           )
         }
       ),
       kind = reactable::colDef(name = "", width = 48, cell = kind_cell, sortable = FALSE),
-      label = reactable::colDef(name = "Label", minWidth = 110, cell = function(value) if (is.na(value)) "" else value),
+      label = reactable::colDef(
+        name = "Label", minWidth = 110,
+        cell = function(value, index) {
+          if (is.na(value)) return("")
+          if (identical(data$kind[index], "action")) htmltools::span(class = "font-monospace", style = "font-size: 11px;", value) else value
+        }
+      ),
       summary = reactable::colDef(
         name = "Summary", minWidth = 160,
         cell = function(value) {
@@ -206,6 +230,96 @@ history_reactable = function(data, selected = NULL) {
     ),
     theme = reactable::reactableTheme(cellPadding = "4px 8px", style = list(fontSize = "12px"))
   )
+}
+
+# What an activity row did, in a few words: the function for a recorded
+# call, "Grading in the app" for an app session
+#
+# rows: Data frame from activity_rows()
+
+activity_what = function(rows) {
+  ifelse(rows$kind == "app", "Grading in the app", rows$fn)
+}
+
+# What an activity row touched, in a few words: its pairs and the parts it
+# replaced
+#
+# rows: Data frame from activity_rows()
+
+activity_scope_text = function(rows) {
+  vapply(seq_len(nrow(rows)), function(i) {
+    n = rows$n_pairs[i]
+    pieces = c(
+      if (n > 0) paste0(n, " pair", if (n == 1) "" else "s"),
+      if (length(rows$parts[[i]]) > 0) paste(rows$parts[[i]], collapse = " + ")
+    )
+    if (length(pieces) == 0) "" else paste(pieces, collapse = ", ")
+  }, character(1))
+}
+
+# An activity entry's fields as a definition list
+#
+# row: One-row data frame from activity_rows()
+
+activity_overview_ui = function(row) {
+  field = function(name, value) {
+    if (is.null(value) || length(value) == 0 || (length(value) == 1 && (is.na(value) || !nzchar(value)))) {
+      return(NULL)
+    }
+    htmltools::tagList(shiny::tags$dt(class = "col-sm-3 fw-normal text-muted", name), shiny::tags$dd(class = "col-sm-9 mb-1", value))
+  }
+  when = if (row$kind == "app") {
+    paste0(format(row$started_at, "%Y-%m-%d %H:%M"), " to ", format(row$created_at, "%H:%M"), " (", format_age(row$created_at), ")")
+  } else {
+    paste0(format(row$created_at, "%Y-%m-%d %H:%M:%S"), " (", format_age(row$created_at), ")")
+  }
+  shiny::tags$dl(
+    class = "row mb-2",
+    field("When", when),
+    field("Who", paste0(row$actor, " (", row$username, ")")),
+    field("Call", if (!is.na(row$call)) shiny::tags$code(row$call)),
+    field("Summary", row$summary),
+    field("Repositories", paste(row$repos[[1]], collapse = ", ")),
+    field("Questions", paste(row$questions[[1]], collapse = ", ")),
+    field("Snapshot", if (!is.na(row$snapshot_id)) htmltools::tagList(
+      shiny::tags$code(row$snapshot_id),
+      shiny::span(class = "text-muted ms-1", "(the state before this change, in the History tab)")
+    ))
+  )
+}
+
+# The History timeline's rows: the snapshot rows (history_table_data()) and
+# the activity rows (activity_rows()) in one data frame, newest first. An
+# activity row's kind is "action" or "app", its label what it was (the
+# function, or "Grading in the app"), its trigger column the call and scope,
+# and its username the actor; it has no scores.
+#
+# snapshots: Data frame from history_table_data()
+# activity: Data frame from activity_rows()
+
+history_timeline_rows = function(snapshots, activity) {
+  snapshots$entry = rep("snapshot", nrow(snapshots))
+  if (nrow(activity) == 0) {
+    return(snapshots)
+  }
+  scope = activity_scope_text(activity)
+  trigger = ifelse(is.na(activity$call), scope, ifelse(nzchar(scope), paste0(activity$call, " \u00b7 ", scope), activity$call))
+  extra = snapshots[rep(NA_integer_, nrow(activity)), , drop = FALSE]
+  extra$snapshot_id = activity$id
+  extra$created_at = activity$created_at
+  extra$created_tz = ""
+  extra$kind = activity$kind
+  extra$label = activity_what(activity)
+  extra$summary = activity$summary
+  extra$trigger = trigger
+  extra$username = ifelse(activity$kind == "app", activity$username, activity$actor)
+  extra$pinned = FALSE
+  extra$entry = activity$kind
+  extra$search_text = tolower(paste(extra$label, ifelse(is.na(extra$summary), "", extra$summary), trigger, extra$username))
+  out = rbind(snapshots, extra)
+  out = out[order(out$created_at, decreasing = TRUE), , drop = FALSE]
+  rownames(out) = NULL
+  out
 }
 
 # A snapshot's overview as a definition list
@@ -285,10 +399,10 @@ history_small_table = function(df, names = colnames(df)) {
 # grouped the way the print method groups them, and the totals that changed
 #
 # diff: markermd_snapshot_diff object
-# scores: Whether to show the score changes (the Activity tab's diffs carry
+# scores: Whether to show the score changes (activity entries' diffs carry
 #   none)
 # private_text: Whether to show the private notes' text, not just which
-#   pairs changed (the Activity tab shows what an agent wrote)
+#   pairs changed (an activity entry shows what an agent wrote)
 
 snapshot_diff_ui = function(diff, scores = TRUE, private_text = FALSE) {
   heading = function(text) shiny::h6(class = "mt-3 mb-1", text)
@@ -424,7 +538,8 @@ mark_history_server = function(id, root, question_names, refresh, reload_rubric,
     history_version = shiny::reactiveVal(0L)
     bump = function() history_version(shiny::isolate(history_version()) + 1L)
 
-    # The listing, re-read on our own changes and on the app's refresh signal
+    # The snapshot listing, re-read on our own changes and on the app's
+    # refresh signal, and the timeline that merges the activity log into it
     snapshots = shiny::reactive({
       history_version()
       refresh()
@@ -444,12 +559,20 @@ mark_history_server = function(id, root, question_names, refresh, reload_rubric,
       with_database(root, snapshot_state_status)
     })
 
+    timeline = shiny::reactive({
+      activity = with_database(root, function(conn) activity_rows(conn))
+      history_timeline_rows(snapshots(), activity)
+    })
+
     search_text = shiny::debounce(shiny::reactive(input$search), 300)
 
     visible_rows = shiny::reactive({
-      rows = snapshots()
-      if (!identical(input$kind_filter, "all") && !is.null(input$kind_filter)) {
-        rows = rows[rows$kind == input$kind_filter, , drop = FALSE]
+      rows = timeline()
+      filter = input$kind_filter
+      if (identical(filter, "snapshots")) {
+        rows = rows[rows$entry == "snapshot", , drop = FALSE]
+      } else if (!is.null(filter) && !identical(filter, "all")) {
+        rows = rows[rows$kind == filter, , drop = FALSE]
       }
       needle = search_text()
       if (!is.null(needle) && nzchar(trimws(needle))) {
@@ -459,11 +582,14 @@ mark_history_server = function(id, root, question_names, refresh, reload_rubric,
       rows
     })
 
+    # The selected snapshot, or the selected activity entry (at most one of
+    # the two is set)
     selected_id = shiny::reactiveVal(NULL)
+    selected_activity = shiny::reactiveVal(NULL)
 
     output$snapshot_table = reactable::renderReactable({
       rows = visible_rows()
-      current = shiny::isolate(selected_id())
+      current = shiny::isolate(if (!is.null(selected_id())) selected_id() else selected_activity())
       selected = if (!is.null(current) && current %in% rows$snapshot_id) match(current, rows$snapshot_id) else NULL
       history_reactable(rows, selected = selected)
     })
@@ -471,8 +597,40 @@ mark_history_server = function(id, root, question_names, refresh, reload_rubric,
     shiny::observe({
       sel = reactable::getReactableState("snapshot_table", "selected")
       rows = shiny::isolate(visible_rows())
-      selected_id(if (is.null(sel) || length(sel) == 0 || sel > nrow(rows)) NULL else rows$snapshot_id[sel])
+      if (is.null(sel) || length(sel) == 0 || sel > nrow(rows)) {
+        selected_id(NULL)
+        selected_activity(NULL)
+      } else if (rows$entry[sel] == "snapshot") {
+        selected_id(rows$snapshot_id[sel])
+        selected_activity(NULL)
+      } else {
+        selected_id(NULL)
+        selected_activity(rows$snapshot_id[sel])
+      }
     })
+
+    # An activity entry's row from the log
+    selected_activity_row = shiny::reactive({
+      id = selected_activity()
+      shiny::req(id)
+      rows = with_database(root, function(conn) activity_rows(conn))
+      shiny::req(id %in% rows$id)
+      rows[rows$id == id, , drop = FALSE]
+    })
+
+    # The snapshot taken before an activity entry: select it in the timeline
+    shiny::observe({
+      row = selected_activity_row()
+      target = row$snapshot_id
+      rows = visible_rows()
+      if (is.na(target) || !target %in% rows$snapshot_id) {
+        shiny::showNotification("That snapshot is not in the current listing (it may have been pruned, or the filter hides it).", type = "warning")
+        return()
+      }
+      selected_activity(NULL)
+      selected_id(target)
+      reactable::updateReactable("snapshot_table", selected = match(target, rows$snapshot_id))
+    }) |> shiny::bindEvent(input$show_snapshot_before)
 
     # The selected snapshot's full record, re-read after every change here
     selected_info = shiny::reactive({
@@ -488,9 +646,23 @@ mark_history_server = function(id, root, question_names, refresh, reload_rubric,
     })
 
     output$detail_header = shiny::renderUI({
+      if (!is.null(selected_activity())) {
+        row = selected_activity_row()
+        return(shiny::div(
+          class = "d-flex justify-content-between align-items-center gap-2 w-100",
+          shiny::span(
+            if (row$kind == "app") "Grading in the app" else shiny::tags$code(row$fn),
+            shiny::span(class = "text-muted ms-2 small", row$actor, " \u00b7 ", format_age(row$created_at))
+          ),
+          if (!is.na(row$snapshot_id)) bslib::tooltip(
+            shiny::actionButton(session$ns("show_snapshot_before"), "Snapshot before", icon = shiny::icon("camera"), class = "btn-outline-secondary btn-sm"),
+            "Select the snapshot taken just before this change (restore it to undo the change)"
+          )
+        ))
+      }
       id = selected_id()
       if (is.null(id)) {
-        return(shiny::span("Snapshot"))
+        return(shiny::span("Details"))
       }
       info = selected_info()
       shiny::req(info)
@@ -530,11 +702,19 @@ mark_history_server = function(id, root, question_names, refresh, reload_rubric,
     })
 
     output$detail_ui = shiny::renderUI({
+      if (!is.null(selected_activity())) {
+        row = selected_activity_row()
+        diff = with_database(root, function(conn) activity_diff_conn(conn, row$id))
+        return(htmltools::tagList(
+          activity_overview_ui(row),
+          snapshot_diff_ui(diff, scores = FALSE, private_text = TRUE)
+        ))
+      }
       id = selected_id()
       if (is.null(id)) {
         return(shiny::div(
           class = "text-muted p-3",
-          "Select a snapshot to see its details, what changed since, and the scores it recorded. ",
+          "Select an entry: a snapshot shows its details, what changed since, and the scores it recorded; a change made by an agent, a script or in the app shows what it changed. ",
           "Snapshots are taken automatically before imports, restores and deletions; ",
           "press ", shiny::tags$kbd("s"), " or use the camera button to take one by hand."
         ))

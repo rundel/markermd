@@ -182,7 +182,7 @@ test_that("mark shows a file question's file and its validation", {
 
   root = tf_mark_project()
   app = new_app_driver(markermd:::mark_app(root), name = "mark_file_questions")
-  app$set_inputs(main_navbar = "rubric")
+  app$set_inputs(main_navbar = "grade")
   app$wait_for_idle()
 
   app$set_inputs(`rubric_module-question_select` = "Data script")

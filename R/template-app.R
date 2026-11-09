@@ -29,6 +29,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
   # item of the enclosing fillable page and sizes itself to the remaining
   # viewport instead of a hard-coded vh formula.
   ui = shiny::tagList(
+    app_loading_overlay("Loading the template editor\u2026"),
     # Initialize shinyjs
     shinyjs::useShinyjs(),
     markermd_modal_css(),

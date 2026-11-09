@@ -84,8 +84,11 @@ rubric_group_menu_item = function(ns, group_id, label, active) {
 # rubric_item: markermd_rubric_item S7 object containing item properties
 # groups: Named list of the question's markermd_rubric_group objects keyed by
 #   group id, in display order, for the item's group menu
+# selected_count: NULL in the Grade tab (the item shows its toggle button);
+#   in the Rubric tab's editor, how many repositories have the item
+#   selected, shown in place of the toggle
 
-mark_rubric_item_ui = function(id, rubric_item, groups = list()) {
+mark_rubric_item_ui = function(id, rubric_item, groups = list(), selected_count = NULL) {
   ns = shiny::NS(id)
 
   action_style = "border: none; background: transparent; color: #6c757d; font-size: 12px; line-height: 1;"
@@ -161,7 +164,16 @@ mark_rubric_item_ui = function(id, rubric_item, groups = list()) {
       # The output wrapper is display: contents, so flex-shrink-0 here does
       # nothing; the button carries its own fixed size (see
       # mark_rubric_item_hotkey_btn())
-      shiny::uiOutput(ns("hotkey_btn_ui"), class = "flex-shrink-0"),
+      if (is.null(selected_count)) {
+        shiny::uiOutput(ns("hotkey_btn_ui"), class = "flex-shrink-0")
+      } else {
+        shiny::span(
+          class = paste("badge rounded-pill flex-shrink-0 mt-1", if (selected_count > 0) "text-bg-secondary" else "text-bg-light border"),
+          style = "min-width: 2.5rem;",
+          title = paste0("Selected for ", selected_count, " repositor", if (selected_count == 1) "y" else "ies"),
+          paste0(selected_count, "\u00d7")
+        )
+      },
       shiny::div(
         class = "flex-grow-1",
         style = "min-width: 0;",

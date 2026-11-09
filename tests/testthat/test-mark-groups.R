@@ -94,7 +94,7 @@ test_that("groups render as sections, cap their subtotal live and flag the score
 
   root = mgr_make_fixture()
   app = new_app_driver(markermd:::mark_app(root), name = "mark_groups_render")
-  app$set_inputs(main_navbar = "rubric")
+  app$set_inputs(main_navbar = "grade")
   app$wait_for_idle()
 
   # Each group wraps its member rows under a header with its label and chip;
@@ -165,7 +165,7 @@ test_that("a capped selection loaded from the database survives the question swi
     markermd:::save_grade_selection(root, "Q2", "student1-excellent", item, TRUE)
   }
   app = new_app_driver(markermd:::mark_app(root), name = "mark_groups_loaded")
-  app$set_inputs(main_navbar = "rubric")
+  app$set_inputs(main_navbar = "grade")
   app$wait_for_idle()
 
   app$set_inputs(`rubric_module-question_select` = "Q3")
@@ -185,7 +185,7 @@ test_that("an exclusive group behaves like radio buttons and logs both grade eve
 
   root = mgr_make_fixture()
   app = new_app_driver(markermd:::mark_app(root), name = "mark_groups_exclusive")
-  app$set_inputs(main_navbar = "rubric")
+  app$set_inputs(main_navbar = "grade")
   app$wait_for_idle()
 
   # Round buttons announced as radios
@@ -231,7 +231,7 @@ test_that("the exclusive switch is refused while a repository has two of the gro
   markermd:::save_grade_selection(root, "Q2", "student3-poor", "item_3", TRUE)
 
   app = new_app_driver(markermd:::mark_app(root), name = "mark_groups_exclusive_refused")
-  app$set_inputs(main_navbar = "rubric")
+  app$set_inputs(main_navbar = "grade")
   app$wait_for_idle()
 
   # The switch lives in the settings popover, bound once it opens
@@ -260,7 +260,7 @@ test_that("groups can be added, joined through the item menu, moved as blocks an
 
   root = mgr_make_fixture()
   app = new_app_driver(markermd:::mark_app(root), name = "mark_groups_authoring")
-  app$set_inputs(main_navbar = "rubric")
+  app$set_inputs(main_navbar = "grade")
   app$wait_for_idle()
 
   ids = function() mgr_export(app, "rubric_item_ids")
@@ -363,7 +363,7 @@ test_that("a rubric import with groups appends into existing groups in the runni
 
   root = mgr_make_fixture()
   app = new_app_driver(markermd:::mark_app(root), name = "mark_groups_import")
-  app$set_inputs(main_navbar = "rubric")
+  app$set_inputs(main_navbar = "grade")
   app$wait_for_idle()
 
   more = tempfile(fileext = ".yaml")

@@ -532,7 +532,7 @@ mark_content_server = function(id, template, collection, artifact_paths, artifac
       shiny::bindEvent(selected_question(), ignoreInit = FALSE)
 
     # Re-apply the current question's highlight whenever the artifact frame
-    # (re)loads. The frame first renders only once the Rubric tab is shown,
+    # (re)loads. The frame first renders only once the Grade tab is shown,
     # which can be after the init-time scroll JS has given up retrying; it is
     # also re-inserted on repo switches and when toggling back from the
     # Source view, so this keeps the highlight in sync for all three cases.

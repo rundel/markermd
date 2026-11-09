@@ -214,6 +214,22 @@ item_selection_count = function(collection_path, question_name, item_id) {
   })
 }
 
+# How many repositories currently have each item selected (by the most
+# recent grade event per repository and item), for the Rubric tab's editor
+#
+# collection_path: Path to collection directory
+# Returns: Named integer vector keyed by "<question>\x1f<item_id>"; items
+#   nobody has selected are absent
+
+item_selection_counts = function(collection_path) {
+  with_database(collection_path, function(conn) {
+    grades = latest_rows(conn, "grades", c("question_name", "assignment_repo", "item_id"))
+    grades = grades[grades$selected == 1, , drop = FALSE]
+    counts = table(paste(grades$question_name, grades$item_id, sep = "\x1f"))
+    stats::setNames(as.integer(counts), names(counts))
+  })
+}
+
 # Save (insert or update) a rubric item group
 #
 # collection_path: Path to collection directory
