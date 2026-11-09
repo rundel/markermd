@@ -30,13 +30,14 @@ injection_content_patterns = function(markdown = TRUE) {
   list(
     "instruction-override" = c(
       paste0(
-        "\\b(ignore|disregard|forget|override|bypass)\\b[^.\\n]{0,40}",
+        "\\b(ignore|disregard|forget|override|bypass)\\b(?:[^.\\n]|\\n(?!\\s*\\n)){0,40}",
         "\\b(previous|prior|above|earlier|preceding|all|any|your|the|system)\\s+(?:[\\w'-]+\\s+){0,2}",
         "(instructions?|prompts?|rules|rubric|guidelines|directions|criteria)\\b"
       ),
       "\\bnew (instructions?|task|rules)\\s*:",
       "\\b(system|developer)\\s+(prompt|message|override|instructions?)\\b",
-      "\\bdo not (follow|apply|use)\\b[^.\\n]{0,30}\\b(rubric|instructions|grading)\\b"
+      "\\bdo not (follow|apply|use)\\b[^.\\n]{0,30}\\b(rubric|instructions|grading)\\b",
+      "\\b(the\\s+)?(rubric|instructions|grading criteria|criteria)\\s+(does|do|should|must|need)\\s*(not|n't)\\s+(apply|be applied|be used)\\b"
     ),
     "grader-addressed" = c(
       paste0(
@@ -52,7 +53,10 @@ injection_content_patterns = function(markdown = TRUE) {
       glue::glue(
         "\\bif you are (an? )?(<<model>>|automated|bot|(ai )?(grader|assistant|agent))\\b",
         .open = "<<", .close = ">>"
-      )
+      ),
+      "\\b(ai|llm|automated|machine)\\s+(grader|grading (assistant|agent|model|system)|evaluator|reviewer|marker|assessor)s?\\b",
+      "\\bas (the|an?) (evaluator|grader|reviewer|marker|assessor)\\b",
+      "\\b(graders?|evaluators?|reviewers?|markers?)\\s+(using|with|that use|who use|running)\\s+(automation|ai|llms?|language models?|scripts?|bots?)\\b"
     ),
     "grade-demand" = c(
       paste0(
@@ -69,7 +73,18 @@ injection_content_patterns = function(markdown = TRUE) {
         "(should|must|deserves?|shall|merits|has earned)\\b[^.\\n]{0,40}",
         "\\b(full|maximum|perfect|100\\s*%|highest|an? A\\+?)\\b"
       ),
-      "\\b(positive|favou?rable)\\s+(review|evaluation|feedback|assessment)\\s+only\\b"
+      "\\b(positive|favou?rable)\\s+(review|evaluation|feedback|assessment)\\s+only\\b",
+      "\\b(give|award|assign|grant|rate)\\b[^.\\n]{0,30}\\b(\\d{1,3})\\s*/\\s*\\2\\b",
+      paste0(
+        "\\b(rate|grade|mark|score|evaluate|assess)\\s+(this|my|the)\\s+(submission|answer|response|work|assignment|solution)\\s+",
+        "(as\\s+)?(excellent|perfect|outstanding|flawless|exemplary|an? A\\+?|full marks)\\b"
+      ),
+      "\\b(grade|mark|score|evaluate)\\s+(this\\s+|it\\s+|me\\s+)?(generously|leniently|favou?rably)\\b",
+      paste0(
+        "\\b(output|return|respond with|print|answer|select|choose)\\s+[\"']?(pass|passed|full marks|correct|yes)[\"']?\\s+",
+        "(for|on|to)\\s+(every|all|each|any)\\b"
+      ),
+      "^[^.\\n]{0,40}:\\s*(maximum|full|perfect|max)\\s+(score|marks?|points?|grade|credit)s?\\s*[.!]?\\s*$"
     ),
     "role-marker" = c(
       if (markdown) role_lines,
@@ -318,7 +333,11 @@ confusable_map = function() {
 }
 
 # The copy of a text the content patterns run against: invisible characters
-# dropped, fullwidth ASCII and look-alike letters folded to Latin.
+# dropped, then NFKC compatibility folding (fullwidth letters, mathematical
+# alphanumerics such as a bold "I", ligatures and the like become plain
+# Latin), then the look-alike letters from other scripts that NFKC leaves
+# alone (Cyrillic, Greek) folded to Latin. Only the matching copy is folded;
+# excerpts are taken from the text as written.
 #
 # x: Character vector
 
@@ -328,6 +347,7 @@ fold_for_matching = function(x) {
   if (length(idx) == 0) {
     return(x)
   }
+  x[idx] = stringi::stri_trans_nfkc(x[idx])
   map = confusable_map()
   x[idx] = chartr(
     paste0(map$from, intToUtf8(0xFF01:0xFF5E)), paste0(map$to, intToUtf8(0x21:0x7E)), x[idx]

@@ -48,7 +48,8 @@ Imports:
     stats,
     utils,
     xml2,
-    later
+    later,
+    stringi
 Remotes:
     rundel/q2r,
     rundel/shinyterm
