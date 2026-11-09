@@ -163,6 +163,52 @@ question_block_indices = function(records, heading_ids, div_ids) {
   sort(unique(selected))
 }
 
+# Problems with loaded questions' node selections against the editor's
+# document: ids that match no heading or div (a template written against
+# another key), and ids nested under another selected id of the same
+# question, which the tree's click handling never produces and which count
+# their content twice. Returns one message per question with a problem.
+#
+# ast: q2r pandoc AST object of the editor's document
+# questions: List of markermd_question objects
+
+question_node_id_problems = function(ast, questions) {
+  if (!any(vapply(questions, function(q) length(q@selected_nodes@node_ids) > 0, logical(1)))) {
+    return(character(0))
+  }
+  records = q2r_flatten(ast)
+  record_ids = vapply(records, function(record) {
+    node = record$node
+    if (S7::S7_inherits(node, q2r::pandoc_header) || S7::S7_inherits(node, q2r::pandoc_div)) node@attr@id else ""
+  }, character(1))
+  tree_items = NULL
+  out = character(0)
+  for (q in questions) {
+    ids = q@selected_nodes@node_ids
+    if (length(ids) == 0) next
+    found = ids %in% record_ids[nzchar(record_ids)]
+    unknown = ids[!found]
+    nested = character(0)
+    if (any(found)) {
+      if (is.null(tree_items)) tree_items = build_ast_tree_structure(ast)
+      indices = which(record_ids %in% ids[found])
+      for (idx in indices) {
+        if (has_selected_ancestor(tree_items, idx, setdiff(indices, idx))) {
+          nested = c(nested, record_ids[idx])
+        }
+      }
+    }
+    parts = c(
+      if (length(unknown) > 0) paste0("not in the document: ", paste0("#", unknown, collapse = ", ")),
+      if (length(nested) > 0) paste0("inside another selected section: ", paste0("#", unique(nested), collapse = ", "))
+    )
+    if (length(parts) > 0) {
+      out = c(out, paste0("\"", q@name, "\" selects nodes ", paste(parts, collapse = "; and nodes ")))
+    }
+  }
+  out
+}
+
 # Partition selected ids into heading ids and div ids using the AST
 #
 # An id carried by a pandoc_div in the document is a div id; everything else is

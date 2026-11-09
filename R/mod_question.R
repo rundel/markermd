@@ -216,26 +216,35 @@ notify_document_entry = function() {
   )
 }
 
+# The page-head handler behind a refused rename (see reset_name() in
+# question_server()): sets the text input back, blurs it, and reports the
+# restored value so the client's last sent value matches the server's
+
+question_name_reset_script = function() {
+  shiny::tags$head(shiny::tags$script(shiny::HTML("
+    Shiny.addCustomMessageHandler('markermd_reset_text', function(msg) {
+      var el = document.getElementById(msg.id);
+      if (el) { el.value = msg.value; el.blur(); }
+      Shiny.setInputValue(msg.id, msg.value);
+    });
+  ")))
+}
+
 # Question Server
 #
 # id: Character. Module namespace ID
 # ast: Reactive. The parsed AST object for building tree structure
-# initial_question: S7 markermd_question object. Optional initial question state
+# initial_question: S7 markermd_question object. The question's initial state
 # name_available: Function(name) telling whether no other question has the
 #   name; a rename to a taken (or blank) name is refused and the input put
 #   back, since the template's questions must be uniquely named
 
-question_server = function(id, ast, initial_question = NULL, name_available = function(name) TRUE) {
+question_server = function(id, ast, initial_question, name_available = function(name) TRUE) {
+  force(name_available)
   shiny::moduleServer(id, function(input, output, session) {
 
-    # Question state - use initial_question if provided, otherwise default
-    state = shiny::reactiveVal({
-      if (!is.null(initial_question)) {
-        initial_question
-      } else {
-        markermd_question(1L, "default", markermd_node_selection(), list())
-      }
-    })
+    state = shiny::reactiveVal(initial_question)
+    observers = make_observer_tracker()
     
     # Memoised flattened tree. ast() is write-once, so this is built once and
     # reused instead of re-flattening the whole document on every selection change.
@@ -283,7 +292,8 @@ question_server = function(id, ast, initial_question = NULL, name_available = fu
       cur_state@selected_nodes = markermd_node_selection(node_ids = character(0))
       state(cur_state)
     }) |>
-      shiny::bindEvent(input$clear_nodes_btn)
+      shiny::bindEvent(input$clear_nodes_btn) |>
+      observers$track()
 
     # Render selected nodes display: each node-id selector followed by the
     # number of nodes it covers (the selected heading/div and its descendants).
@@ -304,6 +314,14 @@ question_server = function(id, ast, initial_question = NULL, name_available = fu
       }
     })
         
+    # Put a refused name back. An update sent while the field has focus (Enter
+    # commits without blurring) would leave the client's last reported value
+    # at the refused name, so retyping it would never reach the server; the
+    # handler resets the field, blurs it, and reports the restored name.
+    reset_name = function(name) {
+      session$sendCustomMessage("markermd_reset_text", list(id = session$ns("question_name"), value = name))
+    }
+
     # The name is committed on blur; a blank or taken name is refused
     # rather than stored (the template class would reject it when built)
     shiny::observe({
@@ -315,18 +333,19 @@ question_server = function(id, ast, initial_question = NULL, name_available = fu
       }
       if (!nzchar(name)) {
         shiny::showNotification("A question needs a name.", type = "warning")
-        shiny::updateTextInput(session, "question_name", value = cur_state@name)
+        reset_name(cur_state@name)
         return()
       }
       if (!name_available(name)) {
         shiny::showNotification(paste0("There is already a question named \"", name, "\"."), type = "warning")
-        shiny::updateTextInput(session, "question_name", value = cur_state@name)
+        reset_name(cur_state@name)
         return()
       }
       cur_state@name = name
       state(cur_state)
     }) |>
-      shiny::bindEvent(input$question_name)
+      shiny::bindEvent(input$question_name) |>
+      observers$track()
 
     # Confirm before deleting a question so a stray click does not lose its rules.
     # The actual removal is driven off the confirm button via delete_clicked().
@@ -341,23 +360,32 @@ question_server = function(id, ast, initial_question = NULL, name_available = fu
         )
       ))
     }) |>
-      shiny::bindEvent(input$delete_question)
+      shiny::bindEvent(input$delete_question) |>
+      observers$track()
 
     shiny::observe({
       shiny::removeModal()
     }) |>
-      shiny::bindEvent(input$confirm_delete_question)
-    
+      shiny::bindEvent(input$confirm_delete_question) |>
+      observers$track()
+
     # The rules and filters row machinery (structural twins; see
     # mod_question_rules.R / mod_question_filters.R). Each owns its keyed-list
     # bookkeeping internally and writes into the shared question state. Rules
     # first, so observer creation order (and same-priority flush order)
     # matches the pre-split layout.
-    question_rules_server(input, output, session, state, ast)
-    question_filters_server(input, output, session, state, ast)
+    rules_machine = question_rules_server(input, output, session, state, ast)
+    filters_machine = question_filters_server(input, output, session, state, ast)
 
     # Return reactive question data and methods
     return(list(
+      # Destroy every observer of this question, for when the editor drops it
+      destroy = function() {
+        observers$destroy()
+        rules_machine$destroy()
+        filters_machine$destroy()
+      },
+
       # Reactive data
       question = shiny::reactive({
         state()

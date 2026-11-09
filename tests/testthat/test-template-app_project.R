@@ -251,3 +251,56 @@ test_that("template() takes a snapshot and loads a snapshot's template into the 
   expect_equal(nrow(rows), n_before)
   expect_equal(markermd:::project_question_names(proj$root)$names, "Q2")
 })
+
+
+test_that("renaming a question in template() carries its grading, refuses a taken name, and swaps", {
+  testthat::skip_if_not_installed("shinytest2")
+  testthat::skip_on_cran()
+
+  proj = make_template_project(with_template = TRUE)
+  root = proj$root
+  dir.create(file.path(root, "repos", "r1"))
+  rubric = file.path(root, "rubric.yaml")
+  writeLines(c(
+    "format_version: '1.0'", "questions:", "- name: Q2", "  items:",
+    "  - points: 0", "    description: Looks good", "  - points: -2", "    description: Off by one"
+  ), rubric)
+  suppressMessages(markermd::rubric_import(rubric, project = root))
+  suppressMessages(markermd::marks_set("r1", "Q2", items = "Off by one", comment = "ok", project = root))
+  descriptions = function(question) {
+    unname(vapply(markermd:::load_rubric_items(root, question), function(item) item@description, character(1)))
+  }
+
+  app = new_app_driver(template(root), name = "template_project_rename")
+  app$wait_for_idle(duration = 1000)
+
+  # A new name: the rubric, selections and comment follow the question
+  app$set_inputs(`question_1-question_name` = "Q2 renamed")
+  app$click("save_to_project")
+  app$wait_for_idle(duration = 1000)
+  expect_equal(markermd:::project_question_names(root)$names, c("Q2 renamed", "Q3"))
+  expect_setequal(descriptions("Q2 renamed"), c("Looks good", "Off by one"))
+  expect_length(descriptions("Q2"), 0)
+  expect_equal(markermd:::load_comment(root, "Q2 renamed", "r1"), "ok")
+  expect_match(
+    paste(app$get_text(".shiny-notification"), collapse = "\n"),
+    "Carried the grading of \"Q2\" over to its new name \"Q2 renamed\""
+  )
+
+  # A taken name is refused and the session stays alive
+  app$set_inputs(`question_1-question_name` = "Q3")
+  app$wait_for_idle()
+  expect_match(paste(app$get_text(".shiny-notification"), collapse = "\n"), "already a question named")
+  expect_equal(unlist(app$get_values(export = "question_names"), use.names = FALSE), c("Q2 renamed", "Q3"))
+
+  # Swapping the two names in one save swaps the grading with them
+  app$set_inputs(`question_1-question_name` = "tmp")
+  app$set_inputs(`question_2-question_name` = "Q2 renamed")
+  app$set_inputs(`question_1-question_name` = "Q3")
+  app$click("save_to_project")
+  app$wait_for_idle(duration = 1000)
+  expect_equal(markermd:::project_question_names(root)$names, c("Q3", "Q2 renamed"))
+  expect_setequal(descriptions("Q3"), c("Looks good", "Off by one"))
+  expect_length(descriptions("Q2 renamed"), 0)
+  expect_equal(markermd:::load_comment(root, "Q3", "r1"), "ok")
+})

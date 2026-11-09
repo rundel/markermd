@@ -45,6 +45,7 @@ question_rules_server = function(input, output, session, state, ast) {
   # ever grows, so a deleted row's key (and its input ids) is never reused
   rules_list = shiny::reactiveVal(list())
   next_rule_id = shiny::reactiveVal(1L)
+  observers = make_observer_tracker()
 
   # Seen registry for the per-rule node-type multiselects: a NULL from a
   # noted widget is a deliberate clear meaning the catch-all "Any node" (see
@@ -112,7 +113,8 @@ question_rules_server = function(input, output, session, state, ast) {
       next_rule_id(length(loaded_rules) + 1L)
       rules_render$bump()
     }
-  }, priority = 1000)  # High priority to run before other observers
+  }, priority = 1000) |>  # High priority to run before other observers
+    observers$track()
 
   # Capture the current input values for a single rule into a new
   # markermd_rule. The values input is validated for the active verb; when it
@@ -212,7 +214,8 @@ question_rules_server = function(input, output, session, state, ast) {
     next_rule_id(rule_id + 1L)
     rules_render$bump()
   }) |>
-    shiny::bindEvent(input$add_rule)
+    shiny::bindEvent(input$add_rule) |>
+    observers$track()
 
   # Dynamic delete observer management
   delete_observers = shiny::reactiveVal(list())
@@ -284,7 +287,8 @@ question_rules_server = function(input, output, session, state, ast) {
       }
     }
     status_outputs(wired[wired %in% names(current_rules)])
-  })
+  }) |>
+    observers$track()
 
   # Handle rule input updates
   shiny::observe({
@@ -330,7 +334,8 @@ question_rules_server = function(input, output, session, state, ast) {
       # rendered rule UI, so it must re-render. Node-type and value edits do not.
       if (verb_changed) rules_render$bump()
     }
-  })
+  }) |>
+    observers$track()
 
   # Render rules UI. Depends only on the structural trigger; rule values are read
   # via isolate() so editing a rule's inputs does not rebuild the rule controls.
@@ -415,5 +420,8 @@ question_rules_server = function(input, output, session, state, ast) {
   # because the observer above had already applied the verb change, so it was
   # removed.
 
-  invisible(list(rule_status = rule_status))
+  invisible(list(
+    rule_status = rule_status,
+    destroy = function() observers$destroy(shiny::isolate(delete_observers()))
+  ))
 }

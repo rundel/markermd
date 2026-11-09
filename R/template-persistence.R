@@ -34,23 +34,31 @@ template_persistence = function(input, output, session,
   # detection. Metadata is dropped (created_at is stamped fresh on every
   # build); NULL until every question module has a live server so a loaded
   # template is not compared against a half-built editor.
-  current_template_serialized = shiny::reactive({
+  # A build that fails (an invariant the editor did not catch) is reported in
+  # the status line rather than ending the session.
+  template_build = shiny::reactive({
     modules = question_modules()
     if (length(modules) > 0 && any(vapply(modules, function(m) is.null(m$server), logical(1)))) {
-      return(NULL)
+      return(list(result = NULL, error = NULL))
     }
-    lst = template_to_list(build_current_template())
-    lst$metadata = NULL
-    lst
+    purrr::safely(function() {
+      lst = template_to_list(build_current_template())
+      lst$metadata = NULL
+      lst
+    })()
   })
+  current_template_serialized = shiny::reactive(template_build()$result)
 
-  # Snapshot as of the last save, baselined once the initial state is built
+  # Snapshot as of the last save, baselined once the initial state is built.
+  # The baseline observer destroys itself once set, so later edits are only
+  # serialized through the debounced read below.
   saved_template_snapshot = shiny::reactiveVal(NULL)
 
-  shiny::observe({
+  baseline_observer = shiny::observe({
     cur = current_template_serialized()
-    if (is.null(saved_template_snapshot()) && !is.null(cur)) {
+    if (!is.null(cur)) {
       saved_template_snapshot(cur)
+      baseline_observer$destroy()
     }
   })
 
@@ -90,6 +98,13 @@ template_persistence = function(input, output, session,
     shiny::div(
       class = "small text-muted mb-1",
       glue::glue("{n} question{if (n == 1) '' else 's'}"),
+      if (!is.null(template_build()$error)) {
+        shiny::div(
+          class = "text-danger",
+          fa_icon("circle-xmark"),
+          paste0(" Cannot save: ", conditionMessage(template_build()$error))
+        )
+      },
       if (template_dirty()) {
         shiny::span(
           class = "text-warning-emphasis ms-2",
@@ -182,12 +197,6 @@ template_persistence = function(input, output, session,
     for (i in seq_len(nrow(changes$renamed))) {
       shiny::showNotification(
         glue::glue("Carried the grading of \"{changes$renamed$from[i]}\" over to its new name \"{changes$renamed$to[i]}\"."),
-        type = "message", duration = 10
-      )
-    }
-    for (i in seq_len(nrow(changes$skipped))) {
-      shiny::showNotification(
-        glue::glue("\"{changes$skipped$from[i]}\" was renamed to \"{changes$skipped$to[i]}\", which already holds grading; its own grading stays under the old name."),
         type = "warning", duration = NULL
       )
     }
@@ -227,11 +236,12 @@ template_persistence = function(input, output, session,
   )
 
   apply_import = function(questions, file_name, files = character(0)) {
-    load_questions_into_editor(questions, files = files)
+    problems = load_questions_into_editor(questions, files = files)
     shiny::showNotification(
       glue::glue("Imported {length(questions)} question{if (length(questions) == 1) '' else 's'} from {file_name}."),
       type = "message"
     )
+    show_node_id_problems(problems)
   }
 
   # A parsed import awaiting confirmation while the replace modal is open
@@ -289,6 +299,24 @@ template_persistence = function(input, output, session,
   )
 }
 
+# Show the node selection problems of questions just loaded into the editor
+# (see question_node_id_problems()) as one warning notification
+#
+# problems: Character vector of messages, one per question
+
+show_node_id_problems = function(problems) {
+  if (length(problems) == 0) {
+    return(invisible())
+  }
+  shiny::showNotification(
+    shiny::tagList(
+      "Check these questions' node selections against this document:",
+      shiny::tags$ul(class = "mb-0", lapply(problems, shiny::tags$li))
+    ),
+    type = "warning", duration = NULL
+  )
+}
+
 # The template editor's snapshot controls (project sessions): the modals
 # behind the Snapshots popover's "Take snapshot" and "Restore template"
 # buttons. Snapshots are of the project database (template, rubric and
@@ -338,7 +366,15 @@ template_snapshot_controls = function(input, output, session, project, question_
   }) |> shiny::bindEvent(input$confirm_snapshot)
 
   shiny::observe({
-    choices = template_snapshot_choices(project@root)
+    listed = purrr::safely(template_snapshot_choices)(project@root)
+    if (!is.null(listed$error)) {
+      shiny::showNotification(
+        paste0("Could not list the snapshots: ", conditionMessage(listed$error)),
+        type = "error", duration = NULL
+      )
+      return()
+    }
+    choices = listed$result
     if (length(choices) == 0) {
       shiny::showNotification("No snapshot holds a template yet.", type = "warning")
       return()
@@ -368,8 +404,10 @@ template_snapshot_controls = function(input, output, session, project, question_
     shiny::removeModal()
     id = input$restore_snapshot_id
     shiny::req(id)
-    part = with_database(project@root, function(conn) read_snapshot_part(conn, id, "template"))
-    parsed = purrr::safely(function() lapply(part$questions, question_from_list))()
+    parsed = purrr::safely(function() {
+      part = with_database(project@root, function(conn) read_snapshot_part(conn, id, "template"))
+      list(questions = lapply(part$questions, question_from_list), files = as.character(unlist(part$files)))
+    })()
     if (!is.null(parsed$error)) {
       shiny::showNotification(
         paste0("Could not load the snapshot's template: ", conditionMessage(parsed$error)),
@@ -377,10 +415,12 @@ template_snapshot_controls = function(input, output, session, project, question_
       )
       return()
     }
-    load_questions_into_editor(parsed$result, files = as.character(unlist(part$files)))
+    questions = parsed$result$questions
+    problems = load_questions_into_editor(questions, files = parsed$result$files)
     shiny::showNotification(
-      glue::glue("Loaded {length(parsed$result)} question{if (length(parsed$result) == 1) '' else 's'} from snapshot {id}. Save to keep them."),
+      glue::glue("Loaded {length(questions)} question{if (length(questions) == 1) '' else 's'} from snapshot {id}. Save to keep them."),
       type = "message"
     )
+    show_node_id_problems(problems)
   }) |> shiny::bindEvent(input$confirm_restore_snapshot)
 }

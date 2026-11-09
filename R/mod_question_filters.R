@@ -40,6 +40,7 @@ question_filters_server = function(input, output, session, state, ast) {
   # condition key to mint in this group). next_group_id only ever grows.
   filters_list = shiny::reactiveVal(list())
   next_group_id = shiny::reactiveVal(1L)
+  observers = make_observer_tracker()
 
   # Structural render trigger: bumped on load/add/delete and condition type
   # changes (which swap the value control), never on value edits (see
@@ -77,7 +78,8 @@ question_filters_server = function(input, output, session, state, ast) {
       next_group_id(length(loaded_groups) + 1L)
       filters_render$bump()
     }
-  }, priority = 1000)  # High priority to run before other observers
+  }, priority = 1000) |>  # High priority to run before other observers
+    observers$track()
 
   # Seen registry for the per-condition node-type multiselects, keyed
   # "<gid>_<cid>" (see make_seen_registry in mod_question_rows.R)
@@ -180,7 +182,8 @@ question_filters_server = function(input, output, session, state, ast) {
     next_group_id(group_id + 1L)
     filters_render$bump()
   }) |>
-    shiny::bindEvent(input$add_filter_group)
+    shiny::bindEvent(input$add_filter_group) |>
+    observers$track()
 
   # Dynamic filter observer management, keyed "g<id>" for group-level
   # observers and "c<gid>_<cid>" for per-condition delete observers
@@ -285,7 +288,8 @@ question_filters_server = function(input, output, session, state, ast) {
         }
       }
     ))
-  })
+  }) |>
+    observers$track()
 
   # Handle filter condition input updates (type, value, and negate edits)
   shiny::observe({
@@ -324,7 +328,8 @@ question_filters_server = function(input, output, session, state, ast) {
       set_filters_state(groups)
       if (type_changed) filters_render$bump()
     }
-  })
+  }) |>
+    observers$track()
 
   # Render filter groups UI. Depends only on the structural trigger; condition
   # values are read via isolate() so editing inputs does not rebuild controls.
@@ -383,5 +388,7 @@ question_filters_server = function(input, output, session, state, ast) {
     )
   })
 
-  invisible(NULL)
+  invisible(list(
+    destroy = function() observers$destroy(shiny::isolate(filter_observers()))
+  ))
 }

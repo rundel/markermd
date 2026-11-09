@@ -84,3 +84,26 @@ sync_keyed_observers = function(observers, active_keys, create) {
   }
   observers
 }
+
+# A collector for observers that must be destroyed together when their
+# question is removed from the editor (Shiny keeps a module's observers alive
+# after its UI is gone). track() registers an observer and returns it, so it
+# can end an observe() |> bindEvent() pipeline; destroy() destroys every
+# tracked observer plus the entries of any keyed collections passed to it.
+
+make_observer_tracker = function() {
+  tracked = list()
+  list(
+    track = function(observer) {
+      tracked[[length(tracked) + 1]] <<- observer
+      invisible(observer)
+    },
+    destroy = function(...) {
+      destroy_all = function(x) {
+        if (inherits(x, "Observer")) x$destroy() else for (entry in x) destroy_all(entry)
+      }
+      destroy_all(list(tracked, list(...)))
+      tracked <<- list()
+    }
+  )
+}

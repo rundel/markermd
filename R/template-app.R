@@ -34,6 +34,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     shinyjs::useShinyjs(),
     markermd_modal_css(),
     fa_dependency(),
+    question_name_reset_script(),
 
       shiny::tags$style(shiny::HTML("
       /* Rule form controls */
@@ -251,10 +252,35 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
   # Server
   server = function(input, output, session) {
     
-    # Global state management
-    current_question_id = shiny::reactiveVal(1)
+    # The question registry is keyed by a session slot ("1", "2", ...), which
+    # also names each question's module and DOM ids; slots are never reused.
+    # A question's own id (question@id) is separate: it is kept through
+    # imports and restores, because saving matches questions by id to carry
+    # grading across renames.
+    current_slot = shiny::reactiveVal(1)
+    last_slot = shiny::reactiveVal(0)
     last_question_id = shiny::reactiveVal(0)
-    
+
+    next_slot = function() {
+      slot = shiny::isolate(last_slot()) + 1
+      last_slot(slot)
+      slot
+    }
+
+    # A fresh question id: above every id of this session and of the
+    # project's stored template, which an agent may have changed meanwhile
+    mint_question_id = function() {
+      stored = 0L
+      if (!is.null(project)) {
+        lst = purrr::safely(function() with_database(project@root, db_template_list))()$result
+        ids = vapply(lst$questions, function(q) as.integer(q$id), integer(1))
+        stored = max(c(0L, ids))
+      }
+      id = as.integer(max(shiny::isolate(last_question_id()), stored) + 1L)
+      last_question_id(id)
+      id
+    }
+
     # Question modules storage
     question_modules = shiny::reactiveVal(list())
 
@@ -276,7 +302,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     # The active entry's file ("" for the document), which the left pane
     # shows: the document tree, or the file's source
     shown_file = shiny::reactive({
-      current_module = question_modules()[[as.character(current_question_id())]]
+      current_module = question_modules()[[as.character(current_slot())]]
       if (is.null(current_module) || is.null(current_module$server)) {
         return("")
       }
@@ -297,43 +323,6 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     # node-click handlers instead of re-flattening on every interaction.
     tree_items_memo = shiny::reactive(build_ast_tree_structure(ast()))
 
-    # Load template on startup if provided
-    template_loaded = shiny::reactiveVal(FALSE)
-    
-    shiny::observe({
-      if (!is.null(template_obj) && !template_loaded()) {
-        # Load questions from template
-        for (question in template_obj@questions) {
-          id = question@id
-
-          # Create initial question object in the same format as add_new_question
-          module_id = paste0("question_", id)
-
-          # Store the module data (server will be created when UI is inserted)
-          modules = question_modules()
-          modules[[as.character(id)]] = list(
-            id = id,
-            module_id = module_id,
-            initial_question = question,
-            server = NULL  # Will be created when UI is inserted
-          )
-          question_modules(modules)
-
-          # Update last question ID if this is higher
-          if (id > last_question_id()) {
-            last_question_id(id)
-          }
-        }
-
-        # Set current question to first question if any exist
-        if (length(template_obj@questions) > 0) {
-          current_question_id(template_obj@questions[[1]]@id)
-        }
-
-        template_loaded(TRUE)
-      }
-    }) |>
-      shiny::bindEvent(template_obj, once = TRUE, ignoreNULL = TRUE)
     
     # The name a new question gets when the Add modal leaves it blank
     default_question_name = function(scope, file, id) {
@@ -362,16 +351,16 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     #   document-scope question, the file's name for one on a file, else
     #   "Question <id>")
     add_new_question = function(scope = "sections", file = NA_character_, name = NULL) {
-      next_id = last_question_id() + 1
-      last_question_id(next_id)
+      question_id = mint_question_id()
+      slot = next_slot()
 
       if (is.null(name)) {
-        name = default_question_name(scope, file, next_id)
+        name = default_question_name(scope, file, question_id)
       }
 
       # Create initial question object
       initial_question = markermd_question(
-        id = as.integer(next_id),
+        id = question_id,
         name = name,
         selected_nodes = markermd_node_selection(),
         rules = list(),
@@ -380,12 +369,12 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       )
 
       # Create question module
-      module_id = paste0("question_", next_id)
+      module_id = paste0("question_", slot)
 
       # Update question modules (store the initial question, server will be created when UI is inserted)
       modules_list = question_modules()
-      modules_list[[as.character(next_id)]] = list(
-        id = next_id,
+      modules_list[[as.character(slot)]] = list(
+        id = question_id,
         module_id = module_id,
         initial_question = initial_question,
         server = NULL  # Will be created when UI is inserted
@@ -393,15 +382,15 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       question_modules(modules_list)
 
       # Set as current question
-      current_question_id(next_id)
+      current_slot(slot)
 
-      return(next_id)
+      return(slot)
     }
 
     # Ensure current question exists in the modules list
     #
     ensure_current_question_exists = function() {
-      current_q_id = current_question_id()
+      current_q_id = current_slot()
       modules_list = question_modules()
 
       if (is.null(modules_list[[as.character(current_q_id)]])) {
@@ -412,7 +401,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     
     # Get selected nodes for current question
     selected_nodes = shiny::reactive({
-      current_q_id = current_question_id()
+      current_q_id = current_slot()
       result_nodes = integer(0)
       modules_list = question_modules()
 
@@ -431,7 +420,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     
     # Tree indices excluded by the current question's filters, drawn in red
     filtered_nodes = shiny::reactive({
-      current_q_id = current_question_id()
+      current_q_id = current_slot()
       modules_list = question_modules()
       current_module = modules_list[[as.character(current_q_id)]]
 
@@ -479,7 +468,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       click_data = pending_node_click()
       if (is.null(click_data)) return()
 
-      current_q_id = current_question_id()
+      current_q_id = current_slot()
       modules_list = question_modules()
       current_module = modules_list[[as.character(current_q_id)]]
 
@@ -499,7 +488,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       click_data = ast_result$node_clicked()
       if (is.null(click_data)) return()
 
-      current_q_id = current_question_id()
+      current_q_id = current_slot()
 
       # Check if question exists
       modules_list = question_modules()
@@ -556,7 +545,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     # Show which question tree selections will land on, since the tree's
     # highlights always reflect the active question
     output$active_question_badge = shiny::renderUI({
-      current_q_id = current_question_id()
+      current_q_id = current_slot()
       modules_list = question_modules()
       current_module = modules_list[[as.character(current_q_id)]]
 
@@ -625,14 +614,17 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       }
 
       for (q_id_str in names(modules_list)[needs_server]) {
+        # Built before the call: an argument is a promise, and a promise
+        # forced later would read the loop variable's last value
+        name_available = local({
+          own = q_id_str
+          function(name) !name %in% question_names_except(shiny::isolate(question_modules()), own)
+        })
         modules_list[[q_id_str]]$server = question_server(
           modules_list[[q_id_str]]$module_id,
           ast,
           initial_question = modules_list[[q_id_str]]$initial_question,
-          name_available = local({
-            own = q_id_str
-            function(name) !name %in% question_names_except(shiny::isolate(question_modules()), own)
-          })
+          name_available = name_available
         )
       }
       question_modules(modules_list)
@@ -659,7 +651,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       for (q_id_str in setdiff(module_ids, already)) {
         q_id = as.numeric(q_id_str)
         question_module = modules_list[[q_id_str]]
-        card_class = if (q_id == shiny::isolate(current_question_id())) {
+        card_class = if (q_id == shiny::isolate(current_slot())) {
           "question-card question-active border border-primary border-2"
         } else {
           "question-card border"
@@ -771,31 +763,49 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       ))
     }
 
-    # Wire each question's move up/down signals once its server exists
-    wired_move_handlers = shiny::reactiveVal(character(0))
+    # Remove a question (its confirmed delete), moving the active question to
+    # the first remaining one when it was the removed one
+    #
+    # slot: Character. The question's registry key
+    remove_question = function(slot) {
+      modules_list = question_modules()
+      if (is.null(modules_list[[slot]])) {
+        return()
+      }
+      modules_list[[slot]] = NULL
+      question_modules(modules_list)
+      if (identical(as.character(current_slot()), slot)) {
+        current_slot(if (length(modules_list) > 0) as.numeric(names(modules_list)[1]) else 1)
+      }
+    }
+
+    # Each question's app-level wiring (its move and delete signals), keyed by
+    # slot together with its server, so a question that leaves the registry
+    # (a delete, or an import or restore replacing every question) has its
+    # observers and its module's observers destroyed
+    question_wiring = list()
 
     shiny::observe({
       modules_list = question_modules()
-      done = wired_move_handlers()
-      for (q_id_str in setdiff(names(modules_list), done)) {
-        m = modules_list[[q_id_str]]
-        if (is.null(m$server)) next
-        local({
-          qid = q_id_str
-          srv = m$server
-          shiny::observe({
-            move_question(qid, -1L)
-          }) |>
-            shiny::bindEvent(srv$move_up_clicked(), ignoreInit = TRUE)
-          shiny::observe({
-            move_question(qid, 1L)
-          }) |>
-            shiny::bindEvent(srv$move_down_clicked(), ignoreInit = TRUE)
-        })
-        done = c(done, q_id_str)
+      for (slot in setdiff(names(question_wiring), names(modules_list))) {
+        question_wiring[[slot]]$server$destroy()
+        for (observer in question_wiring[[slot]]$observers) observer$destroy()
+        question_wiring[[slot]] <<- NULL
       }
-      if (!identical(done, wired_move_handlers())) {
-        wired_move_handlers(done)
+      for (slot in setdiff(names(modules_list), names(question_wiring))) {
+        srv = modules_list[[slot]]$server
+        if (is.null(srv)) next
+        question_wiring[[slot]] <<- local({
+          key = slot
+          list(server = srv, observers = list(
+            shiny::observe(move_question(key, -1L)) |>
+              shiny::bindEvent(srv$move_up_clicked(), ignoreInit = TRUE),
+            shiny::observe(move_question(key, 1L)) |>
+              shiny::bindEvent(srv$move_down_clicked(), ignoreInit = TRUE),
+            shiny::observe(remove_question(key)) |>
+              shiny::bindEvent(srv$delete_clicked(), ignoreInit = TRUE)
+          ))
+        })
       }
     })
 
@@ -803,8 +813,8 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     # (see the insertUI onclick), so dedupe here against the authoritative
     # current id, which also reflects programmatic moves (add/delete/import).
     shiny::observe({
-      if (!identical(as.numeric(input$select_question), as.numeric(current_question_id()))) {
-        current_question_id(input$select_question)
+      if (!identical(as.numeric(input$select_question), as.numeric(current_slot()))) {
+        current_slot(input$select_question)
       }
     }) |>
       shiny::bindEvent(input$select_question)
@@ -813,7 +823,7 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
     # (see the isolate() above). Toggling the class in place leaves the rule
     # controls untouched so picker edits survive switching cards.
     shiny::observe({
-      cur = current_question_id()
+      cur = current_slot()
       for (q_id_str in names(shiny::isolate(question_modules()))) {
         selector = paste0("#question_card_", q_id_str)
         if (as.numeric(q_id_str) == cur) {
@@ -823,46 +833,8 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
         }
       }
     }) |>
-      shiny::bindEvent(current_question_id())
+      shiny::bindEvent(current_slot())
     
-    
-    # Handle question deletion
-    shiny::observe({
-      modules_list = question_modules()
-      questions_to_remove = c()
-      
-      for (q_id_str in names(modules_list)) {
-        question_module = modules_list[[q_id_str]]
-        if (!is.null(question_module$server)) {
-          delete_count = question_module$server$delete_clicked()
-          
-          if (!is.null(delete_count) && delete_count > 0) {
-            questions_to_remove = c(questions_to_remove, q_id_str)
-          }
-        }
-      }
-      
-      if (length(questions_to_remove) > 0) {
-        # Remove questions
-        modules_list = question_modules()
-        
-        for (q_id_str in questions_to_remove) {
-          modules_list[[q_id_str]] = NULL
-        }
-        
-        question_modules(modules_list)
-        
-        # Update current question if needed
-        current_q_id = current_question_id()
-        if (as.character(current_q_id) %in% questions_to_remove) {
-          if (length(modules_list) > 0) {
-            current_question_id(as.numeric(names(modules_list)[1]))
-          } else {
-            current_question_id(1)
-          }
-        }
-      }
-    })
     
     # Build a markermd_template from the current question modules, stamped with
     # the current format version.
@@ -897,31 +869,39 @@ template_app = function(ast, template_obj = NULL, source_path = NULL, project = 
       )
     }
 
-    # Replace the editor's questions (and files) with those from an imported
-    # template, renumbering ids so the question cards fully refresh.
+    # Replace the editor's questions (and files) with those from a template,
+    # an import or a snapshot. Each question gets a fresh slot, so its card
+    # and module are new, but keeps its own id. Returns the questions' node
+    # selection problems against the document (question_node_id_problems()).
     #
     # questions: List of markermd_question objects
     # files: The template's files; the files the questions cover are kept
     #   in any case
-    load_questions_into_editor = function(questions, files = character(0)) {
+    # check: Whether to check the node selections against the document
+    load_questions_into_editor = function(questions, files = character(0), check = TRUE) {
       covered = stats::na.omit(vapply(questions, function(q) q@file, character(1)))
       template_files(union(files, covered))
       modules = list()
-      start = last_question_id()
-      for (k in seq_along(questions)) {
-        q = questions[[k]]
-        new_id = start + k
-        q@id = as.integer(new_id)
-        modules[[as.character(new_id)]] = list(
-          id = new_id,
-          module_id = paste0("question_", new_id),
+      first_slot = NULL
+      for (q in questions) {
+        slot = next_slot()
+        if (is.null(first_slot)) first_slot = slot
+        modules[[as.character(slot)]] = list(
+          id = q@id,
+          module_id = paste0("question_", slot),
           initial_question = q,
           server = NULL
         )
+        if (q@id > shiny::isolate(last_question_id())) last_question_id(q@id)
       }
-      last_question_id(start + length(questions))
       question_modules(modules)
-      if (length(questions) > 0) current_question_id(start + 1)
+      if (!is.null(first_slot)) current_slot(first_slot)
+      if (check) question_node_id_problems(ast(), questions) else character(0)
+    }
+
+    # Load the template on startup if provided
+    if (!is.null(template_obj)) {
+      shiny::isolate(load_questions_into_editor(template_obj@questions, files = template_obj@files, check = FALSE))
     }
 
     # Dirty tracking, save/status UI, project-database saves, YAML
