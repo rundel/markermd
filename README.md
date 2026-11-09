@@ -175,7 +175,7 @@ snapshot_export("Before feedback review", "backups/before-review", project = "hw
 project_backup("hw01")
 ```
 
-Snapshots live in the project database (added in schema version 5, now 7; an existing database gains a baseline snapshot when first opened). Identical parts are stored once, an automatic snapshot of an unchanged state is recorded as a note on the latest one rather than a new row, and `snapshot_prune()` removes old automatic snapshots while keeping every manual or pinned one. `export_scores()` and `export_comments()` record which snapshot each export came from, and `project_sitrep()` reports the snapshot state, including whether the exported scores are stale.
+Snapshots live in the project database (added in schema version 5, now 9; an existing database gains a baseline snapshot when first opened). Identical parts are stored once, an automatic snapshot of an unchanged state is recorded as a note on the latest one rather than a new row, and `snapshot_prune()` removes old automatic snapshots while keeping every manual or pinned one. `export_scores()` and `export_comments()` record which snapshot each export came from, and `project_sitrep()` reports the snapshot state, including whether the exported scores are stale.
 
 ## Exporting results
 

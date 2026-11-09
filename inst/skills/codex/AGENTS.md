@@ -271,15 +271,16 @@ questions:
   never re-import a whole exported rubric in append mode: export with
   `rubric_export()`, compare, and append a file holding only the new items
   (with `question =` to limit it to one question). `mode = "replace"`
-  deletes each affected question's items and groups first, together with
-  every recorded selection of the items across all repositories. A replace
-  is undone with `snapshot_restore()` from the snapshot it takes, which puts
-  the items and their selections back, but the activity log entries of the
-  deleted items' selections do not come back to History. Making an existing
+  deletes each affected question's items and groups first, so every
+  recorded selection of those items, across all repositories, stops
+  counting (deleted items are kept out of sight, and their selection events
+  stay in History). A replace is undone with `snapshot_restore()` from the
+  snapshot it takes, which brings the items back with their selections.
+  Making an existing
   group exclusive while some repository has two of its items selected
   aborts the import. To reword an item or change its points, use
-  `rubric_item_set()`, never a replace import: the replace drops every
-  recorded selection of the question's items.
+  `rubric_item_set()`, never a replace import: after a replace no recorded
+  selection of the question's old items counts any more.
 
 ### Marks (`format_version: "1.0"`)
 

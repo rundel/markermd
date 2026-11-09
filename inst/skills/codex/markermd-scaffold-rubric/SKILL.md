@@ -551,11 +551,11 @@ If any question already has items, **ask the user** which import mode to use:
   exclusive while some repository has two of its items selected aborts the
   import, listing the repositories.
 - `replace`: each affected question's existing items and groups are deleted
-  first -- along with **all recorded selections of those items, for every
-  repository**, which turns graded pairs ungraded. Say so explicitly when
-  offering it. The import's automatic snapshot is the way back:
-  `snapshot_restore()` puts the items and their selections back, though the
-  History tab no longer lists the deleted items' past selection events.
+  first, so **all recorded selections of those items, for every
+  repository, stop counting**, which turns graded pairs ungraded. Say so
+  explicitly when offering it. The import's automatic snapshot is the way
+  back: `snapshot_restore()` brings the items back with their selections.
+  The deleted items' past selection events stay in the History tab.
 
 Ask this once: in the question-at-a-time workflow the chosen mode applies to
 every per-question import, and `replace` only touches the questions named in
