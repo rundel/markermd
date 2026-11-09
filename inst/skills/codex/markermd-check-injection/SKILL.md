@@ -103,10 +103,20 @@ Rscript -e 'res <- markermd::scan_project("<root>"); print(table(res$repo, facto
   `html-comment`, `hidden-style` (a span or div hidden by CSS or a hiding
   class such as `.content-hidden`), `hidden-chunk` (code in a chunk with
   `echo` or `include` off), `hidden-element` and `html-attribute` (rendered
-  HTML: an element hidden by style or class; alt, title, or meta text),
-  `invisible-unicode` (zero-width characters, or Unicode tag characters,
-  which spell ASCII text that displays as nothing), `bidi-control`,
-  `encoded-text` (base64 that decodes to a matching phrase),
+  HTML: an element hidden by style, by a class the report's own CSS hides,
+  or inside `<template>` / `<noscript>`; alt, title, or meta text),
+  `invisible-unicode` (zero-width characters, soft hyphens and other
+  invisible marks splitting a phrase, Unicode tag characters or a run of
+  variation selectors, which spell ASCII text that displays as nothing; the
+  excerpt shows the decoded text), `bidi-control`, `look-alike-text` (a
+  phrase that matches only once letters from another script, such as a
+  Cyrillic o, are read as Latin), `encoded-text` (base64 that decodes to a
+  matching phrase), `active-content` (rendered HTML only: a script that
+  reaches out of the report's frame toward the grading app, its Shiny
+  session or the cookies, a script whose text carries a matching phrase, a
+  script loaded from an unusual host, an `on...` event-handler attribute, or
+  an iframe, object or embed loading an outside page; the report's own
+  Quarto and Bootstrap scripts are not reported),
   `markermd-marker` (a `<!-- markermd: ... -->` repair marker that the
   fix-parsing skill did not add), `agent-file` (an agent instructions file such as
   `AGENTS.md` or `.cursorrules` shipped in the repository), and `file-name`.
@@ -119,9 +129,14 @@ Rscript -e 'res <- markermd::scan_project("<root>"); print(table(res$repo, facto
   `Score: 8/10` line, reported only when the same file also has a
   `grading-output` line), and `rubric-text` (a stored rubric item quoted
   verbatim).
-- `severity`: `high` is a content match in a concealed place, or smuggled
-  Unicode; `medium` is a content match in visible text, an agent file, or an
-  unverified repair marker; `low` is concealment with no content match.
+- `severity`: `high` is a content match in a concealed place, smuggled
+  Unicode, look-alike spelling, or a script reaching out of the report;
+  `medium` is visible text that hits two different content patterns (an
+  override beside a grade demand), an agent file, an event handler, a script
+  from an unusual host, or an unverified repair marker; `low` is visible text
+  that hits one pattern (ordinary prose often does: "we ignore all NA values
+  and follow the rules"), concealment with no content match, or an outside
+  frame.
 - `excerpt`: one line, truncated, with invisible characters shown as
   `<U+XXXX>` and tag characters decoded.
 
@@ -167,7 +182,11 @@ Common benign cases, by detector:
   the lines imitate a grader's record for this assignment (a fabricated
   example of a graded submission), not when they are a program's own output.
 - `invisible-unicode` at low severity: a stray zero-width character from
-  copy and paste, or legitimate use in a non-Latin script.
+  copy and paste, or legitimate use in a non-Latin script. `bidi-control` at
+  low severity sits beside right-to-left text and is usually legitimate.
+- `active-content` at low severity: an embedded video or other outside page
+  the student meant to show. A script that reaches out of the report is not
+  an accident in a homework report.
 - `agent-file`: a student who used a coding agent may have left its
   configuration behind. Read the excerpted path and the file's findings: an
   agent file that talks about grading is not an accident.
