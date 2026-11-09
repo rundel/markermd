@@ -635,11 +635,17 @@ import_template_yaml_to_db = function(root, path, snapshot = NULL) {
 # changes: The list save_template_to_db() returns
 
 report_question_name_changes = function(changes) {
-  for (i in seq_len(nrow(changes$renamed))) {
-    cli::cli_alert_info("Carried the grading of question {.val {changes$renamed$from[i]}} over to its new name {.val {changes$renamed$to[i]}}.")
-  }
-  for (i in seq_len(nrow(changes$skipped))) {
-    cli::cli_warn("Question {.val {changes$skipped$from[i]}} was renamed to {.val {changes$skipped$to[i]}}, which already holds grading; its own grading stays under the old name.")
+  renamed = changes$renamed
+  if (nrow(renamed) > 0) {
+    moves = gsub("([{}])", "\\1\\1", paste0("\"", renamed$from, "\" to \"", renamed$to, "\""))
+    cli::cli_warn(c(
+      "Carried the grading of {nrow(renamed)} renamed question{?s} over to {?its/their} new name{?s}, matched by question id:",
+      stats::setNames(moves, rep("*", length(moves))),
+      if (any(renamed$reused)) c(
+        "!" = "Some questions took another question's previous name. If the template was regenerated rather than edited, its ids must match the stored template's (new questions take new ids), or grading lands on the wrong question.",
+        "i" = "Undo with {.code snapshot_restore(\"latest\", part = \"template\")}."
+      )
+    ))
   }
   if (length(changes$orphaned) > 0) {
     cli::cli_warn(c(

@@ -1653,6 +1653,9 @@ snapshot_restore = function(id, project = ".", part = c("rubric", "marks"), ques
   if (!is.null(result$pre_restore)) {
     cli::cli_bullets(c("i" = "The state before the restore is snapshot {.val {result$pre_restore}}."))
   }
+  if (!is.null(result$name_changes)) {
+    report_question_name_changes(result$name_changes)
+  }
   invisible(result[c("snapshot_id", "pre_restore")])
 }
 
@@ -1746,7 +1749,11 @@ restore_snapshot = function(proj, id, part, question = NULL, repo = NULL, summar
         trigger = glue::glue("snapshot_restore('{snapshot_id}')"), summary = summary
       )
 
+      # The grading follows the question ids back to the restored names, so
+      # undoing a template change also undoes the renames it carried out
+      name_changes = NULL
       if ("template" %in% part) {
+        name_changes = reconcile_question_names_conn(conn, db_template_list(conn), parts$template)
         set_metadata(conn, "template", as.character(jsonlite::toJSON(parts$template, auto_unbox = TRUE, null = "null")))
       }
 
@@ -1783,7 +1790,8 @@ restore_snapshot = function(proj, id, part, question = NULL, repo = NULL, summar
 
       DBI::dbCommit(conn)
       list(snapshot_id = snapshot_id, pre_restore = if (is.null(pre) || !pre$created) NULL else pre$snapshot_id,
-           n_questions = length(questions), n_repos = length(repos), skipped = skipped_repos)
+           n_questions = length(questions), n_repos = length(repos), skipped = skipped_repos,
+           name_changes = name_changes)
     }, error = function(e) {
       DBI::dbRollback(conn)
       cli::cli_abort("Failed to restore snapshot {snapshot_id}: {conditionMessage(e)}", parent = e, call = NULL)

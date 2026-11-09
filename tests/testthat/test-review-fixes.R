@@ -114,7 +114,7 @@ test_that("renaming a question in the template carries its rubric and marks over
     "  - id: 1", "    name: Question One", "  - id: 2", "    name: Q2"
   ), file.path(d, "renamed.yaml"))
 
-  expect_message(suppressWarnings(template_import("renamed.yaml", project = d)), "Carried the grading")
+  expect_warning(suppressMessages(template_import("renamed.yaml", project = d)), "Carried the grading")
   expect_equal(markermd:::project_question_names(d)$names, c("Question One", "Q2"))
   expect_named(markermd:::load_rubric_items(d, "Question One"), c("item_0", "item_1", "item_2", "item_3"))
   expect_length(markermd:::load_rubric_items(d, "Q1"), 0)

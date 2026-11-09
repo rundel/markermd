@@ -1116,21 +1116,27 @@ question_has_grading_conn = function(conn, question_name) {
 }
 
 # Carry grading over when a stored template is replaced: a question present
-# in both templates by id under a new name has every grading row renamed
-# (unless rows already exist under the new name, in which case nothing is
-# moved and the pair is reported as skipped); a question dropped from the
-# template that still holds grading is reported as orphaned, its rows left
-# in place (they come back if the name is restored).
+# in both templates by id under a new name has every grading row renamed.
+# The renames of one save are applied together through temporary names, so a
+# swap or a chain (A becomes B while B becomes C) moves each question's
+# grading with it. A rename onto a name that holds grading which no rename of
+# the save vacates (a removed question's leftover grading) is refused,
+# aborting the save, since applying it would merge two questions' grading. A
+# question dropped from the template that still holds grading is reported as
+# orphaned, its rows left in place (they come back if the name is restored).
 #
 # conn: DBI connection object
 # previous: The stored template as a plain list (db_template_list()), or NULL
 # current: The template being stored, as a plain list (template_to_list())
-# Returns: List with renamed and skipped (data frames with from and to) and
-#   orphaned (character vector of names)
+# Returns: List with renamed (data frame with from, to and reused, whether
+#   another question of the new template carries the old name) and orphaned
+#   (character vector of names)
 
 reconcile_question_names_conn = function(conn, previous, current) {
-  empty = data.frame(from = character(0), to = character(0), stringsAsFactors = FALSE)
-  out = list(renamed = empty, skipped = empty, orphaned = character(0))
+  out = list(
+    renamed = data.frame(from = character(0), to = character(0), reused = logical(0), stringsAsFactors = FALSE),
+    orphaned = character(0)
+  )
   if (is.null(previous)) {
     return(out)
   }
@@ -1141,6 +1147,8 @@ reconcile_question_names_conn = function(conn, previous, current) {
   new_ids = ids(current)
   new_names = names_of(current)
 
+  from = character(0)
+  to = character(0)
   for (i in seq_along(old_ids)) {
     j = match(old_ids[i], new_ids)
     if (is.na(j)) {
@@ -1152,19 +1160,37 @@ reconcile_question_names_conn = function(conn, previous, current) {
     if (identical(old_names[i], new_names[j]) || !question_has_grading_conn(conn, old_names[i])) {
       next
     }
-    pair = data.frame(from = old_names[i], to = new_names[j], stringsAsFactors = FALSE)
-    if (new_names[j] %in% old_names || question_has_grading_conn(conn, new_names[j])) {
-      out$skipped = rbind(out$skipped, pair)
-      next
-    }
+    from = c(from, old_names[i])
+    to = c(to, new_names[j])
+  }
+  if (length(from) == 0) {
+    return(out)
+  }
+
+  held = vapply(to, function(name) question_has_grading_conn(conn, name), logical(1))
+  blocked = to[held & !to %in% from]
+  if (length(blocked) > 0) {
+    cli::cli_abort(c(
+      "Cannot carry grading over to {.val {blocked}}: {?that name/those names} already hold{?s/} the grading of a question no longer in the template.",
+      "i" = "Rename the question to a different name, or add the removed question back under its own name."
+    ), call = NULL)
+  }
+
+  rename_rows = function(old, new) {
     for (table in question_keyed_tables()) {
       DBI::dbExecute(
         conn, glue::glue("UPDATE {table} SET question_name = ? WHERE question_name = ?"),
-        params = list(new_names[j], old_names[i])
+        params = list(new, old)
       )
     }
-    out$renamed = rbind(out$renamed, pair)
   }
+  temp = paste0("\u001fmarkermd-rename-", seq_along(from))
+  for (k in seq_along(from)) rename_rows(from[k], temp[k])
+  for (k in seq_along(from)) rename_rows(temp[k], to[k])
+  # A renamed question whose old name another question now carries is the
+  # mark of a regenerated template whose ids shifted (see
+  # report_question_name_changes())
+  out$renamed = data.frame(from = from, to = to, reused = from %in% new_names, stringsAsFactors = FALSE)
   out
 }
 
