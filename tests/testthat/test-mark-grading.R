@@ -447,6 +447,12 @@ test_that("the table's validation marker opens the repo's results in a modal", {
   close_modal()
 
   open_validation(4)
+  app$wait_for_js(
+    "(function() { var b2 = document.getElementById('explore_module-qcard_Q2_body'), b3 = document.getElementById('explore_module-qcard_Q3_body');
+     return b2 && b3 && !b2.classList.contains('collapsing') && !b3.classList.contains('collapsing') &&
+       b2.classList.contains('show') && !b3.classList.contains('show'); })()",
+    timeout = 15000
+  )
   expect_true(is_shown("Q2"))
   expect_false(is_shown("Q3"))
 

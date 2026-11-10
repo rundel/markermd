@@ -57,6 +57,7 @@ test_that("mark and template show parser warnings in the UI", {
   write(c("", "A line<br/>break"), file.path(root, "repos", "student3-poor", "assignment.qmd"), append = TRUE)
 
   app = new_app_driver(markermd:::mark_app(root), name = "mark_parse_warnings")
+  app$wait_for_js("(document.querySelector('#repo_table') || {}).innerHTML.includes('parser warning')", timeout = 30000)
   expect_match(app$get_html("#repo_table"), "1 parser warning", fixed = TRUE)
   app$run_js("Shiny.setInputValue('validation_clicked', 3, {priority: 'event'})")
   app$wait_for_js("!!document.querySelector('#shiny-modal #repo_parse_warnings details')", timeout = 10000)
