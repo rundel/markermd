@@ -146,17 +146,6 @@ mark_content_ui = function(id) {
   bslib::card(
     class = "h-100",
     full_screen = TRUE,
-    # The report frame is sandboxed and so cross-origin: the question
-    # highlight is sent to it as a message (see artifact_frame_script())
-    shiny::tags$script(shiny::HTML("
-      $(document).ready(function() {
-        Shiny.addCustomMessageHandler('markermd_frame_highlight', function(msg) {
-          var frame = document.getElementById('artifact-content-frame');
-          if (!frame || !frame.contentWindow) return;
-          frame.contentWindow.postMessage({type: 'markermd-highlight', targets: msg.targets, stops: msg.stops || []}, '*');
-        });
-      });
-    ")),
     bslib::card_header(
       class = "bg-light",
       shiny::div(
@@ -225,6 +214,19 @@ mark_content_ui = function(id) {
     ),
     bslib::card_body(
       class = "overflow-auto small p-0",
+      # Kept inside the body: as a direct child of the card it would be
+      # wrapped in a card body of its own, an empty band above the header
+      # The report frame is sandboxed and so cross-origin: the question
+      # highlight is sent to it as a message (see artifact_frame_script())
+      shiny::tags$script(shiny::HTML("
+        $(document).ready(function() {
+          Shiny.addCustomMessageHandler('markermd_frame_highlight', function(msg) {
+            var frame = document.getElementById('artifact-content-frame');
+            if (!frame || !frame.contentWindow) return;
+            frame.contentWindow.postMessage({type: 'markermd-highlight', targets: msg.targets, stops: msg.stops || []}, '*');
+          });
+        });
+      ")),
       shiny::uiOutput(ns("content_display"), class = "h-100")
     )
   )
