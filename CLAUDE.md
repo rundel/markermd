@@ -220,3 +220,6 @@ All major Shiny modules follow a consistent S7 object-based state management pat
 
 ## Glue and CSS/JavaScript Handling
 - When using glue to generate css or javascript make sure to adjust the escape characters to avoid issues
+## Version control
+
+This project uses GitButler. Use the `but` CLI (following the installed GitButler skill) for all version-control inspection and write operations here, not plain git write commands.
