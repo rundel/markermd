@@ -3,8 +3,8 @@
 
 if (nzchar(Sys.getenv("CI"))) {
   options(
-    shinytest2.load_timeout = 60 * 1000,
+    shinytest2.load_timeout = 120 * 1000,
     shinytest2.timeout = 30 * 1000,
-    chromote.timeout = 60
+    chromote.timeout = 120
   )
 }

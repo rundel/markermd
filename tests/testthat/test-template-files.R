@@ -190,7 +190,7 @@ test_that("mark shows a file question's file and its validation", {
   expect_match(app$get_html("#content_module-content_display"), "get_data.R", fixed = TRUE)
 
   app$set_inputs(`content_module-content_repo_select` = "student3-poor")
-  app$wait_for_js("document.getElementById('content_module-content_display').innerText.includes('was not found')", timeout = 10000)
+  app$wait_for_js("document.getElementById('content_module-content_display')?.innerText?.includes('was not found')", timeout = 10000)
 
   app$set_inputs(`rubric_module-question_select` = "Plot")
   app$set_inputs(`content_module-content_repo_select` = "student1-excellent")

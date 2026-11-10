@@ -36,7 +36,7 @@ test_that("changes made outside the app show up live, badged and in Activity", {
   # The History timeline lists the call and the app's own grading next to
   # the snapshots, and the filter narrows it to the agents' calls
   app$set_inputs(main_navbar = "history")
-  app$wait_for_js("document.getElementById('history_module-snapshot_table').innerText.includes('marks_set')", timeout = 10000)
+  app$wait_for_js("document.getElementById('history_module-snapshot_table')?.innerText?.includes('marks_set')", timeout = 10000)
   table_text = app$get_js("document.getElementById('history_module-snapshot_table').innerText")
   expect_match(table_text, "first pass")
   expect_match(table_text, "Grading in the app")
@@ -62,5 +62,5 @@ test_that("changes made outside the app show up live, badged and in Activity", {
   withr::with_envvar(c(MARKERMD_ACTOR = "codex"), {
     suppressMessages(markermd::rubric_import(rubric_path, project = root))
   })
-  app$wait_for_js("document.getElementById('external_change_banner').innerText.includes('rubric_import by codex')", timeout = 10000)
+  app$wait_for_js("document.getElementById('external_change_banner')?.innerText?.includes('rubric_import by codex')", timeout = 10000)
 })

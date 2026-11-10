@@ -36,7 +36,7 @@ test_that("template() adds files and questions that cover them", {
   expect_false(grepl("assignment.qmd", list_text(), fixed = TRUE))
 
   app$set_inputs(add_files_show_all = TRUE)
-  app$wait_for_js("document.getElementById('add_files_list').innerText.includes('README.md')")
+  app$wait_for_js("document.getElementById('add_files_list')?.innerText?.includes('README.md')")
   expect_match(list_text(), "uv.lock (lock file)", fixed = TRUE)
 
   app$set_inputs(add_files_selected = c("get_data.R", "Makefile"))

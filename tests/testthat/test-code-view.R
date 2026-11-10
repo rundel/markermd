@@ -217,7 +217,7 @@ test_that("the code view numbers lines, lays the highlight exactly on them and u
 
   # A highlight update moves the band without re-rendering the view
   app$click("move")
-  app$wait_for_js("document.querySelector('#cv .mm-line[data-n=\"5\"]').classList.contains('mm-hl')")
+  app$wait_for_js("document.querySelector('#cv .mm-line[data-n=\"5\"]')?.classList.contains('mm-hl')")
   expect_equal(
     unlist(app$get_js("Array.from(document.querySelectorAll('#cv .mm-hl')).map(e => Number(e.dataset.n))")),
     5:6

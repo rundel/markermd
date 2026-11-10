@@ -8,11 +8,34 @@
 
 new_app_driver = function(..., .env = parent.frame()) {
   app = shinytest2::AppDriver$new(...)
+  wait_for_app_ready(app)
   withr::defer({
     if (nzchar(Sys.getenv("CI"))) report_app_problems(app)
     app$stop()
   }, envir = .env)
   app
+}
+
+# Wait until an app can be driven: mark()'s question select holds a question
+# (or has none to hold) and template()'s Add Question button is bound.
+# AppDriver$new() returns once Shiny first goes idle, which on a slow CI
+# runner can be before either has happened, and a test that reads exports or
+# clicks at that point sees an app that is still starting.
+#
+# app: The shinytest2 AppDriver
+
+wait_for_app_ready = function(app) {
+  app$wait_for_js(
+    "(function() {
+       var q = document.getElementById('rubric_module-question_select');
+       var a = document.getElementById('add_question');
+       var questionReady = !q || !!q.value || q.options.length === 0;
+       var addReady = !a || a.classList.contains('shiny-bound-input');
+       return questionReady && addReady;
+     })()",
+    timeout = 60 * 1000
+  )
+  app$wait_for_idle()
 }
 
 # On CI, print what went wrong inside an app before it is torn down: whether

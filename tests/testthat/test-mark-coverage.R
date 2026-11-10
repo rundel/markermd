@@ -237,6 +237,6 @@ test_that("typing into an item's description saves it through the delegated hand
     el.blur();
   ")
   app$wait_for_idle()
-  app$wait_for_js("document.getElementById('rubric_module-grade-item_0-description_text').innerText.trim() === 'Missing axis labels'")
+  app$wait_for_js("document.getElementById('rubric_module-grade-item_0-description_text')?.innerText?.trim() === 'Missing axis labels'")
   expect_equal(markermd:::load_rubric_items(root, "Q2")[[1]]@description, "Missing axis labels")
 })
