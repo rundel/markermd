@@ -53,10 +53,20 @@ test_that("grading interactions patch the score display in place", {
       "document.getElementById('rubric_module-grade_Q2-score_display').innerHTML"
     ))
   }
+  # The score is patched in by a custom message that can land after the
+  # server goes idle on a slow runner; wait for the text (a timeout is left to
+  # the expectation that follows, so a wrong score still shows its diff)
+  wait_score = function(expected) {
+    try(app$wait_for_js(paste0(
+      "(document.getElementById('rubric_module-grade_Q2-score_display')?.innerHTML || '').trim() === '", expected, "'"
+    ), timeout = 15000), silent = TRUE)
+  }
 
   # The grading pane's outputs are suspended until its tab is shown
   app$set_inputs(main_navbar = "grade")
   app$wait_for_idle()
+
+  wait_score("0 / 10 pts")
 
   expect_equal(score_display(), "0 / 10 pts")
 
@@ -64,6 +74,7 @@ test_that("grading interactions patch the score display in place", {
   # update_score_display() custom message -> DOM patch
   app$run_js("Shiny.setInputValue('rubric_module-grade_Q2-total_score_input', 25)")
   app$wait_for_idle()
+  wait_score("0 / 25 pts")
   expect_equal(score_display(), "0 / 25 pts")
 
   # The user-facing path: clicking the score display opens the Total points
@@ -73,6 +84,7 @@ test_that("grading interactions patch the score display in place", {
   app$wait_for_idle()
   app$set_inputs(`rubric_module-grade_Q2-total_score_input` = 30, wait_ = FALSE)
   app$wait_for_idle()
+  wait_score("0 / 30 pts")
   expect_equal(score_display(), "0 / 30 pts")
   app$run_js("document.getElementById('rubric_module-grade_Q2-score_popover_trigger').click();")
   app$wait_for_idle()
@@ -85,11 +97,13 @@ test_that("grading interactions patch the score display in place", {
 
   app$click(selector = "#rubric_module-grade-item_0-hotkey_btn")
   app$wait_for_idle()
+  wait_score("4 / 30 pts")
   expect_equal(score_display(), "4 / 30 pts")
 
   # Deselecting returns the score to zero
   app$click(selector = "#rubric_module-grade-item_0-hotkey_btn")
   app$wait_for_idle()
+  wait_score("0 / 30 pts")
   expect_equal(score_display(), "0 / 30 pts")
 })
 
@@ -195,7 +209,7 @@ test_that("rubric YAML export and import work through the mark app", {
   app$run_js("document.getElementById('rubric_module-rubric_io_menu').click();")
   app$wait_for_idle()
 
-  all_path = app$get_download("rubric_module-export_all")
+  all_path = download_when_ready(app, "rubric_module-export_all")
   exported = markermd::read_rubric_yaml(all_path)
   expect_equal(purrr::map_chr(exported$questions, "name"), c("Q2", "Q3"))
   expect_equal(
@@ -203,7 +217,7 @@ test_that("rubric YAML export and import work through the mark app", {
     "Seeded"
   )
 
-  question_path = app$get_download("rubric_module-export_question")
+  question_path = download_when_ready(app, "rubric_module-export_question")
   expect_equal(
     purrr::map_chr(markermd::read_rubric_yaml(question_path)$questions, "name"),
     "Q2"

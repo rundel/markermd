@@ -59,3 +59,22 @@ report_app_problems = function(app) {
     if (nrow(problems) > 0) message(paste(problems$timestamp, problems$message, collapse = "\n"))
   }
 }
+
+# Download a file from a Shiny download link once the link is live: a
+# download link starts disabled with an empty href until its output binds,
+# which on a slow runner can be after the test reaches it (for example a link
+# inside a popover that was just opened)
+#
+# app: The shinytest2 AppDriver
+# id: The download output id
+
+download_when_ready = function(app, id) {
+  app$wait_for_js(
+    paste0(
+      "(function() { var el = document.getElementById('", id, "');",
+      " return !!el && !el.classList.contains('disabled') && !!el.getAttribute('href'); })()"
+    ),
+    timeout = 30 * 1000
+  )
+  app$get_download(id)
+}

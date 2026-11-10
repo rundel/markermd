@@ -113,7 +113,7 @@ test_that("the Rubric tab exports and imports the rubric as YAML", {
   # The download link only gets its href once Shiny binds it inside the popover
   app$wait_for_js("(document.getElementById('rubric_module-editor_export_all') || {getAttribute: function() { return ''; }}).getAttribute('href')")
   app$wait_for_idle()
-  exported = markermd::read_rubric_yaml(app$get_download("rubric_module-editor_export_all"))
+  exported = markermd::read_rubric_yaml(download_when_ready(app, "rubric_module-editor_export_all"))
   expect_equal(vapply(exported$questions, function(q) q$name, character(1)), c("Q2", "Q3"))
   expect_equal(vapply(exported$questions[[1]]$items, function(i) i@description, character(1)), "Seeded")
 

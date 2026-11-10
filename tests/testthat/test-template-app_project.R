@@ -171,7 +171,7 @@ test_that("template() exports the current template to YAML", {
   app$run_js("document.getElementById('io_menu').click();")
   app$wait_for_idle()
 
-  out = app$get_download("export_template")
+  out = download_when_ready(app, "export_template")
   tmpl = markermd::read_template_yaml(out, require_ast = FALSE)
   expect_length(tmpl@questions, 2)
 })

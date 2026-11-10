@@ -123,7 +123,7 @@ test_that("Save Template downloads a readable YAML template", {
   add_entry(app)
   expect_equal(get_n_questions(app), 1)
 
-  path = app$get_download("save_template")
+  path = download_when_ready(app, "save_template")
   expect_match(path, "\\.yaml$")
 
   back = markermd::read_template_yaml(path, require_ast = TRUE)

@@ -340,7 +340,7 @@ test_that("groups can be added, joined through the item menu, moved as blocks an
   # The rubric export carries the surviving group and its members
   app$run_js("document.getElementById('rubric_module-rubric_io_menu').click();")
   app$wait_for_idle()
-  exported = markermd::read_rubric_yaml(app$get_download("rubric_module-export_question"))
+  exported = markermd::read_rubric_yaml(download_when_ready(app, "rubric_module-export_question"))
   expect_equal(exported$format_version, "1.1")
   q2 = exported$questions[[1]]
   expect_equal(length(q2$groups), 1)

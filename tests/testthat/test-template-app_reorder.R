@@ -5,7 +5,7 @@ tr_n_questions = function(app) {
 }
 
 tr_question_ids = function(app) {
-  path = app$get_download("save_template")
+  path = download_when_ready(app, "save_template")
   back = markermd::read_template_yaml(path, require_ast = FALSE)
   vapply(back@questions, function(q) q@id, integer(1))
 }
