@@ -7,27 +7,28 @@
 [![pkgdown](https://img.shields.io/badge/docs-pkgdown-blue.svg)](https://rundel.github.io/markermd/)
 <!-- badges: end -->
 
-markermd is a Shiny-based grading environment for assignments submitted as git repositories containing Quarto (`.qmd`) documents (R Markdown `.Rmd` documents are read the same way, with `mark(use_qmd = FALSE)`, since knitr-style chunk headers are rewritten to Quarto form before parsing), such as the classroom layouts produced by [ghclass](https://rundel.github.io/ghclass/)'s `org_grade_assignment()`. Each submission is parsed into a document tree (via [q2r](https://github.com/rundel/q2r)), validated against the structural requirements of the assignment, and graded question by question with a fast, hotkey-driven rubric interface. Everything (the template, the rubric, and all recorded grading) lives in a per-project SQLite database.
+markermd is a Shiny-based grading environment for assignments submitted as git repositories containing Quarto (`.qmd`) documents, such as the classroom layouts produced by [ghclass](https://rundel.github.io/ghclass/)'s `org_grade_assignment()`. Each submission is parsed into a document tree (via [q2r](https://github.com/rundel/q2r)), validated against the structural requirements of the assignment, and graded question by question with a fast, hotkey-driven rubric interface. The template, the rubric, and all recorded grading live in a per-project SQLite database.
+
+R Markdown (`.Rmd`) assignments are also supported: pass `use_qmd = FALSE` to `mark()`.
 
 The package is built around two apps:
 
 - `template()` authors a grading template: which document sections are the questions, and what structural rules each answer must satisfy.
 - `mark()` grades a collection of student repositories against that template with per-question rubrics.
 
-Around the apps, a set of helper functions (`validate_project()`, `parse_project()`, `scan_project()`, `template_import()` / `template_export()`, `rubric_import()` / `rubric_export()` / `rubric_item_set()`, `marks_import()` / `marks_export()` / `marks_set()`, `export_feedback()`) makes the entire workflow scriptable, and bundled agent skills (for Claude Code and Codex) can scaffold the template and rubric, repair submissions the strict parser rejects, or apply the rubric across all submissions as a first pass for human review.
+Around the apps, a set of helper functions makes the entire workflow scriptable (see [Scripting the workflow](#scripting-the-workflow)), and bundled agent skills for Claude Code and Codex can scaffold the template and rubric, repair submissions the strict parser rejects, or apply the rubric across all submissions as a first pass for human review (see [Agent skills](#agent-skills-claude-code-and-codex)).
 
 ## Experimental status
 
 This package is experimental: APIs may change significantly and some features are incomplete.
 
-This project is also an ongoing experiment in "vibe" coding with Claude Code. Not all implementation details have been thoroughly evaluated and there is a lot of wonkiness throughout the codebase.
+This project is also an ongoing experiment in "vibe" coding with Claude Code. Not all implementation details have been thoroughly evaluated, and there is a lot of wonkiness throughout the codebase.
 
 ## Installation
 
-You can install the development version of markermd from GitHub:
+Install the development version of markermd from GitHub:
 
 ```r
-# Install from GitHub
 # install.packages("pak")
 pak::pak("rundel/markermd")
 
@@ -37,7 +38,7 @@ remotes::install_github("rundel/markermd")
 
 ### Dependencies
 
-markermd relies on [q2r](https://github.com/rundel/q2r) for parsing Quarto documents. q2r wraps the Quarto parser via Rust, so a Rust toolchain (`rustc >= 1.85`) is required to install it:
+markermd relies on [q2r](https://github.com/rundel/q2r) for parsing Quarto documents. q2r wraps the Quarto parser via Rust, so installing it requires a Rust toolchain (`rustc >= 1.85`):
 
 ```r
 remotes::install_github("rundel/q2r")
@@ -45,7 +46,7 @@ remotes::install_github("rundel/q2r")
 
 ## Quick start
 
-A markermd project is a directory containing the student repositories, and optionally a solution (key) repository and rendered reports:
+A markermd project is a directory containing the student repositories and, optionally, a solution (key) repository and rendered reports:
 
 ```
 hw01/
@@ -73,19 +74,39 @@ template("hw01")
 mark("hw01")
 ```
 
-`init_project()` detects the key repository and artifact directories, records everything in `hw01/.markermd/config.yml`, and creates the SQLite database that stores the template, rubric, and all grading. `project_sitrep()` prints an overview of a project's configuration at any point, and `project_set()` changes it (including `artifacts =`, the directories of rendered reports). Re-running `init_project()` keeps the configured artifact directories rather than adding every new top-level folder; `rescan_artifacts = TRUE` rebuilds the list.
+`init_project()` detects the key repository and the artifact directories (the directories of rendered reports), records everything in `hw01/.markermd/config.yml`, and creates the SQLite database that stores the template, the rubric, and all grading.
+
+`project_sitrep()` prints an overview of a project's configuration at any point, and `project_set()` changes it, including the artifact directories (`artifacts =`). Re-running `init_project()` keeps the configured artifact directories rather than adding every new top-level folder; `rescan_artifacts = TRUE` rebuilds the list.
 
 ## Template creation with `template()`
 
-The template app loads an assignment (a project's key repository, a single `.qmd`/`.Rmd` file or directory, a saved template, or a GitHub `<owner>/<repo>`) and displays its structure as an interactive tree. Headings are the selectable units: selecting one maps the document section beneath it to a question. Each question then gets validation rules (counts of chunks, markdown blocks, or other node types; content checks; name checks) along with optional filters that narrow which nodes the rules see. Point values are not part of the template; each question's total is set with its rubric while grading.
+The template app loads an assignment and displays its structure as an interactive tree. The assignment can be a project's key repository, a single `.qmd` / `.Rmd` file or a directory containing one, a saved template, or a GitHub `<owner>/<repo>`.
+
+Headings are the selectable units: selecting one maps the document section beneath it to a question. Each question then gets validation rules (counts of chunks, markdown blocks, or other node types; content checks; name checks), along with optional filters that narrow which nodes the rules see. Point values are not part of the template; each question's total is set with its rubric while grading.
 
 ![The template app: document structure tree on the left, questions with their selected sections and validation rules on the right](man/figures/template_screenshot.png)
 
-Some problems belong to no single question: a render setting in the YAML header, global chunk options, a document that does not render. "Add Question" with "The entire document" chosen creates a document entry for them. It selects no sections (its filters and rules, if any, run against the whole document), and is written as `scope: document` in the template YAML (format 3.1). Add one only when a submission needs it. Paired with rubric scoring worth 0 points, marked optional and not bounded below zero, it records such a problem once as a deduction from the total instead of spreading it across the questions it affects.
-
-An assignment can consist of more than the document: scripts students write, data, images. The Files button in the Questions card's title bar picks which of the key directory's files questions can cover (hidden files, render output, lock files, project files and the README are left out unless "Show hidden and filtered files" is on). "Add Question" opens a dialog asking for the question's name, its file (the document or one of those files) and, on the document, whether it covers selected sections or the entire document; the file and coverage are fixed once added, and shown beside the question's name. Selecting a question on another file shows that file's source in place of the document tree. Such a question covers the whole file: it has no rules, `mark()` shows the file from each repository while grading it (the repository-relative path, else a file with the same name elsewhere in the repository), and validation fails a repository that lacks it. Templates with files are written as format 3.2, with a top-level `files:` list and `file:` on those questions.
-
 When the app is opened on an initialized project, saving writes the template directly into the project database, ready for grading.
+
+### Whole-document questions
+
+Some problems belong to no single question: a render setting in the YAML header, global chunk options, a document that does not render. Choosing "The entire document" in the "Add Question" dialog creates a document entry for them. It selects no sections (its filters and rules, if any, run against the whole document) and is written as `scope: document` in the template YAML (format 3.1).
+
+Add one only when a submission needs it. Paired with rubric scoring that is worth 0 points, marked optional, and not bounded below zero, it records such a problem once as a deduction from the total instead of spreading it across the questions it affects.
+
+### Questions on other files
+
+An assignment can consist of more than the document: scripts students write, data, images. The Files button in the Questions card's title bar picks which of the key directory's files questions can cover. Hidden files, render output, lock files, project files, and the README are left out unless "Show hidden and filtered files" is on.
+
+"Add Question" opens a dialog asking for the question's name, its file (the document or one of those files) and, on the document, whether it covers selected sections or the entire document. The file and coverage are fixed once the question is added, and are shown beside its name. Selecting a question on another file shows that file's source in place of the document tree.
+
+A question on another file covers the whole file:
+
+- It has no rules.
+- While grading it, `mark()` shows the file from each repository, found by its repository-relative path or, failing that, as a file with the same name elsewhere in the repository.
+- Validation fails a repository that lacks the file.
+
+Templates with files are written as format 3.2, with a top-level `files:` list and a `file:` field on those questions.
 
 ## Grading with `mark()`
 
@@ -93,41 +114,86 @@ When the app is opened on an initialized project, saving writes the template dir
 
 ### Assignments
 
-The app opens on the Assignments tab, one table with a row per repository: links to its folder, GitHub repository, rendered report and source, its validation status, its grading progress, and its score per question and in total, computed from the rubric selections with the same code as `export_scores()`. Like the export, the total counts only once every question is graded; until then the running sum of the graded questions is shown in grey, while `scores.csv` leaves `total` empty. The class summary is pinned beneath the rows: how many repositories are graded, then the mean, median and standard deviation per question and for the total. The table filters by name and by status (failed validation, incomplete, complete), sorts by any column, and updates as grading proceeds. Clicking a repository's validation marker opens its validation results, and clicking a score opens that repository and question in the Grade tab.
+The app opens on the Assignments tab, a single table with one row per repository. Each row has links to the repository's folder, GitHub repository, rendered report, and source, followed by its validation status, its grading progress, and its score per question and in total.
+
+Scores are computed from the rubric selections with the same code as `export_scores()`. Like the export, the total counts only once every question is graded. Until then the table shows the running sum of the graded questions in grey, while `scores.csv` leaves `total` empty.
+
+The class summary is pinned beneath the rows: how many repositories are graded, then the mean, median, and standard deviation per question and for the total. The table filters by name and by status (failed validation, incomplete, complete), sorts by any column, and updates as grading proceeds. Clicking a repository's validation marker opens its validation results, and clicking a score opens that repository and question in the Grade tab.
 
 ![The mark app's Assignments tab: one row per repository with folder, GitHub, report and source links, validation status, grading progress and per-question scores, with the class summary pinned beneath](man/figures/mark_assignments_screenshot.png)
 
 ### Validation
 
-Validation checks each repository against the template's rules, so structural problems (missing sections, missing chunks, absent content) are visible before any grading starts. The table's validation column shows each repository's passed-question count, and clicking it opens that repository's per-question results in a modal, with a question selector, whose entries carry each question's pass or fail mark, that jumps to a question's results. Each question's card shows its pass or fail and its rule results in the header, with the matched document content collapsed beneath it by default; a question expanded stays expanded for the next repository opened. A content node's preview button shows the node's source, with a Back button to the results.
+Validation checks each repository against the template's rules, so structural problems (missing sections, missing chunks, absent content) are visible before any grading starts. The table's validation column shows how many questions each repository passed, and clicking it opens that repository's per-question results in a modal.
+
+Each question's card shows its pass or fail mark and its rule results in the header, with the matched document content collapsed beneath; a question that is expanded stays expanded for the next repository opened. The question selector in the modal's header, whose entries carry each question's pass or fail mark, jumps to a question's results. A content node's preview button shows the node's source, with a Back button to return to the results.
+
+![The validation modal for one repository: a card per question with its pass or fail mark and rule results, and the matched content collapsed beneath](man/figures/mark_validation_screenshot.png)
 
 ### Grade
 
-The Grade tab is where grading happens. The left pane shows the student's rendered report or source; the right pane shows the current question's rubric. Items toggle by click or number-key hotkey (the first ten items of a question get the keys 1-9 and 0; there is no limit on items, and any beyond the tenth toggle by click), and the score follows from the question's scoring setup (additive or deduction mode, with optional clamping between zero and the question total; clicking the score display edits the total, and the gear popover holds the mode and bounds). Items that stack can be placed in a named group with a floor or ceiling on their combined points, so every defect is recorded while the deductions stay proportionate, or made exclusive so only one severity tier can be selected; a group's header shows its live subtotal and flags a bound that was hit, and a badge beside the score opens the breakdown. Below the items are two comment boxes: a public, student-facing comment (which also marks the question as graded) and private notes that are never shared with students. Every action autosaves to the project database.
+The Grade tab is where grading happens. The left pane shows the student's rendered report or source, and the right pane shows the current question's rubric.
 
-![The mark app's Grade tab: rendered report on the left; rubric items with hotkeys, the computed score, and the public and private comment boxes on the right](man/figures/mark_rubric_screenshot.png)
+- Items toggle by click or by number key. The first ten items of a question get the keys 1-9 and 0; there is no limit on the number of items, and those beyond the tenth toggle by click.
+- The score follows from the question's scoring setup: additive or deduction mode, with optional clamping between zero and the question total. Clicking the score display edits the total, and the gear popover holds the mode and bounds.
+- Items that stack can be placed in a named group with a floor or ceiling on their combined points, so every defect is recorded while the deductions stay proportionate. A group can instead be made exclusive, so only one severity tier can be selected. A group's header shows its live subtotal and flags a bound that was hit, and a badge beside the score opens the breakdown.
+- Below the items are two comment boxes: a public, student-facing comment (which also marks the question as graded) and private notes that are never shared with students.
 
-Rubric items can be added, edited, reordered, and grouped while grading (Add Group creates a group whose settings popover holds its label, bounds and exclusivity; each item's group menu moves it in or out), and the rubric pane's menu offers YAML import and export for editing the rubric outside the app.
+Every action autosaves to the project database.
+
+![The mark app's Grade tab: rendered report on the left; rubric items with hotkeys, an item group, the computed score, and the public and private comment boxes on the right](man/figures/mark_rubric_screenshot.png)
+
+Rubric items can be added, edited, reordered, and grouped while grading. Add Group creates a group whose settings popover holds its label, bounds, and exclusivity, and each item's group menu moves it in or out. The rubric pane's menu offers YAML import and export for editing the rubric outside the app.
 
 ### Rubric
 
-The Rubric tab shows every question's rubric in one place, without the documents: each question's scoring settings (total points, positive or negative grading, the score bounds, optional) and its items and groups, all editable as in the Grade tab (descriptions and points, adding, deleting, reordering, grouping, group settings). In place of its toggle, each item shows how many repositories have it selected. Both tabs edit the same rubric, so a change in one is in the other.
-
-### Changes made outside the app
-
-While `mark()` runs, it notices changes made from outside (an agent in a terminal, a script) within about a second: the Assignments table and History refresh, the pair on screen is re-read (an unsaved comment edit is kept), and items an agent selected carry a small robot badge until the pair is changed in the app. A changed rubric asks for a page reload, and a changed template for a restart of `mark()`.
-
-### Terminal
-
-`mark(project, terminal = TRUE)` adds a Terminal tab, using the optional [shinyterm](https://github.com/rundel/shinyterm) package, whose "+" menu opens a shell, Claude Code or Codex in the project root (each agent with its own sandbox confined to the project). The app is then protected by an access token in its URL. A terminal runs as you, so this is for your own machine only.
+The Rubric tab shows every question's rubric in one place, without the documents. For each question it has the scoring settings (total points, positive or negative grading, and the optional score bounds) and the items and groups, all editable as in the Grade tab: descriptions and points, adding, deleting, reordering, grouping, and group settings. In place of its toggle, each item shows how many repositories have it selected. Both tabs edit the same rubric, so a change made in one appears in the other.
 
 ### History
 
-The History tab is one timeline of the project's snapshots and its activity log. Snapshots are named, timestamped copies of the grading state (template, rubric and marks) kept inside the project database, taken automatically before every bulk change (a rubric import, deleting an item that has selections, deleting a group, a restore), and by hand from the camera button or the `s` key, with a label and a summary of what is about to change. The activity log records every call of a markermd function that changed the grading state (an import, `marks_set()`, a restore), with who made it (`claude` or `codex` when an agent CLI ran it, `R` otherwise, or whatever `MARKERMD_ACTOR` names), its summary and what it touched, next to the grading done in the app, grouped into sessions; the filter narrows the timeline to snapshots, agents and scripts, or grading in the app. Selecting a snapshot shows its fields and notes, what changed between it and the current state (or any other snapshot): items added, removed, reworded or re-pointed, selections and comments changed, and every repository's total before and after; and the scores it recorded. From there a snapshot can be restored (undoing every change since to the rubric and marks, or to chosen questions and repositories), exported to YAML files, pinned, or deleted, and the database file backed up. Selecting an activity entry shows what it changed: the items selected and deselected and the comments and private notes written, per repository and question, plus the rubric or template changes of a call that replaced them, with a button selecting the snapshot taken just before it. The same log is available from R with `project_activity()` and `activity_detail()`. The navbar shows how many selections have been recorded since the latest snapshot and when it was taken, turning amber when that number grows large, as a nudge to take a named checkpoint at the end of a session.
+The History tab is a single timeline of the project's snapshots and its activity log. A filter narrows the timeline to snapshots, to agents and scripts, or to grading in the app.
+
+Snapshots are named, timestamped copies of the grading state (template, rubric, and marks) kept inside the project database. They are taken automatically before every bulk change (a rubric import, deleting an item that has selections, deleting a group, a restore), and by hand from the camera button or the `s` key, with a label and a summary of what is about to change.
+
+The activity log records every call of a markermd function that changed the grading state (an import, `marks_set()`, a restore), alongside the grading done in the app, which is grouped into sessions. Each entry has its summary, what it touched, and who made it: `claude` or `codex` when an agent CLI ran it, `R` otherwise, or whatever `MARKERMD_ACTOR` names. The same log is available from R with `project_activity()` and `activity_detail()`.
+
+Selecting a snapshot shows:
+
+- its fields and notes;
+- what changed between it and the current state, or any other snapshot: items added, removed, reworded, or re-pointed, selections and comments changed, and every repository's total before and after;
+- the scores it recorded.
+
+From there a snapshot can be restored (undoing every change since to the rubric and marks, or only to chosen questions and repositories), exported to YAML files, pinned, or deleted, and the database file can be backed up.
+
+Selecting an activity entry shows what it changed: the items selected and deselected and the comments and private notes written, per repository and question, plus the rubric or template changes of a call that replaced them. A button selects the snapshot taken just before the entry.
+
+The navbar shows how many selections have been recorded since the latest snapshot and when that snapshot was taken. It turns amber when the number grows large, as a nudge to take a named checkpoint at the end of a session.
+
+### Changes made outside the app
+
+While `mark()` runs, it notices changes made from outside (an agent in a terminal, a script) within about a second:
+
+- The Assignments table and History refresh.
+- The repository and question on screen are re-read, keeping an unsaved comment edit.
+- Items an agent selected carry a small robot badge until that repository and question are changed in the app.
+
+A changed rubric asks for a page reload, and a changed template for a restart of `mark()`.
+
+### Terminal
+
+`mark(project, terminal = TRUE)` adds a Terminal tab, using the optional [shinyterm](https://github.com/rundel/shinyterm) package. Its "+" menu opens a shell, Claude Code, or Codex in the project root, each agent in its own sandbox confined to the project. The app is then protected by an access token in its URL. A terminal runs as you, so this is for your own machine only.
 
 ## Scripting the workflow
 
 Everything the apps do is also available headlessly:
+
+| Task                                         | Functions                                                   |
+|----------------------------------------------|-------------------------------------------------------------|
+| Check submissions                            | `validate_project()`, `parse_project()`, `scan_project()`   |
+| Move the template to and from YAML           | `template_import()`, `template_export()`                    |
+| Move the rubric to and from YAML, edit items | `rubric_import()`, `rubric_export()`, `rubric_item_set()`   |
+| Move marks to and from YAML, set one pair    | `marks_import()`, `marks_export()`, `marks_set()`           |
+| Write scores and feedback                    | `export_feedback()`, `export_scores()`, `export_comments()` |
 
 ```r
 # Check every student repository against the stored template
@@ -151,7 +217,9 @@ The YAML formats are validated against bundled JSON Schemas (see `system.file("s
 
 ### Snapshots
 
-Every bulk change to the grading state takes a snapshot of the state it replaces, in the same transaction, so a change cannot succeed without its snapshot. The imports take a `summary` so the reason for a change is recorded with it, and the snapshots can be listed, compared, exported and restored from R (and from the History tab of `mark()`; the template editor offers a take-snapshot and a load-a-snapshot's-template control):
+Every bulk change to the grading state takes a snapshot of the state it replaces, in the same transaction, so a change cannot succeed without its snapshot. The imports take a `summary` argument, so the reason for a change is recorded with it.
+
+Snapshots can be listed, compared, exported, and restored from R as well as from the History tab of `mark()`. The template editor also has controls for taking a snapshot and for loading a snapshot's template.
 
 ```r
 # A named checkpoint before a multi-step change
@@ -175,30 +243,56 @@ snapshot_export("Before feedback review", "backups/before-review", project = "hw
 project_backup("hw01")
 ```
 
-Snapshots live in the project database (added in schema version 5, now 9; an existing database gains a baseline snapshot when first opened). Identical parts are stored once, an automatic snapshot of an unchanged state is recorded as a note on the latest one rather than a new row, and `snapshot_prune()` removes old automatic snapshots while keeping every manual or pinned one. `export_scores()` and `export_comments()` record which snapshot each export came from, and `project_sitrep()` reports the snapshot state, including whether the exported scores are stale.
+Snapshots live in the project database; an existing database from before they were added gains a baseline snapshot when first opened. A few details keep them cheap and traceable:
+
+- Identical parts are stored once.
+- An automatic snapshot of an unchanged state is recorded as a note on the latest snapshot rather than as a new one.
+- `snapshot_prune()` removes old automatic snapshots while keeping every manual or pinned one.
+- `export_scores()` and `export_comments()` record which snapshot each export came from.
+- `project_sitrep()` reports the snapshot state, including whether the exported scores are stale.
 
 ## Exporting results
 
-When grading is complete, `export_feedback()` writes the final hand-off artifacts from the project database (or run `export_scores()` and `export_comments()` individually):
+When grading is complete, `export_feedback()` writes the final hand-off files from the project database. It runs `export_scores()` and `export_comments()`, which can also be called individually:
 
 ```r
 export_feedback("hw01")
 ```
 
-- `export_scores()` writes `scores.csv` to the project root: one row per repository, one column per question, plus a `total` column. Scores are recomputed exactly as `mark()` displays them, passing each question's selected rubric item points (each item group's combined points first clamped to its floor and ceiling) through its grading mode and bounds. Ungraded repository/question pairs export as `NA`, and a repository's total stays `NA` until all of its questions are graded. A question whose scoring is marked optional (the gear popover's "Optional: nothing selected still counts as graded", or `optional: true` in the rubric YAML) counts as graded for every repository, scoring as if no item were selected until something is recorded; its column in the Assignments table has a small red dot beside the name.
-- `export_comments()` writes each repository's student-facing feedback to `comments/<repo>.md` (or the project's configured comments directory). Each graded question appears as a heading, in template order (document-scope questions first), followed by a bulleted list of its selected rubric item descriptions and public comment. Group bounds are never mentioned; with `group_headings = TRUE` a group's selected items are listed under a subheading carrying its label. Private notes are never exported, and a repository with no public feedback gets no file.
+### Scores
+
+`export_scores()` writes `scores.csv` to the project root: one row per repository, one column per question, plus a `total` column.
+
+- Scores are recomputed exactly as `mark()` displays them: each item group's combined points are clamped to its floor and ceiling, then the question's selected item points pass through its grading mode and bounds.
+- Ungraded repository/question pairs export as `NA`, and a repository's total stays `NA` until all of its questions are graded.
+- A question whose scoring is marked optional counts as graded for every repository, scoring as if no item were selected until something is recorded. The option is "Optional: nothing selected still counts as graded" in the gear popover, or `optional: true` in the rubric YAML, and the question's column in the Assignments table has a small red dot beside its name.
+
+### Comments
+
+`export_comments()` writes each repository's student-facing feedback to `comments/<repo>.md`, or to the project's configured comments directory.
+
+- Each graded question appears as a heading, in template order (document-scope questions first), followed by a bulleted list of its selected rubric item descriptions and its public comment.
+- Group bounds are never mentioned. With `group_headings = TRUE`, a group's selected items are listed under a subheading carrying its label.
+- Private notes are never exported, and a repository with no public feedback gets no file.
 
 ## Agent skills (Claude Code and Codex)
 
-`init_project()` installs five agent skills into the project, in two sets: a [Claude Code](https://claude.com/claude-code) set under `.claude/skills/` and a [Codex](https://developers.openai.com/codex) set under `.agents/skills/` (the `agents` argument selects one or both; the default installs both). Both sets follow the Agent Skills format and share the same names, so a skill is invoked as `/markermd-fix-parsing` in Claude Code and `$markermd-fix-parsing` in Codex:
+`init_project()` installs five agent skills into the project, in two sets: a [Claude Code](https://claude.com/claude-code) set under `.claude/skills/` and a [Codex](https://developers.openai.com/codex) set under `.agents/skills/`. The `agents` argument selects one or both, and the default installs both. Both sets follow the Agent Skills format and share the same names, so a skill is invoked as `/markermd-fix-parsing` in Claude Code and `$markermd-fix-parsing` in Codex.
 
-- `markermd-scaffold-template`: builds a starter grading template from the key repository's assignment document.
-- `markermd-fix-parsing`: repairs student documents that the strict q2r parser rejects, making the smallest possible edits on a `grading-fixes` branch in each repository so the original submission stays intact, and flags any substantive change in the document.
-- `markermd-check-injection`: scans every student repository and rendered report for prompt injection attempts (hidden or visible text aimed at an automated grader, found by the deterministic `scan_project()`), triages the candidates, and reports the evidence for the instructor; it never edits a repository or changes marks.
-- `markermd-scaffold-rubric`: drafts per-question rubric items and scoring from the key, optionally sampling student submissions to anticipate common mistakes.
-- `markermd-apply-rubric`: applies the stored rubric to every student repository as a first-pass machine grading, recording its reasoning as private notes for human review in `mark()`.
+- `markermd-scaffold-template` builds a starter grading template from the key repository's assignment document.
+- `markermd-fix-parsing` repairs student documents that the strict q2r parser rejects. It makes the smallest possible edits on a `grading-fixes` branch in each repository, so the original submission stays intact, and flags any substantive change in the document.
+- `markermd-check-injection` scans every student repository and rendered report for prompt injection attempts: hidden or visible text aimed at an automated grader, found by the deterministic `scan_project()`. It triages the candidates and reports the evidence for the instructor, and never edits a repository or changes marks.
+- `markermd-scaffold-rubric` drafts per-question rubric items and scoring from the key, optionally sampling student submissions to anticipate common mistakes.
+- `markermd-apply-rubric` applies the stored rubric to every student repository as a first-pass machine grading, recording its reasoning as private notes for human review in `mark()`.
 
-`init_project()` also writes a project instructions file for each selected agent at the project root (`CLAUDE.md` for Claude Code, `AGENTS.md` for Codex) describing the project layout, the workflow and skills, the headless entry points, the template, rubric, and marks YAML formats, and the rules for working with student submissions and for keeping the project root clean (working files go under `scratch/`, notes worth keeping under `notes/`). An existing file is kept, so it can be customized per project, unless `overwrite_instructions = TRUE` replaces it with the packaged version (to pick up a newer markermd's instructions); `instructions = FALSE` skips it.
+`init_project()` also writes a project instructions file for each selected agent at the project root: `CLAUDE.md` for Claude Code and `AGENTS.md` for Codex. The file describes:
+
+- the project layout, the workflow, and the skills;
+- the headless entry points;
+- the template, rubric, and marks YAML formats;
+- the rules for working with student submissions and for keeping the project root clean (working files go under `scratch/`, notes worth keeping under `notes/`).
+
+An existing instructions file is kept, so it can be customized per project. `overwrite_instructions = TRUE` replaces it with the packaged version (to pick up a newer markermd's instructions), and `instructions = FALSE` skips the step.
 
 See `inst/skills/README.md` for details and per-user installation.
 
