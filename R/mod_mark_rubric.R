@@ -429,19 +429,26 @@ mark_rubric_server = function(id, template, repos, root, database_state = NULL, 
     navigate_button(input, session, "question_next_btn", "question_select", question_names, 1)
 
     # Current question's item ids, descriptions and grouping, for shinytest2
-    # assertions (namespaced under this module's id in get_values())
+    # assertions (namespaced under this module's id in get_values()). The
+    # question select reports "" until its choices arrive, and a
+    # reactiveValues lookup with an empty key errors, so an unset select
+    # gives empty values (on a slow machine a test can ask before then).
+    export_question = function() {
+      question = input$question_select
+      if (shiny::isTruthy(question)) question else NULL
+    }
     shiny::exportTestValues(
-      rubric_item_ids = if (is.null(input$question_select)) character(0) else {
-        names(rx$items[[input$question_select]])
+      rubric_item_ids = if (is.null(export_question())) character(0) else {
+        names(rx$items[[export_question()]])
       },
-      rubric_item_descriptions = if (is.null(input$question_select)) character(0) else {
-        unname(purrr::map_chr(rx$items[[input$question_select]], ~ .x$item()@description))
+      rubric_item_descriptions = if (is.null(export_question())) character(0) else {
+        unname(purrr::map_chr(rx$items[[export_question()]], ~ .x$item()@description))
       },
-      rubric_item_groups = if (is.null(input$question_select)) character(0) else {
-        item_groups_of(rx$items[[input$question_select]])
+      rubric_item_groups = if (is.null(export_question())) character(0) else {
+        item_groups_of(rx$items[[export_question()]])
       },
-      rubric_group_labels = if (is.null(input$question_select)) character(0) else {
-        vapply(rx$groups_of(input$question_select), function(g) g@label, character(1))
+      rubric_group_labels = if (is.null(export_question())) character(0) else {
+        vapply(rx$groups_of(export_question()), function(g) g@label, character(1))
       }
     )
 
