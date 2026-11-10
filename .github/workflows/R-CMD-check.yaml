@@ -29,6 +29,9 @@ jobs:
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
+      # The shinytest2 browser tests are too slow for every platform in the
+      # matrix; they run in browser-tests.yaml, started by hand
+      MARKERMD_SKIP_BROWSER_TESTS: true
 
     steps:
       - uses: actions/checkout@v4

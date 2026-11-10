@@ -1,12 +1,18 @@
 # Launch a shinytest2 AppDriver and register it to be stopped when the calling
-# test_that() block finishes. Without this the shiny and Chrome processes of
-# every driver live until garbage collection, and with 30+ app tests in a run
-# the accumulation is enough to OOM a CI runner.
+# test_that() block finishes. Every browser test starts its apps here, so
+# setting MARKERMD_SKIP_BROWSER_TESTS=true skips them all (R-CMD-check.yaml
+# does; browser-tests.yaml runs them). Without the teardown the shiny and
+# Chrome processes of every driver live until garbage collection, and with
+# 30+ app tests in a run the accumulation is enough to OOM a CI runner.
 #
 # ...: passed through to shinytest2::AppDriver$new()
 # .env: environment whose exit tears the app down (the calling test block)
 
 new_app_driver = function(..., .env = parent.frame()) {
+  testthat::skip_if(
+    identical(tolower(Sys.getenv("MARKERMD_SKIP_BROWSER_TESTS")), "true"),
+    "browser tests are turned off (MARKERMD_SKIP_BROWSER_TESTS)"
+  )
   app = shinytest2::AppDriver$new(...)
   wait_for_app_ready(app)
   withr::defer({
