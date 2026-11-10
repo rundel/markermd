@@ -1,5 +1,6 @@
 <urlset xmlns = 'http://www.sitemaps.org/schemas/sitemap/0.9'>
 <url><loc>https://rundel.github.io/markermd/404.html</loc></url>
+<url><loc>https://rundel.github.io/markermd/CLAUDE.html</loc></url>
 <url><loc>https://rundel.github.io/markermd/LICENSE.html</loc></url>
 <url><loc>https://rundel.github.io/markermd/authors.html</loc></url>
 <url><loc>https://rundel.github.io/markermd/index.html</loc></url>
@@ -46,7 +47,9 @@
 <url><loc>https://rundel.github.io/markermd/reference/read_template_yaml.html</loc></url>
 <url><loc>https://rundel.github.io/markermd/reference/rubric_export.html</loc></url>
 <url><loc>https://rundel.github.io/markermd/reference/rubric_import.html</loc></url>
+<url><loc>https://rundel.github.io/markermd/reference/rubric_item_delete.html</loc></url>
 <url><loc>https://rundel.github.io/markermd/reference/rubric_item_set.html</loc></url>
+<url><loc>https://rundel.github.io/markermd/reference/rubric_items_set.html</loc></url>
 <url><loc>https://rundel.github.io/markermd/reference/rule_classes.html</loc></url>
 <url><loc>https://rundel.github.io/markermd/reference/rule_helpers.html</loc></url>
 <url><loc>https://rundel.github.io/markermd/reference/rule_node_types.html</loc></url>

@@ -6,6 +6,8 @@ markermd function that changed it
 [`marks_set()`](https://rundel.github.io/markermd/reference/marks_set.md),
 [`rubric_import()`](https://rundel.github.io/markermd/reference/rubric_import.md),
 [`rubric_item_set()`](https://rundel.github.io/markermd/reference/rubric_item_set.md),
+[`rubric_items_set()`](https://rundel.github.io/markermd/reference/rubric_items_set.md),
+[`rubric_item_delete()`](https://rundel.github.io/markermd/reference/rubric_item_delete.md),
 [`template_import()`](https://rundel.github.io/markermd/reference/template_import.md),
 `project_set(template = ...)`,
 [`snapshot_restore()`](https://rundel.github.io/markermd/reference/snapshot_restore.md)),

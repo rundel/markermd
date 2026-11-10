@@ -1,0 +1,1015 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working
+with code in this repository.
+
+## Overview
+
+This is an R package called `markermd` that provides a Shiny-based
+interface for grading assignments submitted as git repositories
+containing Quarto (`.qmd`) documents. The package includes template
+creation functionality and validation rule systems for automated grading
+workflows. Document parsing is built on the `q2r` package; the legacy
+`parsermd` dependency has been removed. Quarto `.qmd` is the primary
+format; `.Rmd` documents are read the same way (knitr chunk headers are
+normalized before parsing, see `use_qmd`).
+
+## Development Commands
+
+When you’re running package tests, use
+`devtools::load_all(); testthat::test_file("tests/testthat/path-to-file.R")`.
+The shinytest2 (browser) tests call `skip_on_cran()`, so a single-file
+run needs `NOT_CRAN=true` in the environment (for example
+`NOT_CRAN=true Rscript -e 'devtools::load_all(); testthat::test_file("tests/testthat/test-mark-grading.R")'`);
+without it every browser block reports a skip and the run looks green.
+`devtools::test()` sets it for you. Setting
+`MARKERMD_SKIP_BROWSER_TESTS=true` skips every browser test (the check
+lives in `new_app_driver()`); the R-CMD-check GitHub workflow sets it,
+and the browser tests run in `.github/workflows/browser-tests.yaml`,
+started by hand (`gh workflow run browser-tests.yaml`). If that doesn’t
+work don’t delete tests that otherwise should work, instead ask me what
+to do.
+
+To run all tests in the package use `devtools::test()`.
+
+After making changes to any R or C++ files, one of these commands must
+be run: - `devtools::load_all()` - Fast rebuild for the current R
+session only. Use for quick testing and iterative development. Changes
+are only visible in the current session. - `devtools::install()` -
+Slower but persistent installation. Updates the package for all future R
+sessions. Required when changes need to be available system-wide.
+
+## Architecture
+
+The package is designed around two main interfaces:
+
+### Core Functions
+
+- **[`mark()`](https://rundel.github.io/markermd/reference/mark.md)** -
+  launches the main grading application for collections of student
+  repositories
+- **[`template()`](https://rundel.github.io/markermd/reference/template.md)** -
+  launches the template creation application for single assignments
+- **Git operations**: Uses `gert` package for all git interactions  
+- **Document parsing**: Uses the `q2r` package to parse qmd files into a
+  Pandoc AST. Knitr-style chunk headers (`{r label, opts}`) are
+  rewritten to Quarto `#|` form by `normalize_knitr_chunks()` before
+  parsing, since q2r/pampa rejects them (error Q-2-36); the rewrite
+  returns a `line_map` attribute (the file line of each parsed line)
+  that
+  [`parse_assignment_document()`](https://rundel.github.io/markermd/reference/parse_assignment_document.md)
+  uses to add an “is line N of the file” hint to any diagnostic whose
+  line moved, and that the Grade tab’s Source view uses
+  (`map_ranges_to_original()`) to highlight the file as written.
+  [`mark()`](https://rundel.github.io/markermd/reference/mark.md) parses
+  one document per repository, chosen by `find_repo_assignment()` like
+  [`validate_project()`](https://rundel.github.io/markermd/reference/validate_project.md)
+  and
+  [`parse_project()`](https://rundel.github.io/markermd/reference/parse_project.md)
+  (`parse_repo_documents()`), never the first qmd found anywhere in the
+  repo
+- **UI framework**: Modern Shiny app using `bslib` for layout and
+  styling
+
+### Application Architecture
+
+1.  **Template Creation Interface**
+    ([`template()`](https://rundel.github.io/markermd/reference/template.md)
+    function):
+    - Interactive AST tree visualization for document structure
+      exploration
+    - Question-based organization system with node selection
+      capabilities
+    - Validation rule system for each question with multiple rule types
+    - S7 class-based state management for questions and rules
+    - Template saving/loading functionality
+2.  **Grading Interface**
+    ([`mark()`](https://rundel.github.io/markermd/reference/mark.md)
+    function):
+    - Collection-based workflow for multiple student repositories
+    - Template-driven validation and scoring
+    - Repository comparison and navigation
+    - Validation result visualization
+    - Five tabs: Assignments (the landing page; one per-repository table
+      with the repo’s links, validation status, grading progress,
+      per-question scores and total, and the class summary pinned
+      beneath as column footers), Grade (grading: the content pane
+      beside the current question’s rubric; tab value `grade`), Rubric
+      (every question’s rubric edited in one place, tab value `rubric`:
+      `mark_rubric_editor_ui()` and `output$rubric_editor_ui` in the
+      same rubric module, so both tabs share its item, group and grade
+      servers; each item shows its selection count
+      (`item_selection_counts()`) in place of its toggle and each
+      question’s scoring inputs come from `mark_grade_settings_ui()`,
+      with the same ids as the grade widget’s popovers. Both tabs draw
+      the rubric from the same handles under their own id prefixes
+      (`rubric_module-grade-...`, `rubric_module-editor-...`;
+      `rx$view_id()`), so both can be on the page at once; each view
+      redraws on structural changes and when its tab is entered, and the
+      editor is drawn only while the Rubric tab is shown; the Rubric
+      tab’s scoring inputs are the grade widget’s with an `editor_`
+      prefix (`mark_grade_settings_ui()`) and the grade server saves
+      either set; `add_item_to()` / `add_group_to()` take the question;
+      a question’s handles are built lazily by
+      `ensure_question_loaded()` the first time it is shown, the Rubric
+      tab opens, or something is added to it; new item and group ids are
+      minted above `used_item_ids()` plus the ids in memory
+      (`rx$new_ids()`); the Rubric tab header has its own YAML import /
+      export controls, `editor_import_file` and `editor_export_all`,
+      sharing the Grade tab’s handler), History (one timeline of the
+      project’s snapshots and its activity log, filtered by kind; see
+      `mod_mark_history.R`, whose `history_timeline_rows()` merges
+      `activity_rows()` into the snapshot rows; the timeline takes the
+      full width and a click on a row (reactable `onClick`, reported to
+      `open_entry`) opens the entry’s detail in an xl modal, which
+      branches on `selected_id()` (a snapshot, with pin / restore /
+      export / delete in its header; the restore, export and delete
+      dialogs have a Back button to the detail) versus
+      `selected_activity()` (an activity entry, with a Snapshot before
+      button)), an optional Terminal tab (`mark(terminal = TRUE)` or a
+      named list of commands; a `shinyterm` tabset, from Suggests, whose
+      “+” menu starts a shell, `claude` or `codex` in the project root,
+      see `mod_mark_terminal.R`), plus a navbar status link showing, on
+      two lines beside a camera, the selection events recorded since the
+      latest snapshot and its age. The app-wide repo selection is
+      changed only through the `select_repo()` helper in `mark-app.R`;
+      the table’s score cells (which open the repo and question in the
+      Grade tab) and the rubric’s navigation sync go through it. The
+      table’s validation marker instead opens a modal with that repo’s
+      rule results (`show_validation_modal()`, which does not move the
+      app-wide selection): the validate module’s cards plus a question
+      shortcut select in the modal header, and a Re-check button that
+      re-parses and re-validates that one repository (`recheck_repo()`,
+      which updates the `collection_rv` / `validation_rv` / `errors_rv`
+      reactive values every display reads, so a submission repaired
+      while the app is open shows its new state), namespaced to the
+      validate module, whose labels carry a coloured ✓/✗ via a selectize
+      render function and which scrolls to the question’s card through
+      the `markermd_scroll_to` custom message, expanding it first if
+      collapsed. The module’s script lives once in the page head
+      (`mark_validate_script()`); each card’s header carries its status
+      and rule results and its body (the matched content) is a Bootstrap
+      collapse, collapsed by default; the expanded question names are
+      reported to the module’s `expanded_questions` input, which the
+      render reads under `isolate()` so a later opening keeps the same
+      cards expanded. The shortcut select starts empty (a placeholder)
+      on every opening, so only an actual choice scrolls.
+      `validation_shown` is bumped on each opening so the results render
+      into the new modal DOM, and a node preview (which replaces the
+      modal) has a Back button that re-opens it. Repository names in the
+      table are plain text, not buttons.
+
+### Input Handling
+
+[`template()`](https://rundel.github.io/markermd/reference/template.md)
+accepts any of: an initialized markermd project directory (authors
+against the project’s key repo, preloads the template stored in the
+project database, and saves edits back into that database), a path to an
+assignment file (`.qmd`/`.Rmd`), a directory containing one (matched by
+the `filename` glob), a saved template (`.yaml`/`.yml`), an in-memory
+`markermd_template`, or a GitHub `<owner>/<repo>` (cloned into
+`local_dir`).
+[`mark()`](https://rundel.github.io/markermd/reference/mark.md) takes an
+initialized markermd project directory (one containing
+`.markermd/config.yml`; see
+[`init_project()`](https://rundel.github.io/markermd/reference/init_project.md))
+and sources everything from that config: student repos under the
+configured `repos/` dir, the grading template (stored in the DB), the
+SQLite DB at `<root>/.markermd/markermd.sqlite`, and per-repo rendered
+HTML reports (“artifacts”) resolved from the configured `artifacts:`
+directories (`resolve_repo_artifacts()` in `utils_artifacts.R`). An
+optional `template` argument (object or `.yaml` path) overrides the
+stored one. The grading template is stored in the project’s SQLite
+database (the canonical store), as a JSON blob under the `metadata`
+table’s `template` key; YAML is an optional import/export format via
+[`template_import()`](https://rundel.github.io/markermd/reference/template_import.md)
+/
+[`template_export()`](https://rundel.github.io/markermd/reference/template_export.md)
+(the converters live in `R/template-serialization.R`, validated against
+the JSON Schema in `inst/schema/markermd-template.json`). The assignment
+document is referenced by `source.path` (a relative path resolves
+against the enclosing project root first, `enclosing_project_root()`,
+then the template file’s directory, then the working directory) and
+re-parsed on load to regenerate the AST, which is never stored. Bad
+inputs raise specific, actionable errors, and loading a template whose
+`format_version` predates the current `markermd_template_version()`
+errors with a message to recreate it.
+
+## Coding Style
+
+- **Assignment operator**: Always use `=` for assignment, never `<-`
+- **Package dependencies**: Always use explicit namespace prefixing
+  (e.g.,
+  [`q2r::parse_qmd()`](https://rundel.github.io/q2r/reference/parse_qmd.html),
+  [`gert::git_clone()`](https://docs.ropensci.org/gert/reference/git_fetch.html))
+  rather than importing functions
+- **String construction**: Prefer
+  [`glue::glue()`](https://glue.tidyverse.org/reference/glue.html) over
+  [`paste()`](https://rdrr.io/r/base/paste.html) or
+  [`paste0()`](https://rdrr.io/r/base/paste.html) for constructing long
+  text strings, especially when building HTML, CSS, or other formatted
+  content. In this case long strings should only be multiline strings or
+  strings with multiple variables being inserted.
+- **Glue templates**: When using
+  [`glue::glue()`](https://glue.tidyverse.org/reference/glue.html) to
+  generate CSS or JavaScript code, always use `<<` and `>>` as
+  delimiters (`.open = "<<", .close = ">>"`) instead of the default `{`
+  and `}` to avoid conflicts with JavaScript/CSS syntax and confusion
+  with brace escaping.
+- **Documentation**: Do not use roxygen style function documentation for
+  non-exported functions - internal functions can have comments
+  documenting their usage and parameters but this should not be done
+  using roxygen style comments as this results in Rd files that are not
+  wanted as part of the package.
+
+## Documentation Style for Non-Exported Functions
+
+Internal functions should use regular comments (not roxygen) with this
+format:
+
+``` r
+
+# Brief description of what the function does
+#
+# parameter1: Description of parameter1
+# parameter2: Description of parameter2
+
+function_name = function(parameter1, parameter2) {
+  # function body
+}
+```
+
+**Key formatting rules:** - Start with a brief description using regular
+`#` comments - Include an empty comment line `#` between description and
+parameters - Format parameters as `# parameter_name: Description` -
+Include an empty line between comments and function definition - No
+function title line needed - No `@return` documentation needed
+
+## Project Structure
+
+- Standard R package structure with `.Rproj` file
+- Uses roxygen2 for documentation (markdown enabled)
+- **S7 class system** for core data structures (`markermd_question`,
+  `markermd_rule`, `markermd_template`, `markermd_grade_state`,
+  `markermd_rubric_item`, `markermd_project`, etc.) defined in
+  `template-classes.R` / `rule-classes.R` / `project-classes.R`
+- **Modular Shiny architecture** with separate UI/server modules for
+  reusable components
+- **Applications**: `template-app.R` (the
+  [`template()`](https://rundel.github.io/markermd/reference/template.md)
+  app, which runs the app built by the internal `template_app()` (input
+  resolution), which resolves its source with
+  `resolve_assignment_source()` (shared with
+  [`assignment_outline()`](https://rundel.github.io/markermd/reference/assignment_outline.md))
+  over `template_editor_app()` (the editor itself); its
+  save/dirty-tracking/import/export block lives in
+  `template-persistence.R` as the plain wiring function
+  `template_persistence()`, deliberately not a module so its ids stay in
+  the app’s root namespace) and `mark-app.R` (the
+  [`mark()`](https://rundel.github.io/markermd/reference/mark.md) app;
+  `mark_app()` builds and returns the app object without running it, so
+  it can be tested, as `template_app()` does for
+  [`template()`](https://rundel.github.io/markermd/reference/template.md))
+- **Template-side modules**: `mod_ast.R` (the
+  `ast_module_ui()`/`ast_module_server()` AST tree module, plus the
+  shared `ast_preview_observers()` preview-modal wiring; the template
+  tree is rendered once per document, its highlight is patched in place
+  by the `markermd_tree_state` message from `tree_selection_state()`
+  whenever the active question’s deduplicated selection or filtered set
+  changes, and every heading toggle and preview click reaches the server
+  through the one delegated `tree_event` input (head script
+  `ast_tree_script()`)), `mod_question.R` (questions; its rules and
+  filters row machines are the structural twins
+  `question_rules_server()` in `mod_question_rules.R` and
+  `question_filters_server()` in `mod_question_filters.R`, plain wiring
+  functions sharing the dynamic-row helpers in `mod_question_rows.R`:
+  `make_render_trigger()`, `make_seen_registry()`,
+  `sync_keyed_observers()`), `mod_rule.R` / `mod_filter.R` (pure UI
+  builders for the rule rows and filter groups; all input handling lives
+  in the row machines)
+- **Grading-side modules**: `mod_mark_rubric.R` /
+  `mod_mark_rubric_item.R` / `mod_mark_rubric_group.R` (rubric; the item
+  list renders as blocks, each an ungrouped item or a group header
+  wrapping its member rows, and `mark_rubric_server()` builds the shared
+  context `rx` and calls the plain wiring functions
+  `rubric_state_wiring()`, `rubric_actions_wiring()`,
+  `rubric_persistence_wiring()` and `rubric_views_wiring()`
+  (`mod_mark_rubric_{state,actions,persist,views}.R`); groups, like
+  items, have no module servers: each is a `rubric_group_handle()`, and
+  its move buttons, settings fields and Ungroup are reported by
+  `rubric_groups_js()` to the module’s single `group_event` input as
+  `{group, action, value}`, validated and saved in `edit_group()`, with
+  header and settings patches sent to both views
+  (`markermd_update_group`, `markermd_group_feedback`). Items have no
+  module servers: each is a `rubric_item_handle()` (a reactive state
+  holder) in `question_item_servers`, the rows are plain markup whose
+  clicks and edits one delegated script in the page head
+  (`rubric_item_editing_head()`) reports to the module’s single
+  `item_event` input as `{item, action, value}` (descriptions on blur or
+  after a pause, never per keystroke), routed by the container
+  attributes from `rubric_item_container_attrs()`, and the Grade tab’s
+  toggle buttons and agent badges are patched in place by the
+  `markermd_item_buttons` / `markermd_agent_badges` messages; a row’s
+  group menu is built when it opens from its container’s `data-groups`
+  list. A toggle writes its grade rows (and an exclusive group’s sibling
+  deselections) at once in `toggle_item()`; loading a pair’s stored
+  selections (`apply_saved_selections()`) never writes. Descriptions
+  identify items in every exchange format, so a new item gets a unique
+  placeholder description (“New item”, selected on focus), and a blank
+  or duplicate edit is refused with the row put back
+  (`markermd_item_text`). The module’s bulk operations (item and group
+  add, edit and delete, rubric import) run through the app’s
+  `app_action()` (a `with_action()` with actor `"app"`), so they are in
+  the activity log and raise the reload banner in other sessions, while
+  the session filters its own action ids out of the external-change
+  watcher (`note_own_action()`). Tests drive items with the
+  `item_event()` helper in `helper-mark-fixture.R`), `mod_mark_grade.R`
+  (score entry, plus the cap badge and the score breakdown popover),
+  `mod_mark_validate.R` (validation display), `mod_mark_history.R` (the
+  History tab: the full-width timeline, the detail modal with its
+  Overview / Changes / Scores tabs, and the take / restore / export /
+  delete / backup actions; a restore calls the rubric module’s
+  `reload_from_db()`)
+- **Reports (artifacts)**: student-rendered HTML is shown in sandboxed
+  iframes without `allow-same-origin` (`artifact_iframe()` in
+  `utils_artifacts.R`), so a report’s scripts run but cannot reach the
+  app’s page, inputs or session; the Grade tab shows a served copy of
+  the report with a `<base>` and the highlight script injected
+  (`artifact_frame_url()` / `artifact_frame_script()`) and drives the
+  question highlight by `postMessage` (`markermd_frame_highlight`).
+- **Snapshots**: `snapshots.R` (the snapshot layer: `snapshot_write()`
+  is the conn-based writer every bulk change calls inside its own
+  transaction via `snapshot_before_change()`, `snapshot_payload()`
+  builds the three plain exchange documents from a connection, and the
+  exported `snapshot_*()` API plus
+  [`project_backup()`](https://rundel.github.io/markermd/reference/project_backup.md)
+  and the `markermd_snapshot` S7 class live here) and `snapshot-diff.R`
+  (`diff_rubric()` / `diff_marks()` / `diff_scores()` /
+  `diff_template()` over plain lists, the `markermd_snapshot_diff` class
+  and
+  [`snapshot_diff()`](https://rundel.github.io/markermd/reference/snapshot_diff.md)).
+  Schema version 5 adds the tables `snapshots`, `snapshot_blobs`
+  (content-addressed canonical JSON, gzip when smaller, shared by
+  identical parts and garbage-collected), `snapshot_parts`,
+  `snapshot_notes` (append-only) and `snapshot_stats` (cached per-pair
+  scores with `(total)` rows). An automatic snapshot of an unchanged
+  state is recorded as a `trigger` note on the latest snapshot instead
+  of a new row. Diffs and restores match questions by the ids in each
+  snapshot’s template part (`question_name_map()`,
+  `rename_side_questions()`). The rubric part carries item and group ids
+  (`rubric_to_list(ids = TRUE)`), dropped on export, so the diff matches
+  reworded items; the template part drops the template’s metadata so a
+  re-save is not a change. The marks part carries each pair’s selected
+  item ids beside the descriptions (`marks_data_from_conn(ids = TRUE)`,
+  dropped on export by `marks_without_ids()`), so
+  `score_snapshot_parts()` scores by id and a restore does not depend on
+  descriptions being unique.
+  [`snapshot_restore()`](https://rundel.github.io/markermd/reference/snapshot_restore.md)
+  writes the parts back in place by id (`restore_rubric_conn()` upserts
+  the snapshot’s items and groups under their own ids and soft-deletes
+  what the snapshot lacks and brings back soft-deleted items and groups
+  the snapshot carries, with their kept grade rows, so every
+  repository’s selections of a surviving item are kept;
+  `restore_marks_conn()` matches selections by item id) in one
+  transaction, after a pre-restore snapshot; without `repo` every
+  project repository is restored (pairs graded after the snapshot are
+  cleared), with `repo` the other repositories are left alone, and the
+  recomputed scores of the restored repositories must equal the
+  snapshot’s cached ones or it aborts. The History tab’s restore goes
+  through `snapshot_restore_action()` with actor `"app"`, so it is in
+  the activity log.
+  [`export_scores()`](https://rundel.github.io/markermd/reference/export_scores.md)
+  /
+  [`export_comments()`](https://rundel.github.io/markermd/reference/export_comments.md)
+  record an `export` note on the snapshot of the exported state. The
+  `*_import()` functions take `snapshot` and `summary` arguments, the
+  `*_export()` functions a `snapshot` argument.
+- **Multi-file templates** (template format 3.2):
+  `markermd_template@files` lists the assignment’s other files
+  (repository-relative paths, checked by
+  `template_file_path_problem()`), and `markermd_question@file` names
+  one of them (NA = the Quarto document). A question on a file
+  (`is_file_question()`) covers the whole file: the S7 validators forbid
+  node_ids, rules, filters and document scope on it,
+  `get_question_ast()` returns an empty AST for it, and
+  `validate_repo_against_rules(ast, template, repo_dir)` gives it
+  `validate_file_question()`’s result (pass when `find_repo_file()`
+  finds the path, else a same-named file anywhere in the repo).
+  `utils_files.R` holds those plus `file_view_ui()` (the source in a
+  code view, an image preview or a binary note), shared by the mark
+  content pane (which shows a file question’s file whatever the html
+  toggle says) and the template editor; `assignment_file_candidates()`
+  lists the files under `assignment_files_root()` (the key directory,
+  else the enclosing git repository, else the document’s directory; the
+  one root
+  [`template()`](https://rundel.github.io/markermd/reference/template.md)
+  and
+  [`assignment_outline()`](https://rundel.github.io/markermd/reference/assignment_outline.md)
+  share) with the default filters (hidden, render output, lock files,
+  project files, README) for the Add files modal and
+  [`assignment_outline()`](https://rundel.github.io/markermd/reference/assignment_outline.md)’s
+  `"files"` attribute. In
+  [`template()`](https://rundel.github.io/markermd/reference/template.md),
+  `template-files.R` holds `template_files_button_ui()` (the Files
+  button in the Questions card’s title bar), `template_files_pane_ui()`
+  (the left pane: the document tree, or the active entry’s file through
+  `file_view_ui()`, switched by conditional panels on the hidden
+  `template_shown_file` text output) and `template_files_server()` (a
+  plain wiring function like `template_persistence()`: the file view and
+  the Add files modal; removing a file a question covers is refused).
+  “Add Question” opens a modal (`new_entry_name`, `new_entry_file` from
+  `question_file_choices()`, the document first under its own name, and
+  `new_entry_coverage` on the document, confirmed by
+  `confirm_add_entry`; a blank name takes `default_question_name()`, a
+  taken one is refused). A question’s file and coverage are fixed once
+  added: `question_ui()` shows the file as a read-only label beside the
+  name (`file_label`) and has no body for a question on another file.
+  Whole-file entries (document scope or another file) summarize as
+  “Entire document”. Tests add questions through the `add_entry()`
+  helper (`helper-template-entry.R`). The format version is 3.2 only
+  when `files` is non-empty.
+- **Activity log**: `actions.R` (schema version 6). Every exported
+  function that changes grading state
+  ([`marks_import()`](https://rundel.github.io/markermd/reference/marks_import.md),
+  [`marks_set()`](https://rundel.github.io/markermd/reference/marks_set.md),
+  [`rubric_import()`](https://rundel.github.io/markermd/reference/rubric_import.md),
+  [`rubric_item_set()`](https://rundel.github.io/markermd/reference/rubric_item_set.md),
+  its bulk form
+  [`rubric_items_set()`](https://rundel.github.io/markermd/reference/rubric_items_set.md),
+  [`rubric_item_delete()`](https://rundel.github.io/markermd/reference/rubric_item_delete.md)
+  (which asks before deleting a selected item, or needs `force = TRUE`
+  outside an interactive session),
+  [`template_import()`](https://rundel.github.io/markermd/reference/template_import.md),
+  `project_set(template = ...)`,
+  [`snapshot_restore()`](https://rundel.github.io/markermd/reference/snapshot_restore.md))
+  and every bulk operation of
+  [`mark()`](https://rundel.github.io/markermd/reference/mark.md) (actor
+  `"app"`) runs its write inside `with_action()`, which stamps the
+  `action_id` column of every `grades` / `comments` / `private_comments`
+  row written meanwhile (via `current_action_id()` in the `insert_*()`
+  helpers) and then writes one `actions` row (actor from
+  `markermd_actor()`: `MARKERMD_ACTOR`, else `CLAUDECODE` -\> claude,
+  Codex’s sandbox variables -\> codex, else R; the call, summary, a JSON
+  scope, and the pre-change snapshot noted by
+  `snapshot_before_change()`), plus the template / rubric before and
+  after as `action_parts` rows into `snapshot_blobs` (kept by
+  `gc_snapshot_blobs()`). A call that changed nothing records no row;
+  nested calls belong to the outer one. App writes keep a NULL
+  `action_id` and are grouped by idle gap (`app_event_groups()`).
+  `activity_rows()` merges both, `event_marks_diff()` /
+  `activity_diff_conn()` build an entry’s `markermd_snapshot_diff`, and
+  the exported readers are
+  [`project_activity()`](https://rundel.github.io/markermd/reference/project_activity.md)
+  /
+  [`activity_detail()`](https://rundel.github.io/markermd/reference/activity_detail.md).
+  In [`mark()`](https://rundel.github.io/markermd/reference/mark.md),
+  `watch_project_db()` polls `PRAGMA data_version` on a later timer and
+  bumps `db_changed` (it keeps its own connection, so the session’s own
+  writes still change its `data_version`; it returns `absorb()`, which
+  the app calls right after its own writes so they do not wake the
+  external-change observer; a 30-second sweep still catches an outside
+  commit landing in the same instant); an observer reads new `actions`
+  rows, bumps `external_version` (which the table, History and the
+  rubric badges depend on), shows one notification, calls the rubric
+  module’s `refresh_pair()` (selections plus both comment boxes, keeping
+  an unsaved edit) and, for a changed rubric or template, raises the
+  `external_change_banner` (a rubric reload is a page reload, safe
+  because each session now reads its rubric afresh; a template change
+  needs a restart). `pair_agent_badges()` gives the items an action
+  selected that no app write to the pair has followed; the rubric module
+  patches them onto the Grade tab rows as a robot badge. The database
+  runs in WAL mode. Schema version 9 soft-deletes rubric items and
+  groups (`deleted_at` / `deleted_action_id`;
+  `migrate_item_soft_delete()`): readers filter on `live_item_sql`,
+  `latest_rows()` adds `live_grade_item_sql` for grades, deleting never
+  removes grade rows so History is never rewritten, a deleted id is
+  never reissued (`used_item_ids()`, reserved at startup by the rubric
+  module), and group labels are unique only among live groups (partial
+  index `idx_item_groups_live_label`). Schema version 8 adds the
+  question id keys and the `questions` registry (a trigger fills
+  `question_id` from the name for rows inserted without one). Schema
+  version 7 writes the grading event tables’ timestamps in UTC ISO 8601
+  (`event_timestamp()`; `parse_event_timestamp()` reads both forms and
+  `migrate_event_timestamps()` rewrites older rows).
+  `with_transaction()` in `utils_database.R` is the one begin / commit /
+  rollback wrapper every bulk writer uses. Inside an app session
+  `with_database()` reuses the session’s connection
+  (`open_session_database()`, called by both servers, keyed by session
+  token and database path, closed on session end); outside one it opens
+  its own. Transactions go through `db_begin()` / `db_commit()` /
+  `db_rollback()`, which turn a nested begin into a savepoint.
+- **Rubric item groups**: a named, contiguous run of a question’s items
+  whose combined points are clamped to an optional `floor` (\<= 0) /
+  `ceiling` (\>= 0), or which is `exclusive` (at most one selected item;
+  the app deselects the siblings on a user toggle, and
+  [`marks_import()`](https://rundel.github.io/markermd/reference/marks_import.md)
+  / the exclusive switch / a move into the group are refused when a
+  repository already has two selected). `markermd_rubric_group` (S7, in
+  `template-classes.R`) plus the `group` property on
+  `markermd_rubric_item` (a group id, NA when ungrouped). The pure
+  helpers in `utils_rubric_groups.R` (`group_contiguous_order()` /
+  `normalize_item_order()`, which every order writer applies;
+  `rubric_blocks()`; `move_in_blocks()`, an item moves within its run
+  and an ungrouped item or a group moves among the top-level blocks;
+  `move_item_to_group()`, appends to the end of the target run) keep the
+  contiguity invariant, and `score_question()` in `utils_mark_scores.R`
+  is the single scoring implementation behind both the live Rubric tab
+  score and `collect_score_data()` (which also returns
+  `bound_adjustment`, the Assignments table’s capped marker). In the DB
+  (schema version 3) groups live in the `item_groups` table and
+  `items.group_id`; a group’s display position is its first member’s,
+  empty groups render after the last item. Rubric YAML format 1.1 nests
+  a group’s items under a `group` entry (`rubric-serialization.R`
+  flattens on read with transient `group_<k>` ids and regroups
+  contiguous runs on write, emitting 1.0 for a group-less file); imports
+  match groups by label. `export_comments(group_headings = TRUE)` writes
+  a group’s selected items under a `### <label>` subheading (default
+  output unchanged).
+- **Parsing / AST**: `utils_parsing.R` (parse +
+  `normalize_knitr_chunks()`;
+  [`parse_assignment_document()`](https://rundel.github.io/markermd/reference/parse_assignment_document.md)
+  lets q2r parse errors raise as before but muffles the
+  `q2r_parse_warning` signal, keeping the warnings on the AST’s
+  `@diagnostics` labelled with the file’s name, so they never reach the
+  console: `document_parse_warnings()` / `format_parse_diagnostics()` /
+  `parse_warnings_ui()` show them in mark()’s validation modal and table
+  validation cell, in template()’s tree-header badge and modal, and
+  [`parse_project()`](https://rundel.github.io/markermd/reference/parse_project.md)
+  reports them as status `warning`), `utils_q2r.R` (q2r helpers:
+  `q2r_flatten()`, node labels, `node_to_qmd()`), `utils_tree.R` (tree
+  build + the single `render_ast_tree()`/`ast_render_opts()` render core
+  shared by the interactive template tree and the read-only mark-side
+  tree), `utils_template.R` (section-based validation)
+- **Template persistence**: the canonical store is the project’s SQLite
+  DB. `database_integration.R` has `save_template_to_db()` /
+  `load_template_from_db()` (template \<-\> JSON blob in the `metadata`
+  table, via the `template-serialization.R` converters).
+  `template-serialization.R` holds the format-agnostic S7 \<-\> list
+  converters (`template_to_list()` / `template_from_list()`), the YAML
+  import/export wrappers
+  ([`read_template_yaml()`](https://rundel.github.io/markermd/reference/read_template_yaml.md)
+  /
+  [`write_template_yaml()`](https://rundel.github.io/markermd/reference/write_template_yaml.md)),
+  and
+  [`validate_template_file()`](https://rundel.github.io/markermd/reference/validate_template_file.md)
+  against the JSON Schema in `inst/schema/`.
+  [`template_import()`](https://rundel.github.io/markermd/reference/template_import.md)
+  /
+  [`template_export()`](https://rundel.github.io/markermd/reference/template_export.md)
+  (in `project.R`) move templates between the DB and YAML files.
+- **Marks persistence**: per-repo grading state lives in the DB’s
+  `grades` table (an append-only event log; latest row per
+  `(question, repo, item_id)` wins) plus two comment event logs:
+  `comments` (public, student-facing; a non-empty one counts the pair as
+  graded) and `private_comments` (grader/skill-internal notes, never
+  student-facing, never counted toward graded progress).
+  `marks-serialization.R` holds the marks YAML converters
+  ([`read_marks_yaml()`](https://rundel.github.io/markermd/reference/read_marks_yaml.md)
+  /
+  [`write_marks_yaml()`](https://rundel.github.io/markermd/reference/write_marks_yaml.md),
+  [`validate_marks_file()`](https://rundel.github.io/markermd/reference/validate_marks_file.md)
+  against `inst/schema/markermd-marks.json`, `collect_marks_data()`);
+  [`marks_import()`](https://rundel.github.io/markermd/reference/marks_import.md)
+  /
+  [`marks_export()`](https://rundel.github.io/markermd/reference/marks_export.md)
+  /
+  [`marks_set()`](https://rundel.github.io/markermd/reference/marks_set.md)
+  (in `project.R`) move marks between the DB and YAML, identifying
+  rubric items by verbatim description. Imports are declarative per
+  `(repo, question)` pair (listed items selected, the rest explicitly
+  deselected) and by default skip pairs with existing grading activity
+  (`marked_question_pairs()`, a broader check than
+  `graded_question_pairs()`).
+- **Scaffolding / skills**: `template-scaffold.R`
+  ([`assignment_outline()`](https://rundel.github.io/markermd/reference/assignment_outline.md)
+  returns per-section anchors + content counts; it takes every source
+  [`template()`](https://rundel.github.io/markermd/reference/template.md)
+  does, resolved by the shared `resolve_assignment_source()` in
+  `template-app.R` (a project outlines its key document and uses the
+  stored template’s section stops, a template file or object uses its
+  own; an explicit `template` overrides), reusing `get_question_ast()`
+  so counts match grading;
+  [`markermd_skills_path()`](https://rundel.github.io/markermd/reference/markermd_skills_path.md)).
+  A Claude Code skill that scaffolds a template ships in
+  `inst/skills/claude/markermd-scaffold-template/` (see
+  `inst/skills/README.md`); it operates on an initialized project,
+  reading `.markermd/config.yml` to build the template from the key
+  ([`assignment_outline()`](https://rundel.github.io/markermd/reference/assignment_outline.md)
+  on `paths.key` for ground-truth anchors), importing it into the
+  project DB via
+  [`template_import()`](https://rundel.github.io/markermd/reference/template_import.md)
+  (or `project_set(template=)`), and validating it across `paths.repos`
+  with
+  [`validate_project()`](https://rundel.github.io/markermd/reference/validate_project.md).
+  It prompts the user and updates the config when `key`/`repos` are
+  missing, and relies on the YAML format being LLM-authorable as the
+  import source. A sibling skill in
+  `inst/skills/claude/markermd-scaffold-rubric/` scaffolds the grading
+  rubric (per-question items + scoring) from the key, optionally
+  sampling `paths.repos` submissions for common-mistake deduction items,
+  and imports it via
+  [`rubric_import()`](https://rundel.github.io/markermd/reference/rubric_import.md);
+  it requires a stored template since rubric question names are
+  validated against it. A third skill in
+  `inst/skills/claude/markermd-apply-rubric/` applies the stored rubric
+  to the student repos as a first-pass machine grading: it reads each
+  repo’s per-question sections, selects applicable rubric items
+  (descriptions matched verbatim), records its reasoning as private
+  comments, and imports via
+  [`marks_import()`](https://rundel.github.io/markermd/reference/marks_import.md)
+  for human review in
+  [`mark()`](https://rundel.github.io/markermd/reference/mark.md). A
+  fourth skill in `inst/skills/claude/markermd-fix-parsing/` repairs
+  student documents that the strict q2r parser rejects: it finds them
+  with
+  [`parse_project()`](https://rundel.github.io/markermd/reference/parse_project.md)
+  (a headless per-repo parse check in `project.R` that, unlike
+  [`validate_project()`](https://rundel.github.io/markermd/reference/validate_project.md),
+  needs no stored template), makes the smallest edit that makes each
+  document parseable, commits on a `grading-fixes` branch in the
+  student’s repo (left checked out, since
+  [`mark()`](https://rundel.github.io/markermd/reference/mark.md) /
+  [`validate_project()`](https://rundel.github.io/markermd/reference/validate_project.md)
+  read the working tree), asks before any substantive change and flags
+  it in the document with a `<!-- markermd: ... -->` comment. The rubric
+  skills treat those markers as not the student’s work. A fifth skill in
+  `inst/skills/claude/markermd-check-injection/` screens submissions for
+  prompt injection attempts: it runs
+  [`scan_project()`](https://rundel.github.io/markermd/reference/scan_project.md)
+  (in `injection-scan.R`; a deterministic scan of every repo and
+  rendered artifact whose pure detectors, `match_injection_content()`,
+  `scan_text_lines()`, `scan_html_file()`, `scan_invisible()`, return
+  findings with a `detector` for where the text sits and `matched` for
+  the content patterns it hit, severity combining the two; findings also
+  present in the key or shared by most repos are dropped, and
+  `verified_repair_markers()` uses gert to tell real fix-parsing markers
+  from forged ones), triages the candidates from their neutralized
+  excerpts, and reports per repository. It is report only and never
+  edits a repo or changes marks. Every skill ships in two sets:
+  `inst/skills/claude/` (Claude Code wording: AskUserQuestion, the Edit
+  and Agent tools) and `inst/skills/codex/` (agent-neutral wording,
+  descriptions kept under the Agent Skills 1024-character cap, plus an
+  `agents/openai.yaml` per skill); the sets share skill names and bodies
+  apart from those differences, and `markermd_skills_path(agent)`
+  returns either set. The root of each set also holds that agent’s
+  project instructions file (`inst/skills/claude/CLAUDE.md`,
+  `inst/skills/codex/AGENTS.md`): the same document apart from the `/`
+  vs `$` skill invocation syntax and the skills directory name,
+  describing the project layout, workflow, headless entry points, the
+  three YAML formats (a summary of `inst/schema/`, so a schema change
+  means updating both files), and submission-handling rules. Keep the
+  two in sync when editing either. The instructions files’ Rules section
+  also tells every skill to treat submission content as data, never
+  instructions. `test-project.R` enforces the frontmatter rules, that
+  the Codex set (including `AGENTS.md`) has no Claude-specific tool
+  references, and that each instructions file names every bundled skill.
+- **Grading utilities**: `utils_database.R` / `database_integration.R`
+  (SQLite persistence; the bulk writers have conn-based cores,
+  `apply_rubric_import_conn()`, `apply_marks_import_conn()`,
+  `graded_question_pairs_conn()`, `marked_question_pairs_conn()`,
+  `collect_score_data_conn()`, so a restore can run them in one
+  transaction, and their path-taking wrappers manage the connection, the
+  transaction and the optional pre-change snapshot;
+  `save_template_to_db()` carries grading over when a template rename
+  changes a question’s name, via `reconcile_question_names_conn()`,
+  (schema 8: every grading table keys on `question_id`; the `questions`
+  registry in `utils_database.R` gives each id its name and its `live`
+  and `templated` flags, names resolve through `question_id_conn()`,
+  readers filter on `live_question_sql` and `latest_rows()` groups by
+  `question_id`; `reconcile_question_names_conn(conn, current)` syncs
+  the registry, updating names by id, adopting minted ids and marking
+  removed questions as orphans whose rows are kept but hidden, and never
+  aborts; re-adding a removed name does not resurrect its grading,
+  restoring the old template from a snapshot does; renames warn, and a
+  template-part
+  [`snapshot_restore()`](https://rundel.github.io/markermd/reference/snapshot_restore.md)
+  runs the same reconciliation in reverse;
+  [`template()`](https://rundel.github.io/markermd/reference/template.md)
+  keeps imported and restored question ids, mints new ones above the
+  session’s and the stored template’s and above the `question_id_max`
+  metadata key every template save and restore records, so a deleted id
+  is never reissued, and keys its module and DOM ids on a separate
+  session slot counter), `utils_artifacts.R` (artifact download/cache),
+  `utils_mark_table.R` (the Assignments table’s pure builders
+  `filter_repo_table_rows()` / `build_repo_table_data()` /
+  `repo_table_reactable()` plus the cell renderers; `output$repo_table`
+  in `mark-app.R` is a thin reactive shell over them, fed by the
+  `table_state` reactive that reads the database once per grading write
+  or tab visit), `utils_mark_scores.R` (the score data builders
+  `build_scores_table_data()` / `build_scores_summary_rows()` /
+  `question_total_scores()` that feed the table’s score columns and
+  footers and
+  [`export_scores()`](https://rundel.github.io/markermd/reference/export_scores.md)
+  itself, so the table and the CSV always agree: `Total` is NA until
+  every question is graded and `Total_partial` is the running sum the
+  table shows in grey; the score columns are named `score_column_id()`
+  of each question so a question named like a fixed column cannot
+  collide with it; the summary rows are reactable column footers rather
+  than gt summary rows because gt’s interactive mode cannot pin rows
+  under a sortable table), `utils_code_view.R` (the read-only code view
+  on Prism 1.29.0, vendored under `inst/www/prism/` with no CDN and
+  served by `code_view_dependency()`: `code_view_ui()` writes a
+  `<pre><code>` with the plain text, its `data-language` and its
+  `data-highlight` line ranges, and `markermd-code-view.js` highlights
+  it as it enters the page and splits the result into one numbered
+  `.mm-line` per source line, so a question highlight (`.mm-hl`) sits
+  exactly on its lines and the first one is scrolled into view;
+  `update_code_view_highlight()` moves the highlight in place through
+  the `markermd_code_view_highlight` message; `file_code_language()` /
+  `code_language_for_engine()` / `code_language_for_node()` pick the
+  Prism language; `.qmd` and `.Rmd` use markermd’s `qmd` grammar in
+  `inst/www/prism/markermd-qmd.js`, which highlights chunks of any
+  engine in their language, knitr-style headers, `#|` options, inline
+  `r` / `{r}` code, div fences and heading attributes; the grammar is
+  tested under V8 in `test-code-view.R`; update steps in
+  `inst/www/prism/README.md`), `utils_git.R` (clone/resolve;
+  `setup_assignment_repo()` checks the owner and repository names before
+  touching the file system and refuses an existing directory whose
+  origin is a different repository)
+- **Project management**: `project.R`
+  ([`init_project()`](https://rundel.github.io/markermd/reference/init_project.md),
+  [`project_config()`](https://rundel.github.io/markermd/reference/project_config.md),
+  [`project_sitrep()`](https://rundel.github.io/markermd/reference/project_sitrep.md),
+  [`project_set()`](https://rundel.github.io/markermd/reference/project_set.md),
+  [`validate_project()`](https://rundel.github.io/markermd/reference/validate_project.md))
+  and `project-classes.R` (the `markermd_project` S7 class +
+  `markermd_project_version()`).
+  [`init_project()`](https://rundel.github.io/markermd/reference/init_project.md)
+  bootstraps a `ghclass::org_grade_assignment()` layout: it writes
+  `<path>/.markermd/config.yml`, creates the grading SQLite DB via
+  `initialize_database()`, installs the bundled skill sets into
+  `<path>/.claude/skills/` (Claude Code) and `<path>/.agents/skills/`
+  (Codex), selectable with its `agents` argument (default both), and
+  copies each selected agent’s instructions file (`CLAUDE.md` /
+  `AGENTS.md`) to the project root via `install_project_instructions()`,
+  which never overwrites an existing file (skills are refreshed on every
+  run, instructions files are the user’s to customize);
+  `instructions = FALSE` skips that step. The key (solution) repo is
+  detected as the top-level git repo (disambiguated by a “key” name when
+  several exist); when no top-level git repo exists, a non-repo dir
+  whose name contains “key” and that holds an assignment document
+  (`.qmd`/`.Rmd`) is used instead (this is how the bundled example
+  project’s key is found, since R CMD build strips `.git` dirs); other
+  top-level non-repo dirs are recorded as artifacts. Paths are stored
+  root-relative; re-running it preserves the DB (including the stored
+  template) and a manually configured key.
+  [`validate_project()`](https://rundel.github.io/markermd/reference/validate_project.md)
+  loads the template stored in the project DB (or a `template` override:
+  a `.yaml` path or `markermd_template` object), erroring when none
+  exists, and validates every student repo under the config’s `repos`
+  dir against it (via `validate_repo_against_rules()` /
+  [`parse_assignment_document()`](https://rundel.github.io/markermd/reference/parse_assignment_document.md)),
+  returning a `repo`/`question`/`status`/`detail` data frame — the
+  headless validation the scaffold skill uses.
+  [`mark()`](https://rundel.github.io/markermd/reference/mark.md) reads
+  this config to locate repos, database, and artifacts and loads the
+  template from the DB;
+  [`template()`](https://rundel.github.io/markermd/reference/template.md)
+  reads it to author the template against the key repo and save it back
+  into the project database.
+- Tests in `tests/testthat/`: `shinytest2` for the apps
+  (`test-template-app_*`, `test-mark-app`, `test-mark-grading`,
+  `test-mark-groups`, `test-mark-history`) plus plain `testthat` units
+  (`test-grading-progress`, `test-project`, `test-rubric-groups`,
+  `test-snapshots`, `test-injection-scan`, `test-review-fixes` for the
+  2026-11 review’s regressions); the snapshot fixtures (`sn_project()`,
+  `sn_graded_project()`) live in `helper-snapshots.R`
+
+## Startup
+
+Both apps show `app_loading_overlay()` (`utils_ui.R`) until the first
+`shiny:idle`, and
+[`mark()`](https://rundel.github.io/markermd/reference/mark.md) keeps
+its first flush short: the rubric’s per-question servers load lazily
+(see the Rubric bullet above) and the Assignments table’s icons come
+from `cached_icon()` rather than an icon build per cell.
+
+## Module Architecture
+
+### State Management Pattern
+
+All major Shiny modules follow a consistent S7 object-based state
+management pattern:
+
+- **Question Module** (`mod_question.R`):
+  - Manages `markermd_question` S7 object as reactive state (the single
+    source of truth both row machines write into)
+  - Handles node selection from AST tree interactions
+  - Wires the rules and filters row machines onto its session
+  - Returns reactive question object and node management methods
+- **Rules / filters row machines** (`mod_question_rules.R` /
+  `mod_question_filters.R`):
+  - Structural twins over keyed row lists (filters are two-level: groups
+    holding conditions), reading the structured ids built by the pure UI
+    builders in `mod_rule.R` / `mod_filter.R` directly off the module
+    input
+  - Row keys are stable: minted from a monotonic counter when a row is
+    created and never reused or renumbered, so a row’s input ids stay
+    bound to that row for its whole life and the list order alone
+    carries the row order (the question state holds the rules and
+    filters as unnamed lists in that order). No input is frozen around a
+    re-render and nothing is re-indexed on delete; an event for a key no
+    longer in the list (a second click on an already deleted row) is
+    dropped
+  - Shared shape: capture-all pending edits before any structural
+    change, then bump a structural-only render trigger
+  - The shared mechanics (`make_render_trigger()`,
+    `make_seen_registry()`, `sync_keyed_observers()`) live in
+    `mod_question_rows.R`; the seen registry notes a multiselect once it
+    has reported, and `forget()` drops a deleted row’s key
+
+### Validation Rule System
+
+- **Rule Verbs**
+  ([`rule_verbs()`](https://rundel.github.io/markermd/reference/rule_verbs.md)):
+  “has at least”, “has at most”, “has between”, “has content”, “lacks
+  content”, “has name”
+- **Node Types**
+  ([`rule_node_types()`](https://rundel.github.io/markermd/reference/rule_node_types.md)):
+  the friendly node-kind names from `q2r_node_kind()` (Heading,
+  Markdown, Chunk, Code block, Raw Block, HTML comment, Div, Bullet
+  list, Ordered list, Block quote, Table, Figure, Horizontal rule,
+  Definition list, Line block) plus “Any node”. A raw block that is
+  nothing but `<!-- ... -->` comments (a skeleton placeholder, a
+  write-up left inside it, a markermd repair marker) is its own kind,
+  “HTML comment”, never a “Raw Block”, so a `[Markdown, Raw Block]`
+  write-up rule counts `{=html}` write-ups but not comments;
+  `is_html_comment_block()` in `utils_q2r.R` and the matching
+  `has_text()` predicate in `filter-helpers.R` share one regex
+  (`html_comment_only_regex`) so rules and filters agree. “Any node”
+  stays literal and still counts comments
+- **Values**: Type-specific validation values (numeric ranges, text
+  patterns)
+- **Built-in validation**: S7 class validators ensure rule consistency
+  and type safety
+- **Section-based matching**: a question’s selected node indices map to
+  heading-section paths; validation selects the matching sections from
+  each repository’s AST and applies the rules (see `utils_template.R`);
+  a heading’s section also ends at the first heading another question of
+  the template selects (`other_question_heading_ids()`, the `stop_ids`
+  argument of `get_question_ast()` / `heading_section_indices()`), in
+  grading, the editor’s badges and tree (`question_covered_indices()`
+  feeds `tree_selection_state(covered =)`), mark()’s cards, Source view
+  and report highlight, and `assignment_outline(template =)`
+
+## Development Notes
+
+- Document parsing is built on the `q2r` package (local working copy at
+  /Users/rundel/Desktop/Projects/q2r). q2r has a Rust component, so
+  installing markermd via `devtools::install()` will, because of the
+  `Remotes: rundel/q2r` entry, reinstall q2r from GitHub and may clobber
+  a newer local q2r build. To develop against the local q2r, install
+  markermd with `R CMD INSTALL .` (which does not process Remotes) after
+  installing q2r from its local path.
+- The flat-list / heading-section model the rest of the package relies
+  on comes from `q2r_flatten()` (in `R/utils_q2r.R`), which walks the
+  nested Pandoc AST into an ordered, heading-nested, indexable node
+  list. `build_ast_tree_structure()`, node selection, and section-based
+  validation all key on this.
+
+## UI Behavior Notes
+
+- **Node Selection**: In the template interface tree view, headings are
+  the selectable units (a question targets the document sections beneath
+  the selected headings). Clicking a heading’s text or its circle
+  toggles selection of that heading and the section under it;
+  non-heading content is not directly selectable and shows a static
+  “Selected via parent heading” indicator when it falls under a selected
+  heading. Headings have no preview button; content nodes (markdown,
+  chunks, etc.) have a magnifying-glass button that opens a read-only
+  preview modal. The tree’s buttons are plain markup with no Shiny input
+  bindings, so browser tests click them with `click_tree_node()` and
+  read the patched tree with `tree_dom_html()`
+  (`helper-template-entry.R`).
+
+- **Tree node labels** come from `q2r_node_label()` /
+  `q2r_node_detail()` in `utils_q2r.R`: e.g. `Heading [h2] - Title`,
+  `Chunk [r] - label (N lines)`, `Raw Block [html]`, and `Markdown` with
+  the text content on a smaller second line.
+
+- **Visual Consistency**: All selected elements use the same green color
+  (`#28a745`):
+
+  - Selected circle SVG buttons
+  - Selected node text in the tree
+  - Selected node index numbers in the questions panel
+  - Focus outlines for interactive elements
+
+## Claude Guidelines
+
+- The agent’s summarys after making a change should be as small as
+  possible, just a couple of bullet points should suffice for most
+  changes
+- When asked to simplify work summaries, focus on brevity and core
+  points
+
+## Shiny Reactive Programming Guidelines
+
+- **Avoid unnecessary local copies**: Don’t make local copies of
+  reactive values (e.g., `current_questions = questions_reactive()`)
+  unless actually necessary for functionality. Use the reactive value
+  directly in expressions instead to avoid creating extra reactive
+  dependencies and improve performance.
+
+## UI Guidelines
+
+- Rather than using the direct html all icons should use `fa_icon()`
+  (`utils_ui.R`; the same markup as
+  [`shiny::icon()`](https://rdrr.io/pkg/shiny/man/icon.html) without its
+  per-call name lookup and dependency, which each app attaches once via
+  `fa_dependency()`); icons are decorative and rendered `aria-hidden`,
+  so put any accessible name on the surrounding control, or
+  `cached_icon()` for fixed icons in hot render paths
+- Use
+  [`shiny::modalDialog()`](https://rdrr.io/pkg/shiny/man/modalDialog.html)
+  (with `easyClose = TRUE`) for modals rather than hand-rolling modal
+  markup. Note that under bslib (Bootstrap 5)
+  [`shiny::showModal()`](https://rdrr.io/pkg/shiny/man/showModal.html)
+  relies on the `bootstrap.Modal(...).show()` script that
+  `modalDialog()` already includes to actually display the modal.
+
+## UI Layout Guidelines
+
+- **Layout System**: Use bslib’s `layout_columns()` for all column-based
+  layouts instead of Shiny’s `fluidRow()` and `column()`
+- **Column Specification**: Use the `col_widths` parameter to specify
+  column proportions (e.g., `col_widths = c(6, 6)` for equal columns)
+- **Responsive Design**: Take advantage of bslib’s responsive
+  breakpoints when needed
+- **Style Preservation**: Apply custom styles to content divs rather
+  than layout containers when possible
+- **Bootstrap Utility Classes**: Whenever possible use bootstrap utility
+  classes rather than direct CSS styles to adjust the appearance of our
+  shiny apps.
+
+## Testing Strategy
+
+- The core of this package are a number of shiny apps (e.g. mark() and
+  template()) which require special testing considerations
+- For testing these interactive web apps, use the shinytest2 package
+- Add tests in tests/testthat/ directory
+- Simply running the app is only sufficient to test basic initialization
+  errors
+- Comprehensive testing requires more than just launching the app to
+  verify additional functionality
+- **IMPORTANT**: For shinytest2 tests to work, markermd must be
+  installed first. Use `R CMD INSTALL .` rather than
+  `devtools::install()` — the `Remotes: rundel/q2r` entry makes
+  `devtools::install()` reinstall q2r from GitHub, which can clobber a
+  newer local q2r build (see Development Notes). The tests pass the app
+  object directly to `AppDriver$new()` (for
+  [`mark()`](https://rundel.github.io/markermd/reference/mark.md) and
+  [`template()`](https://rundel.github.io/markermd/reference/template.md),
+  via the internal `mark_app()` and `template_app()` builders), not
+  app.R files.
+- Pure logic (e.g. the database layer, `calculate_grading_progress()`)
+  is covered by plain `testthat` unit tests that run under
+  `devtools::load_all()` without a browser.
+
+## Testing Guidelines
+
+- Usage of R or Rscript bash commands for testing purposes should always
+  be ok, you dont need to ask me before executing
+
+## Debugging Notes
+
+- When debugging Shiny apps:
+  - This approach for debugging a shiny app is often necessary as the
+    agent will not be able to trigger the interactive aspects of a shiny
+    app
+  - In general you should add debug messages and then prompt me to run
+    the app and provide the output returned when trying to debug more
+    complex bugs in a shiny app
+
+## Shiny Best Practices
+
+- **Avoid using shinyjs::runjs() unless absolutely necessary**
+
+## Error Handling Guidelines
+
+- Do not use tryCatch() unless absolutely necessary or told to use it
+  explicitly - if there is any uncertainty then ask me explicitly if it
+  should be used
+
+## Reactive Value Handling Guidelines
+
+- You are excessively checking all values to make sure they are not NULL
+  this is not necessary unless it is explicitly asked for. In the
+  context of shiny if protection is needed for an uninitialized value
+  then use req()
+
+## Testing Guidelines
+
+- **App Initialization**:
+  - Again do not run the app yourself beyond making sure you can
+    load_all() to check for syntax errors
+
+## Shiny Reactive Programming
+
+- Always use `observe() |> bindEvent()` rather than `observeEvent()`,
+  same goes for `eventReactive()`
+
+## Glue and CSS/JavaScript Handling
+
+- When using glue to generate css or javascript make sure to adjust the
+  escape characters to avoid issues

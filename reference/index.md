@@ -62,6 +62,10 @@ Move per-question rubrics between the project database and YAML.
   : Export a project's grading rubric to YAML
 - [`rubric_item_set()`](https://rundel.github.io/markermd/reference/rubric_item_set.md)
   : Reword or re-point one rubric item
+- [`rubric_items_set()`](https://rundel.github.io/markermd/reference/rubric_items_set.md)
+  : Reword or re-point several rubric items at once
+- [`rubric_item_delete()`](https://rundel.github.io/markermd/reference/rubric_item_delete.md)
+  : Delete one rubric item
 
 ## Marks and score export
 

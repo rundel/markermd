@@ -267,7 +267,14 @@ no deprecated aliases.
   grader touches the pair, and raises a banner when the rubric or
   template changed outside the session.
   [`rubric_item_set()`](https://rundel.github.io/markermd/reference/rubric_item_set.md)
-  rewords or re-points one rubric item in place, keeping its selections.
+  rewords or re-points one rubric item in place, keeping its selections;
+  [`rubric_items_set()`](https://rundel.github.io/markermd/reference/rubric_items_set.md)
+  applies a data frame or YAML file of such changes in one transaction,
+  with one snapshot and one activity entry;
+  [`rubric_item_delete()`](https://rundel.github.io/markermd/reference/rubric_item_delete.md)
+  deletes one item, asking for confirmation when repositories have it
+  selected (`force = TRUE` skips the question, and is required outside
+  an interactive session).
 - Snapshot restores now work by item id: a restore writes the snapshot’s
   items and groups back in place under their own ids, so every
   repository’s selections of a surviving item are kept, a restore
