@@ -37,7 +37,8 @@ template / rubric parts an action changed).
 \description{
 Lists what has changed the project's grading state: every call of a
 markermd function that changed it (\code{\link[=marks_import]{marks_import()}}, \code{\link[=marks_set]{marks_set()}},
-\code{\link[=rubric_import]{rubric_import()}}, \code{\link[=rubric_item_set]{rubric_item_set()}}, \code{\link[=template_import]{template_import()}},
+\code{\link[=rubric_import]{rubric_import()}}, \code{\link[=rubric_item_set]{rubric_item_set()}}, \code{\link[=rubric_items_set]{rubric_items_set()}},
+\code{\link[=rubric_item_delete]{rubric_item_delete()}}, \code{\link[=template_import]{template_import()}},
 \code{project_set(template = ...)}, \code{\link[=snapshot_restore]{snapshot_restore()}}), the bulk operations
 made in \code{\link[=mark]{mark()}} (rubric imports and edits, item and group deletions,
 restores, recorded with the actor \code{"app"}), and the grading done in

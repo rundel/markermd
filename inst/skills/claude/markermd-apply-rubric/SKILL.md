@@ -298,6 +298,12 @@ Work pair by pair against step 3's item lists:
   description does not match what you observed -- not even as "the closest
   one". If no item fits an observed problem, leave it unselected and note the
   problem in the private note (the human can add a rubric item later).
+  Keep a list of these problems for the report (step 11).
+- Keep a second list, of rubric items that were hard to apply because of
+  their wording: a term you had to interpret, two items you could not
+  choose between, an "and" that might mean "or", or an item that matched no
+  answer and whose meaning you are unsure of. Do not reword or work around
+  the item yourself.
 - In a capped group (one with a `floor` or `ceiling`), select every item
   that applies and never pre-apply the cap by leaving some out: the bound
   does the arithmetic, and the selections are the record of what was wrong.
@@ -424,6 +430,19 @@ through each question's confirmation item so they count as graded, and any
 `items: []` fallback pairs still show as ungraded until they confirm them.
 Report any document-level problem found in a project without a document
 question (step 6), with the repos it affects.
+
+List the observed problems that no rubric item fit (step 7), each with the
+repos it affects and a proposed item description. Write the description
+under the scaffold-rubric skill's wording rules, so an item added
+mid-grading reads like the rest: one short plain sentence about the
+student's work that states the outcome, not the code path that causes it,
+in the words the assignment uses.
+
+List separately the rubric items that were hard to apply because of their
+wording (step 7), giving the item and the difficulty in one line each. The
+list is for the user, who can reword an item in place with
+`rubric_item_set()` (every selection carries over) or remove it with
+`rubric_item_delete()`.
 
 Whenever a later `rubric_import(mode = "replace")` deletes items, a pair
 whose only selections were among them is left with none and turns

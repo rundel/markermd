@@ -59,7 +59,11 @@ description.
   Grade and Rubric tabs. When the sampled submissions show a problem that belongs to no
   single question (such as a render setting in the YAML header), it proposes
   a document-scope question worth 0 points, optional and unbounded below, to
-  record it once as a deduction from the total.
+  record it once as a deduction from the total. Its wording rules ask for
+  item descriptions that are one short, plain sentence about the student's
+  work, and its last section is a procedure for a wording review of a
+  stored rubric (rewording in place with `rubric_items_set()`, as one
+  recorded change, and pruning with `rubric_item_delete()`).
 - `markermd-apply-rubric`: apply the stored rubric to the student repositories
   as a first-pass machine grading. It reads each repository's per-question
   sections, selects the rubric items that apply (matching descriptions
@@ -67,6 +71,7 @@ description.
   exclusive group), records its reasoning as private notes (never shared with
   students), and imports the result with `marks_import()` for human review in
   `mark()`. Pairs that already have grading activity are skipped by default.
+  Its report lists the rubric items whose wording made them hard to apply.
   A document-scope question is read once per repository, and a problem
   recorded there is not deducted again in the questions it affects.
 - `markermd-fix-parsing`: repair student documents that markermd's strict

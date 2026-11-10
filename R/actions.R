@@ -1,6 +1,7 @@
 # The action log (schema version 6): one row per call of an exported
 # markermd function that changed grading state (marks_import(), marks_set(),
-# rubric_import(), rubric_item_set(), template_import(),
+# rubric_import(), rubric_item_set(), rubric_items_set(),
+# rubric_item_delete(), template_import(),
 # project_set(template = ...), snapshot_restore()), recording who made the
 # call, what it was and what it touched, so the marking app can show what an
 # agent or an outside process did. The grading event rows a call writes carry
@@ -613,7 +614,8 @@ activity_diff_conn = function(conn, id, gap = 15 * 60) {
 #'
 #' Lists what has changed the project's grading state: every call of a
 #' markermd function that changed it ([marks_import()], [marks_set()],
-#' [rubric_import()], [rubric_item_set()], [template_import()],
+#' [rubric_import()], [rubric_item_set()], [rubric_items_set()],
+#' [rubric_item_delete()], [template_import()],
 #' `project_set(template = ...)`, [snapshot_restore()]), the bulk operations
 #' made in [mark()] (rubric imports and edits, item and group deletions,
 #' restores, recorded with the actor `"app"`), and the grading done in

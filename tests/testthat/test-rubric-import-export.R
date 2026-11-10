@@ -287,3 +287,132 @@ test_that("rubric_import append refuses a description the question already store
   suppressMessages(rubric_import(write_rubric_fixture_yaml("Q1"), project = d, mode = "replace"))
   expect_length(markermd:::load_rubric_items(d, "Q1"), 2)
 })
+
+
+test_that("rubric_items_set applies several changes as one action and one snapshot", {
+  d = make_rubric_project()
+  markermd:::save_rubric_item(d, "Q1", "item_0", markermd_rubric_item(1L, -2, "A"))
+  markermd:::save_rubric_item(d, "Q1", "item_1", markermd_rubric_item(2L, -1, "B"))
+  markermd:::save_rubric_item(d, "Q2", "item_2", markermd_rubric_item(1L, -1, "C"))
+  markermd:::save_grade_selection(d, "Q1", "hw01-team01", "item_0", TRUE)
+  n_snapshots = nrow(snapshot_list(d))
+
+  changes = data.frame(
+    question = c("Q1", "Q1", "Q2"),
+    item = c("A", "B", "C"),
+    description = c("B", "A", NA),
+    points = c(NA, NA, -3)
+  )
+  out = suppressMessages(rubric_items_set(changes, project = d, summary = "bulk"))
+  expect_equal(out$item, c("A", "B", "C"))
+  expect_equal(out$description, c("B", "A", "C"))
+
+  q1 = markermd:::load_rubric_items(d, "Q1")
+  expect_equal(unname(purrr::map_chr(q1, ~ .x@description)), c("B", "A"))
+  expect_equal(unname(purrr::map_dbl(q1, ~ .x@points)), c(-2, -1))
+  expect_equal(markermd:::load_rubric_items(d, "Q2")$item_2@points, -3)
+  expect_equal(markermd:::load_grade_selections(d, "Q1", "hw01-team01"), list(item_0 = TRUE))
+
+  expect_equal(nrow(snapshot_list(d)), n_snapshots + 1)
+  activity = project_activity(d, app = FALSE)
+  expect_equal(activity$summary[activity$fn == "rubric_items_set"], "bulk")
+
+  n_actions = nrow(activity)
+  expect_message(rubric_items_set(out[c("question", "description", "points")] |>
+    stats::setNames(c("question", "item", "points")), project = d), "No change")
+  expect_equal(nrow(project_activity(d, app = FALSE)), n_actions)
+})
+
+
+test_that("rubric_items_set reads a YAML file and writes nothing when a row is bad", {
+  d = make_rubric_project()
+  markermd:::save_rubric_item(d, "Q1", "item_0", markermd_rubric_item(1L, -2, "A"))
+  markermd:::save_rubric_item(d, "Q1", "item_1", markermd_rubric_item(2L, -1, "B"))
+
+  path = file.path(d, "changes.yaml")
+  writeLines(c(
+    "- question: Q1", "  item: A", "  description: 'A: reworded'",
+    "- question: Q1", "  item: B", "  points: -4"
+  ), path)
+  suppressMessages(rubric_items_set(path, project = d))
+  items = markermd:::load_rubric_items(d, "Q1")
+  expect_equal(items$item_0@description, "A: reworded")
+  expect_equal(items$item_1@points, -4)
+
+  bad = function(...) rubric_items_set(data.frame(...), project = d)
+  expect_error(bad(question = "Q1", item = c("A: reworded", "Z"), description = c("x", "y")), "no rubric item described")
+  expect_error(bad(question = "Q1", item = "A: reworded", description = "B"), "more than one rubric item")
+  expect_error(bad(question = "Q9", item = "B", description = "x"), "not in this project's template")
+  expect_error(bad(question = "Q1", item = c("B", "B"), description = c("x", "y")), "more than once")
+  expect_error(bad(question = "Q1", item = "B"), "columns")
+  expect_error(bad(question = "Q1", item = "B", description = NA), "description")
+  expect_error(bad(question = "Q1", item = "B", description = " "), "non-empty")
+  expect_error(rubric_items_set(list(), project = d), "data frame")
+  expect_equal(markermd:::load_rubric_items(d, "Q1")$item_0@description, "A: reworded")
+})
+
+
+test_that("rubric_item_delete removes an unselected item and renumbers the rest", {
+  d = make_rubric_project()
+  markermd:::save_rubric_item(d, "Q1", "item_0", markermd_rubric_item(1L, -2, "A"))
+  markermd:::save_rubric_item(d, "Q1", "item_1", markermd_rubric_item(2L, -1, "B"))
+  markermd:::save_rubric_item(d, "Q1", "item_2", markermd_rubric_item(3L, -1, "C"))
+  markermd:::save_grade_selection(d, "Q1", "hw01-team01", "item_2", TRUE)
+
+  deleted = suppressMessages(rubric_item_delete("Q1", "A", project = d, summary = "unused"))
+  expect_equal(deleted@description, "A")
+
+  items = markermd:::load_rubric_items(d, "Q1")
+  expect_equal(names(items), c("item_1", "item_2"))
+  expect_equal(unname(purrr::map_int(items, ~ .x@hotkey)), 1:2)
+  expect_equal(markermd:::load_grade_selections(d, "Q1", "hw01-team01"), list(item_2 = TRUE))
+  activity = project_activity(d, app = FALSE)
+  expect_equal(activity$summary[activity$fn == "rubric_item_delete"], "unused")
+
+  expect_error(rubric_item_delete("Q1", "A", project = d), "no rubric item described")
+  expect_error(rubric_item_delete("Q9", "B", project = d), "not in this project's template")
+  expect_error(rubric_item_delete("Q1", "B", project = d, force = NA), "force")
+})
+
+
+test_that("rubric_item_delete asks before deleting a selected item", {
+  d = make_rubric_project()
+  markermd:::save_rubric_item(d, "Q1", "item_0", markermd_rubric_item(1L, -2, "A"))
+  markermd:::save_rubric_item(d, "Q1", "item_1", markermd_rubric_item(2L, -1, "B"))
+  markermd:::save_grade_selection(d, "Q1", "hw01-team01", "item_0", TRUE)
+  markermd:::save_grade_selection(d, "Q1", "hw01-team01", "item_1", TRUE)
+
+  rlang::with_interactive(value = FALSE, {
+    expect_error(rubric_item_delete("Q1", "A", project = d), "selected by 1 repository")
+  })
+  expect_length(markermd:::load_rubric_items(d, "Q1"), 2)
+
+  asked = 0
+  answer = FALSE
+  testthat::local_mocked_bindings(ask_yes_no = function(question) {
+    asked <<- asked + 1
+    answer
+  })
+  rlang::with_interactive(value = TRUE, {
+    expect_null(suppressMessages(rubric_item_delete("Q1", "A", project = d)))
+    expect_length(markermd:::load_rubric_items(d, "Q1"), 2)
+
+    answer = TRUE
+    suppressMessages(rubric_item_delete("Q1", "A", project = d))
+  })
+  expect_equal(asked, 2)
+  expect_equal(names(markermd:::load_rubric_items(d, "Q1")), "item_1")
+  expect_equal(markermd:::load_grade_selections(d, "Q1", "hw01-team01"), list(item_1 = TRUE))
+
+  n_snapshots = nrow(snapshot_list(d))
+  rlang::with_interactive(value = FALSE, {
+    suppressMessages(rubric_item_delete("Q1", "B", project = d, force = TRUE))
+  })
+  expect_equal(asked, 2)
+  expect_length(markermd:::load_rubric_items(d, "Q1"), 0)
+  expect_equal(nrow(snapshot_list(d)), n_snapshots + 1)
+
+  suppressMessages(snapshot_restore("latest", project = d))
+  expect_equal(names(markermd:::load_rubric_items(d, "Q1")), "item_1")
+  expect_equal(markermd:::load_grade_selections(d, "Q1", "hw01-team01"), list(item_1 = TRUE))
+})

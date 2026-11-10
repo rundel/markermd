@@ -36,6 +36,8 @@ reference:
   - rubric_import
   - rubric_export
   - rubric_item_set
+  - rubric_items_set
+  - rubric_item_delete
 - title: Marks and score export
   desc: Import, export, and set recorded grading, and export scores and comments.
   contents:

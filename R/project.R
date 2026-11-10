@@ -1026,27 +1026,10 @@ rubric_item_set = function(question, item, description = NULL, points = NULL, pr
     cli::cli_abort("{.arg points} must be a single finite number.")
   }
 
-  question_names = project_question_names(proj@root)$names
-  if (!question %in% question_names) {
-    cli::cli_abort(c(
-      "Question {.val {question}} is not in this project's template.",
-      "i" = "Questions: {.val {question_names}}."
-    ))
-  }
-
+  check_project_question(proj@root, question)
   items = load_rubric_items(proj@root, question)
   descriptions = vapply(items, function(x) x@description, character(1))
-  matched = names(items)[descriptions == item]
-  if (length(matched) == 0) {
-    cli::cli_abort(c(
-      "{.val {question}} has no rubric item described {.val {item}}.",
-      "i" = "Descriptions are matched verbatim; list them with {.code rubric_export()}."
-    ))
-  }
-  if (length(matched) > 1) {
-    cli::cli_abort("{.val {question}} has {length(matched)} rubric items described {.val {item}}; cannot tell which to change.")
-  }
-  item_id = matched
+  item_id = match_rubric_item(items, question, item)
 
   updated = items[[item_id]]
   if (!is.null(description)) {
@@ -1088,6 +1071,340 @@ rubric_item_set = function(question, item, description = NULL, points = NULL, pr
   )
 
   invisible(updated)
+}
+
+# Abort unless a question is in the project's template
+#
+# root: Project root
+# question: Question name
+
+check_project_question = function(root, question) {
+  question_names = project_question_names(root)$names
+  if (!question %in% question_names) {
+    cli::cli_abort(c(
+      "Question {.val {question}} is not in this project's template.",
+      "i" = "Questions: {.val {question_names}}."
+    ), call = rlang::caller_env())
+  }
+}
+
+# The id of the one item of a question with a given description, aborting
+# when none or several have it
+#
+# items: The question's items, a named list keyed by item id
+# question: Question name, for the messages
+# item: Description to match verbatim
+
+match_rubric_item = function(items, question, item) {
+  descriptions = vapply(items, function(x) x@description, character(1))
+  matched = names(items)[descriptions == item]
+  if (length(matched) == 0) {
+    cli::cli_abort(c(
+      "{.val {question}} has no rubric item described {.val {item}}.",
+      "i" = "Descriptions are matched verbatim; list them with {.code rubric_export()}."
+    ), call = rlang::caller_env())
+  }
+  if (length(matched) > 1) {
+    cli::cli_abort(
+      "{.val {question}} has {length(matched)} rubric items described {.val {item}}; cannot tell which to change.",
+      call = rlang::caller_env()
+    )
+  }
+  matched
+}
+
+#' Reword or re-point several rubric items at once
+#'
+#' The bulk form of [rubric_item_set()]: applies a table of description and
+#' points changes in one transaction, with one automatic snapshot and one
+#' activity log entry, so a wording pass over a whole rubric is one recorded
+#' change. Every item keeps its id, position, hotkey and group, so recorded
+#' selections carry over.
+#'
+#' @details
+#' Every row is checked before anything is written: the question must be in
+#' the template, `item` must match exactly one stored item of it, an item may
+#' be listed only once, and after all the changes no question may hold two
+#' items with the same description (so two items can swap wording in one
+#' call). Rows that change nothing are skipped. If any row fails, nothing is
+#' written.
+#'
+#' As a YAML file, `changes` is a list of entries:
+#'
+#' ```yaml
+#' - question: Q1
+#'   item: Hotel-link discovery omits usable hotel pages
+#'   description: Some hotel pages are missed when finding hotel links
+#' - question: Q2
+#'   item: Plot is missing axis labels
+#'   points: -0.5
+#' ```
+#'
+#' @param changes A data frame with the columns `question` and `item` (the
+#'   item's current description, matched verbatim) plus `description` (the
+#'   new description), `points` (the new points) or both, where `NA` keeps
+#'   the current value; or the path to a YAML file of such entries.
+#' @inheritParams rubric_item_set
+#'
+#' @return Invisibly, a data frame of the changes made, with the columns
+#'   `question`, `item` (the previous description), `description` and
+#'   `points` (the values now stored).
+#' @seealso [rubric_item_set()], [rubric_item_delete()], [snapshot_diff()]
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' rubric_items_set(
+#'   data.frame(
+#'     question = c("Q1", "Q2"),
+#'     item = c("Calculation error", "No write up"),
+#'     description = c("The standard error divides by n", "The write-up is missing")
+#'   ),
+#'   project = "hw03",
+#'   summary = "Wording review: plainer descriptions"
+#' )
+#' }
+rubric_items_set = function(changes, project = ".", snapshot = TRUE, summary = NULL) {
+  proj = project_config(project)
+  changes = read_item_changes(changes, proj@root)
+
+  edits = list()
+  for (question in unique(changes$question)) {
+    check_project_question(proj@root, question)
+    items = load_rubric_items(proj@root, question)
+    rows = changes[changes$question == question, ]
+    updated = items
+    for (i in seq_len(nrow(rows))) {
+      item_id = match_rubric_item(items, question, rows$item[i])
+      if (!is.na(rows$description[i])) {
+        updated[[item_id]]@description = rows$description[i]
+      }
+      if (!is.na(rows$points[i])) {
+        updated[[item_id]]@points = rows$points[i]
+      }
+    }
+    descriptions = vapply(updated, function(x) x@description, character(1))
+    clashes = unique(descriptions[duplicated(descriptions)])
+    if (length(clashes) > 0) {
+      cli::cli_abort("After these changes {.val {question}} would have more than one rubric item described {.val {clashes}}.")
+    }
+    for (item_id in names(items)) {
+      old = items[[item_id]]
+      new = updated[[item_id]]
+      if (!identical(old@description, new@description) || !identical(old@points, new@points)) {
+        edits[[length(edits) + 1]] = list(question = question, item_id = item_id, old = old, new = new)
+      }
+    }
+  }
+
+  result = data.frame(
+    question = vapply(edits, function(x) x$question, character(1)),
+    item = vapply(edits, function(x) x$old@description, character(1)),
+    description = vapply(edits, function(x) x$new@description, character(1)),
+    points = vapply(edits, function(x) x$new@points, numeric(1))
+  )
+  if (length(edits) == 0) {
+    cli::cli_alert_info("No change: every listed rubric item already has that description and points.")
+    return(invisible(result))
+  }
+
+  call = as.character(glue::glue("rubric_items_set({length(edits)} item{if (length(edits) == 1) '' else 's'})"))
+  spec = import_snapshot_spec(snapshot, call, summary)
+  with_action(
+    proj@root, "rubric_items_set", call = call, summary = summary, parts = "rubric",
+    with_database(proj@root, function(conn) {
+      with_transaction(conn, "Failed to update the rubric items", {
+        snapshot_before_change(conn, proj@root, spec)
+        for (edit in edits) {
+          upsert_items(conn, edit$question, edit$item_id, edit$new)
+        }
+      })
+    })
+  )
+
+  n_reworded = sum(result$item != result$description)
+  n_repointed = sum(vapply(edits, function(x) !identical(x$old@points, x$new@points), logical(1)))
+  cli::cli_alert_success(
+    "Updated {nrow(result)} rubric item{?s} in {length(unique(result$question))} question{?s} ({n_reworded} reworded, {n_repointed} re-pointed)."
+  )
+
+  invisible(result)
+}
+
+# The changes rubric_items_set() was given, as a data frame with the columns
+# question, item, description (NA to keep) and points (NA to keep), checked
+# for shape but not yet against the stored rubric
+#
+# changes: A data frame, or the path to a YAML file holding a list of entries
+# root: Project root, for resolving a relative path
+
+read_item_changes = function(changes, root) {
+  if (is.character(changes) && length(changes) == 1 && !is.na(changes)) {
+    entries = yaml::read_yaml(resolve_project_file(root, changes, "Rubric changes"))
+    fields = c("question", "item", "description", "points")
+    well_formed = is.list(entries) && is.null(names(entries)) && all(vapply(
+      entries, function(x) is.list(x) && !is.null(names(x)) && all(names(x) %in% fields) && all(lengths(x) == 1),
+      logical(1)
+    ))
+    if (!well_formed) {
+      cli::cli_abort("The changes file must be a list of entries with the fields {.field {fields}}.")
+    }
+    field = function(name, missing, as) {
+      as(unlist(lapply(entries, function(x) if (is.null(x[[name]])) missing else x[[name]])))
+    }
+    changes = data.frame(
+      question = field("question", NA_character_, as.character),
+      item = field("item", NA_character_, as.character),
+      description = field("description", NA_character_, as.character),
+      points = field("points", NA_real_, as.numeric)
+    )
+  } else if (is.data.frame(changes)) {
+    if (!all(c("question", "item") %in% names(changes)) || !any(c("description", "points") %in% names(changes))) {
+      cli::cli_abort(
+        "{.arg changes} needs the columns {.field question} and {.field item}, plus {.field description}, {.field points} or both."
+      )
+    }
+    if (!is.null(changes$points) && !is.numeric(changes$points) && !all(is.na(changes$points))) {
+      cli::cli_abort("The {.field points} column of {.arg changes} must be numeric.")
+    }
+    n = nrow(changes)
+    changes = data.frame(
+      question = as.character(changes$question),
+      item = as.character(changes$item),
+      description = if (is.null(changes$description)) rep(NA_character_, n) else as.character(changes$description),
+      points = if (is.null(changes$points)) rep(NA_real_, n) else as.numeric(changes$points)
+    )
+  } else {
+    cli::cli_abort("{.arg changes} must be a data frame or the path to a YAML file.")
+  }
+
+  if (nrow(changes) == 0) {
+    cli::cli_abort("{.arg changes} lists no rubric items.")
+  }
+  blank = function(x) is.na(x) | !nzchar(trimws(x))
+  if (any(blank(changes$question) | blank(changes$item))) {
+    cli::cli_abort("Every change needs a non-empty {.field question} and {.field item}.")
+  }
+  if (any(is.na(changes$description) & is.na(changes$points))) {
+    cli::cli_abort("Every change needs a {.field description}, {.field points}, or both.")
+  }
+  if (any(!is.na(changes$description) & !nzchar(trimws(changes$description)))) {
+    cli::cli_abort("A new {.field description} must be a non-empty string.")
+  }
+  if (any(!is.na(changes$points) & !is.finite(changes$points))) {
+    cli::cli_abort("New {.field points} must be finite numbers.")
+  }
+  repeated = duplicated(changes[c("question", "item")])
+  if (any(repeated)) {
+    cli::cli_abort("{.arg changes} lists a rubric item more than once: {.val {unique(changes$item[repeated])}}.")
+  }
+  changes
+}
+
+#' Delete one rubric item
+#'
+#' Removes a single stored rubric item, leaving the rest of its question's
+#' rubric and every other recorded selection untouched: unlike a
+#' `mode = "replace"` [rubric_import()], only this item's selections stop
+#' counting.
+#'
+#' @details
+#' The item is identified by its description, matched verbatim as in
+#' [rubric_item_set()]. When some repository currently has the item
+#' selected, deleting it changes that repository's score and can leave the
+#' question ungraded for it, so the deletion has to be confirmed: an
+#' interactive session is asked, and a non-interactive one is refused unless
+#' `force = TRUE`. An item nobody has selected is deleted without asking.
+#'
+#' The item is soft-deleted: its past selection events stay in the History
+#' tab, and restoring the automatic snapshot taken before the change (see
+#' [snapshot_restore()]) brings the item back with its selections. The
+#' remaining items keep their order and their hotkeys are renumbered. The
+#' change is recorded in the activity log (see [project_activity()]).
+#'
+#' @param question Question name from the project's template.
+#' @param item Description of the item, matched verbatim.
+#' @param force Whether to delete an item that repositories have selected
+#'   without asking for confirmation.
+#' @inheritParams rubric_item_set
+#'
+#' @return Invisibly, the deleted [markermd_rubric_item], or `NULL` when the
+#'   deletion was declined.
+#' @seealso [rubric_item_set()], [rubric_import()], [snapshot_restore()]
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' rubric_item_delete("Q3", "Distance ordering is not explained",
+#'   project = "hw03",
+#'   summary = "Wording review: never selected, meaning unclear"
+#' )
+#' }
+rubric_item_delete = function(question, item, project = ".", force = FALSE, snapshot = TRUE, summary = NULL) {
+  proj = project_config(project)
+
+  for (field in c("question", "item")) {
+    value = get(field)
+    if (!is.character(value) || length(value) != 1 || is.na(value) || !nzchar(trimws(value))) {
+      cli::cli_abort("{.arg {field}} must be a single non-empty string.")
+    }
+  }
+  if (!rlang::is_bool(force)) {
+    cli::cli_abort("{.arg force} must be {.code TRUE} or {.code FALSE}.")
+  }
+
+  check_project_question(proj@root, question)
+  items = load_rubric_items(proj@root, question)
+  item_id = match_rubric_item(items, question, item)
+  call = as.character(glue::glue("rubric_item_delete(question = '{question}', item = '{item}')"))
+  spec = import_snapshot_spec(snapshot, call, summary)
+
+  n_selected = item_selection_count(proj@root, question, item_id)
+  if (n_selected > 0 && !force) {
+    if (!rlang::is_interactive()) {
+      cli::cli_abort(c(
+        "{.val {question}} item {.val {item}} is selected by {n_selected} repositor{?y/ies}.",
+        "i" = "Deleting it stops {cli::qty(n_selected)}{?that/those} selection{?s} counting. Pass {.code force = TRUE} to delete it anyway."
+      ))
+    }
+    cli::cli_alert_warning(
+      "{.val {question}} item {.val {item}} is selected by {n_selected} repositor{?y/ies}; deleting it stops {cli::qty(n_selected)}{?that/those} selection{?s} counting."
+    )
+    if (!ask_yes_no("Delete it anyway?")) {
+      cli::cli_alert_info("Nothing deleted.")
+      return(invisible(NULL))
+    }
+  }
+
+  remaining = items[names(items) != item_id]
+  with_action(
+    proj@root, "rubric_item_delete", call = call, summary = summary, parts = "rubric",
+    with_database(proj@root, function(conn) {
+      with_transaction(conn, "Failed to delete the rubric item", {
+        snapshot_before_change(conn, proj@root, spec)
+        delete_item_records(conn, question, item_id)
+        for (i in seq_along(remaining)) {
+          kept = remaining[[i]]
+          kept@hotkey = position_hotkey(i)
+          upsert_items(conn, question, names(remaining)[i], kept, position = i)
+        }
+      })
+    })
+  )
+
+  cli::cli_alert_success(
+    "Deleted {.val {question}} item {.val {item}} (was selected by {n_selected} repositor{?y/ies})."
+  )
+
+  invisible(items[[item_id]])
+}
+
+# Ask a yes / no question at the console; anything but a yes is a no
+#
+# question: The question text
+
+ask_yes_no = function(question) {
+  isTRUE(utils::askYesNo(question, default = FALSE))
 }
 
 # Student repository names for a project: the top-level directories under the

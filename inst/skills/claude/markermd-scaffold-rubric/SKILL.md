@@ -1,7 +1,7 @@
 ---
 name: markermd-scaffold-rubric
 description: >-
-  Scaffold a markermd grading rubric (per-question rubric items plus scoring setup, as YAML) for an initialized markermd project that already has a stored grading template. Asks whether to work through the questions all at once or one at a time (confirming and importing each question before the next), and whether to base the rubric on the key (solution) repository alone or on the key plus the student repositories (sampling submissions to anticipate common mistakes); asks for the assignment's total points and how to distribute them across questions (proposing equal, content-weighted, and assignment-stated splits); drafts concrete key-derived rubric items for each question, with capped groups for items that stack and exclusive groups for severity tiers, validates the YAML against the bundled JSON Schema, and imports it with rubric_import(). Use when a user wants to bootstrap, scaffold, or generate a markermd rubric for a project created with markermd::init_project() / ghclass::org_grade_assignment().
+  Scaffold a markermd grading rubric (per-question rubric items plus scoring setup, as YAML) for an initialized markermd project that already has a stored grading template. Asks whether to work through the questions all at once or one at a time, and whether to base the rubric on the key (solution) repository alone or on the key plus the student repositories (sampling submissions to anticipate common mistakes); asks for the assignment's total points and how to distribute them across questions (proposing equal, content-weighted, and assignment-stated splits); drafts concrete key-derived rubric items for each question, with capped groups for items that stack and exclusive groups for severity tiers, and imports it with rubric_import(). Use when a user wants to bootstrap, scaffold, or generate a markermd rubric for a project created with markermd::init_project() / ghclass::org_grade_assignment(). Also use to review or reword a stored rubric's items in place with rubric_item_set().
 ---
 
 # Scaffold a markermd grading rubric
@@ -297,8 +297,12 @@ For each question, look for:
 - structural failures already surfaced by the validation results.
 
 A mistake observed in two or more sampled repos is a candidate deduction item.
-Phrase it generically -- never quote or identify a specific student or
-repository.
+Phrase it so it applies to any submission with the same mistake (never quote
+or identify a specific student or repository), but keep it about the visible
+defect. Generalizing means dropping the names and line numbers of one
+submission, not replacing the defect with an abstract category. When two
+sampled repos reach the same wrong result by different routes, describe the
+result they share, not either route.
 
 Also record how the observed mistakes relate to each other, because that
 decides the grouping in step 7: several small omissions of one kind in the
@@ -320,7 +324,9 @@ when it also breaks rendering, and a parse repair is never document-level.
 If subagents do this reading, they run on the model the user chose in step 3
 and report per-question observations back, plus any document-level problems
 separately; the drafting of items from those observations stays in this
-session.
+session. Ask them to report each observation as what the student's output or
+code does wrong, in plain words: item descriptions tend to inherit the
+phrasing of the reports they are drafted from.
 
 ### 7. Draft items and scoring for each question
 
@@ -342,6 +348,13 @@ computed as `sd(x)/n` instead of `sd(x)/sqrt(n)`" or "Density plot does not
 map `fill` to species" -- never "calculation error" or "incorrect plot".
 Generic placeholder items defeat the point of the scaffold.
 
+Concreteness applies to every kind of item, not only code. For a write-up:
+"The write-up does not explain how excluded pages were handled", never
+"Insufficient discussion of data quality". For code quality: "Repeated
+download code should be moved into a shared helper function", never "Poor
+code organization" and never "Download logic lacks consolidation into
+reusable abstractions".
+
 The second rule is a **confirmation item for every question**: a (question,
 repository) pair only counts as graded in `mark()` once at least one item is
 selected or a public comment is written, so a flawless answer with nothing to
@@ -352,6 +365,36 @@ item ("Looks good"); in additive mode a full-credit item at `total_score`
 feedback ("Looks good", "Solution ok") and never mention grading mechanics
 such as deductions in the description. It is the most-used item in a typical
 class, which is also why it belongs first, on hotkey 1.
+
+The third rule is **plain wording**: a description is one short sentence a
+student can read once and understand, about their own work. Concrete does
+not mean technical. Write it the way you would say it to the student:
+
+- Use a full clause with a subject and a verb, not a stack of nouns: "Some
+  hotel pages are missed when building URLs", never "URL construction omits
+  usable hotel pages".
+- Name things as the assignment and the student name them (the script, the
+  write-up, the plot, the restaurant pages). Avoid your own working
+  vocabulary for the solution ("traversal", "retained records",
+  "originating location", "workflow", "denominators").
+- State what is wrong and stop. Do not append a consequence that would fit
+  any item ("... which obscures the workflow", "... reducing clarity"), and
+  drop qualifiers that do not change which answers the item applies to
+  ("required", "successfully", "clearly", "materially", "unnecessarily").
+- Describe the outcome, not the mechanism: "An invalid first value is not
+  replaced by a valid later one", not a walk through the code path that
+  causes it.
+- Join alternatives with "or" when either one alone triggers the item, and
+  with "and" only when both must hold. An "X or Y" item is fine when X and
+  Y are one kind of defect at one severity; otherwise split it.
+- Most descriptions fit in about 15 words. One that needs a second clause
+  to be understood usually holds two items or a mechanism.
+- Every word must be one you could explain to the student. If you cannot
+  say what a word adds ("reproducibly", "properly", "appropriately"), cut
+  it or replace it with the specific thing you meant.
+- Use plain ASCII apostrophes and quotation marks. Descriptions are matched
+  verbatim by `marks_import()` and `rubric_item_set()`, and typographic
+  quotes are easy to lose when a description is retyped.
 
 Guidelines:
 
@@ -381,6 +424,24 @@ Guidelines:
   deductions after the core items is fine).
 - With the key + repos basis, add items only for mistakes actually observed in
   step 6 beyond the key-derived core checks -- do not pad with hypotheticals.
+- On either basis, an item you cannot illustrate with a concrete wrong answer
+  (one you saw in step 6, or one you can write down in a sentence) is not
+  ready: make it concrete or leave it out. The grader can add an item in
+  `mark()` when the mistake actually turns up.
+- **One sentence shape per question.** Items of the same kind in a question
+  start the same way: every write-up item "The write-up does not ...",
+  every missing-piece item "... is missing". A grader scanning the list
+  and a student reading the feedback should not have to re-parse each line.
+- **One wording per defect across questions.** When the same defect applies
+  to several questions (a missing script, unused code, comments that
+  restate the code), write the description once and reuse it verbatim,
+  changing only the noun that differs ("restaurant" / "hotel"). Never leave
+  a shared item with a word that fits only one of its questions.
+- **No two items a grader could not choose between.** If two descriptions
+  in a question could both be read as covering the same answer, either
+  they are severity tiers (put them in an exclusive group and say what
+  separates the tiers: "missing" / "incomplete", "throughout" / "in
+  places") or one of them should go.
 
 Item groups, for items that stack. Several items often describe the same
 category of shortfall (the examples a solution should demonstrate, the
@@ -439,11 +500,25 @@ questions it affects. When the user agrees:
   it is outside the step 5 distribution, only ever deducts from the
   assignment total, and needs no selection in repos it does not apply to.
 - Its items are the observed document-level problems, phrased as feedback
-  (for example "`engine: jupyter` in the YAML header means the R chunks never
-  run when the document renders, so none of the R output appears"). No
-  confirmation item is needed while the question is optional.
+  (for example "`engine: jupyter` in the YAML header stops the R chunks
+  from running when the document renders"). No confirmation item is needed
+  while the question is optional.
 
 Without such problems, add no document question.
+
+Wording check, before any draft is shown (step 9, or item 2 of the step 10
+loop). Reread every description as the student who receives it, without the
+key or the code in front of you, and fix any that fail one of these:
+
+- Would the student know what to change? If not, it is too abstract.
+- Does it contain a word the student has not seen in the assignment or
+  would not use about their own work? Replace it.
+- Is it over about 15 words, or does it have a "so", "because",
+  "including" or "instead of ... that would" tail? Cut the tail or split
+  the item.
+- Do the items of this question that are alike start alike, and does a
+  defect shared with another question use that question's wording?
+- For each "and" and "or": does it say what you mean?
 
 ### 8. The rubric YAML: shape, validation, and import mode
 
@@ -565,13 +640,19 @@ each individual import call.
 
 Skip this step if the user chose one question at a time (step 10).
 
+Run the step 7 wording check first, so the user is not the first reader of
+the descriptions.
+
 Show the complete draft: for each question, its name, total (from the step 5
 distribution), and mode, and every item in order with its points and full
 description, with each group shown as a labelled section carrying its
 floor, ceiling or exclusive flag. Never summarize or elide items; the user
 must see exactly what would be imported. Ask the user to confirm or adjust
 (item wording, points magnitudes, group bounds, items to add, drop, reorder,
-group or ungroup). Do not write any files until the user confirms.
+group or ungroup). Ask about the wording as its own question (does each
+description read the way they would say it to a student?) rather than
+folding it into the confirmation: people confirm points and structure and
+skim the wording. Do not write any files until the user confirms.
 
 Then write the full rubric YAML and validate it (step 8). Importing is a
 separate decision from drafting: show the user the final rubric YAML exactly
@@ -603,7 +684,9 @@ Work through the template's questions in order. For each question:
 
 1. Draft its items (step 7) from the key reading in step 4 and, with the
    key + repos basis, the sampling findings from step 6 (the sampling itself
-   is done once up front, not redone per question).
+   is done once up front, not redone per question). Run the step 7 wording
+   check on them, including against the wording of the questions already
+   imported.
 2. Show the question's complete proposed entry: its name, total (from the
    step 5 distribution), and mode, and every item in order with its points
    and full description, with each group shown as a labelled section
@@ -611,7 +694,8 @@ Work through the template's questions in order. For each question:
    items.
 3. Ask the user to confirm or adjust (item wording, points magnitudes, group
    bounds, items to add, drop, reorder, group or ungroup), iterating until
-   they confirm. This confirmation
+   they confirm. Ask about the wording as its own question rather than
+   folding it into the confirmation. This confirmation
    is the explicit yes that authorizes importing this question; never import
    without it.
 4. Add the confirmed question to `<root>/scratch/markermd-rubric.yaml` -- on the
@@ -667,3 +751,70 @@ creates a group; each item's group menu moves it), that the Rubric tab shows
 every question's rubric in one place with each item's selection count, and
 that both tabs offer the same YAML import/export for later round trips. Remind them the scaffold is a starting point: real
 submissions will suggest items no one anticipated.
+
+## Reviewing the wording of a stored rubric
+
+Use this procedure when the user asks to review, simplify or reword a rubric
+that is already in the project database, with or without recorded marks.
+`rubric_item_set()` rewords an item in place and the item keeps its id, so
+every recorded selection carries over. Never reword through a `replace`
+import.
+
+1. Export the stored rubric and review every description against the step 7
+   wording rules and wording check:
+
+   ```
+   Rscript -e 'markermd::rubric_export("<root>/scratch/markermd-rubric-current.yaml", project = "<root>")'
+   ```
+
+2. Present the proposed rewordings as before and after pairs, grouped by
+   the kind of problem, with an item shared by several questions shown
+   once. List separately the items whose intended meaning is a guess.
+3. Ask the user how to proceed. One decision per item is slow, so offer as
+   the default: apply the clear rewordings, and ask only about the items
+   whose meaning is uncertain.
+4. Before rewording an item that some repository has selected, read the
+   private notes of those repositories (`marks_export()`) and confirm the
+   new wording still describes every one of them. A simpler wording can be
+   wrong: "The repository's automated check failed" does not describe a run
+   that was cancelled at a time limit. When it does not fit, keep the
+   original or ask.
+5. Write the agreed rewordings to `<root>/scratch/rubric-rewording.yaml`,
+   one entry per item, with `item` the stored description copied verbatim
+   (a shared item needs one entry per question it is in):
+
+   ```yaml
+   - question: Q1
+     item: Hotel-link discovery or URL construction omits usable US hotel pages
+     description: Some US hotel pages are missed when finding hotel links or building URLs
+   ```
+
+6. Apply the file with `rubric_items_set()`. It checks every entry before
+   writing anything (each `item` matches one stored item, no question ends
+   up with two identical descriptions) and makes the whole pass one
+   transaction, one automatic snapshot and one activity log entry, so do
+   not loop over `rubric_item_set()`, which would leave one of each per
+   item:
+
+   ```
+   Rscript -e 'markermd::rubric_items_set("<root>/scratch/rubric-rewording.yaml", project = "<root>", summary = "<what was reworded and why>")'
+   ```
+
+7. Confirm with `Rscript -e 'print(markermd::snapshot_diff("latest", project
+   = "<root>"))'` that the diff holds only reworded items, with no marks or
+   score changes, and report that.
+
+An item that should be removed rather than reworded (never selected and
+nobody can say what it means, or a duplicate of another item) is deleted
+with `rubric_item_delete()`, after the user agrees to that item's removal:
+
+```
+Rscript -e 'markermd::rubric_item_delete("<question>", "<description>", project = "<root>", summary = "<why it was removed>")'
+```
+
+It deletes an item no repository has selected, and refuses one that is
+selected: deleting that changes those repositories' scores and can leave
+the question ungraded for them. When it refuses, report the item and its
+selection count to the user, and pass `force = TRUE` only after they have
+said to delete it anyway. Never delete through a `replace` import, which
+drops every selection in the question.

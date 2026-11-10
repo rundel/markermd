@@ -76,6 +76,13 @@ Headless entry points, all taking the project root:
 - `rubric_item_set()`: reword one rubric item or change its points in place
   (identified by its current description). The item keeps its id, so every
   recorded selection carries over; this is how to fix an item's wording.
+  `rubric_items_set()` is the bulk form: a data frame or YAML file of
+  `question` / `item` / `description` / `points` entries applied in one
+  transaction, with one snapshot and one activity entry.
+- `rubric_item_delete()`: delete one rubric item, leaving the rest of its
+  question and every other selection untouched. Run from `Rscript` it
+  refuses an item some repository has selected unless `force = TRUE`; pass
+  that only after the user has agreed to lose those selections.
 - `export_scores()`, `export_comments()`, `export_feedback()`: final outputs.
   Each records which snapshot of the grading it came from.
 - `assignment_outline()`: a document's sections with their exact Pandoc
@@ -250,8 +257,10 @@ questions:
   most-used items come first. Give every question a 0-point confirmation item
   (`Looks good`) in negative mode, or a full-credit item in positive mode, so
   a correct answer can be recorded as graded. Descriptions are shown to
-  students: phrase them as feedback about the work, never as grading
-  mechanics.
+  students: write each as one short, plain sentence about the work (what is
+  wrong, in the words the assignment uses), never as grading mechanics or
+  in the grader's own shorthand. Use the same wording for the same defect in
+  every question it applies to.
 - An entry of `items` may instead be an item group: a `group` label (unique
   within the question) with its own `items` and optionally `floor` (`<= 0`),
   `ceiling` (`>= 0`) and `exclusive` (a boolean). The combined points of the
@@ -279,8 +288,9 @@ questions:
   Making an existing
   group exclusive while some repository has two of its items selected
   aborts the import. To reword an item or change its points, use
-  `rubric_item_set()`, never a replace import: after a replace no recorded
-  selection of the question's old items counts any more.
+  `rubric_item_set()` (or `rubric_items_set()` for several), and to remove
+  one item use `rubric_item_delete()`, never a replace import: after a
+  replace no recorded selection of the question's old items counts any more.
 
 ### Marks (`format_version: "1.0"`)
 
@@ -355,7 +365,8 @@ repos:
 - Every change to grading state goes through the import functions or the
   apps, never through the SQLite file or hand-edited YAML that is not then
   imported.
-- Every import you run (and every `marks_set()` and `rubric_item_set()`)
+- Every import you run (and every `marks_set()`, `rubric_item_set()`,
+  `rubric_items_set()` and `rubric_item_delete()`)
   gets a `summary =` saying what it changes and why; it is recorded on the
   automatic snapshot the import takes and in the activity log. After a change,
   report what it did with `snapshot_diff("latest")` rather than by
