@@ -310,9 +310,11 @@ mark_validate_ui = function(id) {
 # template: Reactive. Template object for reference
 # on_back: Optional zero-argument function behind a Back button in the node
 #   preview modal (the app re-opens the validation modal the preview replaced)
+# opened: Reactive counter bumped each time the modal opens, so a question
+#   chosen in one opening is never carried into the next
 
 mark_validate_server = function(id, ast, validation_results = shiny::reactiveVal(NULL), template = shiny::reactiveVal(NULL),
-                                on_back = NULL) {
+                                on_back = NULL, opened = shiny::reactiveVal(0L)) {
   shiny::moduleServer(id, function(input, output, session) {
 
     back_id = if (is.null(on_back)) NULL else session$ns("preview_back")
@@ -324,20 +326,27 @@ mark_validate_server = function(id, ast, validation_results = shiny::reactiveVal
 
     
     # Keep the question shortcut select's labels in step with the current
-    # repository's results, preserving the chosen question. Re-sending the
-    # current value does not re-fire the input, so this never scrolls.
+    # repository's results, preserving a question chosen in this opening.
+    # Re-sending the current value does not re-fire the input, so this never
+    # scrolls. A new opening's select starts empty, but until the browser
+    # reports that, input$question_select still holds the previous opening's
+    # choice; re-sending it would select and scroll to that question in the
+    # new modal, so only a choice made in the current opening is kept.
+    chosen_in_opening = NA_integer_
     shiny::observe({
       shiny::req(template())
+      keep = identical(chosen_in_opening, opened())
       shiny::updateSelectInput(
         session, "question_select",
         choices = validation_question_choices(template_question_names(template()), validation_results()),
-        selected = shiny::isolate(input$question_select)
+        selected = if (keep) shiny::isolate(input$question_select) else ""
       )
     })
 
     # Choosing a question scrolls its card into view
     shiny::observe({
       shiny::req(nzchar(input$question_select))
+      chosen_in_opening <<- shiny::isolate(opened())
       session$sendCustomMessage(
         "markermd_scroll_to",
         list(id = session$ns(question_card_id(input$question_select)))

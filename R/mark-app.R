@@ -930,7 +930,8 @@ create_markermd_app = function(root, repos_dir, template_obj, use_qmd, collectio
         validation_rv()[[validation_repo()]]
       }),
       template = shiny::reactiveVal(template_obj),
-      on_back = show_validation_modal
+      on_back = show_validation_modal,
+      opened = validation_shown
     )
 
     
