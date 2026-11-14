@@ -707,7 +707,7 @@ function title line needed - No `@return` documentation needed
   collide with it; the summary rows are reactable column footers rather
   than gt summary rows because gt’s interactive mode cannot pin rows
   under a sortable table), `utils_code_view.R` (the read-only code view
-  on Prism 1.29.0, vendored under `inst/www/prism/` with no CDN and
+  on Prism 1.30.0, vendored under `inst/www/prism/` with no CDN and
   served by `code_view_dependency()`: `code_view_ui()` writes a
   `<pre><code>` with the plain text, its `data-language` and its
   `data-highlight` line ranges, and `markermd-code-view.js` highlights

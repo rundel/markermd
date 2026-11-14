@@ -29,7 +29,7 @@ The project's `markermd_project` object, invisibly.
 src = system.file("examples/test_assignment", package = "markermd")
 project = fs::dir_copy(src, fs::file_temp("markermd_example_"))
 init_project(project)
-#> ✔ Initialized markermd project at /tmp/Rtmpsvxzc1/markermd_example_1a4814d1c6f9
+#> ✔ Initialized markermd project at /tmp/RtmpyANHJD/markermd_example_2def424607b2
 #> • database: .markermd/markermd.sqlite (created)
 #> • skills (claude): markermd-apply-rubric, markermd-check-injection,
 #>   markermd-fix-parsing, markermd-scaffold-rubric, markermd-scaffold-template
@@ -46,10 +46,10 @@ init_project(project)
 project_sitrep(project)
 #> 
 #> ── markermd project ────────────────────────────────────────────────────────────
-#> root: /tmp/Rtmpsvxzc1/markermd_example_1a4814d1c6f9
+#> root: /tmp/RtmpyANHJD/markermd_example_2def424607b2
 #> version: 1.0
-#> created: 2026-11-10 18:43:37
-#> updated: 2026-11-10 18:43:37
+#> created: 2026-11-14 01:56:59
+#> updated: 2026-11-14 01:56:59
 #> 
 #> ── Locations ──
 #> 
