@@ -6,7 +6,7 @@
 # same markup shows the text unhighlighted.
 
 prism_version = function() {
-  "1.29.0"
+  "1.30.0"
 }
 
 # The Prism language components markermd loads, in dependency order (a

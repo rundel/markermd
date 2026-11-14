@@ -1,11 +1,11 @@
 # Prism (vendored)
 
-markermd's read-only code views (the template editor's file view and node previews, and `mark()`'s Source view, source modal and file view) use [Prism](https://prismjs.com) 1.29.0, vendored here so the apps work offline. Prism is MIT licensed (see `LICENSE`).
+markermd's read-only code views (the template editor's file view and node previews, and `mark()`'s Source view, source modal and file view) use [Prism](https://prismjs.com) 1.30.0, vendored here so the apps work offline. Prism is MIT licensed (see `LICENSE`).
 
 | File                     | Origin                                                                                   |
 |--------------------------|------------------------------------------------------------------------------------------|
-| `prism-core.min.js`      | Prism 1.29.0, `components/prism-core.min.js`                                             |
-| `components/*.min.js`    | Prism 1.29.0 language components                                                         |
+| `prism-core.min.js`      | Prism 1.30.0, `components/prism-core.min.js`                                             |
+| `components/*.min.js`    | Prism 1.30.0 language components                                                         |
 | `LICENSE`                | Prism's MIT license                                                                      |
 | `prism-config.js`        | markermd: sets `Prism.manual` before the core loads so Prism does not scan the page      |
 | `markermd-qmd.js`        | markermd: the `qmd` grammar (alias `rmd`) for Quarto and R Markdown documents             |
